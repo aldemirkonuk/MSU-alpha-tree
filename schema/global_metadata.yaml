@@ -1,0 +1,33 @@
+# Fields stamped on every frame, event, set instance and prediction.
+fields:
+  game_id: {type: string, note: "ESPN game ID"}
+  season: {type: string}
+  game_type: {type: enum, values: [exhibition, non_conference, big_ten, big_ten_tournament, ncaa_tournament]}
+  frame_index: {type: int}
+  video_ts_ms: {type: int, unit: ms}
+  period: {type: int}
+  game_clock_s: {type: float, unit: s, resolution: 0.1}
+  shot_clock_s: {type: float, unit: s, resolution: 0.1}
+  score_msu: {type: int, unit: points}
+  score_opp: {type: int, unit: points}
+  margin: {type: int, unit: points}
+  possession_id: {type: int}
+  chance_id: {type: int}
+  chance_number: {type: int}
+  ball_control_state: {type: enum, values: [msu_ball, opponent_ball, contested, in_flight, inbound_pending, dead]}
+  inbound_side: {type: enum, values: [sideline, baseline, none]}
+  team_in_possession: {type: enum, values: [msu, opponent, none]}
+  basket_attacked: {type: enum, values: [north, south]}
+  players_on_floor: {type: "list[string]", length: 10}
+  team_fouls_msu: {type: int}
+  team_fouls_opp: {type: int}
+  bonus_state: {type: enum, values: [none, bonus, double_bonus]}
+  timeouts_msu: {type: int}
+  timeouts_opp: {type: int}
+  defense_scheme_state: {type: string, note: "label from the defense taxonomy"}
+  defense_scheme_confidence: {type: float, range: [0, 1]}
+  camera_shot_type: {type: enum, values: [main_wide, close_up, replay, slow_motion, crowd, bench, studio, commercial, graphic]}
+  coverage_score: {type: float, range: [0, 1]}
+  model_version: {type: string}
+  source: {type: string}
+  confidence: {type: float, range: [0, 1]}

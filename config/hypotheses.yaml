@@ -1,0 +1,32 @@
+# Hypothesis registry. Written before testing; results reported as found, nulls included.
+hypotheses:
+  - id: H1
+    statement: "Right-wing ball screen with an above-average shooter in the corner raises MSU points per chance."
+    measure: "Points per chance vs the same screen without that shooter"
+  - id: H2
+    statement: "A handoff to the right with bigs on both blocks scores differently from other handoff alignments."
+    measure: "Points per chance by alignment"
+  - id: H3
+    statement: "After the 2nd offensive rebound in a possession, MSU's scoring chance changes."
+    measure: "Points per chance by chance number"
+  - id: H4
+    statement: "The possession after MSU draws a foul scores more than average."
+    measure: "Points on the next possession"
+  - id: H5
+    statement: "Fears Jr.'s pass before the assist adds value beyond his assists."
+    measure: "Value credited to the hockey-assist pass"
+  - id: H6
+    statement: "Running a set faster than its own average changes its outcome."
+    measure: "Points per instance by execution-speed bin"
+  - id: H7
+    statement: "A defense switching from zone to man mid-chance concedes more."
+    measure: "Points per chance with vs without a switch"
+  - id: H8
+    statement: "Jersey color matters after controlling for home and away."
+    measure: "Margin with home/away held fixed"
+  - id: H9
+    statement: "Bank shots from specific angle sectors are more accurate than direct shots."
+    measure: "Make rate by sector and shot type"
+  - id: H10
+    statement: "Travel distance and time zones crossed lower first-half efficiency."
+    measure: "Points per possession, first half"

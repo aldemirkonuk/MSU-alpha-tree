@@ -1,0 +1,17 @@
+# NCAA men's court constants, metres.
+# Status: from memory of the rulebook; every value must be checked against the
+# current NCAA men's rulebook before the geometry module is trusted.
+verified: false
+court_length_m: 28.65
+court_width_m: 15.24
+rim_centre_from_baseline_m: 1.60
+rim_height_m: 3.05
+lane_width_m: 3.66
+free_throw_line_from_rim_centre_m: 4.19
+three_point_arc_radius_m: 6.75
+corner_three_distance_m: 6.60
+restricted_area_radius_m: 1.22
+half_court_from_rim_centre_m: 12.73
+ball_diameter_m: 0.24
+shot_clock_s: 30
+shot_clock_reset_after_offensive_rebound_s: 20

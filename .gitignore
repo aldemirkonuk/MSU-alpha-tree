@@ -1,0 +1,27 @@
+# Video and data stay in Google Drive
+data/*
+!data/README.md
+*.mp4
+*.mov
+*.mkv
+*.ts
+*.m3u8
+*.parquet
+*.npy
+*.npz
+models/
+checkpoints/
+runs/
+*.pt
+*.pth
+*.onnx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

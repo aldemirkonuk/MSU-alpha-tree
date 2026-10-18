@@ -1,0 +1,33 @@
+# Common terms linked to measured definitions.
+# A term keeps its common meaning in context; this map records what a source
+# most likely means, it does not rewrite every use of the word.
+# Angles: degrees from the right baseline, measured at the rim centre.
+terms:
+  elbow:
+    measured: "x = ±1.83 m, y = 4.19 m -> r = 4.57 m, θ = 66.4° (right), 113.6° (left)"
+    note: "Some coaches loosely call the elbow area '45'; by measurement 45° is the wing centre."
+  wing:
+    measured: "r ≥ 6.75 m, 12° < θ ≤ 60° (mirrored 120°–168°)"
+    note: "'45' in coaching speech usually means this spot."
+  slot:
+    measured: "r ≥ 6.75 m, 60° < θ ≤ 80° (mirrored 100°–120°)"
+  top:
+    measured: "r ≥ 6.75 m, 80° < θ < 100°"
+  corner:
+    measured: "r ≥ 6.60 m, θ ≤ 12° (or ≥ 168°)"
+  block:
+    measured: "x = ±1.83 m, y 0.3–1.5 m (θ ≈ 9°–39°)"
+  dunker_spot:
+    measured: "2.0 ≤ |x| ≤ 3.5 m, y ≤ 0.6 m"
+  short_corner:
+    measured: "to be defined from film"
+  nail:
+    measured: "centre of the free-throw line: x = 0, y = 4.19 m"
+  strong_side:
+    measured: "same sign of x as the ball"
+  weak_side:
+    measured: "opposite sign of x to the ball"
+  one_pass_away:
+    measured: "to be defined from passing-lane geometry"
+  low_man:
+    measured: "weak-side defender closest to the rim"
