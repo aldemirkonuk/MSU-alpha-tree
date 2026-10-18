@@ -1,0 +1,91 @@
+# Market data collector configuration (docs/markets/collector_design.md).
+# Every source ships DISABLED. A source may be enabled only after its decision in design
+# section 0 is recorded in `decision`; credentials come from environment variables only.
+# Times in seconds; spreads and totals in basketball points.
+
+storage:
+  # Private, never git (R-RG-08). Set MSU_MARKETS_ROOT to the synced Drive folder
+  # MyDrive/MSU-Alpha-3/markets on the collector host; this default is a local private folder.
+  root: "~/MSU-Alpha-3-private/markets"
+  results_dir: "results"          # run records (counts only) go to results/markets_<date>/
+
+sources:
+  cbbd:
+    enabled: false
+    decision: "pending: Aldemir registers a free key (design decision 1)"
+    base_url: "https://api.collegebasketballdata.com"
+    key_env: CBBD_API_KEY
+    min_interval_s: 1.0
+    spread_sign_verified: false   # verify on the first keyed call (design 1.1)
+  espn:
+    enabled: false
+    decision: "pending: option (i) schedule only, (ii) schedule + odds, (iii) none (design decision 2)"
+    mode: none                    # none | schedule | schedule_and_odds
+    min_interval_s: 1.0
+  sbro:
+    enabled: false
+    decision: "pending: one-time private fetch of 2021-22 (design decision 3)"
+  oddsapi:
+    enabled: false
+    decision: "pending: purchase decision (design decision 4); no call before written approval"
+    key_env: ODDS_API_KEY
+    min_interval_s: 0.2
+    min_credits_remaining: 500
+  kalshi:
+    enabled: false
+    decision: "blocked: terms forbid collection without written consent (design decision 5)"
+    min_interval_s: 1.0
+  polymarket:
+    enabled: false
+    decision: "pending: terms risk and identity-field stripping (design decision 6)"
+    min_interval_s: 0.5
+    redact_fields: [proxy_wallet, proxyWallet, name, pseudonym, bio, profile_image, profileImage, maker, taker]
+
+http:
+  timeout_s: 30
+  max_retries: 6
+  backoff_base_s: 1.0
+  backoff_max_s: 64.0
+  user_agent: "msu-alpha-markets/0.1 (private research; read-only)"
+
+schedule:
+  offsets_s:                       # snapshot times relative to scheduled tip (negative = before)
+    t-24h: -86400
+    t-1h: -3600
+    close: -300
+  inplay:
+    start_s: -10800                # 1-minute prediction-market prices from T - 3 h ...
+    end_after_final_s: 3600        # ... to final + 1 h
+    interval_s: 60
+    est_game_length_s: 7800        # used when the final time is not yet known
+
+devig:
+  methods: [power, shin, multiplicative]
+  default: power                   # provisional until the NCAAB log-loss test (decision 9)
+
+checks:                            # initial values before calibration (design 4.1); decision 8
+  xsrc_flag_points: 0.5
+  xs1_points: 0.5
+  xs1_fair_prob: 0.02
+  xs2_spread_points: 1.5
+  xs2_total_points: 2.0
+  xs3_points: 1.0
+  xs4_prob: 0.06
+  xs4_sigma_points: 10.9
+  booksum_book: [0.98, 1.25]
+  booksum_exchange: [0.95, 1.10]
+  jump_window_s: 900
+  jump_spread_points: 3.0
+  jump_total_points: 4.0
+  jump_prob: 0.15
+  completeness_target: 0.95
+  unmatched_alert_share: 0.02
+
+matching:
+  auto_accept_s: 5400
+  candidate_window_s:
+    cbbd: 129600
+    oddsapi: 21600
+    polymarket: 10800
+  fuzzy_accept_score: 95
+  fuzzy_runner_up_gap: 5

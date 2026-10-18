@@ -14,6 +14,7 @@ Policy (decided 17 Oct 2026): any dataset or open-source component we can lawful
 | NBA SportVU 2015-16 mirrors | Imputation and EPV pre-training | Unclear | Unclear | Research setup |
 | Ultralytics YOLO | Detection (alternative) | AGPL-3.0 | Copyleft | Not planned |
 | sn-gamestate | Game-state reference | GPL-3.0 | Copyleft | Reference only |
+| pyarrow | Parquet snapshot tables for the market collector (optional extra `markets`) | Apache-2.0 (PyPI, checked 18 Oct 2026) | Yes | Adopted (B2 foundation) |
 | Broadcast footage (YouTube, B1G+ recordings) | Model input | Copyrighted | No | Private research use only, never redistributed |
 
 Full audit: `docs/research/open_source_audit.md`.
