@@ -1,0 +1,152 @@
+# Restart vocabulary: every way play resumes, 2026-27 NCAA men's rules book (Rules 4-28, 6, 7, 8).
+# Status: PROPOSAL (2026-10-18). Lands in: restarts.restart_type, restarts.throw_in_spot, restarts.spot_x_m/spot_y_m.
+# pdf = page of docs/rules/PRMBB_RulesBook.pdf; p = printed (pdf - 3).
+#
+# Geometry frame (src/msu_alpha/geometry.py, config/vocabulary_map.yaml): origin on the floor under the centre of
+# the rim the THROW-IN TEAM attacks; x along the end line, + to the attacker's right facing the basket; y toward
+# half court; r (m) = hypot(x, y); theta (deg) from the right baseline at the rim centre (0 right baseline, 90 top,
+# 180 left baseline; negative = behind the rim centre, toward the end line).
+# Constants (config/vocab/court_constants_proposed.yaml): end line inner edge y = -1.6002; sidelines x = +-7.6200;
+# lane outer edges x = +-1.8288; FT line far edge y = 4.1910; division line centre y = 12.7254 (frontcourt edge 12.7000).
+# Spots are on the boundary inner edge (thrower stands outside it). Backcourt spots use the same frame (y > 12.7254).
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+requirements: [R-SR-08, R-MD-03, R-IV-08, new-EV-9]
+
+restart_methods:
+  - id: jump_ball
+    rule: "6-2, 6-3.5, 6-1.2.a"
+    pdf: [79, 80]
+    p: [76, 77]
+    quote: "putting the ball into play at the beginning of the game or any extra period"
+    when: [start_of_game, start_of_each_extra_period, "no control gained after opening/OT jump (6-3.5)", "technical FT before game or extra period (8-6.5)"]
+    geometry: "centre circle centre (0, 12.7254), r 12.725, theta 90.0; circle radius 1.8288 (outside edge); jumpers in half farther from own basket; non-jumpers exempt beyond 0.9144 m outside circle"
+    detect: "CV: official toss (ball vertical speed > 4 m/s from official hands) at centre circle; two players inside circle."
+  - id: throw_in_alternating_possession
+    rule: "6-3, 6-4.1"
+    pdf: [80, 81]
+    p: [77, 78]
+    when: [held_ball, simultaneous_touch_out_of_bounds_or_doubt, double_or_simultaneous_ft_violation, ft_violation_or_technical_no_control, ball_lodged_or_on_flange, dead_ball_no_control, inadvertent_whistle_no_control]
+    spot: "designated spot nearest the stoppage (7-3.2)"
+    arrow: "reverses when throw-in ends (6-3.2); lost on throw-in violation (6-3.7); kept on foul during it (6-3.8)"
+    detect: "Signal held_ball then directional; OCR possession arrow flips at throw-in end."
+  - id: second_half_ap_division_line
+    rule: 6-3.6
+    pdf: 80
+    p: 77
+    quote: "at the division line opposite the scorers' table"
+    geometry: "(x = +-7.6200 on the sideline opposite the table, y = 12.7254), r 14.832, theta 59.1 (right) or 120.9 (left)"
+  - id: throw_in_after_score
+    rule: "7-4.6, 7-3.1.c"
+    pdf: [85, 86]
+    p: [82, 83]
+    quote: "may move along the end line"
+    geometry: "anywhere on end line y = -1.6002, |x| <= 7.62 (team scored on attacks the other basket: in its own frame this is y = 27.051)"
+    runnable_exceptions: ["common foul before bonus or technical near end line", "flagrant foul by defence near end line", "defence kicks ball along end line", "timeout granted"]
+    pass_along_end_line_allowed: true
+    detect: "CV: thrower moves along end line > 0.5 m; pass to teammate also out of bounds."
+  - id: throw_in_after_last_ft_made
+    rule: "8-6.1.a, 7-4.6"
+    pdf: [92, 85]
+    p: [89, 82]
+    geometry: "same as throw_in_after_score"
+  - id: throw_in_designated_spot
+    rule: "7-3.2, 7-6.8"
+    pdf: [84, 88]
+    p: [81, 85]
+    quote: "The designated spot shall be 3 feet wide with no depth limitation."
+    spot_width_m: 0.9144
+    count_s: 5
+    detect: "CV: thrower foot within 0.457 m of spot centre along boundary; official hands/bounces ball (disposal)."
+  - id: throw_in_where_ball_went_out
+    rule: "7-3.2.a Exception, 9-2"
+    pdf: 84
+    p: 81
+    when: "defence caused ball out of bounds in the offence's frontcourt"
+    geometry: "boundary point where ball crossed (CV ball-out point)"
+  - id: throw_in_point_of_interruption
+    rule: "4-28, 7-5"
+    pdf: [62, 87]
+    p: [59, 84]
+    when: [inadvertent_whistle, interrupted_game, correctable_error, double_or_simultaneous_foul, technical_foul]
+    spot: "team in control at designated spot (7-3.2); free throw if stoppage during FT; AP if no control"
+  - id: free_throw
+    rule: "8-1, 8-4, 6-1.2.c"
+    pdf: [90, 91]
+    p: [87, 88]
+    geometry: "shooter behind FT line (far edge y = 4.191, inside semicircle radius 1.8288 centred (0, ~4.17)); lane spaces per court_constants_proposed.yaml"
+    lane: "max 6 lane players: 4 opponents, 2 shooter teammates; lowest spaces open; first above block opponent, second teammate, third opponent (8-4.4)"
+  - id: division_line_after_halftime_flagrant_review
+    rule: "PCI A.R. 11-32 correction (2026-10-15)"
+    source: 2026-27PRMBB_PostClinicInterpretations.pdf p 2
+    geometry: "division line, offended team, arrow unchanged"
+
+designated_spots:
+  - id: end_line_3ft_outside_lane_right
+    rule: "7-3.2.a-b; court diagram"
+    pdf: [84, 85, 19]
+    x_m: 2.7432
+    y_m: -1.6002
+    r_m: 3.176
+    theta_deg: -30.3
+    note: "lane outer edge 1.8288 + 0.9144 (3 ft); diagram mark 12 in long x 2 in wide (recommended)"
+  - id: end_line_3ft_outside_lane_left
+    x_m: -2.7432
+    y_m: -1.6002
+    r_m: 3.176
+    theta_deg: -149.7
+  - id: sideline_28ft_right
+    rule: "7-3.2.a-b, 4-3.1; court diagram pdf 18-19"
+    x_m: 7.6200
+    y_m: 6.9342
+    r_m: 10.303
+    theta_deg: 42.3
+    note: "28 ft (8.5344 m) from end line; edge of measurement not stated (unverified); bench-side mark 3 ft into court per diagram reading"
+  - id: sideline_28ft_left
+    x_m: -7.6200
+    y_m: 6.9342
+    r_m: 10.303
+    theta_deg: 137.7
+  - id: division_line_sideline_right
+    x_m: 7.6200
+    y_m: 12.7254
+    r_m: 14.832
+    theta_deg: 59.1
+  - id: division_line_sideline_left
+    x_m: -7.6200
+    y_m: 12.7254
+    r_m: 14.832
+    theta_deg: 120.9
+  - id: backcourt_nearest_spot
+    rule: 7-3.2.c
+    geometry: "boundary point nearest the foul/violation with y > 12.7254 (sideline |x| = 7.62 or far end line y = 27.0510)"
+
+frontcourt_zone_rule:
+  rule: "7-3.2.b + diagram pdf 85 (printed 82); CHG proposal 6 (2025-26)"
+  boundary: "free-throw line extended to both sidelines: y = 4.191 m (r 8.696 m, theta 28.8 / 151.2 at the sidelines)"
+  below_or_on: end_line_3ft_outside_lane (nearer side by sign of x)
+  above: sideline_28ft (nearer side)
+  note: "Book text is garbled ('free-line extended'); the diagram shows the dashed FT-line-extended box; the pre-2025-26 elbow-to-corner line is obsolete. Exception: defence-caused OOB -> spot where ball went out."
+
+throw_in_requirements:
+  - {rule: 7-6.6, pdf: 88, p: 85, value: "release within 5 s"}
+  - {rule: 7-6.8.c-d, pdf: 88, p: 85, value: "one foot on/over spot until release"}
+  - {rule: 7-6.9.b, pdf: 88, p: 85, value: "no opponent body part over boundary inside plane until ball crosses"}
+  - {rule: 7-6.9.c, pdf: 88, p: 85, value: "teammates not adjacent & parallel within 1.8288 m (6 ft) of boundary when opponent wants space"}
+  - {rule: "7-6.10, 7-6.11", pdf: 88, p: 85, value: "throw-in may go into backcourt"}
+
+dead_ball_reason_map:   # schema restarts.dead_ball_reason -> rule
+  made_fg: {rule: 6-5.1.a, pdf: 81}
+  ft_followed_by_ft: {rule: 6-5.1.b, pdf: 81}
+  held_ball: {rule: 6-5.1.c, pdf: 81}
+  ball_lodged: {rule: 6-5.1.c, pdf: 81}
+  personal_foul: {rule: 6-5.1.d, pdf: 81}
+  period_end: {rule: 6-5.1.e, pdf: 81}
+  violation_out_of_bounds: {rule: 6-5.1.g, pdf: 81}
+
+open_questions:
+  - "28-ft mark: measured to which edge of the 2-in mark? Diagram does not say."
+  - "Add restart_type values throw_in_where_ball_went_out and division_line_after_review to schema restarts.restart_type?"

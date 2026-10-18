@@ -1,0 +1,604 @@
+# Foul vocabulary, 2026-27 NCAA men's rules book.
+# Status: PROPOSAL (2026-10-18). Lands in: fouls.foul_class, fouls.foul_subtype, fouls.contact_mechanism,
+# fouls.rule_article (new), fouls.penalty_code (new); free_throws award checks; config/invariants.yaml free_throw_award_table.
+# Closes inbox 007 leaves A.06.06, A.06.08, A.06.11, A.06.14, A.06.17, A.06.20-22; requirements R-RF-03, new-RF-1..5, new-RF-7.
+#
+# Page convention: pdf = page of docs/rules/PRMBB_RulesBook.pdf; p = printed page (= pdf - 3).
+# CB = PRMBB_CaseBook.pdf (printed = pdf - 5). quote = short defining phrase from the book (<= 12 words).
+# detect: what identifies it. CV = tracking (positions in m in the attacked-rim frame, speeds m/s, angles degrees);
+# VID = broadcast video review; PBP = play-by-play text. Thresholds marked (proposal) are ours, not the book's.
+#
+# FLAG: "intentional" is NOT a foul class in the 2026-27 men's book (RB 4-15, pdf 55-58). DIF (2026-27 rules
+# differences, p 2) lists intentional fouls for NFHS only. Source labels "intentional" map per `legacy_label_map`.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+requirements: [R-RF-03, new-RF-1, new-RF-2, new-RF-3, new-RF-4, new-RF-5, new-RF-7, new-RF-6, R-IV-08]
+
+# ---------------------------------------------------------------- classes
+classes:
+  - id: personal
+    name: Personal foul
+    rule: 4-15.2
+    pdf: 56
+    p: 53
+    quote: "involves illegal contact with an opponent while the ball is live"
+    counts: {team_foul: true, disqualification: true, ejection: false}
+    detect: "CV: two opposing players' body boxes overlap or keypoint distance < 0.15 m (proposal) at the whistle frame, ball live. VID: stop-clock-for-foul fist (signals: stop_clock_foul). PBP: 'Foul on'."
+  - id: common
+    parent: personal
+    name: Common foul
+    rule: 4-15.2.a
+    pdf: 56
+    p: 53
+    quote: "neither flagrant, nor part of a double, multiple or simultaneous foul"
+    detect: "Personal foul with no flagrant signal, single fouler; PBP personal foul without flagrant/double tag."
+  - id: player_control
+    parent: common
+    name: Player-control foul
+    rule: 4-15.2.a.1
+    pdf: 56
+    p: 53
+    quote: "committed by a player when he is in control of the ball or by an airborne shooter"
+    detect: "CV: fouler = ball holder/dribbler (ball within 0.5 m of hand keypoint, proposal) or airborne shooter (both ankles > 0.05 m above floor after release). Signal: hand behind head (player_control_foul). PBP 'Offensive Foul' / 'charge'."
+  - id: team_control
+    parent: common
+    name: Team-control foul
+    rule: 4-15.2.a.2
+    pdf: 56
+    p: 53
+    quote: "committed by a player of a team that has team control"
+    detect: "CV: fouler's team has team control (4-9.2) and fouler is not the ball holder (e.g. illegal screen, off-ball push). Same signal as player-control. PBP 'Offensive Foul' with non-ball-handler."
+  - id: loose_ball
+    parent: common
+    name: Loose-ball foul
+    rule: 4-15.2.a.3
+    pdf: 56
+    p: 53
+    quote: "committed by a player when any of the conditions in Rule 4-24 occur"
+    note: "A loose-ball foul by an offensive player is also a team-control foul and does carry bonus free throws (8-2.1)."
+    detect: "CV: no player control at the foul frame (rebound, fumble, deflected pass, try in flight); ball > 1.0 m from every hand (proposal). PBP 'Loose Ball Foul'."
+  - id: shooting
+    parent: common
+    name: Shooting foul (penalty context, not a separate book class)
+    rule: "5-1.10, 5-1.11, 10-1 Penalty b.1, d.1, e"
+    pdf: [67, 68, 106]
+    p: [64, 65, 103]
+    quote: "The act of shooting begins simultaneously with the start of the try"
+    detect: "CV: foul frame between start of shooting motion (ball rising above shoulder with both hands or upward arm extension, proposal) and shooter landing. Signal: shooting_foul (fist then 2 or 3 fingers). PBP 'Shooting Foul'. 2 vs 3 FT from shooter foot location at take-off: r >= 6.75 m (arc) or |x| >= 6.60 m in corner (theta <= 12.07 deg)."
+  - id: double_personal
+    parent: personal
+    name: Double personal foul
+    rule: 4-15.2.b
+    pdf: 56
+    p: 53
+    quote: "two opponents commit personal fouls against each other at approximately the same time"
+    detect: "Signal: double_foul (both arms out, fists). PBP two fouls same timestamp, opposite teams, each other's player. CV: two contacts within 0.3 s (proposal)."
+  - id: simultaneous_personal
+    parent: personal
+    name: Simultaneous personal foul
+    rule: 4-15.2.d
+    pdf: 57
+    p: 54
+    quote: "each team commits a personal foul at approximately the same time but not by opponents against each other"
+    detect: "PBP two fouls same clock time, different matchups."
+  - id: flagrant_1_personal
+    parent: personal
+    name: Flagrant 1 personal foul
+    rule: 4-15.2.c.1
+    pdf: 56
+    p: 53
+    quote: "excessive in nature (unwarranted or too much) and/or unnecessary"
+    penalty: "2 FT + throw-in to offended team at designated spot (7-3.2)"
+    detect: "Signal: crossed fists above head (flagrant). Usually confirmed by monitor review (11-2.1.d.1). PBP 'Flagrant Foul Type 1'. CV support: contact speed of fouler > 4 m/s or contact to head region (proposal)."
+  - id: flagrant_2_personal
+    parent: personal
+    name: Flagrant 2 personal foul
+    rule: 4-15.2.c.2
+    pdf: 57
+    p: 54
+    quote: "not only excessive, but also severe (brutal, harsh, cruel) or extreme"
+    penalty: "2 FT + throw-in + ejection"
+    detect: "Signal: flagrant; ejection follows (player leaves bench area on video). PBP 'Flagrant Foul Type 2'/'Ejection'."
+  - id: multiple
+    name: Multiple foul
+    rule: 4-15.5
+    pdf: 58
+    p: 55
+    quote: "two or more teammates commit personal fouls against the same opponent"
+    detect: "PBP >= 2 fouls same team, same fouled player, same clock time. CV: two defenders in contact with one player within 0.3 s (proposal)."
+  - id: false_double
+    name: False double foul
+    rule: 4-15.4
+    pdf: 58
+    p: 55
+    quote: "the second of which occurs before the game clock is started"
+    detect: "State machine: foul by team A, clock stopped, foul by team B before next clock start. PBP order."
+  - id: false_multiple
+    name: False multiple foul
+    rule: 4-15.6
+    pdf: 58
+    p: 55
+    quote: "at least one of the attributes of a multiple foul is absent"
+    detect: "State machine: >= 2 fouls by same team between clock stop and next start, not a multiple foul."
+  - id: technical
+    name: Technical foul (umbrella)
+    rule: 4-15.3
+    pdf: 57
+    p: 54
+    detect: "Signal: T with both hands (technical_foul). PBP 'Technical Foul'."
+  - id: administrative_technical
+    parent: technical
+    name: Administrative technical foul
+    rule: "4-15.3.a, 10-2"
+    pdf: [57, 107]
+    p: [54, 104]
+    quote: "violation of rules pertaining to ... court/equipment requirements, rosters, benches"
+    counts: {team_foul: false, disqualification: false, ejection: false}
+    penalty: "1 FT (2 FT for 10-2.6 more than five players and 10-2.7 excessive timeout); point of interruption"
+    detect: "PBP 'Technical Foul' charged to team/no player; often pre-game or at a timeout; no player gesture."
+  - id: class_a_technical
+    parent: technical
+    name: Class A technical foul (unsporting)
+    rule: "4-15.3.b, 10-3"
+    pdf: [57, 109]
+    p: [54, 106]
+    quote: "involves unsportsmanlike conduct or behavior"
+    counts: {team_foul: true, disqualification: true, ejection: "AA or ABB"}
+    penalty: "2 FT, point of interruption"
+    detect: "Signal: technical_foul. VID: preceding gesture/taunt (link bench_events, new-CC-4). PBP 'Technical Foul' on player/coach."
+  - id: class_b_technical
+    parent: technical
+    name: Class B technical foul
+    rule: "4-15.3.b, 10-4"
+    pdf: [57, 111]
+    p: [54, 108]
+    quote: "neither involves contact with an opponent, nor causes contact"
+    counts: {team_foul: false, disqualification: false, ejection: "BBB or ABB"}
+    penalty: "1 FT, point of interruption"
+    detect: "Signal: technical_foul; specific trigger (flop, hanging on rim, delay after warning) seen on video."
+  - id: double_technical
+    parent: technical
+    name: Double technical foul
+    rule: 4-15.3.c
+    pdf: 58
+    p: 55
+    quote: "opponents commit technical fouls against each other at approximately the same time"
+    penalty: "no FT unless one is flagrant 2; point of interruption"
+    detect: "PBP two technicals, opposing teams, same clock."
+  - id: simultaneous_technical
+    parent: technical
+    name: Simultaneous technical foul
+    rule: 4-15.3.f
+    pdf: 58
+    p: 55
+    quote: "each team commits a technical foul at approximately the same time"
+    detect: "PBP two technicals, opposing teams, same clock, not against each other."
+  - id: flagrant_2_contact_technical
+    parent: technical
+    name: Flagrant 2 contact technical foul
+    rule: 4-15.3.d.1
+    pdf: 58
+    p: 55
+    quote: "occurs when the ball is dead and the contact is not only excessive"
+    penalty: "2 FT + throw-in to offended team + ejection"
+    detect: "Contact after whistle/dead ball (ball dead flag from state machine) with flagrant signal; review usual."
+  - id: flagrant_2_noncontact_technical
+    parent: technical
+    name: Flagrant 2 noncontact technical foul
+    rule: 4-15.3.d.2
+    pdf: 58
+    p: 55
+    quote: "unsportsmanlike conduct that is extreme, sometimes persistent, vulgar or abusive"
+    detect: "PBP technical + ejection without contact; VID gesture."
+  - id: contact_dead_ball_technical
+    parent: technical
+    name: Contact dead-ball technical foul
+    rule: "4-15.3.e, 10-3.1.e"
+    pdf: [58, 110]
+    p: [55, 107]
+    quote: "contact that is unnecessary, unacceptable or excessive"
+    counts: {team_foul: true, disqualification: true, ejection: "counts as Class A (AA/ABB)"}
+    penalty: "2 FT + throw-in to offended team at designated spot (7-3.2)"
+    detect: "Contact while ball dead (after whistle, after made basket before throw-in). CV: contact frame later than whistle frame by > 0.3 s (proposal)."
+  - id: fighting
+    name: Fight (always a flagrant 2)
+    rule: "10-5.1, 10-5.2, 10-5.6"
+    pdf: [114]
+    p: [111]
+    quote: "A fight is a flagrant 2 foul."
+    penalty: "ejection; next regular-season game suspension (1st); rest of season (2nd); mandatory review 11-3.1.b"
+    detect: "VID: striking motion with fist/arm/leg; multiple players converge; bench clearing. PBP ejection notes. Leaf A.06.21 (new-RF-6)."
+  - id: flopping
+    parent: class_b_technical
+    name: Faking being fouled (flopping)
+    rule: "10-4.1.o; 10-3.1.d when confirmed on flagrant review"
+    pdf: [112, 110]
+    p: [109, 107]
+    quote: "attempts to influence an official's judgment ... when there has been minimal contact"
+    detect: "Signal: flopping (two arms pumped forward). CV: fall or head snap with fouler-contact impulse below threshold; head angular speed > 400 deg/s without contact (proposal, label only). Leaf A.06.22 (new-RF-7)."
+  - id: bench_personnel_foul
+    name: Foul by bench personnel or coach (Class A/B technical charged to coach)
+    rule: "10-3.2, 10-4.2"
+    pdf: [110, 112]
+    p: [107, 109]
+    detect: "PBP technical on coach/bench; also charged as Class B to head coach."
+
+# --------------------------------------------------- subtypes: administrative, Class A, Class B
+administrative_technical_subtypes:
+  - {id: adm_court_equipment, rule: 10-2.1, pdf: 107, p: 104, name: "Improper game clock display, red/LED lights, shot clock or court markings"}
+  - {id: adm_roster_lineup_late, rule: 10-2.2.a, pdf: 107, p: 104, name: "Roster/starters not supplied before the 10-minute mark (offsetting if both)"}
+  - {id: adm_scorebook_change, rule: 10-2.2.b, pdf: 108, p: 105, name: "Lineup/roster change after the 10-minute mark"}
+  - {id: adm_duplicate_number, rule: 10-2.3.a, pdf: 108, p: 105, name: "Number identical to a teammate"}
+  - {id: adm_illegal_number, rule: 10-2.3.b, pdf: 108, p: 105, name: "Illegal number"}
+  - {id: adm_non_contrasting_uniform, rule: 10-2.3.c, pdf: 108, p: 105, name: "Teams not in contrasting uniforms"}
+  - {id: adm_scorebook_removed, rule: 10-2.4, pdf: 108, p: 105, name: "Scorebook taken to home locker room"}
+  - {id: adm_not_ready_to_start_half, rule: 10-2.5, pdf: 108, p: 105, name: "Consuming a full minute not ready to start a half/extra period"}
+  - {id: adm_more_than_five_players, rule: 10-2.6, pdf: 109, p: 106, name: "More than five players after ball live (2 FT)"}
+  - {id: adm_excessive_timeout, rule: "10-2.7, 5-17", pdf: 109, p: 106, name: "Excessive timeout (2 FT)"}
+  - {id: adm_team_followers, rule: 10-2.8, pdf: 109, p: 106, name: "Team followers: music while play live, laser pointers, debris, delay, abusive language"}
+
+class_a_subtypes:
+  player:
+    - {id: a_disrespect_official, rule: 10-3.1.a, pdf: 109, p: 106}
+    - {id: a_profanity_taunt_baiting_derogatory, rule: 10-3.1.b, pdf: 109, p: 106}
+    - {id: a_inciting_crowd, rule: 10-3.1.c, pdf: 110, p: 107}
+    - {id: a_flop_confirmed_on_flagrant_review, rule: 10-3.1.d, pdf: 110, p: 107}
+    - {id: a_contact_dead_ball, rule: 10-3.1.e, pdf: 110, p: 107, maps_to_class: contact_dead_ball_technical}
+    - {id: a_flagrant_contact_dead_ball, rule: 10-3.1.f, pdf: 110, p: 107, maps_to_class: flagrant_2_contact_technical}
+    - {id: a_flagrant_noncontact, rule: 10-3.1.g, pdf: 110, p: 107, maps_to_class: flagrant_2_noncontact_technical}
+    - {id: a_participating_after_dq, rule: 10-3.1.h, pdf: 110, p: 107}
+    - {id: a_into_stands_fight, rule: 10-3.1.i, pdf: 110, p: 107}
+    - {id: a_fighting, rule: 10-3.1.j, pdf: 110, p: 107, maps_to_class: fighting}
+    - {id: a_contact_or_threat_official, rule: 10-3.1.k, pdf: 110, p: 107, note: "ejection + next-game suspension"}
+  bench:
+    - {id: a_bench_disrespect_official, rule: 10-3.2.a, pdf: 110, p: 107}
+    - {id: a_bench_influence_official, rule: 10-3.2.b, pdf: 111, p: 108}
+    - {id: a_bench_profanity_derogatory, rule: 10-3.2.c, pdf: 111, p: 108}
+    - {id: a_bench_taunt_opponent, rule: 10-3.2.d, pdf: 111, p: 108}
+    - {id: a_bench_objecting_rising_gesture, rule: 10-3.2.e, pdf: 111, p: 108}
+    - {id: a_bench_inciting_crowd, rule: 10-3.2.f, pdf: 111, p: 108}
+    - {id: a_bench_fighting, rule: 10-3.2.g, pdf: 111, p: 108}
+    - {id: a_bench_contact_or_threat_official, rule: 10-3.2.h, pdf: 111, p: 108}
+    - {id: a_bench_unnecessary_contact, rule: 10-3.2.i, pdf: 111, p: 108}
+
+class_b_subtypes:
+  player:
+    - {id: b_obstruct_vision, rule: 10-4.1.a, pdf: 112, p: 109, detect: "hand within 0.3 m of opponent's eyes (proposal)"}
+    - {id: b_lifting_teammate, rule: 10-4.1.b, pdf: 112, p: 109}
+    - {id: b_unentitled_free_throw, rule: 10-4.1.c, pdf: 112, p: 109}
+    - {id: b_tobacco, rule: 10-4.1.d, pdf: 112, p: 109}
+    - {id: b_grasping_basket, rule: 10-4.1.e, pdf: 112, p: 109, detect: "hand keypoint at ring height 3.05 m held > 0.5 s after dunk without safety reason (proposal)"}
+    - {id: b_slapping_backboard, rule: 10-4.1.f, pdf: 112, p: 109}
+    - {id: b_goaltending_free_throw, rule: "10-4.1.g, 9-15 Penalty a.1", pdf: 112, p: 109, note: "1 point + Class B"}
+    - {id: b_reaching_through_throw_in_plane, rule: "10-4.1.h, 9-4.4", pdf: 112, p: 109}
+    - {id: b_deceptively_leaving_court, rule: 10-4.1.i, pdf: 112, p: 109}
+    - {id: b_delaying_return, rule: 10-4.1.j, pdf: 112, p: 109}
+    - {id: b_interfering_ball_after_goal_after_warning, rule: 10-4.1.k, pdf: 112, p: 109}
+    - {id: b_unreported_entry, rule: 10-4.1.l, pdf: 112, p: 109}
+    - {id: b_unreported_number_change, rule: 10-4.1.m, pdf: 112, p: 109}
+    - {id: b_repeated_boundary_plane_violation, rule: "10-4.1.n, 9-4.3", pdf: 112, p: 109}
+    - {id: b_flopping, rule: 10-4.1.o, pdf: 112, p: 109, maps_to_class: flopping}
+    - {id: b_player_delay_after_warning, rule: "10-4.1.p, 4-10.1.c", pdf: 112, p: 109}
+  bench:
+    - {id: b_entering_court_injured_without_permission, rule: 10-4.2.a, pdf: 112, p: 109}
+    - {id: b_bench_location, rule: 10-4.2.b, pdf: 112, p: 109}
+    - {id: b_electronic_transmission, rule: 10-4.2.c, pdf: 112, p: 109}
+    - {id: b_scorebook_removal_instructed, rule: 10-4.2.d, pdf: 113, p: 110}
+    - {id: b_bench_not_seated_or_coaching_box, rule: 10-4.2.e, pdf: 113, p: 110, detect: "CV: head coach feet outside coaching box (sideline to 11.58 m from end line, bench side) after one warning"}
+    - {id: b_coach_delay_after_warning, rule: 10-4.2.f, pdf: 113, p: 110}
+    - {id: b_bench_delay_entering_court, rule: 10-4.2.g, pdf: 113, p: 110}
+    - {id: b_laser_pointer, rule: 10-4.2.h, pdf: 113, p: 110}
+    - {id: b_leaving_bench_fight, rule: 10-4.2.i, pdf: 113, p: 110, note: "ejection, no FT, no suspension if not participating"}
+
+# ------------------------------------------------------------- contact mechanisms
+# The physical action that made the contact illegal. One per foul (primary) + optional secondary.
+# Signal ids refer to config/vocab/signals.yaml.
+contact_mechanisms:
+  - id: holding
+    rule: "4-19, 10-1.1"
+    pdf: [61, 104]
+    p: [58, 101]
+    quote: "interferes with the opponent's freedom of movement"
+    signal: holding
+    detect: "CV: fouler hand keypoint on opponent torso/arm >= 0.3 s while opponent decelerates > 1.5 m/s^2 (proposal)."
+  - id: pushing
+    rule: "10-1.1, 10-1.9"
+    pdf: [104, 105]
+    p: [101, 102]
+    quote: "Contact caused by a defensive player approaching ... from behind is pushing"
+    signal: pushing_or_charging
+    detect: "CV: hands/forearm extension toward opponent with opponent displacement > 0.3 m (proposal)."
+  - id: hand_check
+    rule: "10-1.4.a-c, App III s4"
+    pdf: [104, 127]
+    p: [101, 124]
+    quote: "Keeping a hand or forearm on an opponent"
+    signal: handchecking
+    subtypes: [stayed_hand_or_forearm, two_hands, repeated_jabbing, single_stayed_hand_on_back_poe_2026_27]
+    detect: "CV: defender hand keypoint within 0.10 m of ball handler torso >= 0.5 s or 2 hands at once or >= 2 touches within 2 s (proposal)."
+  - id: arm_bar_on_dribbler
+    rule: 10-1.4.d
+    pdf: 104
+    p: 101
+    quote: "Using an arm bar to impede the progress of a dribbler"
+    signal: handchecking
+    detect: "CV: defender forearm horizontal (elbow angle 70-110 deg) in contact with dribbler."
+  - id: illegal_use_of_hands
+    rule: "10-1.2, 10-1.3, 10-1.7"
+    pdf: [104]
+    p: [101]
+    quote: "shall not contact an opponent with their hand(s) unless such contact is incidental"
+    signal: illegal_use_of_hands
+    detect: "CV: hand-to-arm/hand contact on shooter or dribbler (not ball-only)."
+  - id: blocking
+    rule: "4-5, 4-17"
+    pdf: [52, 58]
+    p: [49, 55]
+    quote: "illegal personal contact that impedes the progress of an opponent"
+    signal: blocking
+    detect: "CV: defender not set before offensive player's last foot down (4-17.4.d) or moving toward opponent at contact (velocity component toward opponent > 0.3 m/s, proposal) or torso not facing (> 60 deg off), or secondary defender in restricted area (see restricted_area_block)."
+  - id: charging
+    rule: "4-7, 10-1.10"
+    pdf: [52, 105]
+    p: [49, 102]
+    quote: "pushing or moving into an opponent's torso"
+    signal: pushing_or_charging
+    detect: "CV: defender with both feet down, torso facing, set (speed < 0.3 m/s) before contact; offensive player speed > 1 m/s into defender torso; contact on torso."
+  - id: restricted_area_block
+    rule: "4-17.7, 4-31, 4-36, 10-1.14"
+    pdf: [59, 63, 64, 105]
+    p: [56, 60, 61, 102]
+    quote: "cannot establish initial legal guarding position in the restricted area"
+    signal: blocking
+    exceptions: ["offense leads with foot or unnatural extended knee", "offense wards off with arm", "offense stopped continuous movement (10-1.14.b)", "defender jumps straight up in legal verticality (10-1.14.c)", "no secondary defender after offensive rebound with immediate move (4-36.3)", "ball not yet controlled (CB A.R. 4-40, pdf 40)"]
+    detect: "CV: secondary defender (primary beaten: offensive head and shoulders past primary defender's torso, 4-36.1) has any part of either foot within r <= 1.27 m of rim centre (outer edge of 2-in arc) or above that area; arc straight segments run to backboard face (y = -0.381 m). Tolerance target 0.15 m (new-RF-1). Reviewable: coach's challenge until last 2 min, voluntary in last 2 min/OT (11-2.1.e.1, 11-4.1.c)."
+  - id: secondary_defender_fast_break
+    rule: 4-36.4
+    pdf: 65
+    p: 62
+    quote: "In an outnumbering fast-break situation, any defensive player(s) initially shall be a secondary defender"
+    detect: "Transition numbers: offence count > defence count in the frontcourt at ball crossing (transition_numbers table)."
+  - id: illegal_screen
+    rule: "4-35, App III s2"
+    pdf: [64, 126]
+    p: [61, 123]
+    quote: "without causing contact, delays or prevents an opponent"
+    signal: player_control_foul
+    subtypes:
+      - {id: moving_screen, rule: 4-35.4, detect: "screener foot speed > 0.5 m/s at contact (proposal)"}
+      - {id: wide_stance, rule: "4-35.2.a, 4-35.6", detect: "inside-of-feet distance > shoulder width (shoulder keypoints)"}
+      - {id: leaning_or_hip_extension, rule: "4-35.2.a, App III s2.3", detect: "hip keypoint outside ankle-base polygon by > 0.15 m toward defender"}
+      - {id: blind_screen_no_step, rule: "4-35.3.a, App III s2.5", detect: "screen behind defender (outside 180 deg visual field) set < 1 normal step (~0.9 m)"}
+      - {id: screen_too_close_moving_opponent, rule: "4-35.3.c, App III s2.6", detect: "set within 1-2 strides of a moving defender"}
+      - {id: screen_contact_in_visual_field, rule: 4-35.3.b}
+      - {id: screeners_parallel_within_6ft_of_boundary, rule: 4-35.7, detect: "two screeners adjacent, parallel to and within 1.83 m of a boundary"}
+      - {id: screener_tripping_wide_leg, rule: "App III s2.4"}
+  - id: defender_through_screen
+    rule: "4-18.4, 4-35.6, App III s2.1-2"
+    pdf: [60, 64, 126]
+    p: [57, 61, 123]
+    quote: "use the arms, hands, hips or shoulders ... to force his way through a screen"
+    signal: pushing_or_charging
+    detect: "CV: defender hand on screener torso with screener displaced > 0.2 m."
+  - id: tripping
+    rule: 10-1.1
+    pdf: 104
+    p: 101
+    signal: tripping
+    detect: "CV: fouler leg/foot crosses opponent's leg path; opponent falls (hip height drop > 0.4 m in 0.5 s)."
+  - id: hit_to_head
+    rule: "4-15.2.c.2.c, 10-1.15.c"
+    pdf: [57, 105]
+    p: [54, 102]
+    signal: hit_to_head
+    detect: "CV: hand/elbow keypoint within 0.15 m of opponent head keypoints with relative speed > 3 m/s (proposal)."
+  - id: elbow_swinging
+    rule: "4-18.6, 4-18.7, 10-1.15, 9-13"
+    pdf: [60, 61, 105, 101]
+    p: [57, 58, 102, 98]
+    quote: "speed of the extended arm(s) and elbow(s) exceeds that of the rest of the body"
+    signal: excessive_swinging_elbows
+    detect: "CV: elbow keypoint angular speed about shoulder > torso yaw speed, arm abducted > 60 deg; with contact -> foul class by severity; no contact -> violation 9-13."
+  - id: elbow_non_swinging
+    rule: "4-18.6, 10-1.16"
+    pdf: [60, 105]
+    p: [57, 102]
+    quote: "extend an elbow(s) and make contact"
+    detect: "CV: elbow abducted with hands on hips/chest or arms horizontal, contact."
+  - id: excessive_contact
+    rule: "4-15.2.c, 10-1.18"
+    pdf: [56, 106]
+    p: [53, 103]
+    signal: excessive_contact
+    detect: "Flagrant review candidate; CV impulse proxy: relative speed at contact > 4 m/s (proposal)."
+  - id: chucking
+    rule: "App VIII signal; 10-1.1 (impede progress)"
+    pdf: 146
+    p: 143
+    signal: chucking
+    detect: "CV: arm/forearm push on a cutter off the ball redirecting path > 20 deg (proposal)."
+  - id: pinning_defender
+    rule: "App VIII signal; 10-1.1"
+    pdf: 146
+    p: 143
+    signal: pinning_defender
+    detect: "CV: offensive player's arm hooks/traps defender's arm against body (hook and hold)."
+  - id: hook_and_hold
+    rule: "4-15.2.c.1.g, 4-15.2.c.2.e, 11-2.1.d.1.b, POE 4"
+    pdf: [56, 57, 119, 10]
+    p: [53, 54, 116, 7]
+    quote: "hooking an opponent over or under the arm"
+    signal: pinning_defender
+    detect: "CV: arm wrapped over/under opponent arm then pull; flagrant 1/2 candidate; reviewable."
+  - id: dislodging_knee
+    rule: "10-1.5.a, App III s3.c"
+    pdf: [104, 127]
+    p: [101, 124]
+    signal: dislodging_knee
+    detect: "CV: knee keypoint pushing into rear of post player; post player displaced > 0.3 m (proposal)."
+  - id: dislodging_lower_body
+    rule: "10-1.5.a, App III s3.d, s3.i"
+    pdf: [104, 127]
+    p: [101, 124]
+    signal: dislodging_lower_body
+    detect: "CV: backing in / hip push displacing post defender > 0.3 m; second bump rule (one equal bump allowed)."
+  - id: post_swim_stroke
+    rule: "10-1.5.c, App III s3.e"
+    pdf: [104, 127]
+    p: [101, 124]
+    signal: illegal_use_of_hands
+    detect: "CV: arm swung over opponent's arm downward to regain position."
+  - id: post_straight_arm_ward_off
+    rule: "10-1.5.b, App III s3.h"
+    pdf: [104, 127]
+    p: [101, 124]
+    signal: pushing_or_charging
+    detect: "CV: offensive post elbow angle > 160 deg with hand on defender."
+  - id: post_arm_bar_extended
+    rule: "10-1.5.d, App III s3.g"
+    pdf: [104, 127]
+    p: [101, 124]
+    signal: handchecking
+    detect: "CV: defender arm bar extended (elbow angle > 140 deg) or dislodging."
+  - id: rebounding_over_the_back_or_displacement
+    rule: "4-30.2, POE 4"
+    pdf: [63, 10]
+    p: [60, 7]
+    signal: pushing_or_charging
+    detect: "CV: during rebound (no control), player contacts opponent from behind and displaces > 0.3 m."
+  - id: verticality_violation_defender
+    rule: "4-39.1.i, 4-39.1.k"
+    pdf: [65, 66]
+    p: [62, 63]
+    signal: defensive_foul_vertical_cylinder
+    detect: "CV: defender arms/torso outside own cylinder (hands ahead of knees with bent elbows) at contact with shooter."
+  - id: verticality_violation_offense_clear_out
+    rule: 4-39.1.h
+    pdf: 65
+    p: 62
+    quote: "shall not 'clear out' or cause contact that is not incidental"
+    signal: pushing_or_charging
+    detect: "CV: offensive arm/forearm sweep displacing defender before or during try."
+  - id: landing_space
+    rule: "4-17.4.d, 4-39, POE 7"
+    pdf: [59, 65, 11]
+    p: [56, 62, 8]
+    quote: "Players must be allowed to land safely and cleanly."
+    signal: landing_space
+    detect: "CV: defender's foot enters shooter's landing point (shooter take-off point projected by horizontal velocity x airtime) within 0.5 m (proposal) after shooter left the floor."
+  - id: defender_jumped_a_to_b
+    rule: "4-39.1.e (vertical plane), signal"
+    pdf: [65, 147]
+    p: [62, 144]
+    signal: defender_jumped_a_to_b
+    detect: "CV: defender take-off and landing points differ by > 0.3 m toward the shooter (proposal)."
+  - id: defender_staying_here
+    rule: "signal 'staying here' (defender not legal / not set)"
+    pdf: 147
+    p: 144
+    signal: defensive_foul_staying_here
+    detect: "CV: defender feet moving at contact, see blocking."
+  - id: offense_leading_foot_or_knee
+    rule: "4-17.7 Exception, 10-1.14.a"
+    pdf: [59, 105]
+    p: [56, 102]
+    detect: "CV: offensive knee extended ahead of hip > 0.3 m at contact or foot raised into defender."
+  - id: groin_contact
+    rule: 4-15.2.c.2.d
+    pdf: 57
+    p: 54
+    note: "Flagrant 2 by default; may be downgraded on replay (CHG proposal 4)."
+  - id: contact_with_thrower_in
+    rule: 4-15.2.c.1.e
+    pdf: 56
+    p: 53
+    detect: "CV: defender contact with player located out of bounds holding the ball."
+  - id: away_from_ball_clock_foul
+    rule: 4-15.2.c.1.d
+    pdf: 56
+    p: 53
+    quote: "clearly away from the ball ... designed to stop or keep the clock from starting"
+    detect: "CV: foul > 3 m from ball on a player not involved in play, in end-game (game clock running or about to start). Maps legacy 'intentional (away from ball)' to flagrant_1."
+  - id: push_or_hold_from_behind_prevent_score
+    rule: 4-15.2.c.1.c
+    pdf: 56
+    p: 53
+    detect: "CV: fouler behind attacker (angle between attacker velocity and fouler->attacker vector < 45 deg) on a breakaway with no defender between attacker and rim. Maps clear-path style fouls (leaf A.06.23)."
+  - id: not_legitimate_play_on_ball
+    rule: "4-15.2.c.1.b, 4-15.2.c.1.h"
+    pdf: [56]
+    p: [53]
+    detect: "VID judgment; flagrant 1 candidate."
+  - id: incidental_no_foul
+    rule: 4-21
+    pdf: 61
+    p: 58
+    quote: "contact with an opponent that is permitted and does not constitute a foul"
+    detect: "Contact seen in CV with no whistle within 1.0 s (proposal) -> label 'incidental/no call'; never asserts a foul."
+
+# ---------------------------------------------------------------- penalty table
+# bonus_state of the OFFENDED team's opponent count: team fouls of the fouling team BEFORE this foul is added.
+#   none: this foul is the 1st-6th team foul of the half; one_and_one: 7th-9th; double: 10th+ (RB 8-2, pdf 90).
+# Extra periods continue the second-half count (RB 5-9.4).
+penalties:
+  - {situation: common_non_shooting_defensive, bonus_state: none, ft: 0, then: "throw-in, designated spot (7-3.2)", rule: "10-1 Penalty a.1", pdf: 106}
+  - {situation: common_non_shooting_defensive, bonus_state: one_and_one, ft: "1+1 (second only if first made)", then: "live ball on miss; throw-in after made last FT from end line (7-4.6)", rule: "10-1 Penalty c; 8-2.1", pdf: [106, 90]}
+  - {situation: common_non_shooting_defensive, bonus_state: double, ft: 2, then: "as after FT", rule: "10-1 Penalty d.3; 8-2.2", pdf: [106, 90]}
+  - {situation: loose_ball_by_either_team, bonus_state: none, ft: 0, then: "throw-in designated spot", rule: "10-1 Penalty a", pdf: 106}
+  - {situation: loose_ball_by_either_team, bonus_state: one_and_one, ft: "1+1", rule: "8-2.1, 10-1 Penalty c", pdf: [90, 106]}
+  - {situation: loose_ball_by_either_team, bonus_state: double, ft: 2, rule: 8-2.2, pdf: 90}
+  - {situation: player_control, bonus_state: any, ft: 0, then: "throw-in to offended team, designated spot nearest foul (frontcourt) or 7-3.2 (backcourt)", rule: "10-1 Penalty a.2; 7-4.5", pdf: [106, 86]}
+  - {situation: team_control_not_loose_ball, bonus_state: any, ft: 0, then: "throw-in designated spot", rule: "10-1 Penalty a.3; 7-3.1.f", pdf: [106, 84]}
+  - {situation: shooting_2pt_made, bonus_state: any, ft: 1, rule: "10-1 Penalty b.1", pdf: 106}
+  - {situation: shooting_3pt_made, bonus_state: any, ft: 1, rule: "10-1 Penalty b.1", pdf: 106}
+  - {situation: shooting_2pt_missed, bonus_state: any, ft: 2, rule: "10-1 Penalty d.1", pdf: 106}
+  - {situation: shooting_3pt_missed, bonus_state: any, ft: 3, rule: "10-1 Penalty e", pdf: 106}
+  - {situation: flagrant_1_or_2_non_shooting, bonus_state: any, ft: 2, then: "throw-in to offended team, designated spot nearest foul; F2 adds ejection", rule: "10-1 Penalty d.2", pdf: 106}
+  - {situation: flagrant_on_3pt_miss, bonus_state: any, ft: 3, then: "throw-in to offended team", rule: "10-1 Penalty e", pdf: [106, 107]}
+  - {situation: multiple_foul_no_try, bonus_state: any, ft: "1 per foul", rule: "10-1 Penalty b.2", pdf: 106}
+  - {situation: multiple_foul_2pt_try, bonus_state: any, ft: "1 per foul", rule: "10-1 Penalty b.3", pdf: 106}
+  - {situation: multiple_foul_3pt_made, bonus_state: any, ft: "1 per foul", rule: "10-1 Penalty b.4", pdf: 106}
+  - {situation: multiple_foul_3pt_missed, bonus_state: any, ft: "2 per foul", rule: "10-1 Penalty d.6", pdf: 106}
+  - {situation: multiple_foul_with_flagrant, bonus_state: any, ft: "2 per flagrant foul", then: "throw-in designated spot", rule: "10-1 Penalty d.4, d.5", pdf: 106}
+  - {situation: double_or_simultaneous_personal, bonus_state: any, ft: 0, then: "point of interruption (7-3.2); if one is flagrant: FTs of both with empty lanes, ball to team offended by the flagrant", rule: "10-1 Penalty f", pdf: 107}
+  - {situation: false_double_or_false_multiple, bonus_state: any, ft: "each foul its own penalty", then: "as for last foul; POI if a technical involved", rule: "10-1 Penalty g; 8-8; 8-9", pdf: [107, 93]}
+  - {situation: double_technical_or_simultaneous_stopped_clock, bonus_state: any, ft: "cancel if equal FT counts", then: "point of interruption", rule: "10-1 Penalty h", pdf: 107}
+  - {situation: administrative_technical, bonus_state: any, ft: 1, then: "point of interruption", rule: "10-2 Penalty", pdf: [108, 109]}
+  - {situation: administrative_technical_more_than_five_or_excessive_timeout, bonus_state: any, ft: 2, then: "point of interruption", rule: "10-2.6, 10-2.7 Penalty", pdf: 109}
+  - {situation: class_a_technical, bonus_state: any, ft: 2, then: "point of interruption", rule: "10-3 Penalty", pdf: 110}
+  - {situation: class_b_technical, bonus_state: any, ft: 1, then: "point of interruption", rule: "10-4 Penalty", pdf: 113}
+  - {situation: contact_dead_ball_technical_or_flagrant_2_technical, bonus_state: any, ft: 2, then: "throw-in to offended team, designated spot (7-3.2); F2 adds ejection", rule: "10-3 Resumption; 7-4.14", pdf: [110, 87]}
+  - {situation: end_of_period_foul, bonus_state: any, ft: "all awarded after horn", rule: "10-1 Penalty i; 8-6.2", pdf: [107, 93]}
+
+# ------------------------------------------------------------- legacy label map
+legacy_label_map:
+  - {source_label: intentional, condition: "end-game deliberate foul on/near ball", maps_to: {class: common, flag: is_end_game_deliberate}, rule: "4-15.2.a", note: "not a 2026-27 class (new-RF-3)"}
+  - {source_label: intentional, condition: "away from ball to stop/keep clock", maps_to: {class: flagrant_1_personal, mechanism: away_from_ball_clock_foul}, rule: 4-15.2.c.1.d}
+  - {source_label: intentional, condition: "push/hold from behind to prevent score", maps_to: {class: flagrant_1_personal, mechanism: push_or_hold_from_behind_prevent_score}, rule: 4-15.2.c.1.c}
+  - {source_label: "Offensive Foul", maps_to: {class: player_control_or_team_control}, rule: "4-15.2.a.1-2"}
+  - {source_label: "Personal Foul", maps_to: {class: common}}
+  - {source_label: "Shooting Foul", maps_to: {class: common, context: shooting}}
+  - {source_label: "Loose Ball Foul", maps_to: {class: loose_ball}}
+  - {source_label: "Technical Foul", maps_to: {class: technical, subtype: unknown}}
+  - {source_label: "Flagrant Foul Type 1", maps_to: {class: flagrant_1_personal}}
+  - {source_label: "Flagrant Foul Type 2", maps_to: {class: flagrant_2_personal}}
+  - {source_label: bench, maps_to: {class: bench_personnel_foul}}
+
+existing_enum_mapping:   # schema/tables/fouls.yaml foul_type enum (R-RF-03, 9 values) -> classes above
+  shooting: {class: common, context: shooting}
+  non_shooting: {class: common}
+  offensive: {class: [player_control, team_control]}
+  loose_ball: {class: loose_ball}
+  technical: {class: [administrative_technical, class_a_technical, class_b_technical, contact_dead_ball_technical, flagrant_2_contact_technical, flagrant_2_noncontact_technical, double_technical, simultaneous_technical]}
+  flagrant_1: {class: flagrant_1_personal}
+  flagrant_2: {class: flagrant_2_personal}
+  intentional: {class: "see legacy_label_map (not a book class)"}
+  bench: {class: bench_personnel_foul}
+  missing_from_enum: [double_personal, simultaneous_personal, multiple, false_double, false_multiple, contact_dead_ball_technical, fighting, flopping]
+
+open_questions:
+  - "Contact-mechanism CV thresholds (0.15 m, 0.3 m, 4 m/s, 400 deg/s) are proposals; set from labelled clips."
+  - "Should 'shooting' remain a foul_type or become a context flag on common/flagrant fouls (book has no shooting class)?"

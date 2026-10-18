@@ -138,9 +138,10 @@ class SnapshotRow:
             self.line_is_integer = float(self.line).is_integer()
 
     def dedup_key(self) -> tuple:
-        """C-14 uniqueness key (also the store's dedup key)."""
+        """C-14 uniqueness key (also the store's dedup key). source_event_id is included so two
+        unmatched events (game_id null) with the same line never collide."""
         return (
-            self.game_id, self.source.value, self.book, self.market.value, self.market_phase.value,
+            self.game_id, self.source_event_id, self.source.value, self.book, self.market.value, self.market_phase.value,
             self.snapshot_label.value, self.side.value, self.team_id or self.player_id,
             self.line, self.snapshot_time_utc,
         )
@@ -185,6 +186,7 @@ class ManifestEntry:
     job_id: str
     request_body: str | None = None
     redacted_fields: list[str] = field(default_factory=list)
+    sha256_received: str | None = None   # equals sha256 unless fields were redacted before storage
 
 
 @dataclass

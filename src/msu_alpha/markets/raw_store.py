@@ -18,6 +18,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import COLLECTOR_VERSION
 from .models import ManifestEntry
+from .store import ensure_private
 from .timeutil import iso_utc, parse_utc
 
 SECRET_QUERY_KEYS = {"apikey", "api_key", "key", "token", "access_token"}
@@ -66,7 +67,7 @@ def redact_identity(body: bytes, fields: list[str]) -> tuple[bytes, list[str]]:
 
 class RawStore:
     def __init__(self, root: str | Path, run_id: str):
-        self.root = Path(root)
+        self.root = ensure_private(Path(root))      # raw bodies are private, never inside the git repo
         self.run_id = run_id
 
     def save(
@@ -84,8 +85,9 @@ class RawStore:
         request_body: bytes | None = None,
         redact_fields: list[str] | None = None,
     ) -> ManifestEntry:
+        sha_received = hashlib.sha256(body).hexdigest()    # hash of the body exactly as received
         body, removed = redact_identity(body, redact_fields or [])
-        sha = hashlib.sha256(body).hexdigest()
+        sha = hashlib.sha256(body).hexdigest()             # hash of the stored (possibly redacted) body
         ts = parse_utc(fetched_at)
         stamp = iso_utc(ts).replace(":", "").replace("-", "")
         rel = Path("raw", source, endpoint, f"{ts:%Y}", f"{ts:%m}", f"{ts:%d}", f"{stamp}_{sha[:12]}.json.gz")
@@ -109,6 +111,7 @@ class RawStore:
             job_id=job_id,
             request_body=request_body.decode("utf-8", "replace") if request_body else None,
             redacted_fields=removed,
+            sha256_received=sha_received,
         )
         manifest = self.root / "raw" / source / "manifest" / f"{ts:%Y-%m-%d}.jsonl"
         manifest.parent.mkdir(parents=True, exist_ok=True)

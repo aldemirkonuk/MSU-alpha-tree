@@ -1,0 +1,376 @@
+# Extra action, event and descriptor vocabularies (round-2 ontology gap closures).
+# Status: PROPOSAL, 2026-10-18. Written by the round-2 gap-closure agent; the requirements session approves.
+# Companion files: docs/data/gap_closures_round2.md (definitions, requirements new-<FAMILY>-n, sources),
+#                  schema/tables_proposed_changes.yaml (columns that store these codes).
+# Not covered here (rules vocabularies, another agent): fouls, signals, violations, shot-clock resets,
+# restarts, officials' mechanics, rules edition, court constants.
+#
+# Conventions
+#   frame        attacked-rim frame (origin on the floor under the attacked rim centre; x along the baseline,
+#                + to the attacker's right; y toward half court; baseline at y = -1.60 m; division line y = 12.73 m);
+#                full-court frame x_fc / y_fc (+y_fc = scorers' table side) where stated. r in m, theta in degrees
+#                from the right baseline at the rim centre (src/msu_alpha/geometry.py).
+#   pose         COCO-17 body keypoints only (shoulders, elbows, wrists, hips, knees, ankles). No face keypoints,
+#                no face data, no speech content.
+#   heights      3-D only once R-CG-11 passes; before that, image-plane distances scaled by 0.24 m / ball
+#                diameter_px at the ball's depth, flagged image_scaled.
+#   time         seconds of video time unless "game clock" is stated.
+#   thresholds   every number is a proposed default; each must sit in config so it can be re-tuned on labelled
+#                data without code changes.
+version: 0.1.0
+status: proposed
+date: '2026-10-18'
+
+state_tags:
+  frontcourt_basis:
+    leaf: A.04.12
+    column: state_frame.frontcourt_basis
+    rule_ref: Rule 9-10 (frontcourt status sentence), Rule 9-12.3
+    values:
+      ball_floor_contact: ball height <= 0.15 m at a local height minimum with its ground point >= 0.10 m inside the frontcourt
+      ball_player_contact: ball touched by a player or official whose foot ground points are all in the frontcourt
+      dribbler_both_feet_and_ball: dribble from the backcourt; both ankle points and the ball's floor contact in the frontcourt
+      holder_both_feet: holder with both ankle points >= 0.10 m beyond the division-line edge
+      inherited_in_air: ball in flight keeps the status of its last contact (Rule 9-12.3.b)
+    uncertain_band_m: 0.10
+  oob_cause:
+    leaf: A.09.02
+    column: restarts.oob_cause
+    rule_ref: Rule 7-1.1-3, 7-2.1-2
+    values:
+      last_touch: last player whose wrist came within 0.20 m of the ball centre (or deflected it by >= 20 degrees) before the out-of-bounds frame
+      player_out_of_bounds: ball touched a player whose ankle point was on or beyond the boundary line
+      over_backboard: any part of the ball passed over the backboard
+      backboard_support: ball touched the supports or back of the backboard
+      simultaneous_touch: opponents both met the last-touch test within 0.10 s
+      unknown: not decidable from the frames
+
+spot_terms:
+  # To merge into config/vocabulary_map.yaml (replaces the 'to be defined' entries). Leaf B.01.13, new-MD-7.
+  short_corner:
+    measured: "3.5 < |x| <= 6.0 m, -1.60 <= y <= 1.50 m, r < 6.60 m (disjoint from dunker_spot and corner)"
+  one_pass_away:
+    measured: "holder->player segment <= 9.0 m; no other attacker within 1.50 m of it; no defender within 0.60 m of it between 20% and 90% of its length"
+  two_passes_away:
+    measured: "any off-ball attacker that is not one pass away"
+  help_position:
+    measured: "defender dist_to_man_m >= 2.5 m and perpendicular distance to the ball-rim line <= 3.0 m"
+  tag:
+    measured: "weak-side defender within 1.00 m of the roller for >= 0.20 s inside 1.5 s after the screen moment, then >= 1.50 m away within 1.5 s"
+  denial:
+    measured: "man one pass away; defender within 1.50 m of him; projection at 55-95% of the ball->man segment; offset <= 0.60 m; wrist within 0.30 m of the segment when visible; >= 0.50 s"
+
+protective_equipment:
+  leaf: B.02.10
+  column: appearance_cards.protective_equipment
+  use: identity tie-breaker only; never a health, injury, availability or load input
+  values: [face_mask, goggles, knee_brace_left, knee_brace_right, knee_sleeve_left, knee_sleeve_right, ankle_brace_visible,
+           wrist_wrap, finger_tape, elbow_pad, none, unresolved]
+
+camera_views:
+  leaf: [B.03.04, L.02.02]
+  column: frames.camera_view
+  rule: camera centre C = (x_fc, y_fc, z) from homography + focal length when >= 6 court keypoints resolve; else image classifier
+  values:
+    main_high_side: the main broadcast camera (venues.main_camera_side), z >= 4 m
+    reverse_angle: y_fc < -8.0 m (far sideline) and z >= 3 m
+    baseline_low: "|x_fc| >= 14.5 m and z <= 2.0 m (under-basket floor cameras)"
+    end_high: "|x_fc| >= 14.5 m and z > 4 m"
+    backboard_cam: within 0.5 m of a backboard or stanchion
+    rail_low: y_fc > 7.6 m (table sideline) and z <= 1.5 m
+    skycam: z >= 6 m with the centre over the court (|x_fc| < 14.3 m, |y_fc| < 7.6 m)
+    handheld_iso: floor-level moving camera following one player (classifier)
+    bench: bench close-up (classifier)
+    crowd: crowd shot (classifier)
+    studio: studio or desk (classifier)
+    graphic: full-screen graphic (classifier)
+    unresolved: none of the above
+
+bench_roles:
+  leaf: C.02.03
+  column: team_game_context.bench_personnel_counts
+  values: [head_coach, assistant_coach, athletic_trainer, team_physician, strength_coach, manager, video_staff, operations_staff,
+           uniformed_non_playing_player, other, unknown]
+
+bias_register_seed:
+  # Seed rows for the known-bias register (C.04.04 / M.03.06, new-DQ-3). Effect sizes are measured, not assumed.
+  - bias_id: listed_height_inflation
+    field: rosters.listed_height_cm
+    direction: listed heights run higher than measured
+    handling: flag; never corrected without a measured offset
+  - bias_id: home_crew_assists
+    field: player_box.ast / passes.is_official_assist
+    direction: home crews credit more assists
+    handling: measure venues.crew_assist_gap against video assists (new-DQ-4)
+  - bias_id: home_crew_blocks_steals
+    field: player_box.blk, player_box.stl
+    direction: home crews credit more blocks and steals
+    handling: measure venues.crew_block_gap, crew_steal_gap
+  - bias_id: shot_location_entry
+    field: shots.loc_espn_x_raw / loc_cbbd_x_raw
+    direction: hand-entered locations snap to zones; varies by venue
+    handling: compare with video release point (shots.video_vs_espn_diff_m)
+  - bias_id: substitution_timing
+    field: substitutions game clock
+    direction: PBP substitution times lag the real entry (1 s resolution, dead-ball batching)
+    handling: video-anchored stint boundaries
+
+run_definitions:
+  leaf: D.01.05
+  column: runs.definition_code
+  values:
+    strict_unanswered_8: consecutive score events by one team totalling >= 8 points with 0 opponent points; ended by the next opponent score or period end
+    register_net8_120s: maximal game-clock window <= 120 s with net points >= 8 for one team (beliefs register)
+
+garbage_time_definitions:
+  leaf: D.02.04
+  values:
+    source_hoopr_ncaa: hoopR NCAA engine is_garbage_time (definition unverified)
+    ctg_adapted:
+      source_url: https://cleaningtheglass.com/stats/guide/garbage_time
+      original: "NBA 4th quarter only; lead >= 25 with 12:00-9:00 left, >= 20 with 9:00-6:00, >= 10 under 6:00; <= 2 starters on the floor combined; resets when the game gets close"
+      adaptation: same thresholds applied to the last 12:00 of the second half (and not to overtime); flagged as our adaptation
+    wp_rule: pre-possession win probability >= 0.98 or <= 0.02 with <= 300 s left in regulation
+
+lineup_archetypes:
+  leaf: D.07.04
+  column: lineup_stints.archetype
+  definitions:
+    big: listed C, or listed F with listed height >= 206 cm
+    shooter: ">= 50 D-I 3PA before the game date and shrunk 3P% >= 0.33"
+    ball_handler: as-of assist rate >= 20% or tracked share of the team's backcourt-to-frontcourt advances >= 25%
+  values:
+    five_out: n_bigs = 0
+    one_big: n_bigs = 1
+    two_big: n_bigs = 2 (and mean height < 203 cm)
+    jumbo: mean listed height >= 203 cm or n_bigs >= 3
+    small: mean listed height <= 193 cm
+    three_guard: n_listed_g >= 3 and not small
+    other: none of the above
+  precedence: [jumbo, small, three_guard, two_big, one_big, five_out, other]
+
+movement_direction_classes:
+  leaf: [E.01.02, I.02.07]
+  rule: d = wrap(heading_deg - torso_facing_deg); speed >= 0.5 m/s
+  values:
+    forward: "|d| <= 45"
+    lateral: "45 < |d| < 135"
+    backward: "|d| >= 135"
+  primitives:
+    forward_run: forward class for >= 0.40 s
+    defensive_slide: lateral for >= 0.40 s with no ankle-order swap along the movement direction
+    crossover_run: lateral for >= 0.40 s with >= 1 ankle-order swap
+    backpedal: backward for >= 0.40 s
+
+jump_purposes:
+  leaf: [E.01.03, I.02.06]
+  rule: "airborne: both ankle points >= 0.05 m above the floor for >= 0.10 s; height = 9.81 * t_flight^2 / 8 m; high jump >= 0.40 m"
+  takeoff_pattern:
+    one_foot: ankles leave the floor > 0.08 s apart
+    two_feet: ankles leave within 0.08 s
+  values:
+    shot: shot release inside the flight
+    rebound: ball within 1.0 m of a wrist at the apex after ring or board contact
+    block_or_contest: defender within 1.83 m of a shooter whose release falls inside the flight
+    tip: ball touched in flight within 1.0 m of the rim
+    pass: pass release inside the flight
+    other: none of the above
+
+footwork:
+  leaf: [E.01.04, E.01.05]
+  stop_type:
+    jump_stop: both feet land within 0.10 s of each other after an airborne catch or gather
+    stride_stop: feet land one after the other, 0.15-0.60 s apart
+    none: caught while stationary on both feet
+  pivot_foot_rule: the ankle that moves <= 0.10 m while the other moves >= 0.25 m during the hold
+  first_step_kind:
+    direct: first non-pivot-foot displacement >= 0.30 m to the same side as that foot
+    crossover_step: first step crosses in front of the pivot foot
+    jab: step returns within 0.20 m of its start within 0.60 s
+    drop_step: step back toward the baseline with the back to the rim (post)
+    none: no step >= 0.30 m before pass or shot
+  pre_dribble_lift_suspected: pivot ankle rises >= 0.05 m or moves >= 0.15 m before the ball leaves the hand on the first dribble (flag only)
+
+dribble_moves_extra:
+  leaf: E.02.04
+  column: dribbles.move_type
+  values:
+    in_and_out: ball moves >= 0.30 m laterally toward the other hand and back to the same hand within one dribble, no hand switch
+    push: speed (advance) dribble; ball floor contact >= 0.60 m ahead of the hip ground point; handler speed >= 4.0 m/s
+    pound: control dribble; handler speed < 1.0 m/s, dribble period <= 0.45 s, ball apex <= hip height
+    snatch_back: deceleration from >= 3.0 m/s to backward motion of >= 1.0 m within 0.60 s with a heading change >= 135 degrees, ball pulled back with the same hand
+    half_spin: body rotation 120-240 degrees started as a spin and reversed back to within 45 degrees of the original heading within 0.6 s
+
+fakes:
+  leaf: E.02.06
+  table: fakes.kind
+  values:
+    shot_fake: ball rises >= 0.30 m within <= 0.60 s from below the shoulder line to at or above it, no release; ball lowers >= 0.20 m or a dribble/pass starts within 1.0 s; feet stay on the floor
+    jump_fake: as shot_fake with the holder airborne (flag only)
+    pass_fake: wrist with the ball moves >= 0.35 m from the torso centre within <= 0.40 s toward a teammate (within 20 degrees of his bearing), no release, returns >= 0.20 m within 0.50 s
+    jab_step: non-pivot foot moves >= 0.30 m and returns within 0.20 m of its start within 0.60 s, ball held, no dribble
+    rocker_step: jab_step followed within 0.60 s by the same foot stepping back past its start by >= 0.30 m
+    head_or_shoulder_fake: shoulder-line rotation >= 25 degrees and back within 0.50 s, no step (lower confidence)
+defender_reactions:
+  leaf: E.02.06
+  window_s: [0.0, 0.40]
+  values:
+    left_feet: ankles >= 0.05 m off the floor
+    rose: pelvis up >= 0.10 m or both wrists above the shoulders
+    shifted: pelvis moves >= 0.20 m in the fake's direction
+    closed_out: moves >= 0.30 m toward the holder
+    no_reaction: none of the above
+    not_visible: defender not visible
+
+pass_delivery:
+  leaf: E.03.06
+  hands:
+    two: both wrists within 0.25 m of the ball centre at release
+    one: otherwise
+  delivery:
+    off_dribble: release <= 0.30 s after the last dribble contact, no hold > 0.30 s
+    one_touch: catch-to-release <= 0.30 s
+    from_hold: otherwise
+  no_look_torso: upper-torso normal differs from the pass direction by > 60 degrees at release (no face keypoints)
+
+finish_subtypes:
+  leaf: E.04.02
+  column: shots.finish_subtype
+  values:
+    standard: one-foot takeoff layup on the approach side
+    reverse: release after the shooter crosses x = 0 under the rim, release y <= 1.0 m, finishing on the side opposite the approach
+    euro_step: two steps after the gather with lateral displacement >= 0.60 m and a heading change >= 45 degrees between them
+    hop_step: two-foot hop after the gather (jump stop) then a two-foot takeoff
+    power_two_foot: two-foot takeoff at r <= 1.5 m after a jump stop, release above the shoulder with both hands
+    finger_roll: one-hand release with the wrist below the ball and release height >= 2.9 m
+    scoop: underhand release below the shoulder with the wrist below the ball, r <= 2.5 m
+    up_and_under: shot_fake or pump in the post followed by a crossover step through and a finish within 1.5 s
+    floater_runner: one- or two-foot release at r 2.5-4.5 m with arc >= 55 degrees on the move
+    putback_tip: release <= 1.0 s after an offensive rebound or tip in flight
+    dunk_one_hand: ball pushed through the rim with one wrist above the ring
+    dunk_two_hand: same with both wrists
+    alley_oop_finish: catch in the air and finish in the same flight
+    unresolved: not decidable
+
+contest_classes:
+  leaf: E.04.05
+  column: shots.contest_class
+  window_s: [-0.50, 0.10]  # relative to release
+  sources:
+    - https://www.nba.com/stats/help/glossary (Contested Shot = closest defender within 3.5 ft = 1.07 m)
+    - https://www.nba.com/news/intro-to-expected-field-goal-percentage (hand-to-ball, relative height, contest angle, vision interference)
+    - https://arxiv.org/pdf/1405.0231 (effect roughly linear in distance to ~6 ft = 1.83 m)
+  values:
+    none: closest defender > 1.83 m at release, or no hand up
+    late: first hand-up frame after the release
+    soft: hand up, defender 1.07-1.83 m at release
+    tight: hand up, defender <= 1.07 m at release
+    smothered: defender <= 0.61 m and hand_to_ball_m <= 0.30 m
+    block_attempt: defender airborne and hand_to_ball_m <= 0.30 m with the wrist above the ball
+    unresolved: pose or ball not visible
+  hand_up_rule: nearer wrist above the same-side shoulder keypoint (body frame) in >= 1 frame of the window while within 1.83 m
+  vision_interference_rule: wrist within a 10-degree cone around the shooter's shoulder-midpoint -> rim line, between shooter and rim
+
+shot_footwork:
+  leaf: E.04.12
+  column: shots.footwork
+  values:
+    set_feet: both feet planted >= 0.50 s before takeoff (spot-up)
+    one_two_step: feet land sequentially >= 0.10 s apart in the last 0.8 s before takeoff
+    hop: both feet land within 0.10 s after an airborne gather
+    turnaround: body rotation >= 90 degrees between gather and release
+    fade: pelvis horizontal velocity away from the rim >= 0.5 m/s at release
+    sidestep: lateral step >= 0.60 m perpendicular to the player->rim line before the gather
+    step_back: step away from the rim >= 0.60 m before the gather (also shot_type_code step_back)
+    spin: rotation >= 270 degrees with the dribble before the gather
+    drift_forward: landing point >= 0.50 m toward the rim from the takeoff point
+    unresolved: not decidable
+
+cuts_named:
+  leaf: E.07.02
+  column: movement_primitives.primitive_type
+  common: off-ball cutter; displacement >= 3.0 m in <= 1.5 s unless stated (offense_full.md CUT primitive); speed >= 2.5 m/s mean
+  values:
+    cut_ucla: from top/slot (r >= 6.0 m, theta 60-120) past a stationary high-post teammate (r 3.8-5.0 m, theta 60-120) within 1.2 m, ending at r <= 2.0 m within 2.0 s
+    cut_iverson: horizontal cut wing-to-wing above the elbows (path y 3.5-7.5 m, |delta x| >= 6.0 m) passing within 1.2 m of >= 1 stationary teammate near an elbow
+    cut_zipper: from block area (r <= 3.0 m) up the lane line to the top/slot (r >= 6.75 m, theta 60-120), delta y >= 4.0 m, passing within 1.2 m of a stationary teammate
+    cut_flash: unscreened move toward the ball >= 3.0 m ending in the high post (|x| <= 2.5 m, y 3.0-5.5 m) within 1.5 s
+    cut_v: move >= 1.5 m toward the rim, heading reversal >= 120 degrees at r 4-6 m, exit >= 1.5 m toward the perimeter
+    cut_l: move >= 2.0 m up along the lane line, then a 60-120 degree turn out toward the wing for >= 2.0 m
+    cut_shuffle: weak-side wing diagonal cut past a stationary high-post teammate (within 1.2 m) to the ball-side block (r <= 2.5 m)
+    cut_flex: weak-side corner (r >= 6.6 m, theta <= 12 or >= 168) to the ball-side low post (r <= 2.5 m) along the baseline, passing within 1.2 m of a stationary teammate
+    cut_i: step in toward the rim >= 1.0 m then straight back out >= 1.0 m along the same line (heading change >= 150 degrees), no curve
+    cut_banana: curved cut with curvature >= 0.15 per m sustained over >= 3 m, ending closer to the rim
+    cut_pop_out: move around a screen straight toward the ball, ending >= 1.0 m farther from the rim than the screener
+    cut_thru: slot passer cuts through the lane (|x| <= 1.83 m crossed) to the weak-side wing within 2.0 s of his pass
+    cut_45: from the wing toward the rim along a 30-60 degree line (theta) for >= 3.0 m
+    cut_weak_baseline: farthest weak-side player moves along the baseline (y <= 1.0 m) >= 4.0 m
+    cut_dive: straight cut to the rim (heading within 20 degrees of the rim bearing) ending at r <= 2.0 m
+  sequence_tags: [give_and_go, blind_pig, delayed_cut, stampede]
+
+gestures:
+  leaf: E.11.03
+  column: bench_events.gesture_code
+  rule_ref: Rule 10-3.1 (Class A unsporting infractions) for conduct gestures
+  conduct:
+    complaint_to_official: arms extended with palms up/out toward an official within 4.0 m for >= 1.0 s after a whistle
+    taunt_stand_over: standing within 1.5 m over a fallen opponent for >= 1.0 s, or arm extended toward an opponent within 3.0 m after a score
+    point_at_opponent: arm extended (wrist >= 0.45 m from shoulder) toward an opponent within 5.0 m, held >= 0.5 s, dead ball
+    crowd_incite: both wrists above the head with arms raised/pumped toward the stands for >= 1.0 s
+    celebration: arm flex, chest bump or jump celebration with teammates after a score (no target)
+    bench_gesture: player gesture toward his own bench (no conduct meaning)
+  communication:
+    assignment_point: defender's arm extended toward an attacker or teammate (wrist >= 0.45 m from shoulder) for >= 0.3 s during live ball
+    switch_call: two defenders <= 2.0 m apart, one points or taps the other, <= 1.0 s before a screen moment
+    help_call_arm: defender raises an arm overhead (wrist above head) >= 0.3 s during a drive
+    huddle_on_court: ">= 3 teammates within 1.5 m of a common point for >= 2.0 s in a dead ball"
+
+pickup_classes:
+  leaf: G.01.04
+  column: possessions.pickup_class
+  rule: first time one defender stays <= 1.83 m from the ball handler for >= 1.0 s continuous (live ball); y = handler's distance up-court from the attacked rim
+  values:
+    full_court: "y >= 18.71 m (at or beyond the opposite three-point arc top)"
+    three_quarter: "14.00 <= y < 18.71 m"
+    half_court: "9.50 <= y < 14.00 m"
+    top_of_key: "y < 9.50 m"
+    none: no pickup before the chance ended
+    frontcourt_start: possession started with a frontcourt throw-in
+
+defensive_credit_roles:
+  leaf: H.04.06
+  column: value_credits.credit_role (additions)
+  values:
+    contest: xpts(no-contest counterfactual) - xpts(observed contest features)
+    rotation: help defender leaves his man (+1.5 m) after a trigger and arrives within 1.83 m of the handler (or 1.0 m of his line to the rim) within 1.2 s; credit = value change vs model expectation
+    rim_deterrence: (expected - observed rim attempts r <= 1.83 m) x (xPPS_rim - xPPS_alternative) for the chance's rim protector
+    closeout: closeout arriving before release (reaction_events) credited with the xpts reduction
+    ball_pressure: on-ball defender's share of value change during pickup-to-frontcourt time
+    denial: value change while deny_posture holds on a one-pass-away man
+    box_out: defensive box-out contact on a missed shot credited with the rebound value change
+    charge_drawn: value of the possession change from a charge
+  rim_defender_rule: defender within 1.52 m (5 ft) of the rim floor point and within 1.52 m of the shooter at release (SportVU rule as reported in secondary sources; unverified)
+
+contact_event_kinds:
+  leaf: I.02.08
+  values:
+    screen_set: screener with contact_distance_m <= 0.30
+    screen_absorbed: screened defender of such a screen
+    box_out_contact: box_outs.contact_duration_s >= 0.30
+    post_contact: defender within 0.30 m of the post player for >= 1.0 s
+    charge_taken: defensive_events.type = charge_drawn
+    floor_dive: stance on_floor during a loose ball
+
+audio_events:
+  leaf: L.04.02
+  horn_kinds:
+    period_end: game clock reads 0.0 within 0.3 s of onset
+    shot_clock: shot clock reads 0 within 0.3 s of onset
+    substitution_or_timeout: ball dead, both clocks non-zero
+    other: horn not matching the above
+  crowd_reaction: 1-s loudness >= 6 dB above the trailing 10-s median, not a horn, not commentary-dominated (voice-band share > 0.6)
+
+source_definition_concepts:
+  leaf: M.01.06
+  values: [possession, chance, assist, block, steal, rebound, turnover, transition, fast_break, shot_zone, shot_range, garbage_time,
+           minutes, points_in_paint, other]

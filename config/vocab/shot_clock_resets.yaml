@@ -1,0 +1,84 @@
+# Shot-clock reset / no-reset causes, 2026-27 NCAA men's rules book Rule 2-11 (pdf 43-46, printed 40-43),
+# plus 5-10.3, 9-11, 2-11.8, 2-11.9. Status: PROPOSAL (2026-10-18). Lands in: shot_clock_resets.cause,
+# restarts.shot_clock_expected_s / shot_clock_rule_ref (new-SY-2, R-SY-09, R-IV invariants).
+# Cause ids reuse config/invariants.yaml shot_clock_reset_table (33 causes) exactly; entries marked
+# new_vs_invariants are additions found while re-reading the rule text.
+# value: 30 | 20 | max20 (20 or remaining, whichever greater) | no_reset (unexpired time continues) |
+#        continue (clock keeps running) | start | off | min_0_3_off (>= 0.3 s must expire)
+# detect: evidence that identifies the cause (CV/OCR/PBP); shot-clock value read by scoreboard OCR.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+requirements: [new-SY-2, R-SY-09, R-MD-06]
+count_causes: 41
+
+causes:
+  # ------------------------------------------------ start (2-11.5, 5-10.3)
+  - {id: throw_in_touched_inbounds, value: start, rule: 2-11.5.a, pdf: 43, p: 40, quote: "inbounds player legally touches the ball after the throw-in",
+     detect: "CV: first touch of thrown ball by inbounds player; OCR clock begins counting within 0.5 s."}
+  - {id: initial_control_after_jump_or_missed_try, value: start, rule: 2-11.5.b, pdf: 43, p: 40, new_vs_invariants: true,
+     detect: "CV: first player control after jump ball or unsuccessful try."}
+  - {id: change_of_team_control_start, value: start, rule: 2-11.5.c, pdf: 43, p: 40, new_vs_invariants: true}
+  - {id: min_time_off_on_touch, value: min_0_3_off, rule: 5-10.3.d, pdf: 71, p: 68, new_vs_invariants: true,
+     detect: "OCR: shot clock < 5.0 s showing tenths, touch then immediate whistle: >= 0.3 s must come off."}
+  # ------------------------------------------------ no reset (2-11.6.a)
+  - {id: ball_out_of_bounds_off_defence, value: no_reset, rule: 2-11.6.a.1, pdf: 43, p: 40, quote: "deflected or caused to be out of bounds by a defensive player",
+     detect: "CV last touch = defender before OOB; PBP no turnover."}
+  - {id: injury_or_contact_lens, value: no_reset, rule: 2-11.6.a.2, pdf: 43, p: 40}
+  - {id: timeout_concluded, value: no_reset, rule: 2-11.6.a.3, pdf: 43, p: 40}
+  - {id: held_ball_arrow_favours_team_in_control, value: no_reset, rule: 2-11.6.a.4, pdf: 43, p: 40}
+  - {id: double_or_simultaneous_fouls_with_control_no_change, value: no_reset, rule: 2-11.6.a.5, pdf: 43, p: 40}
+  - {id: inadvertent_whistle_with_team_control, value: no_reset, rule: 2-11.6.a.6, pdf: 43, p: 40}
+  - {id: technical_on_team_in_control_or_entitled, value: no_reset, rule: 2-11.6.a.7, pdf: 43, p: 40}
+  - {id: simultaneous_held_ball_on_throw_in_or_airball_arrow_to_same_team, value: no_reset, rule: 2-11.6.a.8, pdf: [43, 44], p: [40, 41]}
+  - {id: simultaneous_touch_out_of_bounds_arrow_to_team_in_control, value: no_reset, rule: 2-11.6.a.9, pdf: 44, p: 41}
+  # ------------------------------------------------ reset 30 (2-11.6.b)
+  - {id: change_of_team_control_live_or_after_opponent_score, value: 30, rule: 2-11.6.b.1, pdf: 44, p: 41, quote: "change in team control and the ball remains live",
+     detect: "CV: control switches team (steal, defensive rebound) or made basket by opponent; OCR 30."}
+  - {id: control_reestablished_in_backcourt_after_loss, value: 30, rule: 2-11.6.b.2, pdf: 44, p: 41, note: "not after a try that missed ring/flange (Note 2); mere touching does not restart (Note 1)"}
+  - {id: held_ball_or_arrow_favours_defence_backcourt_throw_in, value: 30, rule: 2-11.6.b.3, pdf: 44, p: 41}
+  - {id: ring_contact_then_non_shooting_team_control, value: 30, rule: 2-11.6.b.4, pdf: 44, p: 41,
+     detect: "CV: ball-ring contact event (ball centre within 0.35 m of ring, deflection) then defence control."}
+  - {id: defensive_foul_offence_in_control_in_backcourt, value: 30, rule: 2-11.6.b.5, pdf: 44, p: 41}
+  - {id: double_foul_one_flagrant_against_offence_defence_backcourt_throw_in, value: 30, rule: 2-11.6.b.6, pdf: 44, p: 41}
+  - {id: violation_defence_awarded_backcourt_throw_in, value: 30, rule: 2-11.6.b.7, pdf: 44, p: 41}
+  - {id: inadvertent_whistle_no_control_arrow_backcourt, value: 30, rule: 2-11.6.b.8, pdf: 44, p: 41}
+  - {id: jump_ball_out_of_bounds_backcourt_throw_in, value: 30, rule: 2-11.6.b.9, pdf: 44, p: 41}
+  # ------------------------------------------------ max(20, remaining) (2-11.6.c)
+  - {id: defensive_personal_or_technical_foul_frontcourt_throw_in, value: max20, rule: 2-11.6.c.1, pdf: 44, p: 41, note: "only before a try that hits the ring (Note)"}
+  - {id: defensive_kick_or_fist_violation, value: max20, rule: 2-11.6.c.2, pdf: 45, p: 42, note: "front court or backcourt throw-in"}
+  - {id: inadvertent_whistle_or_double_foul_no_control_arrow_frontcourt, value: max20, rule: 2-11.6.c.3, pdf: 45, p: 42}
+  - {id: defensive_off_ball_foul_try_in_air_misses_rim_frontcourt, value: max20, rule: 2-11.6.c.4, pdf: 45, p: 42}
+  # ------------------------------------------------ reset 20 (2-11.6.d)
+  - {id: offensive_rebound_frontcourt_after_ring_contact, value: 20, rule: 2-11.6.d.1, pdf: 45, p: 42, quote: "first to gain control ... after an unsuccessful field goal attempt",
+     detect: "CV: ring contact then offensive control in frontcourt (also after missed live FT); OCR 20 flat."}
+  - {id: offensive_foul_in_backcourt_defence_gains_frontcourt_control, value: 20, rule: 2-11.6.d.1, pdf: 45, p: 42, new_vs_invariants: true,
+     note: "last clause of d.1: offensive foul in Team A's backcourt and Team B gains control in their frontcourt"}
+  - {id: defensive_loose_ball_foul_after_ring_contact_or_ft_miss_or_during_successful_try_frontcourt, value: 20, rule: 2-11.6.d.2, pdf: 45, p: 42, note: "backcourt throw-in -> 30"}
+  - {id: offence_retains_after_out_of_bounds_following_ring_contact, value: 20, rule: 2-11.6.d.3, pdf: 45, p: 42}
+  - {id: held_ball_arrow_offence_after_ring_contact_or_bi_gt_review, value: 20, rule: 2-11.6.d.4, pdf: 45, p: 42}
+  - {id: defensive_kick_or_fist_after_ring_contact_frontcourt, value: 20, rule: 2-11.6.d.5, pdf: 45, p: 42}
+  - {id: violation_or_player_team_control_foul_defence_frontcourt_throw_in, value: 20, rule: 2-11.6.d.6, pdf: 45, p: 42}
+  - {id: double_foul_one_flagrant_against_offence_defence_frontcourt_throw_in, value: 20, rule: 2-11.6.d.7, pdf: 45, p: 42}
+  - {id: jump_ball_out_of_bounds_frontcourt_throw_in, value: 20, rule: 2-11.6.d.8, pdf: 45, p: 42}
+  - {id: ring_contact_batted_into_backcourt_out_of_bounds_by_shooting_team, value: 20, rule: 2-11.6.d.9, pdf: 45, p: 42}
+  # ------------------------------------------------ off, reactivation, continue (2-11.2, 2-11.8, 2-11.9)
+  - {id: game_clock_below_shot_clock_period, value: "off", rule: "2-11.2, 2-11.8", pdf: [43, 46], p: [40, 43],
+     detect: "OCR: shot clock blank when game clock < reset value."}
+  - {id: reactivation_20_for_2_11_6_d, value: 20, rule: 2-11.8, pdf: 46, p: 43, new_vs_invariants: true,
+     note: "invariants mention it only as a note of the off row"}
+  - {id: loose_ball_offence_retains, value: continue, rule: "2-11.9, 2-11.6.b Note 1", pdf: [46, 44], p: [43, 41], new_vs_invariants: true}
+  - {id: try_at_wrong_basket, value: continue, rule: 2-11.9, pdf: 46, p: 43, new_vs_invariants: true}
+  - {id: try_failed_to_hit_ring, value: continue, rule: "2-11.9, 2-11.6.b Note 2", pdf: [46, 44], p: [43, 41], new_vs_invariants: true,
+     detect: "CV: ball 3-D track never within ring contact distance; OCR clock keeps running."}
+
+related:
+  shot_clock_violation: {rule: 9-11.4, pdf: 99, p: 96}
+  horn_does_not_stop_play_without_whistle: {rule: 2-11.7, pdf: 46, p: 43}
+  officials_decide_doubt_ring_contact: {rule: "2-11.10, 5-12.3", pdf: [46, 73]}
+  operator_mistake_correction_window: {rule: 5-12.4, pdf: 73, p: 70, note: "only within the same shot-clock period"}
+
+open_questions:
+  - "Add the 8 new_vs_invariants causes to config/invariants.yaml shot_clock_reset_table (needs adoption)?"

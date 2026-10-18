@@ -1,0 +1,169 @@
+# Violations and turnover types, 2026-27 NCAA men's rules book (Rule 9, plus 5-1.19, 7-2.3, 9-16).
+# Status: PROPOSAL (2026-10-18). Lands in: turnovers.turnover_type (extends the R-EV-10 enum), restarts.violation_code,
+# restarts.restart_type / throw_in_spot, shot_clock_resets.cause. Closes leaves A.04.08, A.04.12-15, A.08.06, A.08.07,
+# A.08.11, A.09.06 (new-EV-1..4, new-SR-3/4, new-ST-1).
+#
+# pdf = page in docs/rules/PRMBB_RulesBook.pdf; p = printed page (pdf - 3). Frame: origin under attacked rim centre,
+# x along end line (+ to attacker's right), y toward half court; end line inner edge y = -1.600 m; division line
+# centre y = 12.725 m; sidelines x = +-7.620 m.
+# restart.shot_clock: value per config/vocab/shot_clock_resets.yaml cause id (30 | 20 | max20 | no_reset | off).
+# restart.spot: designated spot per 7-3.2 (frontcourt: below FT line extended -> end line 3 ft outside lane;
+# above -> nearest 28-ft mark; backcourt: nearest spot) unless stated.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+requirements: [R-EV-10, new-EV-1, new-EV-2, new-EV-3, new-EV-4, new-SR-3, new-SR-4, new-ST-1, new-SY-2]
+
+violations:
+  # ---------------------------------------------------------------- free throw (9-1)
+  - {id: ft_10_seconds, name: "Free-thrower fails to release within 10 s / ball misses ring", rule: 9-1.1.a, pdf: 94, p: 91,
+     quote: "fails to release the try within 10 seconds",
+     detect: "CV/OCR: disposal frame to release frame > 10.0 s; or ball does not touch ring (no ring-contact event). PBP 'free throw violation'.",
+     restart: "shooter's team violation: ball dead, no point; if last FT: throw-in to opponents at designated spot nearest violation (9-1 Penalty a.1)"}
+  - {id: ft_fake_try_or_fake_violation, rule: 9-1.1.b, pdf: 94, p: 91, detect: "VID: shooting motion stopped without release; lane player jab-step without entering lane."}
+  - {id: ft_shooter_crosses_line, rule: 9-1.1.c, pdf: 94, p: 91, quote: "breaks the vertical plane of the free-throw line",
+     detect: "CV: shooter toe keypoint y > FT-line near edge (4.140 m) before ball-ring contact."}
+  - {id: ft_shooter_leaves_semicircle, rule: 9-1.1.d, pdf: 94, p: 91, detect: "CV: shooter foot outside FT semicircle (radius 1.829 m outside edge, centre FT line midpoint) before ring contact."}
+  - {id: ft_lane_early_entry, rule: 9-1.1.e, pdf: 94, p: 91, quote: "enters or leaves a marked lane space ... before the free-thrower has released",
+     detect: "CV: lane player foot crosses lane-space boundary (lane outer edge |x| = 1.829 m) before release frame."}
+  - {id: ft_disconcertion, rule: 9-1.1.f, pdf: 94, p: 91, detect: "VID: opponent waving/taunting in shooter's view; substitute FT if missed."}
+  - {id: ft_behind_line_extended_and_arc, rule: 9-1.1.g, pdf: 94, p: 91,
+     detect: "CV: non-lane player with y < 4.191 m (FT line extended) or r < 6.75 m before ball hits ring/backboard."}
+  - {id: ft_lane_space_plane_before_release, rule: 9-1.1.h, pdf: 94, p: 91}
+  - {id: ft_foot_beyond_lane_space, rule: 9-1.1.i, pdf: 94, p: 91, detect: "CV: lane player foot outside the 0.914 m space or beyond 0.051 m mark before release."}
+  - {id: ft_too_many_lane_players, rule: 9-1.1.j, pdf: 94, p: 91, detect: "CV: > 4 defenders or > 2 offensive players in lane spaces."}
+  - {id: ft_opponent_not_in_first_space, rule: 9-1.1.k, pdf: 94, p: 91, detect: "CV: first space above block (y 0.838-1.753 m) empty of a defender either side."}
+  - {id: ft_teammate_in_first_space, rule: 9-1.1.l, pdf: 94, p: 91}
+  - {id: ft_double_violation, rule: "9-1 Penalty c", pdf: 95, p: 92, restart: "remaining FTs, else AP throw-in nearest spot (6-4.1.c)"}
+  # ---------------------------------------------------------------- out of bounds (7-1, 7-2, 9-2, 9-3)
+  - {id: ball_out_of_bounds, name: "Causing the ball to go out of bounds", rule: "9-2.1, 7-1.2, 7-2.1", pdf: [96, 83], p: [93, 80],
+     quote: "A player shall not cause the ball to go out of bounds.",
+     detect: "CV: ball contact point beyond boundary inner edge (|x| >= 7.620 m or y <= -1.600 m) or touching player out of bounds; last-touch player from ball-hand proximity < 0.3 m. Signal: directional.",
+     restart: "throw-in to opponents; frontcourt team caused by defence: spot where ball went out (7-3.2.a exception); else designated spot (7-3.2)", shot_clock: "ball_out_of_bounds_off_defence -> no_reset; by offence -> 30 (b.7) or 20 (d.6) for defence throw-in"}
+  - {id: ball_over_backboard, rule: "9-2.2, 7-1.3", pdf: [96, 83], p: [93, 80], detect: "CV: ball 3-D track passes above backboard top (3.962 m) plane."}
+  - {id: ball_hits_backboard_support_or_back, rule: 7-1.2, pdf: 83, p: 80}
+  - {id: player_out_of_bounds_first_touch, rule: 9-3.1, pdf: 96, p: 93, quote: "steps out of bounds under the player's own volition",
+     detect: "CV: player foot beyond boundary then first to touch ball after returning."}
+  - {id: thrower_touch_without_foot_inbounds, rule: 9-3.2, pdf: 96, p: 93}
+  - {id: bench_assist_out_of_bounds, name: "Bench personnel physically assists player with ball", rule: 7-2.3, pdf: 83, p: 80,
+     detect: "CV: contact between bench-area person (outside sideline, bench side, y beyond 28-ft line) and ball handler near sideline. Leaf A.09.06.",
+     restart: "ball out of bounds on the assisted team"}
+  # ---------------------------------------------------------------- throw-in (9-4)
+  - {id: throw_in_leaves_spot, rule: 9-4.1.a, pdf: 96, p: 93, quote: "Leaves a designated spot before releasing the ball",
+     detect: "CV: thrower both feet outside the 0.914 m spot width before release. Signal: throw_in_spot_violation.",
+     restart: "same designated spot, opponents (7-4.2)"}
+  - {id: throw_in_not_directly_inbounds, rule: 9-4.1.b, pdf: 96, p: 93}
+  - {id: throw_in_lodges, rule: 9-4.1.c, pdf: 96, p: 93}
+  - {id: throw_in_five_seconds, rule: "9-4.1.d, 7-6.6", pdf: [96, 88], p: [93, 85], detect: "OCR/CV: disposal to release > 5.0 s; official's visible count."}
+  - {id: throw_in_carried_onto_court, rule: 9-4.1.e, pdf: 96, p: 93}
+  - {id: thrower_touches_court_before_release, rule: 9-4.1.f, pdf: 96, p: 93, detect: "CV: thrower foot y > -1.600 m (end line) or |x| < 7.620 m before release."}
+  - {id: throw_in_into_basket_or_support, rule: 9-4.1.g, pdf: 96, p: 93}
+  - {id: thrower_touches_before_other_player, rule: 9-4.1.h, pdf: 96, p: 93, note: "added 2026-27 (editorial)"}
+  - {id: other_player_out_of_bounds_at_throw_in, rule: 9-4.2.a-b, pdf: [96, 97], p: [93, 94]}
+  - {id: defender_breaks_boundary_plane, rule: 9-4.3, pdf: 97, p: 94, quote: "beyond the vertical inside plane of any boundary line",
+     detect: "CV: defender hand/foot beyond boundary line plane before ball crosses it; repeated -> Class B technical."}
+  # ---------------------------------------------------------------- ball handling (9-5, 9-6, 9-7)
+  - {id: traveling, rule: 9-5, pdf: [97, 98], p: [94, 95], quote: "moves a foot or both feet in any direction in excess of prescribed limits",
+     subtypes: [pivot_foot_lifted_before_dribble, pivot_foot_returned_before_release, jump_stop_foot_lifted_before_dribble, falling_without_pivot, pre_dribble_travel_poe, split_step_travel_poe, gather_extra_step],
+     detect: "CV: foot-contact sequence from catch/gather; pivot foot ankle displacement > 0.15 m before ball leaves hand on dribble (proposal; new-DT-2 labels only).",
+     restart: "throw-in to opponents, designated spot"}
+  - {id: kicking_ball, rule: "9-6.1, 9-6.2", pdf: 98, p: 95, quote: "striking it intentionally with any part of the leg or the foot",
+     detect: "CV: ball-foot contact with foot moving toward ball > 1 m/s (proposal); accidental not a violation.",
+     restart: "throw-in to offended team; shot clock max20 (2-11.6.c.2) or 20 after ring contact (d.5)"}
+  - {id: fisting_ball, rule: 9-6.1, pdf: 98, p: 95, detect: "VID: closed-fist strike."}
+  - {id: ball_through_basket_from_below, rule: 9-6.1, pdf: 98, p: 95, detect: "CV: ball 3-D track enters ring cylinder moving upward."}
+  - {id: double_dribble, rule: 9-7, pdf: 98, p: 95, quote: "dribbles a second time after the player's first dribble has ended",
+     detect: "CV: ball rests in hand(s) or both hands touch (4-13.4) then bounce again without intervening try/bat/touch."}
+  - {id: palming_carrying, rule: "4-13.4.a, signal backcourt_or_carrying", pdf: [55, 144], p: [52, 141],
+     detect: "CV: hand under ball (palm up) during dribble; ball rests in hand > ~0.1 s (proposal)."}
+  # ---------------------------------------------------------------- jump ball (9-8)
+  - {id: jump_ball_touched_before_peak, rule: 9-8.1.a, pdf: 98, p: 95, detect: "CV: jumper hand contacts ball before ball apex (vertical velocity sign change)."}
+  - {id: jumper_leaves_circle_or_catches_or_three_touches, rule: 9-8.1.b, pdf: 98, p: 95}
+  - {id: non_jumper_moves_onto_circle_before_toss, rule: 9-8.1.c, pdf: 98, p: 95}
+  - {id: non_jumper_breaks_cylinder, rule: 9-8.1.d, pdf: 98, p: 95, detect: "CV: non-jumper foot inside r < 1.829 m of centre-circle centre before tap; players > 0.914 m outside circle exempt (9-8.1.e)."}
+  - {id: jump_ball_double_violation_rejump, rule: 9-8.2, pdf: 98, p: 95, restart: "re-toss"}
+  # ---------------------------------------------------------------- time/area (9-9 .. 9-14)
+  - {id: three_seconds, rule: 9-9, pdf: [98, 99], p: [95, 96], quote: "remain in the three-second lane for more than three consecutive seconds",
+     detect: "CV: any part of body in lane (|x| <= 1.829 m, -1.600 <= y <= 4.191 m, lines included) > 3.0 s while own team controls ball in frontcourt; one foot out and other in air counts as out (DIF p 7); suspended while dribbling/moving in to try.",
+     restart: "throw-in to opponents, designated spot"}
+  - {id: ten_second_backcourt, rule: 9-10, pdf: 99, p: 96, quote: "shall not be in continuous control of a ball that is in the backcourt for 10",
+     detect: "Clock: count from legal touch in backcourt (or control on rebound/jump ball) to frontcourt status (both dribbler feet and ball in frontcourt) > 10.0 s; resets per 9-10.",
+     restart: "throw-in to opponents (their frontcourt): spot per 7-3.2; shot clock 20 (d.6)"}
+  - {id: shot_clock_violation, rule: 9-11.4, pdf: 99, p: 96, quote: "does not leave the shooter's hand before the expiration",
+     detect: "Shot-clock horn/zeros before release, or try released in time not hitting ring/flange.",
+     restart: "throw-in to opponents, designated spot; shot clock 30 (b.7) if their backcourt, 20 if frontcourt (d.6)"}
+  - {id: backcourt_over_and_back, rule: 9-12.4, pdf: 100, p: 97, quote: "shall not be the first to touch the ball in the backcourt",
+     detect: "CV: team in control in frontcourt; ball last touched by that team then first touched in backcourt by same team (ball or touching player's foot with y >= 12.700 m in own frame). Exceptions 9-12.5-10 (deflection by defence, throw-in, airborne catch after jump ball/throw-in).",
+     restart: "throw-in to opponents nearest spot (their frontcourt -> 7-3.2.b)"}
+  - {id: excessive_elbows, rule: 9-13, pdf: 101, p: 98, quote: "excessively swings an arm(s) or elbow(s), even without contacting",
+     detect: "CV: elbow angular speed exceeds torso yaw speed (4-18.7); no contact.",
+     restart: "throw-in nearest spot; if try in flight and successful, violation ignored (9-13 Penalty)"}
+  - {id: closely_guarded_five_seconds, rule: 9-14, pdf: 101, p: 98, quote: "holds the ball for five seconds",
+     detect: "CV: holder in frontcourt, defender in guarding stance, forward-foot to forward-foot distance <= 1.829 m, same defender continuously, holding (not dribbling) > 5.0 s; no count if a player stands between (9-14.4).",
+     restart: "throw-in to opponents, designated spot"}
+  # ---------------------------------------------------------------- basket (9-15, 9-16)
+  - {id: bi_touch_ball_or_basket_on_in_basket, rule: 9-15.2.a.1, pdf: 101, p: 98, detect: "CV: hand contact with ball/ring while ball within ring cylinder below ring top (3.048 m)."}
+  - {id: bi_touch_ball_in_cylinder, rule: 9-15.2.a.2, pdf: 101, p: 98, detect: "CV: hand-ball contact with ball centre within 0.229 m (ring inner radius) of ring centre axis, above ring."}
+  - {id: bi_reach_through_from_below, rule: 9-15.2.a.3, pdf: 101, p: 98}
+  - {id: bi_pull_down_ring, rule: 9-15.2.a.4, pdf: 102, p: 99}
+  - {id: bi_vibrate_basket_or_backboard, rule: 9-15.2.a.5, pdf: 102, p: 99}
+  - {id: goaltending_field_goal, rule: 9-15.3.a, pdf: 102, p: 99, quote: "The ball is on its downward flight",
+     detect: "CV: defender touch with ball vertical velocity < 0, ball bottom above 3.048 m, possible to enter; or after backboard contact with part of ball above rim (9-15.3.c).",
+     restart: "points awarded (2 or 3), throw-in from end line by team scored on; reviewable by challenge/last 2 min"}
+  - {id: goaltending_free_throw, rule: "9-15.3.b, 10-4.1.g", pdf: [102, 112], p: [99, 109], restart: "1 point + Class B technical"}
+  - {id: bi_or_gt_own_basket, rule: "9-15 Penalty c", pdf: 102, p: 99, restart: "no points; ball to offended team at nearest designated spot"}
+  - {id: bi_or_gt_both_teams, rule: "9-15 Penalty e", pdf: 103, p: 100, restart: "AP throw-in nearest spot"}
+  - {id: illegal_assistance_rim_backboard, rule: 9-16, pdf: 103, p: 100, quote: "using any part of the ring, net, backboard or basket support to lift",
+     detect: "CV: hand on ring/board (hand keypoint at 3.05-3.96 m within backboard/ring box) used to rise or hang while playing ball.",
+     restart: "16.1.a no goal, throw-in to opponent; 16.1.c (block) points awarded to shooter's team"}
+  # ---------------------------------------------------------------- other
+  - {id: try_with_point_three_or_less, rule: 5-1.19, pdf: 68, p: 65, quote: "may not gain control of the ball and attempt a try",
+     detect: "Clock <= 0.3 s at throw-in/FT: only a tap scores; catch-and-shoot goal cancelled."}
+  - {id: wrong_basket_goal, rule: 5-1.4.a, pdf: 67, p: 64, detect: "Goal in own basket: 2 points to opponent, not credited to a player."}
+
+# ------------------------------------------------------------------ turnover types
+# Existing enum (schema/tables/turnovers.yaml, R-EV-10): bad_pass, lost_ball, travel, double_dribble, offensive_foul,
+# shot_clock_violation, five_second_closely_guarded, ten_second_backcourt, three_second_lane, out_of_bounds, carry, other.
+turnover_types:
+  - {id: bad_pass, existing: true, rule: "4-25 (pass)", pdf: 62, p: 59, restart: "live ball (steal) or throw-in after OOB", shot_clock: "30 on change of control (b.1)"}
+  - {id: lost_ball, existing: true, rule: "4-16, 4-24", pdf: [58, 62], p: [55, 59], restart: "live ball", shot_clock: "30 (b.1)"}
+  - {id: travel, existing: true, violation: traveling}
+  - {id: double_dribble, existing: true, violation: double_dribble}
+  - {id: carry, existing: true, violation: palming_carrying}
+  - {id: offensive_foul, existing: true, foul: "player_control | team_control (fouls.yaml)", restart: "throw-in, designated spot; shot clock 30 backcourt (b.7) / 20 frontcourt (d.6)"}
+  - {id: shot_clock_violation, existing: true, violation: shot_clock_violation}
+  - {id: five_second_closely_guarded, existing: true, violation: closely_guarded_five_seconds}
+  - {id: ten_second_backcourt, existing: true, violation: ten_second_backcourt}
+  - {id: three_second_lane, existing: true, violation: three_seconds}
+  - {id: out_of_bounds, existing: true, violation: [ball_out_of_bounds, player_out_of_bounds_first_touch, ball_over_backboard]}
+  - {id: backcourt_over_and_back, existing: false, proposal: new-EV-3, violation: backcourt_over_and_back}
+  - {id: throw_in_violation, existing: false, proposal: new-EV-2, violation: [throw_in_leaves_spot, throw_in_five_seconds, throw_in_carried_onto_court, thrower_touches_court_before_release, throw_in_not_directly_inbounds, throw_in_lodges, throw_in_into_basket_or_support, thrower_touches_before_other_player], note: "keep the 9-4.1 article in violation_code"}
+  - {id: elbows, existing: false, proposal: new-EV-4, violation: excessive_elbows}
+  - {id: kicked_ball_offence, existing: false, violation: kicking_ball, note: "offensive kick = turnover; defensive kick is not"}
+  - {id: basket_interference_offence, existing: false, violation: [bi_touch_ball_or_basket_on_in_basket, bi_touch_ball_in_cylinder, bi_reach_through_from_below, bi_pull_down_ring, bi_vibrate_basket_or_backboard], restart: "no points, throw-in to defence"}
+  - {id: illegal_assistance, existing: false, violation: illegal_assistance_rim_backboard}
+  - {id: free_throw_violation_shooter_team, existing: false, violation: [ft_10_seconds, ft_shooter_crosses_line, ft_shooter_leaves_semicircle], note: "turnover only when it costs possession (last FT)"}
+  - {id: jump_ball_violation, existing: false, proposal: new-EV-1, violation: [jump_ball_touched_before_peak, jumper_leaves_circle_or_catches_or_three_touches, non_jumper_breaks_cylinder]}
+  - {id: bench_assist_out_of_bounds, existing: false, violation: bench_assist_out_of_bounds}
+  - {id: other, existing: true}
+
+source_label_map:   # PBP text -> turnover_type (CBBD/ESPN/hoopR labels; extend as seen)
+  "Lost Ball Turnover": lost_ball
+  "Bad Pass Turnover": bad_pass
+  "Traveling": travel
+  "Double Dribble": double_dribble
+  "Offensive Foul": offensive_foul
+  "Shot Clock Turnover": shot_clock_violation
+  "5 Second Violation": "five_second_closely_guarded or throw_in_violation (resolve by restart context: throw-in disposal -> throw_in_violation)"
+  "10 Second Violation": ten_second_backcourt
+  "3 Second Violation": three_second_lane
+  "Out of Bounds - Lost Ball Turnover": out_of_bounds
+  "Lane Violation": free_throw_violation_shooter_team
+  "Backcourt": backcourt_over_and_back
+  "Kicked Ball": kicked_ball_offence
+
+open_questions:
+  - "Source labels above are unverified against pulled CBBD/ESPN text; confirm from docs/data/source_field_map.md before mapping."
+  - "Count a shooter-team FT lane violation on the last FT as a turnover (possession lost) or not?"

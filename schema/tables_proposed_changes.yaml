@@ -1,0 +1,2651 @@
+# Proposed schema changes from the round-2 ontology gap closures (2026-10-18). PROPOSAL; do not treat as schema.
+# Generated from the leaf records behind docs/data/gap_closures_round2.md. Vocabularies: config/vocab/actions_extra.yaml.
+version: 0.1.0
+status: proposed
+date: '2026-10-18'
+description: 'Column additions, enum additions and the few new tables proposed by the round-2 ontology gap closures (docs/data/gap_closures_round2.md).
+  Existing schema/tables/*.yaml files are NOT edited; the requirements session approves and the schema owner merges. Every added column inherits
+  the global_metadata stamps (R-MD-01). Licence class of every computed column: computed by us (inherits the strictest class of its inputs).'
+as_of_codes:
+  IN_GAME: known at the in-game instant (video_ts_ms / game clock)
+  PRE_GAME: known before tip from earlier games/registry only
+  POST_GAME: known after the game ends
+  REGISTRY: registry fact, valid_from/valid_to on the row
+column_additions:
+- table: state_frame
+  column: frontcourt_status
+  type: enum[frontcourt, backcourt, none, uncertain]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Rule 9-12.3 location of the live ball for the team in control this frame.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.04.12
+  requirement_ids:
+  - new-MD-6
+- table: state_frame
+  column: frontcourt_established_ts_ms
+  type: int64
+  unit: ms
+  range: '[0, video duration]'
+  nullable: true
+  definition: Video time at which the current frontcourt status was established (null while backcourt/none).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.04.12
+  requirement_ids:
+  - new-MD-6
+- table: state_frame
+  column: frontcourt_basis
+  type: enum[ball_floor_contact, ball_player_contact, dribbler_both_feet_and_ball, holder_both_feet, inherited_in_air]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Which Rule 9-12.3 / 9-10 clause established the status.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.04.12
+  requirement_ids:
+  - new-MD-6
+- table: possessions
+  column: frontcourt_entry_s
+  type: float32
+  unit: s
+  range: '[0, 30]'
+  nullable: true
+  definition: Game-clock seconds from team control to frontcourt status (backcourt count length; null for frontcourt starts).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.04.12
+  requirement_ids:
+  - new-MD-6
+- table: possessions
+  column: garbage_time_ctg_adapted
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Definition (2).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.02.04
+  requirement_ids:
+  - new-MD-11
+- table: possessions
+  column: garbage_time_wp
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Definition (3).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.02.04
+  requirement_ids:
+  - new-MD-11
+- table: possessions
+  column: starters_on_floor_total
+  type: int8
+  unit: count
+  range: '[0, 10]'
+  nullable: true
+  definition: Starters on the floor, both teams.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.02.04
+  requirement_ids:
+  - new-MD-11
+- table: possessions
+  column: pickup_ts_ms
+  type: int64
+  unit: ms
+  range: '[0, video duration]'
+  nullable: true
+  definition: Time of pickup.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.01.04
+  requirement_ids:
+  - new-DF-8
+- table: possessions
+  column: pickup_y_m
+  type: float32
+  unit: m
+  range: '[-1.6, 27.05]'
+  nullable: true
+  definition: Handler's distance up-court from the attacked rim at pickup.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.01.04
+  requirement_ids:
+  - new-DF-8
+- table: possessions
+  column: pickup_class
+  type: enum[full_court, three_quarter, half_court, top_of_key, none, frontcourt_start]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Pick-up class.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.01.04
+  requirement_ids:
+  - new-DF-8
+- table: possessions
+  column: pickup_defender_id
+  type: string
+  unit: null
+  range: ESPN athlete ID
+  nullable: true
+  definition: Defender who picked up.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.01.04
+  requirement_ids:
+  - new-DF-8
+- table: possessions
+  column: pickup_handler_speed_mps
+  type: float32
+  unit: m/s
+  range: '[0, 10]'
+  nullable: true
+  definition: Handler speed at pickup.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.01.04
+  requirement_ids:
+  - new-DF-8
+- table: restarts
+  column: oob_cause
+  type: enum[last_touch, player_out_of_bounds, over_backboard, backboard_support, simultaneous_touch, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Rule 7-1 / 7-2 cause of the out-of-bounds that produced this throw-in (null for other restarts).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: restarts
+  column: oob_last_touch_player_id
+  type: string
+  unit: null
+  range: ESPN athlete ID or local x- ID
+  nullable: true
+  definition: Player who caused the ball to go out (last toucher, or the out-of-bounds player).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: restarts
+  column: oob_last_touch_ts_ms
+  type: int64
+  unit: ms
+  range: '[0, video duration]'
+  nullable: true
+  definition: Video time of the last touch.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: restarts
+  column: oob_exit_x_fc_m
+  type: float32
+  unit: m
+  range: '[-15.33, 15.33]'
+  nullable: true
+  definition: Full-court x where the ball (or the player's foot) first met the boundary.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: restarts
+  column: oob_exit_y_fc_m
+  type: float32
+  unit: m
+  range: '[-8.62, 8.62]'
+  nullable: true
+  definition: Full-court y of the same point.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: restarts
+  column: oob_call_agrees
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Our last-touch team equals the team the officials charged (the team NOT awarded the throw-in).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: A.09.02
+  requirement_ids:
+  - new-BL-2
+- table: bench_events
+  column: x_fc_m
+  type: float32
+  unit: m
+  range: '[-16.5, 16.5]'
+  nullable: true
+  definition: Full-court x of the actor's ankle-midpoint ground point (sideline zone allowed).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: bench_events
+  column: y_fc_m
+  type: float32
+  unit: m
+  range: '[-10.0, 10.0]'
+  nullable: true
+  definition: Full-court y of the same point.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: bench_events
+  column: in_coaching_box
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Inside the Rule 1-9 box polygon (+0.15 m tolerance).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: bench_events
+  column: dist_outside_box_m
+  type: float32
+  unit: m
+  range: '[0, 15]'
+  nullable: true
+  definition: 0 inside the box; otherwise distance to the nearest box edge.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: bench_events
+  column: duration_s
+  type: float32
+  unit: s
+  range: '[0, 3600]'
+  nullable: true
+  definition: Episode duration for state-type events (standing, out_of_coaching_box).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: bench_events
+  column: actor_on_court
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Actor is one of the ten players on the floor.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: bench_events
+  column: gesture_code
+  type: enum (actions_extra.yaml gestures)
+  unit: null
+  range: enum
+  nullable: true
+  definition: Gesture class.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: bench_events
+  column: target_type
+  type: enum[official, opponent, teammate, crowd, own_bench, opponent_bench, none]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Gesture target.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: bench_events
+  column: target_id
+  type: string
+  unit: null
+  range: player/official ID
+  nullable: true
+  definition: Target where identifiable.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: bench_events
+  column: followed_by_technical_event_id
+  type: string
+  unit: null
+  range: FK events
+  nullable: true
+  definition: Technical foul within 10 s after, if any.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: player_positions
+  column: passes_away
+  type: int8
+  unit: count
+  range: '{0, 1, 2}'
+  nullable: true
+  definition: 0 holder, 1 one pass away, 2 two or more passes away (definition above).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.13
+  requirement_ids:
+  - new-MD-7
+- table: defensive_matchups
+  column: help_position
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Defender in help position this second (definition above).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.13
+  requirement_ids:
+  - new-MD-7
+- table: defensive_matchups
+  column: deny_posture
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Denial held >= 0.50 s this second.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.09.06
+  requirement_ids:
+  - new-DF-7
+- table: defensive_matchups
+  column: deny_lane_offset_m
+  type: float32
+  unit: m
+  range: '[0, 5]'
+  nullable: true
+  definition: Perpendicular offset from the ball->man segment.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.09.06
+  requirement_ids:
+  - new-DF-7
+- table: defensive_matchups
+  column: deny_hand_in_lane
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Nearer wrist within 0.30 m of the segment.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.09.06
+  requirement_ids:
+  - new-DF-7
+- table: screens
+  column: tag_defender_id
+  type: string
+  unit: null
+  range: ESPN athlete ID or local x- ID
+  nullable: true
+  definition: Weak-side defender who tagged the roller (null if none).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.13
+  requirement_ids:
+  - new-MD-7
+- table: screens
+  column: tag_contact_s
+  type: float32
+  unit: s
+  range: '[0, 3]'
+  nullable: true
+  definition: Time the tagger stayed within 1.00 m of the roller.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.01.13
+  requirement_ids:
+  - new-MD-7
+- table: screens
+  column: screener_arrival_code
+  type: enum (OFF.F5.3)
+  unit: null
+  range: enum
+  nullable: true
+  definition: Arrival.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.05.02
+  requirement_ids:
+  - new-ST-12
+- table: screens
+  column: screener_arrival_speed_mps
+  type: float32
+  unit: m/s
+  range: '[0, 9]'
+  nullable: true
+  definition: Arrival speed.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.05.02
+  requirement_ids:
+  - new-ST-12
+- table: screens
+  column: spacing_tags
+  type: list<enum (OFF.F5.6)>
+  unit: null
+  range: list
+  nullable: true
+  definition: Spacing tags at the screen moment.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.05.04
+  requirement_ids:
+  - new-ST-13
+- table: games
+  column: ball_model
+  type: string
+  unit: null
+  range: free text or 'not_public'
+  nullable: true
+  definition: Ball manufacturer and model used.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.02.02
+  requirement_ids:
+  - new-FD-6
+- table: games
+  column: ball_model_source
+  type: string
+  unit: null
+  range: URL + checked date
+  nullable: true
+  definition: Where the ball model was published.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.02.02
+  requirement_ids:
+  - new-FD-6
+- table: games
+  column: home_bench_end_fc
+  type: enum[x_pos, x_neg, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: End of the table sideline where the home bench sits.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.02.07
+  requirement_ids:
+  - new-FD-7
+- table: games
+  column: home_attacks_first_half_fc
+  type: enum[x_pos, x_neg, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Basket the home team attacks in the first half (full-court frame).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.02.07
+  requirement_ids:
+  - new-FD-7
+- table: games
+  column: student_section_fc
+  type: enum[x_pos_end, x_neg_end, table_sideline, far_sideline, multiple, none, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Override for this game (null = venue default).
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.04.04
+  requirement_ids:
+  - new-CX-10
+- table: games
+  column: official_record_reconciled
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: All end-of-game counts equal the official record after corrections.
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.04.01
+  requirement_ids:
+  - new-DQ-2
+- table: venues
+  column: home_bench_end_default_fc
+  type: enum[x_pos, x_neg, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Usual home-bench end at this venue.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.02.07
+  requirement_ids:
+  - new-FD-7
+- table: venues
+  column: rim_model
+  type: string
+  unit: null
+  range: free text or 'unknown'
+  nullable: true
+  definition: Rim manufacturer/model where public.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.02.12
+  requirement_ids:
+  - new-CX-9
+- table: venues
+  column: rim_rebound_dist_median_m
+  type: float32
+  unit: m
+  range: '[0, 10]'
+  nullable: true
+  definition: Stiffness proxy (definition above), recomputed as of each game date.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.02.12
+  requirement_ids:
+  - new-CX-9
+- table: venues
+  column: rim_rebound_n
+  type: int32
+  unit: count
+  range: '[0, 1e5]'
+  nullable: true
+  definition: Misses used for the proxy.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.02.12
+  requirement_ids:
+  - new-CX-9
+- table: venues
+  column: secondary_cameras
+  type: json
+  unit: m
+  range: list of {camera_view, x_fc_m, y_fc_m, z_m, n_frames, first_seen_game_id}
+  nullable: true
+  definition: Registered secondary cameras with estimated 3-D centres.
+  as_of: REGISTRY
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.03.04
+  requirement_ids:
+  - new-VI-4
+- table: venues
+  column: student_section_fc
+  type: enum[x_pos_end, x_neg_end, table_sideline, far_sideline, multiple, none, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Usual student-section location.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.04.04
+  requirement_ids:
+  - new-CX-10
+- table: venues
+  column: court_placement
+  type: enum[standard_arena, dome_midfield, dome_end, other]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Court placement class.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.04.05
+  requirement_ids:
+  - new-CX-11
+- table: venues
+  column: backdrop_distance_x_pos_m
+  type: float32
+  unit: m
+  range: '[0, 80]'
+  nullable: true
+  definition: Distance from the x_pos end line to the first seats/backdrop.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.04.05
+  requirement_ids:
+  - new-CX-11
+- table: venues
+  column: backdrop_distance_x_neg_m
+  type: float32
+  unit: m
+  range: '[0, 80]'
+  nullable: true
+  definition: Same behind the x_neg basket.
+  as_of: REGISTRY
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: B.04.05
+  requirement_ids:
+  - new-CX-11
+- table: venues
+  column: crew_assist_gap
+  type: float32
+  unit: share
+  range: '[-1, 1]'
+  nullable: true
+  definition: Official minus video assists per made FG with a visible pass, as of date.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.04.04
+  requirement_ids:
+  - new-DQ-3
+  - new-DQ-4
+- table: venues
+  column: crew_block_gap
+  type: float32
+  unit: share
+  range: '[-1, 1]'
+  nullable: true
+  definition: Official minus video blocks per FGA, as of date.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.04.04
+  requirement_ids:
+  - new-DQ-3
+  - new-DQ-4
+- table: venues
+  column: crew_steal_gap
+  type: float32
+  unit: share
+  range: '[-1, 1]'
+  nullable: true
+  definition: Official minus video steals per opponent turnover, as of date.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.04.04
+  requirement_ids:
+  - new-DQ-3
+  - new-DQ-4
+- table: appearance_cards
+  column: protective_equipment
+  type: list<enum[face_mask, goggles, knee_brace_left, knee_brace_right, knee_sleeve_left, knee_sleeve_right, ankle_brace_visible, wrist_wrap,
+    finger_tape, elbow_pad, none, unresolved]>
+  unit: null
+  range: list of enum
+  nullable: true
+  definition: Visible equipment this game (ID cue only).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.02.10
+  requirement_ids:
+  - new-ID-2
+- table: free_throws
+  column: facing_student_section
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Attacked basket is in front of the home student section.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.04.04
+  requirement_ids:
+  - new-CX-10
+- table: free_throws
+  column: preceded_by_timeout_id
+  type: string
+  unit: null
+  range: FK timeouts
+  nullable: true
+  definition: Timeout between the foul and this sequence's first attempt.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: K.01.11
+  requirement_ids:
+  - new-CH-2
+- table: free_throws
+  column: icing_team
+  type: enum[defence, offence, media, none]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Who called it.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: K.01.11
+  requirement_ids:
+  - new-CH-2
+- table: shots
+  column: facing_student_section
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Same, for field-goal attempts.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: B.04.04
+  requirement_ids:
+  - new-CX-10
+- table: shots
+  column: assist_official_vs_video
+  type: enum[agree_assisted, agree_unassisted, official_only, video_only, not_visible]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Agreement of the official assist with our video assist on a made FG.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.04.04
+  requirement_ids:
+  - new-DQ-3
+  - new-DQ-4
+- table: shots
+  column: landing_x_m
+  type: float32
+  unit: m
+  range: '[-8.62, 8.62]'
+  nullable: true
+  definition: Landing point x (attacked-rim frame).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.08
+  requirement_ids:
+  - new-DF-6
+- table: shots
+  column: landing_y_m
+  type: float32
+  unit: m
+  range: '[-2.60, 28.05]'
+  nullable: true
+  definition: Landing point y.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.08
+  requirement_ids:
+  - new-DF-6
+- table: shots
+  column: landing_drift_m
+  type: float32
+  unit: m
+  range: '[0, 3]'
+  nullable: true
+  definition: '|P1 - P0|.'
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.08
+  requirement_ids:
+  - new-DF-6
+- table: shots
+  column: landing_def_dist_m
+  type: float32
+  unit: m
+  range: '[0, 15]'
+  nullable: true
+  definition: Nearest defender foot to P1 at landing.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.08
+  requirement_ids:
+  - new-DF-6
+- table: shots
+  column: landing_space_encroached
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Encroachment test above (flag only).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.08
+  requirement_ids:
+  - new-DF-6
+- table: shots
+  column: finish_subtype
+  type: enum[standard, reverse, euro_step, finger_roll, scoop, up_and_under, power_two_foot, hop_step, floater_runner, putback_tip, dunk_one_hand,
+    dunk_two_hand, alley_oop_finish, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Finish subtype (actions_extra.yaml).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.02
+  requirement_ids:
+  - new-EV-19
+- table: shots
+  column: contest_hand_up
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Hand up inside the window within 1.83 m.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_hand_side
+  type: enum[near_side, far_side, both, none, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Which hand contested relative to the shooter's shooting hand.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: hand_to_ball_m
+  type: float32
+  unit: m
+  range: '[0, 5]'
+  nullable: true
+  definition: Minimum wrist-to-ball distance in the window.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: hand_height_rel_ball_m
+  type: float32
+  unit: m
+  range: '[-2.5, 1.5]'
+  nullable: true
+  definition: Wrist height minus ball height at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_angle_deg
+  type: float32
+  unit: degrees
+  range: '[0, 180]'
+  nullable: true
+  definition: Angle between ball->rim and ball->wrist at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: vision_interference
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Wrist in the 10-degree sight cone.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_airborne
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Defender off the floor at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_arrival_s
+  type: float32
+  unit: s
+  range: '[-3, 0.5]'
+  nullable: true
+  definition: Arrival within 1.83 m relative to release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_class
+  type: enum[none, late, soft, tight, smothered, block_attempt, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Contest class (actions_extra.yaml contest_classes).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: contest_geometry_basis
+  type: enum[3d, image_scaled]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Whether hand metrics used 3-D or the ball-diameter image scale.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.05
+  requirement_ids:
+  - new-EV-20
+- table: shots
+  column: footwork
+  type: enum[set_feet, one_two_step, hop, turnaround, fade, sidestep, step_back, spin, drift_forward, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Shot footwork.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.04.12
+  requirement_ids:
+  - new-EV-21
+- table: shots
+  column: shot_making_residual
+  type: float32
+  unit: points
+  range: '[-3, 3]'
+  nullable: true
+  definition: Points minus expected points for this attempt.
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: H.03.05
+  requirement_ids:
+  - new-VL-3
+- table: shots
+  column: rim_defender_id
+  type: string
+  unit: null
+  range: ESPN athlete ID
+  nullable: true
+  definition: Rim defender (5 ft / 5 ft rule), null if none.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: H.04.06
+  requirement_ids:
+  - new-VL-4
+  - new-VL-5
+- table: player_card_template
+  column: nil_source
+  type: string
+  unit: null
+  range: URL
+  nullable: true
+  definition: Where the valuation was published.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.01.14
+  requirement_ids:
+  - new-PC-8
+- table: player_card_template
+  column: nil_as_of_date
+  type: date
+  unit: null
+  range: YYYY-MM-DD
+  nullable: true
+  definition: Publication date of the value.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.01.14
+  requirement_ids:
+  - new-PC-8
+- table: player_card_template
+  column: nil_kind
+  type: enum[estimate, reported]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Estimate vs reported.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.01.14
+  requirement_ids:
+  - new-PC-8
+- table: rosters
+  column: captain
+  type: enum[season_captain, not_captain, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Season captain designation.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.01.17
+  requirement_ids:
+  - new-PC-9
+- table: rosters
+  column: captain_source
+  type: string
+  unit: null
+  range: URL + checked date
+  nullable: true
+  definition: Source of the designation.
+  as_of: PRE_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.01.17
+  requirement_ids:
+  - new-PC-9
+- table: player_game_context
+  column: game_captain
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Acted as captain in this game (where shown).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.01.17
+  requirement_ids:
+  - new-PC-9
+- table: team_game_context
+  column: bench_personnel_counts
+  type: json
+  unit: count
+  range: map role -> int
+  nullable: true
+  definition: Counts per role (vocabulary bench_roles).
+  as_of: IN_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.02.03
+  requirement_ids:
+  - new-CC-6
+- table: team_game_context
+  column: bench_personnel_source
+  type: enum[official, team_directory, video, unknown]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Basis of the counts.
+  as_of: IN_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: C.02.03
+  requirement_ids:
+  - new-CC-6
+- table: team_game_context
+  column: crowd_share_est
+  type: float32
+  unit: share
+  range: '[0, 1]'
+  nullable: true
+  definition: Estimated crowd share for this team (neutral sites).
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.05.03
+  requirement_ids:
+  - new-CX-12
+- table: team_game_context
+  column: crowd_share_ci80
+  type: json
+  unit: share
+  range: '[lo, hi]'
+  nullable: true
+  definition: 80% interval.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.05.03
+  requirement_ids:
+  - new-CX-12
+- table: team_game_context
+  column: audio_make_reaction_db
+  type: float32
+  unit: dB
+  range: '[-20, 40]'
+  nullable: true
+  definition: Mean crowd reaction to this team's makes (definition above).
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: C.05.03
+  requirement_ids:
+  - new-CX-12
+- table: team_game_context
+  column: road_trip_index
+  type: int8
+  unit: count
+  range: '[0, 10]'
+  nullable: true
+  definition: 0 home; n = n-th consecutive away/neutral game.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.01.04
+  requirement_ids:
+  - new-CX-13
+- table: team_game_context
+  column: days_since_last_home_game
+  type: float32
+  unit: days
+  range: '[0, 120]'
+  nullable: true
+  definition: Days since the last home tip.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.01.04
+  requirement_ids:
+  - new-CX-13
+- table: team_game_context
+  column: tip_body_clock_h
+  type: float32
+  unit: hours
+  range: '[0, 24)'
+  nullable: true
+  definition: Tip on the team's campus clock.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.01.05
+  requirement_ids:
+  - new-CX-14
+- table: team_game_context
+  column: days_since_tz_shift
+  type: float32
+  unit: days
+  range: '[0, 365]'
+  nullable: true
+  definition: Days since a game in another time zone.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.01.05
+  requirement_ids:
+  - new-CX-14
+- table: team_game_context
+  column: prev_margin
+  type: int16
+  unit: points
+  range: '[-80, 80]'
+  nullable: true
+  definition: Previous game margin.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.03.03
+  requirement_ids:
+  - new-CX-15
+- table: team_game_context
+  column: prev_ats_residual
+  type: float32
+  unit: points
+  range: '[-80, 80]'
+  nullable: true
+  definition: Margin versus the closing spread.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.03.03
+  requirement_ids:
+  - new-CX-15
+- table: team_game_context
+  column: prev_overtime
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Previous game went to overtime.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.03.03
+  requirement_ids:
+  - new-CX-15
+- table: team_game_context
+  column: streak
+  type: int8
+  unit: games
+  range: '[-40, 40]'
+  nullable: true
+  definition: Signed win/loss streak.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.03.03
+  requirement_ids:
+  - new-CX-15
+- table: team_game_context
+  column: game_num_season
+  type: int8
+  unit: count
+  range: '[1, 45]'
+  nullable: true
+  definition: Game number in the season.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.04.03
+  requirement_ids:
+  - new-CX-16
+- table: team_game_context
+  column: game_num_conf
+  type: int8
+  unit: count
+  range: '[0, 25]'
+  nullable: true
+  definition: Conference game number (0 = non-conference).
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.04.03
+  requirement_ids:
+  - new-CX-16
+- table: team_game_context
+  column: season_phase
+  type: enum[exhibition, non_conference, conference, conference_tournament, ncaa_tournament, other_postseason]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Season phase.
+  as_of: PRE_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: J.04.03
+  requirement_ids:
+  - new-CX-16
+- table: state_second
+  column: times_tied
+  type: int16
+  unit: count
+  range: '[0, 100]'
+  nullable: true
+  definition: Ties so far (definition above).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.03
+  requirement_ids:
+  - new-MD-8
+- table: state_second
+  column: largest_lead_msu
+  type: int16
+  unit: points
+  range: '[0, 100]'
+  nullable: true
+  definition: MSU's largest lead so far.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.03
+  requirement_ids:
+  - new-MD-8
+- table: state_second
+  column: largest_lead_opp
+  type: int16
+  unit: points
+  range: '[0, 100]'
+  nullable: true
+  definition: Opponent's largest lead so far.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.03
+  requirement_ids:
+  - new-MD-8
+- table: state_second
+  column: secs_since_fg_msu
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Game-clock seconds since MSU's last made FG.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.06
+  requirement_ids:
+  - new-MD-10
+- table: state_second
+  column: secs_since_fg_opp
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Same for the opponent.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.06
+  requirement_ids:
+  - new-MD-10
+- table: state_second
+  column: secs_since_point_msu
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Since MSU's last point (FG or FT).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.06
+  requirement_ids:
+  - new-MD-10
+- table: state_second
+  column: secs_since_point_opp
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Same for the opponent.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.01.06
+  requirement_ids:
+  - new-MD-10
+- table: lineup_stints
+  column: mean_height_cm
+  type: float32
+  unit: cm
+  range: '[170, 230]'
+  nullable: true
+  definition: Mean listed height on the floor.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: max_height_cm
+  type: float32
+  unit: cm
+  range: '[170, 235]'
+  nullable: true
+  definition: Tallest listed height.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: min_height_cm
+  type: float32
+  unit: cm
+  range: '[160, 230]'
+  nullable: true
+  definition: Shortest listed height.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: height_diff_cm
+  type: float32
+  unit: cm
+  range: '[-40, 40]'
+  nullable: true
+  definition: Mean height minus opponent lineup's mean height.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_listed_g
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Players listed G.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_listed_f
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Players listed F.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_listed_c
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Players listed C.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_bigs
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Bigs (definition above).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_shooters_asof
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Shooters as of the game date.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: n_ball_handlers_asof
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Ball handlers as of the game date.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: mean_class_year
+  type: float32
+  unit: years
+  range: '[1, 6]'
+  nullable: true
+  definition: Mean class year (1 = freshman).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: lineup_stints
+  column: archetype
+  type: enum[five_out, one_big, two_big, jumbo, small, three_guard, other]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Lineup archetype.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: D.07.04
+  requirement_ids:
+  - new-MD-12
+- table: movement_primitives
+  column: dir_rel_torso_deg
+  type: float32
+  unit: degrees
+  range: '[-180, 180]'
+  nullable: true
+  definition: Mean heading minus torso facing over the segment.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.02
+  requirement_ids:
+  - new-ST-9
+- table: movement_primitives
+  column: flight_time_s
+  type: float32
+  unit: s
+  range: '[0.10, 1.20]'
+  nullable: true
+  definition: Jump flight time.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: movement_primitives
+  column: jump_height_m
+  type: float32
+  unit: m
+  range: '[0, 1.30]'
+  nullable: true
+  definition: 9.81 * t_f^2 / 8.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: movement_primitives
+  column: takeoff_pattern
+  type: enum[one_foot, two_feet, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Takeoff.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: movement_primitives
+  column: jump_purpose
+  type: enum[shot, rebound, block_or_contest, tip, pass, other]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Purpose.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: movement_primitives
+  column: heading_change_deg
+  type: float32
+  unit: degrees
+  range: '[45, 180]'
+  nullable: true
+  definition: Absolute heading change.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.06
+  requirement_ids:
+  - new-PL-6
+- table: movement_primitives
+  column: entry_speed_mps
+  type: float32
+  unit: m/s
+  range: '[3.0, 10]'
+  nullable: true
+  definition: Entry speed.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.06
+  requirement_ids:
+  - new-PL-6
+- table: movement_primitives
+  column: exit_speed_mps
+  type: float32
+  unit: m/s
+  range: '[0, 10]'
+  nullable: true
+  definition: Exit speed.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.06
+  requirement_ids:
+  - new-PL-6
+- table: movement_primitives
+  column: recovery_s
+  type: float32
+  unit: s
+  range: '[0, 2.0]'
+  nullable: true
+  definition: Time to regain 90% of entry speed.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.06
+  requirement_ids:
+  - new-PL-6
+- table: touches
+  column: stop_type
+  type: enum[jump_stop, stride_stop, none, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Stop on the catch or gather.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: touches
+  column: pivot_foot
+  type: enum[left, right, none, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Pivot foot during the hold.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: touches
+  column: first_step_kind
+  type: enum[direct, crossover_step, jab, drop_step, none, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: First step kind.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: touches
+  column: first_step_dir_deg
+  type: float32
+  unit: degrees
+  range: '[-180, 180]'
+  nullable: true
+  definition: First-step direction relative to the player->rim vector.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: touches
+  column: gather_steps
+  type: int8
+  unit: count
+  range: '[0, 4]'
+  nullable: true
+  definition: Foot contacts between gather and release/first dribble.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: touches
+  column: pre_dribble_lift_suspected
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Pivot lifted before the first dribble left the hand (flag only).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.01.04
+  requirement_ids:
+  - new-DT-3
+  - new-DT-4
+- table: passes
+  column: hands
+  type: enum[one, two, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Hands at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.06
+  requirement_ids:
+  - new-EV-17
+- table: passes
+  column: delivery
+  type: enum[from_hold, off_dribble, one_touch, unresolved]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Delivery.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.06
+  requirement_ids:
+  - new-EV-17
+- table: passes
+  column: release_height_m
+  type: float32
+  unit: m
+  range: '[0, 3.5]'
+  nullable: true
+  definition: Ball height at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.06
+  requirement_ids:
+  - new-EV-17
+- table: passes
+  column: torso_to_pass_angle_deg
+  type: float32
+  unit: degrees
+  range: '[0, 180]'
+  nullable: true
+  definition: Angle between upper-torso normal and pass direction at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.06
+  requirement_ids:
+  - new-EV-17
+- table: passes
+  column: no_look_torso
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: torso_to_pass_angle_deg > 60.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.06
+  requirement_ids:
+  - new-EV-17
+- table: passes
+  column: is_throw_in
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: First pass of a throw-in.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.07
+  requirement_ids:
+  - new-EV-18
+- table: passes
+  column: restart_id
+  type: string
+  unit: null
+  range: FK restarts
+  nullable: true
+  definition: Restart it belongs to.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.07
+  requirement_ids:
+  - new-EV-18
+- table: passes
+  column: defender_on_thrower
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: A defender within 1.83 m of the thrower at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.03.07
+  requirement_ids:
+  - new-EV-18
+- table: passes
+  column: apex_height_m
+  type: float32
+  unit: m
+  range: '[0, 8]'
+  nullable: true
+  definition: Maximum ball height in flight.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.03.03
+  requirement_ids:
+  - new-DF-9
+- table: passes
+  column: is_lob_over_front
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Lob attempt to a fronted post.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.03.03
+  requirement_ids:
+  - new-DF-9
+- table: rebounds
+  column: landing_r_m
+  type: float32
+  unit: m
+  range: '[0, 15]'
+  nullable: true
+  definition: Distance from the rim centre to the landing point.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.05.05
+  requirement_ids:
+  - new-EV-22
+- table: rebounds
+  column: landing_theta_deg
+  type: float32
+  unit: degrees
+  range: '[-180, 180]'
+  nullable: true
+  definition: Angle of the landing point.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.05.05
+  requirement_ids:
+  - new-EV-22
+- table: rebounds
+  column: n_inside_off
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Offensive players holding inside position at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.05.05
+  requirement_ids:
+  - new-EV-22
+- table: rebounds
+  column: n_inside_def
+  type: int8
+  unit: count
+  range: '[0, 5]'
+  nullable: true
+  definition: Defensive players holding inside position at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.05.05
+  requirement_ids:
+  - new-EV-22
+- table: rebounds
+  column: rebounder_dist_at_release_m
+  type: float32
+  unit: m
+  range: '[0, 15]'
+  nullable: true
+  definition: Eventual rebounder's distance to the rim at release.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: E.05.05
+  requirement_ids:
+  - new-EV-22
+- table: post_touches
+  column: fronted
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Post was fronted before the entry.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.03.03
+  requirement_ids:
+  - new-DF-9
+- table: post_touches
+  column: lob_help_present
+  type: bool
+  unit: null
+  range: true/false
+  nullable: true
+  definition: Weak-side lob help (definition above).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.03.03
+  requirement_ids:
+  - new-DF-9
+- table: post_touches
+  column: lob_help_defender_id
+  type: string
+  unit: null
+  range: ESPN athlete ID
+  nullable: true
+  definition: Helper.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: G.03.03
+  requirement_ids:
+  - new-DF-9
+- table: team_box
+  column: bench_points
+  type: int16
+  unit: points
+  range: '[0, 150]'
+  nullable: true
+  definition: Points by non-starters.
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: H.02.04
+  requirement_ids:
+  - new-OS-2
+- table: team_box
+  column: bench_minutes_share
+  type: float32
+  unit: share
+  range: '[0, 1]'
+  nullable: true
+  definition: Bench minutes / team minutes.
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: H.02.04
+  requirement_ids:
+  - new-OS-2
+- table: value_credits
+  column: counterfactual_basis
+  type: enum[contest_off, expected_rim_attempts, expected_trigger_change, observed_delta]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Counterfactual used for this credit.
+  as_of: POST_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: H.04.06
+  requirement_ids:
+  - new-VL-4
+  - new-VL-5
+- table: load_stint_bins
+  column: time_forward_s
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Time moving forward in this speed bin.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: time_lateral_s
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Time moving laterally.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: time_backward_s
+  type: float32
+  unit: s
+  range: '[0, 2400]'
+  nullable: true
+  definition: Time moving backward.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: dist_forward_m
+  type: float32
+  unit: m
+  range: '[0, 10000]'
+  nullable: true
+  definition: Distance forward.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: dist_lateral_m
+  type: float32
+  unit: m
+  range: '[0, 10000]'
+  nullable: true
+  definition: Distance lateral.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: dist_backward_m
+  type: float32
+  unit: m
+  range: '[0, 10000]'
+  nullable: true
+  definition: Distance backward.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: load_stint_bins
+  column: dir_pose_coverage
+  type: float32
+  unit: share
+  range: '[0, 1]'
+  nullable: true
+  definition: Share of stint frames with usable torso facing.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: I.02.07
+  requirement_ids:
+  - new-PL-7
+- table: market_snapshots
+  column: public_ticket_share
+  type: float32
+  unit: share
+  range: '[0, 1]'
+  nullable: true
+  definition: Share of bets on this side.
+  as_of: IN_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: J.05.06
+  requirement_ids:
+  - new-MK-20
+- table: market_snapshots
+  column: public_money_share
+  type: float32
+  unit: share
+  range: '[0, 1]'
+  nullable: true
+  definition: Share of handle on this side.
+  as_of: IN_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: J.05.06
+  requirement_ids:
+  - new-MK-20
+- table: market_snapshots
+  column: public_share_source
+  type: string
+  unit: null
+  range: source_register.source
+  nullable: true
+  definition: Source of the share.
+  as_of: IN_GAME
+  licence: 'public registry fact: reference only until the source''s terms are checked (R-DS-02)'
+  leaf: J.05.06
+  requirement_ids:
+  - new-MK-20
+- table: frames
+  column: camera_view
+  type: enum (actions_extra.yaml camera_views)
+  unit: null
+  range: enum
+  nullable: true
+  definition: Camera view sub-class.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.02.02
+  requirement_ids:
+  - new-VI-5
+- table: frames
+  column: replay_of_event_id
+  type: string
+  unit: null
+  range: FK events
+  nullable: true
+  definition: Live event this replay frame shows.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.02.07
+  requirement_ids:
+  - new-VI-6
+- table: frames
+  column: replay_offset_s
+  type: float32
+  unit: s
+  range: '[0, 600]'
+  nullable: true
+  definition: Replay start minus the live event time.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.02.07
+  requirement_ids:
+  - new-VI-6
+- table: scoreboard_ocr
+  column: graphic_kind
+  type: enum[none, player_fouls, team_fouls, timeouts_left, player_stat_line, team_stat_comparison, lineup, set_name, other]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Kind of non-scorebug graphic.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.03.04
+  requirement_ids:
+  - new-VI-7
+- table: scoreboard_ocr
+  column: graphic_text_raw
+  type: string
+  unit: null
+  range: free text
+  nullable: true
+  definition: OCR text.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.03.04
+  requirement_ids:
+  - new-VI-7
+- table: scoreboard_ocr
+  column: graphic_parsed_json
+  type: json
+  unit: null
+  range: fields
+  nullable: true
+  definition: Parsed fields.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.03.04
+  requirement_ids:
+  - new-VI-7
+- table: scoreboard_ocr
+  column: graphic_subject_player_id
+  type: string
+  unit: null
+  range: ESPN athlete ID
+  nullable: true
+  definition: Player the graphic is about.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.03.04
+  requirement_ids:
+  - new-VI-7
+- table: audio_seconds
+  column: buzzer_kind
+  type: enum[none, period_end, shot_clock, substitution_or_timeout, other]
+  unit: null
+  range: enum
+  nullable: true
+  definition: Horn kind in this second.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.04.02
+  requirement_ids:
+  - new-AU-3
+  - new-AU-4
+- table: audio_seconds
+  column: buzzer_onset_ms
+  type: int16
+  unit: ms
+  range: '[0, 999]'
+  nullable: true
+  definition: Onset offset inside the second.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.04.02
+  requirement_ids:
+  - new-AU-3
+  - new-AU-4
+- table: audio_seconds
+  column: crowd_reaction_db
+  type: float32
+  unit: dB
+  range: '[0, 40]'
+  nullable: true
+  definition: Excess over the trailing 10-s median (0 if none).
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: L.04.02
+  requirement_ids:
+  - new-AU-3
+  - new-AU-4
+- table: set_instances
+  column: system_code
+  type: enum (OFF.F4.1/F4.2 codes)
+  unit: null
+  range: enum
+  nullable: true
+  definition: System label.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.04.01
+  requirement_ids:
+  - new-ST-11
+- table: set_instances
+  column: cycles_completed
+  type: int8
+  unit: count
+  range: '[0, 10]'
+  nullable: true
+  definition: Completed cycles.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.04.01
+  requirement_ids:
+  - new-ST-11
+- table: chances
+  column: paint_touches
+  type: int8
+  unit: count
+  range: '[0, 20]'
+  nullable: true
+  definition: Paint touches.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.09.02
+  requirement_ids:
+  - new-ST-14
+- table: chances
+  column: first_paint_touch_s
+  type: float32
+  unit: s
+  range: '[0, 30]'
+  nullable: true
+  definition: Time to the first paint touch.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.09.02
+  requirement_ids:
+  - new-ST-14
+- table: chances
+  column: n_passes
+  type: int8
+  unit: count
+  range: '[0, 30]'
+  nullable: true
+  definition: Passes in the chance.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.13.09
+  requirement_ids:
+  - new-ST-15
+- table: chances
+  column: n_reversals
+  type: int8
+  unit: count
+  range: '[0, 10]'
+  nullable: true
+  definition: Ball reversals.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.13.09
+  requirement_ids:
+  - new-ST-15
+- table: chances
+  column: frontcourt_to_shot_s
+  type: float32
+  unit: s
+  range: '[0, 30]'
+  nullable: true
+  definition: First frontcourt catch to shot.
+  as_of: IN_GAME
+  licence: computed by us (inherits the strictest licence class of its inputs)
+  leaf: F.13.09
+  requirement_ids:
+  - new-ST-15
+enum_additions:
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - ref_games_season_asof
+  - ref_games_total_asof
+  - ref_seasons_seen_asof
+  - ref_conferences_worked_asof
+  - ref_postseason_games_asof
+  definition: Official experience metrics (entity_type = official).
+  leaf: C.03.03
+  requirement_ids:
+  - new-RF-13
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - jumps_per_min
+  - high_jumps_per_min (h >= 0.40 m)
+  definition: Jump load per minute played.
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - def_onball_dist_ft_delta_m
+  - def_contest_rate_ft_delta
+  - def_contest_dist_ft_delta_m
+  - def_help_share_ft_delta
+  - def_fouls_per100_ft_delta
+  definition: Foul-trouble deltas (entity_type = player).
+  leaf: G.09.03
+  requirement_ids:
+  - new-DF-10
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - bench_points_pg
+  - bench_minutes_share
+  - bench_net_per100
+  definition: As-of team metrics.
+  leaf: H.02.04
+  requirement_ids:
+  - new-OS-2
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - shot_making_pts_per_fga
+  definition: Shrunk shooter value with n and ci95.
+  leaf: H.03.05
+  requirement_ids:
+  - new-VL-3
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - def_value_per100
+  - contest_value_per100
+  - rim_deterrence_per100
+  - rotation_value_per100
+  - rim_dfg_pct
+  definition: Defensive value metrics.
+  leaf: H.04.06
+  requirement_ids:
+  - new-VL-4
+  - new-VL-5
+- table: profile_snapshots
+  column: metric_code
+  add:
+  - contact_events_per_min
+  - screens_set_per_min
+  - screens_absorbed_per_min
+  - boxout_contacts_per_min
+  - post_contacts_per_min
+  definition: Contact load metrics.
+  leaf: I.02.08
+  requirement_ids:
+  - new-PL-8
+- table: bench_events
+  column: event_type
+  add:
+  - out_of_coaching_box
+  - seated
+  leaf: B.01.08
+  requirement_ids:
+  - new-CC-5
+- table: player_positions
+  column: spot
+  add:
+  - short_corner
+  leaf: B.01.13
+  requirement_ids:
+  - new-MD-7
+- table: state_corrections
+  column: correction_source
+  add:
+  - official_record
+  leaf: C.04.01
+  requirement_ids:
+  - new-DQ-2
+- table: movement_primitives
+  column: primitive_type
+  add:
+  - forward_run
+  - defensive_slide
+  - crossover_run
+  - backpedal
+  leaf: E.01.02
+  requirement_ids:
+  - new-ST-9
+- table: movement_primitives
+  column: primitive_type
+  add:
+  - jump
+  leaf: E.01.03
+  requirement_ids:
+  - new-PL-5
+- table: movement_primitives
+  column: primitive_type
+  add:
+  - cod_45_90
+  - cod_reversal_gt90
+  leaf: E.01.06
+  requirement_ids:
+  - new-PL-6
+- table: dribbles
+  column: move_type
+  add:
+  - in_and_out
+  - push
+  - pound
+  - snatch_back
+  - half_spin
+  leaf: E.02.04
+  requirement_ids:
+  - new-EV-14
+- table: movement_primitives
+  column: primitive_type
+  add:
+  - cut_ucla
+  - cut_iverson
+  - cut_zipper
+  - cut_flash
+  - cut_v
+  - cut_l
+  - cut_shuffle
+  - cut_flex
+  - cut_i
+  - cut_banana
+  - cut_pop_out
+  - cut_thru
+  - cut_45
+  - cut_weak_baseline
+  - cut_dive
+  leaf: E.07.02
+  requirement_ids:
+  - new-ST-10
+- table: bench_events
+  column: actor_type
+  add:
+  - on_court_player
+  leaf: E.11.03
+  requirement_ids:
+  - new-CC-7
+  - new-CO-1
+- table: value_credits
+  column: credit_role
+  add:
+  - contest
+  - rotation
+  - rim_deterrence
+  - closeout
+  - ball_pressure
+  - denial
+  - box_out
+  - charge_drawn
+  leaf: H.04.06
+  requirement_ids:
+  - new-VL-4
+  - new-VL-5
+- table: scoreboard_ocr
+  column: display
+  add:
+  - broadcast_graphic
+  leaf: L.03.04
+  requirement_ids:
+  - new-VI-7
+new_tables:
+- table: runs
+  grain: one row per run per definition
+  leaf: D.01.05
+  requirement_ids:
+  - new-MD-9
+  why_not_columns: a run spans many score events and seconds; one row per run per definition cannot live on an existing row
+  columns:
+  - column: game_id
+    type: string
+    unit: null
+    range: ESPN event ID
+    definition: Game.
+  - column: run_id
+    type: string
+    unit: null
+    range: unique in game
+    definition: Run identifier.
+  - column: definition_code
+    type: enum[strict_unanswered_8, register_net8_120s]
+    unit: null
+    range: enum
+    definition: Which run definition.
+  - column: team_id
+    type: string
+    unit: null
+    range: ESPN team ID
+    definition: Team on the run.
+  - column: start_score_event_id
+    type: string
+    unit: null
+    range: FK score_events
+    definition: First scoring event of the run.
+  - column: end_score_event_id
+    type: string
+    unit: null
+    range: FK score_events
+    definition: Last scoring event of the run.
+  - column: start_game_clock_s
+    type: float32
+    unit: s
+    range: '[0, 1200]'
+    definition: Clock at the first score.
+  - column: end_game_clock_s
+    type: float32
+    unit: s
+    range: '[0, 1200]'
+    definition: Clock at the last score.
+  - column: duration_s
+    type: float32
+    unit: s
+    range: '[0, 2400]'
+    definition: Game-clock duration.
+  - column: pts_for
+    type: int16
+    unit: points
+    range: '[8, 60]'
+    definition: Points by the running team.
+  - column: pts_against
+    type: int16
+    unit: points
+    range: '[0, 60]'
+    definition: Opponent points inside the window.
+  - column: timeouts_during
+    type: int8
+    unit: count
+    range: '[0, 5]'
+    definition: Timeouts called inside the run, either team.
+  - column: ended_by
+    type: enum[opponent_score, period_end, game_end, window_expired]
+    unit: null
+    range: enum
+    definition: What ended it.
+- table: fakes
+  grain: one row per fake
+  leaf: E.02.06
+  requirement_ids:
+  - new-EV-15
+  - new-EV-16
+  why_not_columns: several fakes per touch; each has its own defender reaction and value
+  columns:
+  - column: game_id
+    type: string
+    unit: null
+    range: ESPN event ID
+    definition: Game.
+  - column: fake_id
+    type: string
+    unit: null
+    range: unique in game
+    definition: Fake identifier.
+  - column: touch_id
+    type: string
+    unit: null
+    range: FK touches
+    definition: Touch in which it happened.
+  - column: possession_id
+    type: string
+    unit: null
+    range: FK possessions
+    definition: Possession.
+  - column: player_id
+    type: string
+    unit: null
+    range: ESPN athlete ID
+    definition: Faker.
+  - column: kind
+    type: enum[shot_fake, jump_fake, pass_fake, jab_step, rocker_step, head_or_shoulder_fake]
+    unit: null
+    range: enum
+    definition: Fake kind (actions_extra.yaml fakes).
+  - column: ts_ms
+    type: int64
+    unit: ms
+    range: '[0, video duration]'
+    definition: Peak of the fake.
+  - column: ball_rise_m
+    type: float32
+    unit: m
+    range: '[0, 1.5]'
+    definition: Ball rise (shot fakes).
+  - column: foot_disp_m
+    type: float32
+    unit: m
+    range: '[0, 1.5]'
+    definition: Foot displacement (jab/rocker).
+  - column: direction_deg
+    type: float32
+    unit: degrees
+    range: '[-180, 180]'
+    definition: Direction of the fake relative to the player->rim vector.
+  - column: defender_id
+    type: string
+    unit: null
+    range: ESPN athlete ID
+    definition: On-ball defender.
+  - column: defender_reaction
+    type: enum[left_feet, rose, shifted, closed_out, no_reaction, not_visible]
+    unit: null
+    range: enum
+    definition: Reaction.
+  - column: reaction_latency_s
+    type: float32
+    unit: s
+    range: '[0, 0.40]'
+    definition: Time from fake peak to the reaction threshold.
+  - column: next_action
+    type: enum[shot, drive, pass, dribble_hold, another_fake, turnover, foul_drawn]
+    unit: null
+    range: enum
+    definition: What followed within 1.5 s.
+  - column: value_delta
+    type: float32
+    unit: xpts
+    range: '[-2, 2]'
+    definition: Value change 1.0 s after.
+- table: source_definitions
+  grain: one row per source x field definition
+  leaf: M.01.06
+  requirement_ids:
+  - new-DS-3
+  why_not_columns: one row per source x field; source_register is one row per source
+  columns:
+  - column: source
+    type: string
+    unit: null
+    range: source_register.source
+    definition: Source.
+  - column: source_field
+    type: string
+    unit: null
+    range: field path
+    definition: Source field name.
+  - column: concept
+    type: enum[possession, chance, assist, block, steal, rebound, turnover, transition, fast_break, shot_zone, shot_range, garbage_time, minutes,
+      points_in_paint, other]
+    unit: null
+    range: enum
+    definition: Concept defined.
+  - column: definition_text
+    type: string
+    unit: null
+    range: <= 600 chars, paraphrased
+    definition: The source's definition (paraphrase; no long quotes).
+  - column: url
+    type: string
+    unit: null
+    range: URL or repo path
+    definition: Where it was read.
+  - column: verified
+    type: bool
+    unit: null
+    range: true/false
+    definition: Read from an opened page/code (true) or inferred (false).
+  - column: checked_on
+    type: date
+    unit: null
+    range: YYYY-MM-DD
+    definition: Date checked.
+  - column: our_columns
+    type: list<string>
+    unit: null
+    range: table.column
+    definition: Columns that carry this source field.
+  - column: difference_from_ours
+    type: string
+    unit: null
+    range: free text
+    definition: How it differs from our definition.

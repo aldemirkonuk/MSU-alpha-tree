@@ -39,8 +39,9 @@ def test_parquet_round_trip_with_utc_micros_and_dedup(tmp_path):
     assert t.num_rows == 2
     assert str(t.schema.field("snapshot_time_utc").type) == "timestamp[us, tz=UTC]"
     assert t.column("snapshot_time_utc")[0].as_py() == T0
-    again = store.write([row()], run_id="run1")
-    assert again[0] != paths[0]                       # never overwrites
+    assert store.write([row()], run_id="run1") == []          # same row again: skipped (idempotent)
+    again = store.write([row(line=-4.0)], run_id="run1")      # new row, same run id
+    assert again[0] != paths[0]                               # never overwrites an existing file
 
 
 def test_store_refuses_repo_paths():

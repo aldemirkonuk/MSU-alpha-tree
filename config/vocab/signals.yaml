@@ -1,0 +1,168 @@
+# Officials' signals: every signal in Appendix VIII "Official Men's Basketball Signals",
+# 2026-27 NCAA men's rules book, pdf pages 141-151 (printed 138-148). Signal pages are drawings
+# (PlayPic); names are the book's captions; pose descriptions are ours, read from the drawings.
+# Status: PROPOSAL (2026-10-18). Lands in: whistles.signal_code / official signal recognition (R-RF-04,
+# new-RF-10, new-RF-11), fouls.contact_mechanism (new-RF-5), turnovers/violations codes.
+#
+# pose: body-only description for a keypoint classifier (no faces). Conventions:
+#   arm elevation = angle of upper arm from the trunk (0 = hanging, 90 = horizontal, 180 = straight up);
+#   elbow angle = 180 straight; "chest height" = hand at 1.2-1.5 m for an adult official (proposal);
+#   motion = repeated if drawn with arrows. Durations are proposals for detection windows.
+# category: time | timeout | violation | foul | information | scoring
+# sequence: a call is usually stop signal -> type signal -> (direction/number) at the reporting area.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+source: "docs/rules/PRMBB_RulesBook.pdf Appendix VIII, pdf 141-151 / printed 138-148"
+requirements: [R-RF-04, R-RF-05, new-RF-10, new-RF-11, new-RF-5]
+count: 63
+
+signals:
+  # ---------------- Starting and stopping clock (pdf 141 / p 138)
+  - {id: start_clock, name: "Start Clock", category: time, pdf: 141, p: 138, rule: "5-10.1", meaning: "Time in; timer starts game clock.",
+     pose: "One arm raised straight up (elevation ~180 deg), open palm forward, then chopped down forward to the side (arrow); one chop ~0.5 s."}
+  - {id: stop_clock, name: "Stop Clock", category: time, pdf: 141, p: 138, rule: "5-11", meaning: "Stop the clock (violation, held ball, other).",
+     pose: "One arm straight up, open hand, palm forward, held >= 0.5 s; usually with whistle."}
+  - {id: stop_clock_foul, name: "Stop Clock for Foul", category: time, pdf: 141, p: 138, rule: "5-11.1.a, 2-7.12", meaning: "Foul called; clock stops.",
+     pose: "One arm straight up with closed fist held >= 0.5 s (fist distinguishes from stop_clock)."}
+  - {id: officials_stoppage, name: "Officials Stoppage", category: time, pdf: 141, p: 138, rule: "5-11.2", meaning: "Official stops play (injury, emergency, conference).",
+     pose: "One hand flat on the upper chest, other arm down."}
+  # ---------------- Timeouts (pdf 142 / p 139)
+  - {id: timeout_30s, name: "30-Second Timeout", category: timeout, pdf: 142, p: 139, rule: "5-14.4.c", meaning: "30-second timeout granted.",
+     pose: "Both hands touching the tops of the shoulders, elbows out (arm elevation ~90 deg, elbows bent ~30 deg)."}
+  - {id: timeout_60_75s, name: "60/75-Second Timeout", category: timeout, pdf: 142, p: 139, rule: "5-14.4.a-b", meaning: "Full (60 or 75 s) timeout granted.",
+     pose: "Two-part: fists together at chest, then both arms extended horizontally to the sides (elevation ~90 deg, elbows straight)."}
+  - {id: directional_or_media_timeout, name: "Directional Signal or Media Timeout: Point Toward Table", category: timeout, pdf: 142, p: 139, rule: "5-14.10, 2-7.13.b", meaning: "Team/direction indication, or media timeout charged to table.",
+     pose: "One arm extended horizontally forward/sideways, index finger pointing (toward table for media timeout)."}
+  - {id: shortened_timeout, name: "Shortened timeout has been requested and will occur", category: timeout, pdf: 142, p: 139, rule: "5-14.14", meaning: "Timeout will be shortened.",
+     pose: "Both arms raised, hands above head, index fingers pointing at each other / making a small circle above the head."}
+  # ---------------- Violations (pdf 143-144 / p 140-141)
+  - {id: three_second_violation, name: "Three-Second Violation", category: violation, pdf: 143, p: 140, rule: "9-9", meaning: "Three seconds in the lane.",
+     pose: "Arm swings up from the hip to horizontal-forward with three fingers extended (thumb folded)."}
+  - {id: five_second_violation, name: "Five-Second Violation", category: violation, pdf: 143, p: 140, rule: "9-14, 7-6.6, 9-4.1.d", meaning: "Five-second closely guarded or throw-in count expired.",
+     pose: "One hand raised at shoulder/head height, palm forward, five fingers spread."}
+  - {id: ten_second_violation, name: "10-Second Violation", category: violation, pdf: 143, p: 140, rule: "9-10, 9-1.1.a", meaning: "Ten-second backcourt (or FT release) violation.",
+     pose: "Both hands raised at shoulder height, palms forward, all ten fingers spread."}
+  - {id: twenty_second_reset, name: "20-Second Reset", category: violation, pdf: 143, p: 140, rule: "2-11.6.c, 2-11.6.d", meaning: "Shot clock to 20 s (or 20/remaining).",
+     pose: "Both hands at shoulder height: one shows two fingers (V), the other a closed fist ('0')."}
+  - {id: throw_in_spot_violation, name: "Throw-in Spot or Designated Spot Violation", category: violation, pdf: 143, p: 140, rule: "9-4.1.a, 7-6.8", meaning: "Thrower left the designated spot.",
+     pose: "One arm straight down-forward at ~45 deg below horizontal, index finger pointing at the floor spot."}
+  - {id: kicking_violation, name: "Kicking Violation", category: violation, pdf: 143, p: 140, rule: "9-6", meaning: "Intentional kick of the ball.",
+     pose: "One leg lifted forward from the knee in a kicking motion, foot toward the front (arrow)."}
+  - {id: excessive_swinging_elbows, name: "Excessive Swinging of Elbows", category: violation, pdf: 143, p: 140, rule: "9-13, 4-18.7", meaning: "Excessive elbow swing (violation; also foul if contact).",
+     pose: "One arm raised to shoulder height, elbow bent, swung horizontally across the body (arrow)."}
+  - {id: traveling, name: "Traveling Violation", category: violation, pdf: 143, p: 140, rule: "9-5", meaning: "Travel.",
+     pose: "Both fists in front of the chest rotated around each other (rolling motion, >= 2 rotations)."}
+  - {id: illegal_dribble, name: "Illegal-Dribble Violation", category: violation, pdf: 144, p: 141, rule: "9-7", meaning: "Double dribble.",
+     pose: "One forearm forward at waist height, palm down, patting up and down (vertical arrow), as dribbling."}
+  - {id: backcourt_or_carrying, name: "Backcourt Violation or Palming/Carrying Violation", category: violation, pdf: 144, p: 141, rule: "9-12, 4-13.4.a", meaning: "Over-and-back, or palming/carrying.",
+     pose: "One hand at waist rotated palm-up/palm-down while the forearm swings forward (turn-over motion); followed by direction for backcourt."}
+  - {id: shot_clock_violation, name: "Shot-Clock Violation", category: violation, pdf: 144, p: 141, rule: "9-11", meaning: "Shot-clock violation.",
+     pose: "One hand tapping the top of the head (flat hand on crown), repeated (arrows)."}
+  - {id: held_ball, name: "Held Ball", category: violation, pdf: 144, p: 141, rule: "6-4.2", meaning: "Held ball; arrow decides possession.",
+     pose: "Both thumbs up, arms extended forward/raised to shoulder height; followed by directional point per arrow."}
+  # ---------------- Fouls (pdf 145-147 / p 142-144)
+  - {id: holding, name: "Holding Foul", category: foul, pdf: 145, p: 142, rule: "4-19, 10-1.1", meaning: "Holding.",
+     pose: "One hand grasps the other wrist in front of the chest/upper body."}
+  - {id: pushing_or_charging, name: "Pushing or Charging Foul", category: foul, pdf: 145, p: 142, rule: "4-7, 10-1.1", meaning: "Push or charge.",
+     pose: "Both arms pushed forward from the chest, palms out, elbows extending (push motion)."}
+  - {id: handchecking, name: "Handchecking Foul", category: foul, pdf: 145, p: 142, rule: "10-1.4, App III s4", meaning: "Hand-check / stayed hand / arm bar.",
+     pose: "One hand grasping the opposite wrist with the palm of the grabbed hand facing outward, forearms crossed at chest height."}
+  - {id: player_control_foul, name: "Player-Control Foul/Team-Control Foul", category: foul, pdf: 145, p: 142, rule: "4-15.2.a.1-2", meaning: "Offensive foul.",
+     pose: "One hand placed behind the head (fist on back of the head), elbow forward/up; followed by directional point."}
+  - {id: directional_signal, name: "Directional Signal", category: foul, pdf: 145, p: 142, rule: "2-7.13.b", meaning: "Which team gets the ball.",
+     pose: "One arm horizontal toward the basket of the team entitled, index finger pointing."}
+  - {id: technical_foul, name: "Technical Foul", category: foul, pdf: 145, p: 142, rule: "4-15.3", meaning: "Technical foul.",
+     pose: "Hands form a T: one forearm horizontal over the vertical fingertips of the other hand, at head height."}
+  - {id: illegal_use_of_hands, name: "Illegal Use of Hands Foul", category: foul, pdf: 145, p: 142, rule: "10-1.2-3", meaning: "Illegal use of hands.",
+     pose: "One hand strikes the opposite forearm/wrist in a chopping motion, forearms crossed at waist."}
+  - {id: double_foul, name: "Double Foul/Media Timeout", category: foul, pdf: 145, p: 142, rule: "4-15.2.b, 5-14.10", meaning: "Double foul (also used for media timeout).",
+     pose: "Both arms extended horizontally to the sides with closed fists, held ~1 s."}
+  - {id: blocking, name: "Blocking Foul", category: foul, pdf: 146, p: 143, rule: "4-5, 4-17, 10-1.14", meaning: "Block.",
+     pose: "Both fists on the hips (akimbo, elbows out)."}
+  - {id: tripping, name: "Tripping", category: foul, pdf: 146, p: 143, rule: "10-1.1", meaning: "Trip.",
+     pose: "One leg swept forward and across low (arrow), foot near floor."}
+  - {id: hit_to_head, name: "Hit to the Head", category: foul, pdf: 146, p: 143, rule: "4-15.2.c.2.c", meaning: "Contact to the head.",
+     pose: "One hand tapping the side/top of own head with flat palm, other arm down."}
+  - {id: flagrant, name: "Flagrant 1 or 2 Foul", category: foul, pdf: 146, p: 143, rule: "4-15.2.c", meaning: "Flagrant foul (followed by 1 or 2 fingers).",
+     pose: "Both arms raised, wrists crossed above the head with closed fists (X above head)."}
+  - {id: excessive_contact, name: "Excessive-Contact Foul (Flagrant 1 or 2)", category: foul, pdf: 146, p: 143, rule: "4-15.2.c, 10-1.18", meaning: "Excessive contact.",
+     pose: "Arms crossed above head (as flagrant) then swept down to the sides in an arc (arrows)."}
+  - {id: chucking, name: "Chucking", category: foul, pdf: 146, p: 143, rule: "10-1.1", meaning: "Chucking a cutter.",
+     pose: "One forearm horizontal across the chest pushed outward by the other hand (chuck motion)."}
+  - {id: pinning_defender, name: "Pinning a Defender", category: foul, pdf: 146, p: 143, rule: "4-15.2.c.1.g, 10-1.1", meaning: "Offensive player pins/hooks defender's arm.",
+     pose: "One arm hooks around (shown sweeping from the side to the front at waist level, other hand drawn in)."}
+  - {id: dislodging_knee, name: "Dislodging with the knee", category: foul, pdf: 146, p: 143, rule: "10-1.5.a", meaning: "Knee into post player.",
+     pose: "One knee raised forward to hip height (thigh ~horizontal), hand near the knee."}
+  - {id: defensive_foul_staying_here, name: "Defensive Foul \"Staying Here\"", category: foul, pdf: 147, p: 144, rule: "4-17", meaning: "Defender was not in legal position (stayed/moved).",
+     pose: "Fist up (foul) then arm swept down and forward pointing to the floor where the defender stood (arrow)."}
+  - {id: dislodging_lower_body, name: "Dislodging with the lower body", category: foul, pdf: 147, p: 144, rule: "10-1.5.a, App III s3.d", meaning: "Backing in / hips displace opponent.",
+     pose: "Both arms straight up, then a hip/leg push to the side (arrow) while arms stay up."}
+  - {id: defender_jumped_a_to_b, name: "Defender Jumped from \"A\" to \"B\"", category: foul, pdf: 147, p: 144, rule: "4-39.1.e", meaning: "Defender left his vertical plane while jumping.",
+     pose: "Both arms straight up, then a body rotation/step to the side (curved arrow at waist)."}
+  - {id: defensive_foul_vertical_cylinder, name: "Defensive Foul Violation of Vertical Cylinder", category: foul, pdf: 147, p: 144, rule: "4-39", meaning: "Defender outside his cylinder.",
+     pose: "Three-part: fist up; hands on hips; then forearms extended forward and moved up/down (arrow) to show the cylinder."}
+  - {id: landing_space, name: "Landing Space", category: foul, pdf: 147, p: 144, rule: "4-17.4.d, POE 7", meaning: "Defender took shooter's landing space.",
+     pose: "One leg stepped/kicked forward low with a pointing hand toward the floor at the foot (arrow)."}
+  # ---------------- Information (pdf 148-149 / p 145-146)
+  - {id: bird_dog, name: "Foul: Optional 'Bird Dog'", category: information, pdf: 148, p: 145, rule: "2-7.12", meaning: "Fist up while the other arm points at the fouler.",
+     pose: "One arm straight up with fist; the other arm horizontal, open hand/pointing at the fouler (hip height)."}
+  - {id: beckon_substitute, name: "Beckon Substitute", category: information, pdf: 148, p: 145, rule: "3-6.1.c", meaning: "Substitute may enter.",
+     pose: "One open hand at shoulder height waved toward the face (wave-in, arrow)."}
+  - {id: tipped_ball, name: "Tipped Ball", category: information, pdf: 148, p: 145, rule: "9-11, 2-11.6", meaning: "Ball was touched (affects shot clock/OOB).",
+     pose: "One arm raised forward-up, fingertips of the other hand brushing the raised hand's fingertips upward (arrow)."}
+  - {id: no_score, name: "No Score", category: information, pdf: 148, p: 145, rule: "5-1, 9-15 Penalty", meaning: "Goal does not count.",
+     pose: "Arms crossed horizontally in front of the chest then swept apart to full horizontal extension (scissor motion)."}
+  - {id: no_shot_pass_off, name: "No Shot/Pass Off", category: information, pdf: 148, p: 145, rule: "5-1.10, 4-24", meaning: "Not a try (pass) / shot not counted as try.",
+     pose: "Arms crossed at chest, swept out horizontally, then one arm makes a forward pass gesture (third panel)."}
+  - {id: shot_clock_reset, name: "Shot-Clock Reset", category: information, pdf: 149, p: 146, rule: "2-11.6.b", meaning: "Reset shot clock to 30.",
+     pose: "One arm straight up, index finger up, hand rotating in a horizontal circle (twirl) above the head."}
+  - {id: foul_reporting, name: "Foul Reporting", category: information, pdf: 149, p: 146, rule: "2-7.12", meaning: "Report fouler's number to table.",
+     pose: "Both hands in front of the chest showing the shirt number with fingers (e.g. 2 fingers and 4 fingers), facing the table."}
+  - {id: delayed_dead_ball, name: "Delayed-Dead Ball: Withheld Whistle", category: information, pdf: 149, p: 146, rule: "6-6", meaning: "Foul/violation signalled but whistle withheld (e.g. try in flight).",
+     pose: "One arm extended horizontally to the side with closed fist, held."}
+  - {id: not_closely_guarded, name: "Not Closely Guarded", category: information, pdf: 149, p: 146, rule: "9-14.4", meaning: "Closely guarded count ended / not in effect.",
+     pose: "Both arms extended horizontally to the sides with fists (similar to double foul; context: live ball, no whistle)."}
+  - {id: shot_clock_near_expiration, name: "Shot Clock Near Expiration", category: information, pdf: 149, p: 146, rule: "2-11.7", meaning: "Shot clock about to expire (new in 2026-27 book, highlighted).",
+     pose: "One arm raised forward-up at ~135 deg elevation, index finger pointing toward the shot clock."}
+  - {id: record_game_time_twirl, name: "Record Game Time \"Twirl\" Signal", category: information, pdf: 149, p: 146, rule: "2-7.15, 2-9.18, 11-2.1.b.1", meaning: "Scorer to record time for a later replay review.",
+     pose: "One arm horizontal toward the table, index finger making a small circle."}
+  - {id: replay_or_challenge, name: "Replay Required/Coach's Challenge", category: information, pdf: 149, p: 146, rule: "11-2, 11-3, 11-4", meaning: "Instant replay review / coach's challenge (highlighted as changed).",
+     pose: "One arm straight up, index finger up, hand drawing a horizontal circle above the head (as shot-clock reset; context: dead ball + walk to monitor)."}
+  - {id: flopping, name: "Flopping", category: information, pdf: 149, p: 146, rule: "10-4.1.o", meaning: "Flop warning/technical.",
+     pose: "Both forearms raised in front of the chest, palms forward, pumped forward and down twice (arrows)."}
+  # ---------------- Scoring/shooting (pdf 150-151 / p 147-148)
+  - {id: goal_counts, name: "Goal Counts or is Awarded", category: scoring, pdf: 150, p: 147, rule: "5-1.2, 9-15 Penalty", meaning: "Goal counts / awarded (BI/GT).",
+     pose: "One arm straight up with fist (or open hand), then brought straight down to the side (downward arrow)."}
+  - {id: two_free_throws, name: "Two Free Throws", category: scoring, pdf: 150, p: 147, rule: "2-7.12, 10-1 Penalty d", meaning: "Two FT awarded.",
+     pose: "One arm horizontal to the side, two fingers extended."}
+  - {id: bonus_free_throw, name: "Bonus Free Throw", category: scoring, pdf: 150, p: 147, rule: "8-2.1", meaning: "One-and-one.",
+     pose: "Both arms horizontal to the sides, index finger extended on each hand."}
+  - {id: three_free_throws, name: "Three Free Throws", category: scoring, pdf: 150, p: 147, rule: "10-1 Penalty e", meaning: "Three FT awarded.",
+     pose: "One arm horizontal to the side, three fingers extended."}
+  - {id: shooting_foul, name: "Shooting Foul", category: scoring, pdf: 150, p: 147, rule: "10-1 Penalty b, d, e", meaning: "Foul on a shooter; number of fingers = FT.",
+     pose: "Fist straight up (stop for foul), then arm angled forward-up ~135 deg with two or three fingers extended."}
+  - {id: one_free_throw, name: "One Free Throw", category: scoring, pdf: 151, p: 148, rule: "10-1 Penalty b", meaning: "One FT awarded.",
+     pose: "One arm horizontal forward/side, index finger extended."}
+  - {id: three_point_attempt, name: "Three-Point Attempt", category: scoring, pdf: 151, p: 148, rule: "2-7.8, 5-1.5", meaning: "Try from beyond the arc.",
+     pose: "One arm raised (elevation 135-180 deg) with three fingers extended, held during the flight of the try."}
+  - {id: three_point_successful, name: "Three-Point Successful", category: scoring, pdf: 151, p: 148, rule: "2-7.8, 5-1.4", meaning: "Three-point goal scored.",
+     pose: "Both arms straight up, three fingers extended on each hand."}
+  - {id: visible_count, name: "Visible Count", category: scoring, pdf: 151, p: 148, rule: "2-7.9", meaning: "Official counting seconds (throw-in, closely guarded, FT; 10 s when no shot clock).",
+     pose: "One arm extended to the side at shoulder height, forearm chopping in and out horizontally once per second (period ~1.0 s)."}
+
+detection_notes:
+  confusable_pairs:
+    - [shot_clock_reset, replay_or_challenge, "same twirl; separate by context: live ball/rebound vs dead ball and walk to monitor"]
+    - [double_foul, not_closely_guarded, "same pose; double foul after a whistle, not-closely-guarded with no whistle"]
+    - [stop_clock, stop_clock_foul, "open hand vs fist; needs hand crop >= 20 px tall"]
+    - [player_control_foul, hit_to_head, "fist behind head vs flat hand on side/top of head"]
+    - [timeout_60_75s, double_foul, "full timeout starts with fists at chest"]
+  timing: "Signals follow the whistle by 0.2-2.0 s; foul reporting happens 3-15 s later in the reporting area near the table (proposal windows)."
+  privacy: "Pose keypoints only; no face embeddings stored (repo rule)."
+
+open_questions:
+  - "Shot Clock Near Expiration and Replay Required/Coach's Challenge captions are shaded (new or changed in 2026-27); was the shot-clock-near-expiration signal in the 2025-26 book?"
+  - "Pose descriptions are read from line drawings; validate on 300 labelled broadcast signals before training (R-RF-04)."

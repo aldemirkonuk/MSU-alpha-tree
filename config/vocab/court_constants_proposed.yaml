@@ -1,0 +1,95 @@
+# Proposed complete NCAA men's court constants, metres, 2026-27 rules book.
+# Status: PROPOSAL (2026-10-18). Does NOT replace config/court_ncaa_men.yaml (left untouched); see
+# docs/data/court_constants_check.md for the check of every existing value and the derivations.
+# Source: docs/rules/PRMBB_RulesBook.pdf Rule 1 (pdf 21-31, printed 18-28), court diagrams (pdf 18-19, printed 15-16),
+# restricted-area illustration (pdf 20, printed 17). 1 ft = 0.3048 m, 1 in = 0.0254 m (exact).
+# Frame for *_y_m / *_x_m: origin on the floor under the rim centre; x along end line; y toward half court.
+# Edge convention: each value says which edge (inner/outer/centre) it measures, as the book does.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+verified_against_book: true
+diagram_read_values_need_full_resolution_check: [lane_space_layout, mark_28ft, coaching_box_mark_length_m, endline_lane_mark]
+requirements: [R-CG-01, new-CG-1, new-CG-2]
+
+constants:
+  court_length_m: {value: 28.6512, source: "94 ft, inside edges", rule: 1-2.2, pdf: 21}
+  court_width_m: {value: 15.2400, source: "50 ft, inside edges", rule: 1-2.2, pdf: 21}
+  line_width_m: {value: 0.0508, source: "2 in", rule: "1-3.2, 1-5.1, 1-6.5, 1-7.2, 1-8", pdf: [21, 22, 23]}
+  shadow_line_border_min_m: {value: 0.00635, source: "1/4 in", rule: 1-3.4, pdf: 22}
+  out_of_bounds_clear_space_min_m: {value: 0.9144, source: "3 ft (preferably 10 ft = 3.048)", rule: 1-3.1, pdf: 21}
+  end_line_area_m: {value: 1.8288, source: "6-ft area outside end line; restraining line", rule: "1-3.3, 1-17.6", pdf: [21, 29]}
+  restraining_line_y_m: {value: -3.4290, source: "6 ft behind end line (diagram)", pdf: 19}
+  rim_centre_from_end_line_m: {value: 1.6002, source: "63 in (diagram); = 4 ft + 6 in + 9 in", rule: "1-13.1, 1-15.2", pdf: [19, 26, 27]}
+  backboard_face_from_end_line_m: {value: 1.2192, source: "4 ft", rule: 1-13.1, pdf: 26}
+  backboard_face_y_m: {value: -0.3810}
+  ring_inner_edge_from_backboard_m: {value: 0.1524, source: "6 in", rule: 1-15.2, pdf: 27}
+  ring_inner_diameter_m: {value: 0.4572, source: "18 in", rule: 1-14.1, pdf: 27}
+  ring_rod_diameter_max_m: {value: 0.015875, source: "5/8 in", rule: 1-14.2, pdf: 27}
+  rim_height_m: {value: 3.0480, source: "10 ft to upper edge", rule: 1-15.2, pdf: 27}
+  net_length_m: {min: 0.3810, max: 0.4572, source: "15-18 in", rule: 1-14.1, pdf: 27}
+  backboard_width_m: {value: 1.8288, source: "6 ft", rule: 1-10.2, pdf: [23, 24]}
+  backboard_height_m: {options: [1.0668, 1.2192], recommended: 1.0668, source: "3.5 ft or 4 ft", rule: 1-10.2, pdf: [23, 24]}
+  backboard_top_edge_height_m: {value: 3.9624, source: "13 ft", rule: 1-13.2, pdf: 26}
+  backboard_bottom_edge_height_m: {options: [2.8956, 2.7432], derived: "3.9624 - board height"}
+  backboard_target_rectangle_m: {width: 0.6096, height: 0.4572, source: "24 x 18 in", rule: "1-18.4", pdf: 29}
+  backboard_padding_thickness_m: {value: 0.0254, rule: 1-11.2, pdf: 24}
+  ring_max_flex_deg: {value: 30, rule: "Equipment item 9", pdf: 17}
+  lane_width_outer_m: {value: 3.6576, source: "12 ft to outside of lane lines", rule: 1-6.1, pdf: 22}
+  lane_half_width_outer_m: {value: 1.8288}
+  free_throw_line_far_edge_from_backboard_m: {value: 4.5720, source: "15 ft", rule: 1-6.5, pdf: 23}
+  free_throw_line_far_edge_from_end_line_m: {value: 5.7912, source: "19 ft (diagram)", pdf: 19}
+  free_throw_line_far_edge_y_m: {value: 4.1910}
+  free_throw_line_near_edge_y_m: {value: 4.1402}
+  free_throw_semicircle_radius_outer_m: {value: 1.8288, source: "6 ft outside radius", rule: 1-6.5, pdf: 23}
+  centre_circle_radius_outer_m: {value: 1.8288, source: "6 ft to outside edge", rule: "1-4.1.d; diagram", pdf: [22, 19]}
+  centre_circle_nonjumper_space_m: {value: 0.9144, source: "3 ft outside circle", rule: 1-4.2, pdf: 22}
+  division_line_centre_from_end_line_m: {value: 14.3256}
+  division_line_centre_y_m: {value: 12.7254}
+  frontcourt_boundary_y_m: {value: 12.7000, source: "nearer edge of division line; line itself is backcourt", rule: "9-12.1-2", pdf: 99}
+  three_point_arc_radius_m: {value: 6.7501, source: "22 ft 1.75 in, centre of basket to OUTSIDE edge", rule: 1-7.1, pdf: 23}
+  three_point_corner_distance_m: {value: 6.6008, source: "21 ft 7.875 in to outside edge", rule: 1-7.1, pdf: 23}
+  three_point_corner_from_sideline_m: {value: 1.0192, source: "40.125 in (diagram)", pdf: 19}
+  three_point_straight_length_from_end_line_m: {value: 3.0067, source: "9 ft 10.375 in (diagram); geometry gives 3.0117", pdf: 19}
+  three_point_corner_theta_deg: {value: 12.07, derived: "atan2(sqrt(6.7501^2 - 6.6008^2), 6.6008)"}
+  restricted_area_radius_inner_m: {value: 1.2192, source: "4 ft, centre of basket to INNER edge of arc", rule: "1-8, 4-31", pdf: [23, 63, 20]}
+  restricted_area_boundary_outer_m: {value: 1.2700, source: "area bounded by OUTER edge of 2-in arc line", rule: 4-31, pdf: 63}
+  restricted_area_straight_ends: {value: "straight lines to the front face of the backboard (y = -0.381)", rule: 1-8, pdf: [23, 20]}
+  lane_space_depth_m: {value: 0.9144, source: "36 in outward from lane line outer edge", rule: 1-6.4, pdf: 23}
+  lane_space_mark_m: {width: 0.0508, depth: 0.2032, source: "2 x 8 in", rule: 1-6.2, pdf: 23}
+  lane_block_m: {width: 0.3048, depth: 0.2032, source: "12 x 8 in", rule: 1-6.2, pdf: 23}
+  lane_space_layout_from_end_line_m:   # diagram reading at 400 dpi (pdf 19); verify
+    open_space_lowest: [1.2192, 2.1336]
+    block: [2.1336, 2.4384]
+    space_1_opponent: [2.4384, 3.3528]
+    mark_1: [3.3528, 3.4036]
+    space_2_teammate: [3.4036, 4.3180]
+    mark_2: [4.3180, 4.3688]
+    space_3_opponent: [4.3688, 5.2832]
+    mark_3: [5.2832, 5.3340]
+  lane_space_layout_y_m: {block: [0.5334, 0.8382], space_1: [0.8382, 1.7526], space_2: [1.8034, 2.7178], space_3: [2.7686, 3.6830]}
+  endline_throw_in_mark_x_m: {value: 2.7432, source: "3 ft outside lane line; mark 12 in long x 2 in wide (recommended)", rule: 7-3.2.a, pdf: [84, 19]}
+  mark_28ft_from_end_line_m: {value: 8.5344, source: "28 ft; edge unstated", rule: "4-3.1, 7-3.2.a", pdf: [52, 84, 18, 19]}
+  mark_28ft_y_m: {value: 6.9342}
+  mark_28ft_into_court_m: {value: 0.9144, source: "3 ft line on bench side (diagram reading, unverified)", pdf: 19}
+  coaching_box_end_from_end_line_m: {value: 11.5824, source: "38-ft line", rule: 1-9.1, pdf: 23}
+  coaching_box_mark_length_min_m: {value: 0.6096, source: "2 ft perpendicular to sideline", rule: 1-9.2, pdf: 23}
+  team_bench_area_from_end_line_m: {value: 8.5344, source: "28 ft (bench area begins at 28-ft line)", rule: 4-3.1, pdf: 52}
+  bench_seating_from_boundary_m: {min: 0.9144, max: 3.6576, source: "3-12 ft", rule: 4-3.2, pdf: 52}
+  designated_spot_width_m: {value: 0.9144, source: "3 ft", rule: 7-6.8.b, pdf: 88}
+  closely_guarded_distance_m: {value: 1.8288, source: "6 ft forward foot to forward foot", rule: "4-17.2, 9-14.1", pdf: [58, 101]}
+  screen_boundary_distance_m: {value: 1.8288, source: "6 ft", rule: "4-35.7, 7-6.9.c", pdf: [64, 88]}
+  post_area_outside_lane_m: {value: 0.9144, source: "approximately 3 ft", rule: 4-29, pdf: 63}
+  commercial_logo_box_m: {side: 3.048, from_division_line: 2.5908, from_sideline: 1.3716, rule: 1-17.5, pdf: 29}
+  scorer_x_mark_segment_m: {length: 0.3048, width: 0.0508, rule: 1-3.6.a, pdf: 22}
+  ball_circumference_m: {min: 0.7493, max: 0.7620, rule: 1-16.8, pdf: 28}
+  ball_diameter_m: {min: 0.2385, max: 0.2426, derived: "circumference / pi"}
+  ball_mass_kg: {min: 0.5670, max: 0.6237, source: "20-22 oz", rule: 1-16.9, pdf: 28}
+  ball_rebound_top_m: {drop_bottom_m: 1.8288, min: 1.2446, max: 1.3716, source: "6 ft drop, 49-54 in", rule: 1-16.7, pdf: 28}
+  ball_rib_width_max_m: {value: 0.00635, rule: 1-16.5, pdf: 28}
+  led_light_offset_max_m: {top_bottom: 0.1524, side: 0.1270, rule: "Equipment item 11", pdf: 17}
+  ceiling_min_m: {value: 7.62, source: "25 ft (recommended)", pdf: 16}
+  backboard_static_within_s: {value: 4, rule: 1-13.6, pdf: 27}
+  ring_energy_absorption_pct: {min: 35, max: 50, max_diff_between_baskets: 5, rule: 1-15.4, pdf: 27}

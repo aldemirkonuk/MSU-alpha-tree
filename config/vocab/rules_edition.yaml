@@ -1,0 +1,248 @@
+# Rules layer (R-RL): one record per rules edition, NCAA Division I men's basketball.
+# Status: PROPOSAL (2026-10-18), not adopted. Lands in: games.rules_edition_id (new-RL-1, inbox 007),
+# and every config/check that today hard-codes a rule constant (config/invariants.yaml,
+# config/court_ncaa_men.yaml, simulation code) reads the edition selected by game date.
+#
+# Sources opened (all local, docs/rules/):
+#   RB  = PRMBB_RulesBook.pdf, 2026-27 NCAA Men's Rules Book (dated August 2026). printed page = pdf page - 3.
+#   CB  = PRMBB_CaseBook.pdf (2026-27 approved rulings). printed page = pdf page - 5.
+#   PCI = 2026-27PRMBB_PostClinicInterpretations.pdf (dated 2026-10-15), 2 pages.
+#   CHG = 2025-26PRMBB_RulesChanges.pdf ("2025-26 and 2026-27 Men's Basketball Rules Changes", 10 proposals), 3 pages.
+#   DIF = 2026-27PRXBB_MajorRulesDifferences.pdf (NFHS / NCAA men / NCAA women comparison), 12 pages.
+# Units: s, m, counts. Feet/inch originals kept in *_source strings.
+#
+# Selection rule (proposal new-RL-2): edition = the record whose [season_window_start, season_window_end]
+# contains the game's local tip date. Windows are our convention (1 July - 30 June), because the books state
+# no effective calendar date; the first permissible contest date is not in any opened document (unverified).
+# A game outside every window -> rules_edition_id = unknown and every rule-derived check is skipped and flagged.
+#
+# Reading the 2025-26 record: no 2025-26 rules book was opened. The 2025-26 record is the 2026-27 book
+# minus the 2026-27 changes (RB pdf 9-10, printed 6-7) and minus the 2026-27 editorial additions
+# (RB pdf 12-13, printed 9-10). CHG says its 10 changes were incorporated "for the 2025-26 season", so they
+# apply to both seasons. Every 2025-26 value is therefore marked basis: derived_from_2026_27_book_and_CHG.
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+requirements: [new-RL-1, new-RL-2, R-IV-08, R-SY-09, R-MD-06, R-RF-03, R-CG-01]
+units: {time: s, length: m, count: count}
+
+editions:
+  - rules_edition_id: ncaa_m_2026_27
+    competition: NCAA men's basketball (rules apply to Divisions I, II, III; D-I specifics marked)
+    season: 2026-27
+    season_window_start: "2026-07-01"
+    season_window_end: "2027-06-30"
+    effective_dates_note: "Book dated August 2026 (RB pdf 5). No calendar effective date printed; window is our convention (unverified)."
+    source_documents: [RB, CB, PCI, DIF]
+    basis: rules_book_2026_27
+
+    periods:
+      halves: 2
+      half_length_s: 1200            # RB 5-6.1, pdf 69 / printed 66: "two halves of 20 minutes each"
+      extra_period_length_s: 300     # RB 5-6.1, 5-9.3, pdf 69-71
+      halftime_intermission_s: 900   # RB 5-6.1; D-I tournament may add 300 s (RB 5-8 Note, pdf 70)
+      halftime_intermission_d1_tournament_extra_s: 300
+      intermission_before_extra_period_s: 60   # RB 5-6.1, 5-9.2
+      extra_period_is_extension_of_second_half: true   # RB 5-9.4, pdf 71 / printed 68
+      period_ends_on: red_light_or_led_else_game_clock_horn   # RB 5-7.2, pdf 69
+      rule_refs: ["5-6 (pdf 69, p 66)", "5-7 (pdf 69-70, p 66-67)", "5-9 (pdf 70-71, p 67-68)"]
+
+    game_clock:
+      tenths_display_below_s: 60     # RB 1-18.2, pdf 29 / printed 26
+      stop_after_made_fg_last_s: 59.9   # RB 2-10.12 (pdf 42), 5-11.9 (pdf 72): second half and extra periods only
+      min_time_off_on_touch_last_59_9_s: 0.3   # RB 5-10.2.d, pdf 71 / printed 68
+      try_not_allowed_at_or_below_s: 0.3   # RB 5-1.19, pdf 68 / printed 65: tap only
+      rule_refs: ["1-18 (pdf 29)", "5-10 (pdf 71)", "5-11 (pdf 71-72)", "5-1.19 (pdf 68)"]
+
+    shot_clock:
+      full_s: 30                     # RB 2-11.1, pdf 43 / printed 40
+      reset_values_s: [30, 20, "max(20, remaining)", no_reset, "off"]   # RB 2-11.6, 2-11.8 (pdf 43-46)
+      offensive_reset_s: 20          # RB 2-11.6.d
+      defensive_foul_frontcourt_reset: "max(20, remaining)"   # RB 2-11.6.c
+      off_when_game_clock_below_shot_clock: true   # RB 2-11.2, 2-11.8 (pdf 43, 46)
+      reactivated_at_s: 20           # RB 2-11.8 for 2-11.6.d situations
+      tenths_display_optional_below_s: 5.0   # RB 1-19.2, pdf 30 / printed 27
+      min_time_off_on_touch_s: 0.3   # RB 5-10.3.d (tenths shown, <5 s)
+      single_working_clock_allowed: true   # RB 1-19.3 (pdf 30); CHG proposal 1
+      pa_announcements_when_clock_out_s: [20, 15, 10, 5, 4, 3, 2, 1]   # RB 1-19.3
+      reset_table: config/vocab/shot_clock_resets.yaml
+      rule_refs: ["1-19 (pdf 30, p 27)", "2-11 (pdf 43-46, p 40-43)", "5-10.3 (pdf 71)", "9-11 (pdf 99, p 96)"]
+
+    counts:
+      throw_in_s: 5                  # RB 7-6.6, pdf 88 / printed 85
+      free_throw_release_s: 10       # RB 8-5.1.a, pdf 92
+      closely_guarded_s: 5           # RB 9-14.2, pdf 101: holding only, frontcourt
+      closely_guarded_distance_m: 1.8288   # 6 ft, RB 4-17.2 (pdf 58), 9-14.1 (pdf 101)
+      backcourt_s: 10                # RB 9-10, pdf 99 / printed 96
+      three_seconds_s: 3             # RB 9-9.2, pdf 98
+      disqualified_player_replacement_s: 20   # RB 4-12.5 (pdf 55), 2-10.9; DIF says 15 s (conflict, see open_questions)
+      blood_remedy_s: 20             # RB 3-6.3.a (pdf 50), 5-11.8 (pdf 72)
+      backboard_static_within_s: 4   # RB 1-13.6, pdf 27
+
+    fouls:
+      personal_foul_limit_disqualification: 5   # RB 4-12.1, pdf 54: personal + Class A technical
+      flagrant_1_limit_disqualification: 3      # RB 4-12.1; RB 2-9.7
+      team_fouls_counted: [personal, player_control, class_a_technical, contact_dead_ball_technical]   # RB 8-2.3 (pdf 90), App IV (pdf 128-129)
+      bonus_one_and_one_from_team_foul: 7       # RB 8-2.1, pdf 90 / printed 87
+      double_bonus_from_team_foul: 10           # RB 8-2.2
+      bonus_excludes: "player-control and team-control fouls that are not loose-ball fouls"   # RB 8-2.1/8-2.2
+      team_fouls_reset: start_of_second_half_only   # RB 5-9.4, DIF p 1 ("End of the first half")
+      ejection_technical_combinations: [AA, ABB, BBB, "single flagrant 2"]   # RB 10-3, 10-4 (pdf 110-114)
+      foul_vocabulary: config/vocab/fouls.yaml
+      intentional_foul_class_exists: false      # not a class in RB 4-15 (pdf 55-58); see fouls.yaml
+
+    timeouts:
+      media_format_at_least_three_media_per_half:   # RB 5-14.10, pdf 75 / printed 72; App V pdf 134
+        team_30s_per_game: 3
+        team_60s_per_game: 1
+        max_30s_carried_into_second_half: 2
+        extra_period_additional_30s: 1
+        media_marks_s_remaining: [[900, 600, 300], [960, 720, 480, 240]]   # 15/10/5 or 16/12/8/4 min, per media agreement
+        media_window_before_mark_s: 30      # RB 5-14.10.e; App V "at or within 30 seconds"
+        first_team_timeout_second_half_becomes_media: true   # RB 5-14.10.d
+        first_timeout_each_extra_period_may_become_media: true   # RB 5-14.10.d.1
+        d1_tournament_first_team_timeout_both_halves_may_be_media: true   # RB 5-14.10 Note
+      media_format_fewer_than_three_media_per_half:   # RB 5-14.9, pdf 74-75
+        team_75s_per_game: 4
+        team_30s_per_game: 2
+        extra_period_additional_75s: 1
+      no_media_format:               # RB 5-14.8, pdf 74; App V pdf 135
+        team_75s_per_game: 4
+        team_30s_per_game: 2
+        extra_period_additional_75s: 1
+      max_length_s: {full_no_media: 75, sixty: 60, thirty: 30}   # RB 5-14.4, pdf 74
+      excessive_timeout_length_s: {no_media: 75, media: 30}      # RB 5-17.2, pdf 78
+      warning_horn_before_end_s: 15  # RB 5-14.5
+      coach_may_call_live_ball_last_s: 120   # RB 5-11.3, 5-14.1.a: last 2 min of 2nd half / each OT
+      rule_refs: ["5-13 (pdf 73)", "5-14 (pdf 73-77)", "5-15 (pdf 77)", "5-16 (pdf 77)", "5-17 (pdf 78)", "App V (pdf 133-135)"]
+
+    coach_challenge:                 # RB 11-4, pdf 120-121 / printed 117-118; CHG proposal 10
+      exists: true
+      challengeable:
+        - {call: out_of_bounds_violation, when: whole_game}
+        - {call: basket_interference_or_goaltending, when: until_last_120s_of_regulation}
+        - {call: restricted_area_secondary_defender_on_called_foul, when: until_last_120s_of_regulation}
+      challenges_per_game: 1
+      second_challenge_if_first_overturned: true
+      max_challenges: 2
+      requires_legal_timeout: true
+      unsuccessful_cost: [charged_timeout, loses_challenge]
+      successful_cost: none          # RB 5-14.1.e, 5-16.1.e
+      lost_by_delay_warning_or_delay_technical: true   # RB 11-4.1.i
+      replay_equipment_failure: no_timeout_charged_no_challenge_lost   # RB 11-4.1.d.2
+      scorer_records_challenges: true   # PCI: new Rule 2-9.19
+
+    video_review:                    # RB Rule 11, pdf 116-121 / printed 113-118
+      standard: indisputable_evidence   # RB 11-1.1
+      voluntary_triggers:            # RB 11-2
+        - {id: ft_shooter_identity, rule: 11-2.1.a.1}
+        - {id: ft_two_or_three, rule: 11-2.1.a.2}
+        - {id: ft_wrong_player, rule: 11-2.1.a.3}
+        - {id: ft_wrong_basket, rule: 11-2.1.a.4}
+        - {id: two_or_three_point_goal, rule: 11-2.1.b.1, note: "reviewed at next media timeout; last 4 min of 2nd half and OT use 2-12.3 window"}
+        - {id: scorer_mistake, rule: 11-2.1.b.2}
+        - {id: score_counted_or_cancelled, rule: 11-2.1.b.3}
+        - {id: made_try_vs_shot_clock_horn, rule: 11-2.1.b.4, note: "successful tries only"}
+        - {id: off_ball_foul_timing_vs_shot, rule: 11-2.1.b.5}
+        - {id: basket_interference_goaltending_call, rule: 11-2.1.b.6, note: "voluntary only last 120 s of 2nd half and all OT; else coach's challenge"}
+        - {id: game_clock_timing_mistake, rule: 11-2.1.c.1}
+        - {id: shot_clock_mistake, rule: 11-2.1.c.2}
+        - {id: flagrant_or_contact_dead_ball_technical, rule: 11-2.1.d.1}
+        - {id: unobserved_flagrant_or_fight, rule: 11-2.1.d.2}
+        - {id: coach_requests_flagrant_review, rule: 11-2.1.d.4, note: "timeout charged if no flagrant/contact dead-ball technical"}
+        - {id: foul_charged_to_whom, rule: 11-2.1.d.5}
+        - {id: flop_during_flagrant_review, rule: 11-2.1.d.6}
+        - {id: foul_before_shot_clock_violation, rule: 11-2.1.d.7}
+        - {id: restricted_area_block_charge, rule: 11-2.1.e.1, note: "last 120 s of 2nd half and all OT"}
+      mandatory_triggers:            # RB 11-3, pdf 120
+        - {id: end_of_period_try_release, rule: 11-3.1.a.1, note: "with last-foot out-of-bounds check"}
+        - {id: end_of_period_shot_clock_violation, rule: 11-3.1.a.2}
+        - {id: end_of_period_foul_timing, rule: 11-3.1.a.3}
+        - {id: fight_participants, rule: 11-3.1.b}
+      appeals_charged_timeout_if_not_reversed: [correctable_error, timing_scoring_ap_mistake, flagrant_or_contact_dead_ball_review]   # RB 11-5.1
+      appeal_without_timeouts: administrative_technical_excessive_timeout   # RB 11-5.2
+      oob_voluntary_review_last_2_min: false   # removed by CHG proposal 10 (2025-26)
+
+    court:
+      constants_file: config/vocab/court_constants_proposed.yaml   # values checked in docs/data/court_constants_check.md
+      three_point_arc_m: 6.7501       # 22 ft 1.75 in to outside edge, RB 1-7.1, pdf 23 / printed 20
+      three_point_corner_m: 6.6008    # 21 ft 7.875 in
+      restricted_area_inner_radius_m: 1.2192   # 4 ft to inner edge, RB 1-8 (pdf 23), 4-31 (pdf 63)
+      restricted_area_outer_edge_m: 1.2700     # area bounded by the OUTER edge of the 2-in arc line (RB 4-31)
+      lane_width_m: 3.6576
+      throw_in_28ft_mark_from_end_line_m: 8.5344   # RB 7-3.2.a (pdf 84), court diagram pdf 18-19
+      designated_spot_width_m: 0.9144              # RB 7-6.8.b, pdf 88
+
+    restarts:
+      designated_spot_frontcourt_rule: "FT line extended to both sidelines: below -> end line 3 ft outside lane; above -> nearest 28-ft mark"   # RB 7-3.2.b + diagram pdf 85; CHG proposal 6
+      second_half_start: ap_arrow_throw_in_division_line_opposite_table   # RB 6-3.6, pdf 80
+      restart_vocabulary: config/vocab/restarts.yaml
+
+    officials:
+      crew: [referee, umpire_1, umpire_2]   # RB 2-1.1.a, pdf 38 / printed 35 (two- or three-person allowed)
+      system: three_person                  # RB Points of Emphasis 1, pdf 10 / printed 7
+      jurisdiction_before_tip_s: 1200       # 20 min, RB 2-4.1, pdf 38
+      signals_vocabulary: config/vocab/signals.yaml
+      mechanics_vocabulary: config/vocab/officials_mechanics.yaml
+
+    points_of_emphasis_2026_27:      # RB pdf 10-11 / printed 7-8
+      - mechanics_three_person_system
+      - whistle_discipline_primary_areas
+      - rule_10_1_4_freedom_of_movement_single_stayed_hand_on_back
+      - post_play_dislodging_hook_and_hold_flagrant
+      - traveling_pre_dribble_and_split_step
+      - screening_action
+      - jump_shooter_landing_space
+      - team_officiating
+      - clock_awareness
+
+    changes_vs_previous_edition:     # RB pdf 9-10 (changes), pdf 12-13 (editorial); PCI corrections
+      - {rule: 1-17.6, change: "commercial advertising also permitted beyond each end line (between end line and restraining line)", effect_on_cv: "more floor graphics in end-line out-of-bounds area; court-line detector must ignore them"}
+      - {rule: 1-22.7.a.2, change: "D-I: two more commercial/nonprofit logos on uniform, one on equipment; each logo within 4 sq in", effect_on_cv: "jersey-number OCR sees more patches near shoulders"}
+      - {rule: 1-23.8, change: "PCI: new rule, max two commercial logos on supplemental apparel (D-I)", effect_on_cv: none}
+      - {rule: 2-9.19, change: "PCI: scorer records coach's challenges", effect_on_cv: none}
+      - {rule: "5-14.1.b, 5-14.1.d, 5-14.17", change: "editorial: added/clarified", effect_on_cv: none}
+      - {rule: "6-2.4, 6-2.8, 7-2.3.b, 7-4.2", change: "editorial clarifications", effect_on_cv: none}
+      - {rule: "9-3.2 Penalty, 9-4.1.h, 9-4.4 Penalty, 9-8.1.c, 9-12.10 Penalty, 9-15.3.b/c, 9-16.1.c Penalty", change: "editorial: added/clarified (incl. throw-in 9-4.1.h thrower touching ball before another player)", effect_on_cv: none}
+      - {rule: "11-2.1.d.1.b, 11-4.1.d.1/d.2/e/i, 11-5.1.a-c, 11-5.2", change: "editorial: challenge and appeal procedures written into the book", effect_on_cv: none}
+
+  - rules_edition_id: ncaa_m_2025_26
+    competition: NCAA men's basketball
+    season: 2025-26
+    season_window_start: "2025-07-01"
+    season_window_end: "2026-06-30"
+    effective_dates_note: "CHG: changes 'incorporated into the rules book or casebook for the 2025-26 season'. No 2025-26 book opened."
+    source_documents: [CHG, RB]
+    basis: derived_from_2026_27_book_and_CHG
+    inherits_from: ncaa_m_2026_27
+    overrides:
+      changes_vs_previous_edition:   # differences of 2025-26 from 2024-25, per CHG (pdf 1-3)
+        - {proposal: 1, rule: 1-19, change: "one working shot clock may stay on, PA announces time"}
+        - {proposal: 2, rule: 1-24.1.c, change: "headbands up to 4 in (0.1016 m) wide, was 2 in"}
+        - {proposal: 3, rule: 4-8, change: "continuous motion: player fouled after dribble ended may complete a pivot or the step he is on"}
+        - {proposal: 4, rule: 4-15.2.c.2.d, change: "groin contact stays Flagrant 2 but may be downgraded to F1 or common on replay"}
+        - {proposal: 5, rule: "7-1.1 (book 7-2.3)", change: "bench personnel physically assisting a player with the ball -> ball out of bounds"}
+        - {proposal: 6, rule: 7-3.2.b, change: "frontcourt designated spot by FT line extended (was elbow-to-corner imaginary line)"}
+        - {proposal: 7, rule: "9-15.2 (book 9-16)", change: "hand on backboard/ring to gain advantage becomes a violation (was Class B technical)"}
+        - {proposal: 8, rule: 10-2.8.a, change: "music/noisemakers allowed during dead balls"}
+        - {proposal: 9, rule: "10-3 Penalty, 10-5.15", change: "suspension for failing to serve a fighting/official-abuse suspension, plus head coach"}
+        - {proposal: 10, rule: Rule 11, change: "coach's challenge introduced (OOB any time; BI/GT and RA until last 2 min); officials' voluntary OOB review in last 2 min removed"}
+      commercial_advertising_beyond_end_line: false   # added 2026-27 (RB 1-17.6)
+      d1_extra_uniform_commercial_logos: false        # added 2026-27 (RB 1-22.7.a.2)
+      scorer_records_challenges_rule: "not written in book (2-9.19 added by PCI 2026-10-15)"
+      coach_challenge_procedure_text: "procedures 11-4.1.d.1/d.2/e/i and 11-5 were interpretation, not book text (RB editorial changes pdf 13)"
+    unchanged_core_values_assumed: [periods, game_clock, shot_clock, counts, fouls, timeouts, court, restarts]
+    verification: "core values assumed equal to 2026-27; confirm against the 2025-26 book before trusting (open question)"
+
+  - rules_edition_id: ncaa_m_pre_2025_26
+    season: "2024-25 and earlier"
+    season_window_end: "2025-06-30"
+    basis: not_built
+    note: "Needed for backfill: no coach's challenge; officials could review OOB in last 2 min; elbow-to-corner throw-in line; 2019-20 three-point line change (22 ft 1.75 in from 2019-20 D-I, unverified here); shot clock 30 s since 2015-16 (unverified here). Build from the matching books before using older games."
+
+open_questions:
+  - "Disqualified-player replacement: RB 4-12.5 says 20 s, DIF p 2 says 15 s; which is right?"
+  - "No calendar effective date is printed; is the 1 July - 30 June window acceptable?"
+  - "2025-26 book not opened: get it to confirm the derived 2025-26 record."
+  - "Rule 7-3.2.b text (pdf 84) is garbled ('free-line extended'); the diagram (pdf 85) shows the FT line extended to both sidelines; adopt the diagram reading?"

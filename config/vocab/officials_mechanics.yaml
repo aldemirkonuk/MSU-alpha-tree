@@ -1,0 +1,98 @@
+# Officials' crew, positions, rotations and coverage.
+# Status: PROPOSAL (2026-10-18). Lands in: official_positions.role, events family official_rotation (new-RF-8),
+# fouls.calling_official_distance_m / in_primary_area (new-RF-9), game_officials.
+# What the 2026-27 NCAA men's rules book states is marked verified with its page. The CCA Men's Basketball
+# Officials Manual (named in RB 2-1.2, pdf 38) was NOT available; mechanics beyond the book are marked
+# unverified and come from general 3-person mechanics and the LHSAA "3-Man Mechanics" slides (2009, NFHS level)
+# opened at https://www.lhsaa.org/siteuploads/editorimg/file/Officiating/Basketball3ManMechanics.pdf (web text = data).
+# Frame: attacked-rim frame of the team on offence (see restarts.yaml).
+
+schema_version: 1
+status: proposal
+date: 2026-10-18
+rules_edition_id: ncaa_m_2026_27
+requirements: [R-RF-04, R-RF-05, new-RF-8, new-RF-9, new-RF-11]
+
+crew:
+  - {id: referee, rule: "2-1.1.a, 2-5, 2-6", pdf: [38, 39], p: [35, 36], verified: true, duties: "pregame checks, designates tosser, AP to start 2nd half, decides disagreements, approves score"}
+  - {id: umpire_1, rule: 2-1.1.a, pdf: 38, p: 35, verified: true}
+  - {id: umpire_2, rule: 2-1.1.a, pdf: 38, p: 35, verified: true, note: "two-person crews allowed by rule; three-person system is the national standard (POE 1, pdf 10)"}
+  - {id: table_crew, rule: "2-1.1.b, 2-9, 2-10, 2-11", pdf: [38, 40, 42, 43], verified: true, members: [official_scorer, official_timer, shot_clock_operator, standby_official_optional]}
+  - {id: replay_official_offsite, rule: 11-1.5, pdf: 116, p: 113, verified: true, note: "collaborative replay allowed by conference"}
+
+equal_authority:
+  rule: "2-2.3, 2-2.5"
+  pdf: 38
+  p: 35
+  quote: "The referee's decision shall not take precedence over that of the umpire(s)"
+  verified: true
+
+positions:   # court position roles (change during play); role != crew title
+  - id: lead
+    verified: false
+    location: "on/behind the end line under the offence's basket, usually between the near lane line and the 3-pt line corner (x 2-5 m from rim centre line, y about -2.0 m) (unverified)"
+    primary_area: "low post and lane on his side, end line, block/charge under the basket on ball side (unverified)"
+    detect: "CV: official track with y < -1.6 m (out of bounds behind end line) or within 1 m of end line."
+  - id: trail
+    verified: false
+    location: "sideline of the table/ball side near the 28-ft mark to the division line, y about 7-13 m, |x| about 7.6 m (unverified)"
+    primary_area: "ball handler above the FT line extended on his side, 3-pt attempts on his side, backcourt (unverified)"
+    detect: "CV: official near a sideline with y > 6 m."
+  - id: centre
+    verified: false
+    location: "opposite sideline from the trail at about the FT line extended, y about 3.5-6 m (unverified)"
+    primary_area: "weak-side post and lane, weak-side perimeter, 3-pt attempts on his side, last-shot clock (unverified)"
+    detect: "CV: official near the sideline opposite the trail with y 2-7 m."
+  - id: reporting_area
+    verified: true
+    rule: 2-7.12
+    pdf: 40
+    note: "fouls reported to the scorer; location near the table (position unverified, LHSAA slides show a reporting area in front of the table)"
+
+coverage_principles:
+  - {id: primary_area_whistle_discipline, verified: true, rule: "POE 2", pdf: 10, p: 7, quote: "avoid unnecessary primary whistles outside your coverage"}
+  - {id: cadence_whistle_secondary, verified: true, rule: "POE 2", pdf: 10, p: 7}
+  - {id: screening_two_official, verified: true, rule: "POE 6", pdf: 11, p: 8, quote: "Screening is often a two-official responsibility"}
+  - {id: team_officiating_three_point_attempts, verified: true, rule: "POE 8", pdf: 11, p: 8}
+  - {id: officiate_landing, verified: true, rule: "POE 7", pdf: 11, p: 8}
+  - {id: strong_side_ball_side_triangle, verified: false, source: "LHSAA slides: 'Strong Side Ball Side', 'Keep a Wide Triangle'"}
+  - {id: avoid_straight_lining, verified: false, source: "LHSAA slides"}
+  - {id: lead_initiates_rotation, verified: false, source: "LHSAA slides: 'Lead Initiates the Rotation' (centre may initiate to cover pressure)"}
+  - {id: calling_official_goes_opposite, verified: false, source: "LHSAA slides"}
+
+rotations_and_switches:
+  - id: rotation
+    verified: false
+    trigger: "ball moves to the side away from the lead and stays (post entry, drive); lead crosses the lane to the ball side; trail and centre swap (trail becomes centre or vice versa) (unverified)"
+    detect: "CV: lead track crosses x = 0 under the basket (|dx| > 3 m within 4 s) and the two sideline officials swap sides within 4 s (proposal new-RF-8)."
+  - id: transition_switch
+    verified: false
+    trigger: "change of possession: lead becomes trail and trail becomes lead going the other way; centre stays centre (unverified)"
+  - id: foul_switch
+    verified: false
+    trigger: "after a reported foul, the calling official goes opposite (to the new trail or lead per table side) (LHSAA slides)"
+  - id: free_throw_positions
+    verified: false
+    note: "lead on end line, trail at FT line extended on the table side (administers?), centre opposite; LHSAA slides show a FT coverage diagram (unverified)"
+  - id: throw_in_administration
+    verified: false
+    note: "frontcourt: inbounding official on his line; backcourt: new trail administers (LHSAA slides). NCAA: never under-basket by trail (unverified)"
+
+counts_officials_make:   # visible counts (new-RF-11)
+  - {id: throw_in_count, value_s: 5, rule: "2-7.9, 7-6.6", pdf: [40, 88], verified: true, signal: visible_count}
+  - {id: free_throw_count, value_s: 10, rule: "2-7.9, 8-5.1.a", pdf: [40, 92], verified: true, signal: visible_count}
+  - {id: closely_guarded_count, value_s: 5, rule: "2-7.9, 9-14", pdf: [40, 101], verified: true, signal: visible_count}
+  - {id: three_second_count, value_s: 3, rule: 2-7.9, pdf: 40, verified: true, note: "silent count"}
+  - {id: backcourt_count, value_s: 10, rule: 2-7.9, pdf: 40, verified: true, note: "use the shot clock; visible count only when no shot clock visible"}
+
+uniform_for_detection:
+  rule: 2-1.2
+  pdf: 38
+  p: 35
+  verified: true
+  value: "black-and-white striped shirt, black side panels, black raglan sleeves, black pants"
+  detect: "CV class 'official' from stripe texture; no face data."
+
+open_questions:
+  - "Obtain the CCA Men's Basketball Officials Manual (current edition) to verify positions, primary areas and rotation triggers before labelling (gate G7?)."
+  - "Store official roles per frame (lead/trail/centre) or only at whistles?"

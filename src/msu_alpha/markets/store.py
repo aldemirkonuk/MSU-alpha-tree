@@ -62,6 +62,25 @@ def dedupe(rows: list[SnapshotRow]) -> list[SnapshotRow]:
     return out
 
 
+_KEY_COLUMNS = ("game_id", "source_event_id", "source", "book", "market", "market_phase", "snapshot_label",
+                "side", "team_id", "player_id", "line", "snapshot_time_utc")
+
+
+def _record_key(rec: dict) -> tuple:
+    """Same fields and order as SnapshotRow.dedup_key(), built from a stored record."""
+    return (rec["game_id"], rec["source_event_id"], rec["source"], rec["book"], rec["market"], rec["market_phase"],
+            rec["snapshot_label"], rec["side"], rec["team_id"] or rec["player_id"], rec["line"],
+            rec["snapshot_time_utc"])
+
+
+def _existing_keys(partition_dir: Path) -> set[tuple]:
+    keys: set[tuple] = set()
+    for f in partition_dir.glob("*.parquet"):
+        for rec in pq.read_table(f, columns=list(_KEY_COLUMNS)).to_pylist():
+            keys.add(_record_key(rec))
+    return keys
+
+
 class SnapshotStore:
     def __init__(self, root: str | Path):
         self.root = ensure_private(Path(root))
@@ -77,6 +96,10 @@ class SnapshotStore:
         for (source, season, month), recs in sorted(parts.items()):
             d = self.root / "snapshots" / f"source={source}" / f"season={season}" / f"month={month}"
             d.mkdir(parents=True, exist_ok=True)
+            existing = _existing_keys(d)                 # idempotent across runs, not only within a batch
+            recs = [r for r in recs if _record_key(r) not in existing]
+            if not recs:
+                continue
             n = 0
             while (path := d / f"part-{run_id}-{n}.parquet").exists():
                 n += 1

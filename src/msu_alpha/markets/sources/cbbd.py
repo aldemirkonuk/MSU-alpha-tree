@@ -56,9 +56,16 @@ def parse_lines(lines: list[dict[str, Any]], games: dict[str, Game], teams: dict
         home = teams.get(str(gl.get("homeTeamId")))
         away = teams.get(str(gl.get("awayTeamId")))
         finished = game is not None and (game.status in FINAL or game.home_score is not None)
+        # CBBD values carry no capture time. For finished games the reported open/close values are frozen,
+        # so they are keyed on the scheduled tip (stable across re-pulls, idempotent); before the game they
+        # are genuine snapshots at our fetch time.
+        if finished:
+            snap = game.scheduled_tip_utc
+        else:
+            snap = parse_utc(fetched_at)
         for info in gl.get("lines") or []:
             book = str(info.get("provider") or "unknown")
-            base = dict(source=Source.CBBD, book=book, snapshot_time_utc=parse_utc(fetched_at),
+            base = dict(source=Source.CBBD, book=book, snapshot_time_utc=snap,
                         fetched_at_utc=parse_utc(fetched_at), season=int(gl["season"]),
                         source_event_id=cbbd_id, raw_ref=raw_ref, game_id=game.game_id if game else None,
                         observed_post_event=finished)
