@@ -1,0 +1,56 @@
+## MSU games (km; tz in h; edge in points)
+date|event|venue|opp|d_MSU|d_opp|diff|tzMSU_h|tzOpp_h|edge|hav_MSU|hav_opp|result
+2022-11-11|Armed Forces Classic|Naval Air Station North Island|Gonzaga|3069|1662|-1407|-3|+0|-0.40|3063.3|1664.2|63-64
+2022-11-15|Champions Classic|Gainbridge Fieldhouse|Kentucky|357|238|-119|+0|+0|-0.13|357.7|238.3|86-77
+2022-11-24|Phil Knight Inv. QF|Moda Center|Alabama|3042|3288|+246|-3|-2|+0.06|3033.8|3282.4|70-81
+2022-11-25|PKI consolation|Veterans Memorial Coliseum (Portland, Oregon)|Oregon|3042|168|-2874|-3|+0|-1.34|3034.0|168.3|74-70
+2023-02-04|B1G Super Saturday|Madison Square Garden|Rutgers|900|45|-855|+0|+0|-0.91|897.8|45.3|55-61
+2023-03-10|B1G Tourn QF|United Center|Ohio State|279|443|+165|-1|-1|+0.16|278.1|442.5|58-68
+2023-03-17|NCAA R64|Nationwide Arena|USC|331|3187|+2856|+0|+3|+1.17|330.9|3180.0|72-62
+2023-03-19|NCAA R32|Nationwide Arena|Marquette|331|534|+203|+0|+1|+0.18|330.9|533.0|69-60
+2023-03-23|NCAA S16|Madison Square Garden|Kansas State|900|1933|+1033|+0|+1|+0.42|897.8|1928.1|93-98
+2023-11-14|Champions Classic|United Center|Duke|279|999|+720|-1|-1|+0.52|278.1|998.2|65-74
+2023-11-23|Acrisure Classic|Acrisure Arena|Arizona|2938|532|-2406|-3|-1|-0.93|2932.6|531.5|68-74
+2023-12-16|Motor City Inv.|Little Caesars Arena|Baylor|126|1728|+1602|+0|+1|+1.05|125.4|1727.5|88-64
+2024-03-14|B1G Tourn R2|Target Center|Minnesota|749|4|-745|-1|+0|-1.13|747.0|3.8|77-67
+2024-03-15|B1G Tourn QF|Target Center|Purdue|749|725|-24|-1|-1|-0.01|747.0|724.6|62-67
+2024-03-21|NCAA R64|Spectrum Center (arena)|Mississippi State|891|757|-133|+0|+1|-0.08|891.8|756.0|69-51
+2024-03-23|NCAA R32|Spectrum Center (arena)|North Carolina|891|179|-712|+0|+0|-0.60|891.8|178.9|69-85
+2024-11-12|Champions Classic|State Farm Arena|Kansas|996|1131|+135|+0|+1|+0.06|997.6|1129.8|69-77
+2024-11-25|Maui QF|Lahaina Civic Center|Colorado|7030|5288|-1742|-5|-3|-0.26|7019.6|5281.8|72-56
+2024-11-26|Maui SF|Lahaina Civic Center|Memphis|7030|6620|-410|-5|-4|-0.06|7019.6|6610.1|63-71
+2024-11-27|Maui 3rd|Lahaina Civic Center|North Carolina|7030|7597|+567|-5|-5|+0.08|7019.6|7584.6|94-91
+2024-12-17|Detroit neutral|Little Caesars Arena|Oakland|126|39|-86|+0|+0|-0.24|125.4|39.2|77-58
+2025-03-14|B1G Tourn QF|Gainbridge Fieldhouse|Oregon|357|3073|+2716|+0|+3|+1.11|357.7|3065.3|74-64
+2025-03-15|B1G Tourn SF|Gainbridge Fieldhouse|Wisconsin|357|456|+99|+0|+1|+0.09|357.7|456.2|74-77
+2025-03-21|NCAA R64|Rocket Arena|Bryant|269|845|+576|+0|+0|+0.45|268.8|843.3|87-62
+2025-03-23|NCAA R32|Rocket Arena|New Mexico|269|2287|+2017|+0|+2|+1.01|268.8|2282.1|71-63
+2025-03-28|NCAA S16|State Farm Arena|Ole Miss|996|479|-517|+0|+1|-0.32|997.6|478.1|73-70
+2025-03-30|NCAA E8|State Farm Arena|Auburn|996|164|-832|+0|+1|-0.68|997.6|164.0|64-70
+2025-11-18|Champions Classic|Madison Square Garden|Kentucky|900|953|+53|+0|+0|+0.03|897.8|950.9|83-66
+2025-11-25|Fort Myers Tip-Off|Suncoast Credit Union Arena|East Carolina|1811|1092|-719|+0|+0|-0.28|1814.7|1094.1|89-56
+2025-11-27|Fort Myers Tip-Off|Suncoast Credit Union Arena|North Carolina|1811|1072|-739|+0|+0|-0.29|1814.7|1074.3|74-58
+2025-12-20|Motown Showdown|Little Caesars Arena|Oakland|126|39|-86|+0|+0|-0.24|125.4|39.2|79-70
+2026-03-13|B1G Tourn QF|United Center|UCLA|279|2822|+2543|-1|+2|+1.14|278.1|2816.1|84-88
+2026-03-19|NCAA R64|KeyBank Center|North Dakota State|460|1481|+1021|+0|+1|+0.55|458.4|1477.4|92-67
+2026-03-21|NCAA R32|KeyBank Center|Louisville|460|775|+316|+0|+0|+0.22|458.4|774.8|77-69
+2026-03-27|NCAA S16|Capital One Arena|UConn|760|518|-242|+0|+0|-0.16|759.0|517.2|63-67
+## Big Ten arenas to tournament venues (km)
+state_farm_center 204 182 2395 682
+assembly_hall 315 72 2541 852
+carver 323 502 2133 394
+xfinity 965 798 3369 1504
+crisler 328 344 2783 826
+breslin 279 357 2726 749
+williams_arena 566 821 2095 4
+pinnacle 765 905 1691 541
+welsh_ryan 21 287 2457 555
+value_city 443 269 2839 1006
+knight 2875 3073 1108 2358
+bryce_jordan 830 715 3274 1339
+mackey 173 99 2508 725
+jersey_mikes 1119 1001 3564 1615
+pauley 2822 2929 374 2465
+galen 2810 2917 365 2456
+hec_ed 2790 3012 1411 2242
+kohl 194 456 2335 376

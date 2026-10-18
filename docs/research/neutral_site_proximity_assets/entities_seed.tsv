@@ -1,0 +1,59 @@
+key	role	wikipedia_title	tz
+breslin	home_arena:Michigan State	Breslin Center	America/Detroit
+nas_north_island	venue:Armed Forces Classic 2022 (proxy for USS Abraham Lincoln)	Naval Air Station North Island	America/Los_Angeles
+gainbridge	venue	Gainbridge Fieldhouse	America/Indiana/Indianapolis
+moda	venue	Moda Center	America/Los_Angeles
+vmc_portland	venue	Veterans Memorial Coliseum (Portland, Oregon)	America/Los_Angeles
+msg	venue	Madison Square Garden	America/New_York
+united_center	venue	United Center	America/Chicago
+nationwide	venue	Nationwide Arena	America/New_York
+acrisure	venue	Acrisure Arena	America/Los_Angeles
+lca	venue	Little Caesars Arena	America/Detroit
+target_center	venue	Target Center	America/Chicago
+spectrum	venue	Spectrum Center (arena)	America/New_York
+state_farm_arena	venue	State Farm Arena	America/New_York
+lahaina	venue	Lahaina Civic Center	Pacific/Honolulu
+rocket_arena	venue	Rocket Arena	America/New_York
+suncoast	venue	Suncoast Credit Union Arena	America/New_York
+keybank	venue	KeyBank Center	America/New_York
+capital_one	venue	Capital One Arena	America/New_York
+tmobile	venue	T-Mobile Arena	America/Los_Angeles
+mccarthey	home_arena:Gonzaga	McCarthey Athletic Center	America/Los_Angeles
+rupp	home_arena:Kentucky	Rupp Arena	America/New_York
+coleman	home_arena:Alabama	Coleman Coliseum	America/Chicago
+knight	home_arena:Oregon	Matthew Knight Arena	America/Los_Angeles
+jersey_mikes	home_arena:Rutgers	Jersey Mike's Arena	America/New_York
+value_city	home_arena:Ohio State	Value City Arena	America/New_York
+galen	home_arena:USC	Galen Center	America/Los_Angeles
+fiserv	home_arena:Marquette	Fiserv Forum	America/Chicago
+bramlage	home_arena:Kansas State	Bramlage Coliseum	America/Chicago
+cameron	home_arena:Duke	Cameron Indoor Stadium	America/New_York
+mckale	home_arena:Arizona	McKale Center	America/Phoenix
+ferrell	home_arena:Baylor (to Jan 2024)	Ferrell Center	America/Chicago
+williams_arena	home_arena:Minnesota	Williams Arena	America/Chicago
+mackey	home_arena:Purdue	Mackey Arena	America/Indiana/Indianapolis
+humphrey	home_arena:Mississippi State	Humphrey Coliseum	America/Chicago
+dean_smith	home_arena:North Carolina	Dean Smith Center	America/New_York
+allen	home_arena:Kansas	Allen Fieldhouse	America/Chicago
+cu_events	home_arena:Colorado	CU Events Center	America/Denver
+fedexforum	home_arena:Memphis	FedExForum	America/Chicago
+orena	home_arena:Oakland	Athletics Center O'rena	America/Detroit
+kohl	home_arena:Wisconsin	Kohl Center	America/Chicago
+chace	home_arena:Bryant	Chace Athletic Center	America/New_York
+the_pit	home_arena:New Mexico	The Pit (arena)	America/Denver
+sjb	home_arena:Ole Miss	The Sandy and John Black Pavilion at Ole Miss	America/Chicago
+neville	home_arena:Auburn	Neville Arena	America/Chicago
+minges	home_arena:East Carolina	Minges Coliseum	America/New_York
+pauley	home_arena:UCLA	Pauley Pavilion	America/Los_Angeles
+scheels	home_arena:North Dakota State	Scheels Center	America/Chicago
+yum	home_arena:Louisville	KFC Yum! Center	America/New_York
+gampel	home_arena:UConn (campus; UConn also uses XL Center)	Harry A. Gampel Pavilion	America/New_York
+state_farm_center	home_arena:Illinois	State Farm Center	America/Chicago
+assembly_hall	home_arena:Indiana	Simon Skjodt Assembly Hall	America/Indiana/Indianapolis
+carver	home_arena:Iowa	Carver–Hawkeye Arena	America/Chicago
+xfinity	home_arena:Maryland	Xfinity Center (College Park, Maryland)	America/New_York
+crisler	home_arena:Michigan	Crisler Center	America/Detroit
+pinnacle	home_arena:Nebraska	Pinnacle Bank Arena	America/Chicago
+welsh_ryan	home_arena:Northwestern	Welsh-Ryan Arena	America/Chicago
+bryce_jordan	home_arena:Penn State	Bryce Jordan Center	America/New_York
+hec_ed	home_arena:Washington	Hec Edmundson Pavilion	America/Los_Angeles

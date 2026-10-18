@@ -1,0 +1,59 @@
+key	role	wikipedia_title	qid	lat	lon	tz
+breslin	home_arena:Michigan State	Breslin Center	Q2924511	42.728227	-84.492396	America/Detroit
+nas_north_island	venue:Armed Forces Classic 2022 (proxy for USS Abraham Lincoln)	Naval Air Station North Island	Q1800390	32.699167	-117.215278	America/Los_Angeles
+gainbridge	venue	Gainbridge Fieldhouse	Q545007	39.763888888889	-86.155555555556	America/Indiana/Indianapolis
+moda	venue	Moda Center	Q1347442	45.531666666667	-122.66666666667	America/Los_Angeles
+vmc_portland	venue	Veterans Memorial Coliseum (Portland, Oregon)	Q549437	45.532222222222224	-122.66944444444445	America/Los_Angeles
+msg	venue	Madison Square Garden	Q186125	40.750501	-73.993453	America/New_York
+united_center	venue	United Center	Q639975	41.880555555556	-87.674166666667	America/Chicago
+nationwide	venue	Nationwide Arena	Q166503	39.969283333333	-83.006111111111	America/New_York
+acrisure	venue	Acrisure Arena	Q65052659	33.77916666666667	-116.33888888888889	America/Los_Angeles
+lca	venue	Little Caesars Arena	Q18154984	42.3412	-83.0549	America/Detroit
+target_center	venue	Target Center	Q282675	44.979444444444	-93.276111111111	America/Chicago
+spectrum	venue	Spectrum Center (arena)	Q983870	35.225	-80.839166666667	America/New_York
+state_farm_arena	venue	State Farm Arena	Q1123297	33.757222222222	-84.396388888889	America/New_York
+lahaina	venue	Lahaina Civic Center	Q15241279	20.904995	-156.683852	Pacific/Honolulu
+rocket_arena	venue	Rocket Arena	Q387157	41.496388888889	-81.688055555556	America/New_York
+suncoast	venue	Suncoast Credit Union Arena	Q28127717	26.5478	-81.8869	America/New_York
+keybank	venue	KeyBank Center	Q1110789	42.875	-78.876388888889	America/New_York
+capital_one	venue	Capital One Arena	Q223240	38.898055555556	-77.020833333333	America/New_York
+tmobile	venue	T-Mobile Arena	Q3338973	36.102916666667	-115.17836111111	America/Los_Angeles
+mccarthey	home_arena:Gonzaga	McCarthey Athletic Center	Q6800179	47.6653	-117.399	America/Los_Angeles
+rupp	home_arena:Kentucky	Rupp Arena	Q842965	38.049444444444	-84.502777777778	America/New_York
+coleman	home_arena:Alabama	Coleman Coliseum	Q5142988	33.2029	-87.5397	America/Chicago
+knight	home_arena:Oregon	Matthew Knight Arena	Q14709065	44.045	-123.066	America/Los_Angeles
+jersey_mikes	home_arena:Rutgers	Jersey Mike's Arena	Q6686804	40.525278	-74.441111	America/New_York
+value_city	home_arena:Ohio State	Value City Arena	Q783033	40.0075	-83.0251	America/New_York
+galen	home_arena:USC	Galen Center	Q3094568	34.0213	-118.28	America/Los_Angeles
+fiserv	home_arena:Marquette	Fiserv Forum	Q20372160	43.0451	-87.9182	America/Chicago
+bramlage	home_arena:Kansas State	Bramlage Coliseum	Q2923640	39.200361	-96.593833	America/Chicago
+cameron	home_arena:Duke	Cameron Indoor Stadium	Q2934766	35.997527777778	-78.942305555556	America/New_York
+mckale	home_arena:Arizona	McKale Center	Q3303672	32.2303	-110.946	America/Phoenix
+ferrell	home_arena:Baylor (to Jan 2024)	Ferrell Center	Q5445295	31.547929	-97.105665	America/Chicago
+williams_arena	home_arena:Minnesota	Williams Arena	Q8020979	44.976944444444	-93.228333333333	America/Chicago
+mackey	home_arena:Purdue	Mackey Arena	Q6724456	40.4333	-86.9161	America/Indiana/Indianapolis
+humphrey	home_arena:Mississippi State	Humphrey Coliseum	Q5941342	33.461667	-88.794444	America/Chicago
+dean_smith	home_arena:North Carolina	Dean Smith Center	Q3020664	35.899722	-79.043889	America/New_York
+allen	home_arena:Kansas	Allen Fieldhouse	Q2837888	38.954305555556	-95.252394444444	America/Chicago
+cu_events	home_arena:Colorado	CU Events Center	Q5168058	40.004639	-105.260583	America/Denver
+fedexforum	home_arena:Memphis	FedExForum	Q641212	35.138333333333	-90.050555555556	America/Chicago
+orena	home_arena:Oakland	Athletics Center O'rena	Q4813778	42.674	-83.2132	America/Detroit
+kohl	home_arena:Wisconsin	Kohl Center	Q1578408	43.06942	-89.396972	America/Chicago
+chace	home_arena:Bryant	Chace Athletic Center	Q5066064	41.921	-71.5396	America/New_York
+the_pit	home_arena:New Mexico	The Pit (arena)	Q7757281	35.067	-106.632	America/Denver
+sjb	home_arena:Ole Miss	The Sandy and John Black Pavilion at Ole Miss	Q21196637	34.36316389	-89.53545278	America/Chicago
+neville	home_arena:Auburn	Neville Arena	Q4819242	32.6025	-85.493	America/Chicago
+minges	home_arena:East Carolina	Minges Coliseum	Q8020980	35.5974	-77.3672	America/New_York
+pauley	home_arena:UCLA	Pauley Pavilion	Q1126193	34.0702	-118.447	America/Los_Angeles
+scheels	home_arena:North Dakota State	Scheels Center	Q4918378	46.9004	-96.799	America/Chicago
+yum	home_arena:Louisville	KFC Yum! Center	Q10516134	38.2575	-85.753889	America/New_York
+gampel	home_arena:UConn (campus; UConn also uses XL Center)	Harry A. Gampel Pavilion	Q5666781	41.8053	-72.2542	America/New_York
+state_farm_center	home_arena:Illinois	State Farm Center	Q2867017	40.0963	-88.236	America/Chicago
+assembly_hall	home_arena:Indiana	Simon Skjodt Assembly Hall	Q4808661	39.180833	-86.522222	America/Indiana/Indianapolis
+carver	home_arena:Iowa	Carver–Hawkeye Arena	Q5047562	41.663611	-91.554444	America/Chicago
+xfinity	home_arena:Maryland	Xfinity Center (College Park, Maryland)	Q2985114	38.995416666667	-76.941555555556	America/New_York
+crisler	home_arena:Michigan	Crisler Center	Q3091213	42.265037	-83.746768	America/Detroit
+pinnacle	home_arena:Nebraska	Pinnacle Bank Arena	Q7196282	40.817778	-96.713333	America/Chicago
+welsh_ryan	home_arena:Northwestern	Welsh-Ryan Arena	Q7981834	42.0669	-87.6928	America/Chicago
+bryce_jordan	home_arena:Penn State	Bryce Jordan Center	Q2927191	40.8089	-77.8558	America/New_York
+hec_ed	home_arena:Washington	Hec Edmundson Pavilion	Q4708490	47.652	-122.302	America/Los_Angeles

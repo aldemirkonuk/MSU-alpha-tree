@@ -1,0 +1,17 @@
+Top-4 women's seeds not hosting: [(2015, 'Louisville'), (2016, 'Michigan State'), (2017, 'Stanford'), (2019, 'South Carolina')]
+== RD1
+Women 2015-25 (no 2021), top-4 seed hosting      n= 140  W-L 140-0 (100.0%)  mean margin +29.86 (SE 1.46)
+Women 2015-25, top-4 seed not hosting            n=   4  W-L 4-0 (100.0%)  mean margin +19.25 (SE 4.68)
+Women 2021 (all neutral, San Antonio)            n=  16  W-L 15-1 (93.8%)  mean margin +26.50 (SE 3.89)
+Women 2008-14 (pre-assigned sites, mixed)        n= 112  W-L 111-1 (99.1%)  mean margin +24.90 (SE 1.31)
+Men 2015-25 (no 2021), neutral pods              n= 144  W-L 129-15 (89.6%)  mean margin +15.91 (SE 1.06)
+Men 2021 (Indiana, no pods)                      n=  16  W-L 12-4 (75.0%)  mean margin +13.31 (SE 3.37)
+Men 2008-14, neutral pods                        n= 112  W-L 99-13 (88.4%)  mean margin +15.30 (SE 1.21)
+== RD2
+Women 2015-25 (no 2021), top-4 seed hosting      n= 140  W-L 107-33 (76.4%)  mean margin +10.82 (SE 1.36)
+Women 2015-25, top-4 seed not hosting            n=   4  W-L 3-1 (75.0%)  mean margin +8.75 (SE 4.08)
+Women 2021 (all neutral, San Antonio)            n=  15  W-L 10-5 (66.7%)  mean margin +8.73 (SE 4.81)
+Women 2008-14 (pre-assigned sites, mixed)        n= 111  W-L 79-32 (71.2%)  mean margin +9.03 (SE 1.45)
+Men 2015-25 (no 2021), neutral pods              n= 129  W-L 95-34 (73.6%)  mean margin +5.76 (SE 1.08)
+Men 2021 (Indiana, no pods)                      n=  12  W-L 7-5 (58.3%)  mean margin +0.33 (SE 4.44)
+Men 2008-14, neutral pods                        n=  99  W-L 75-24 (75.8%)  mean margin +7.00 (SE 1.17)
