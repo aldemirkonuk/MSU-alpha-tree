@@ -361,6 +361,23 @@ The tracker always knows 10 players are on the floor; when it sees fewer, it rec
 - Record the 5-second count, the formation (stack, box, line, diamond), the set run, and the first-pass target
 - Same for free-throw formations: who is on each lane spot and who leaks out after the shot
 
+**Position descriptor: every player, every frame (your idea)**
+
+- Cartesian position x, y in metres, plus distance r and angle θ from the rim
+- Readable label on top of the math, always with its numbers: e.g. "corner three right, r 6.72 m, θ 4.3°"
+- Post zone: low post (around the blocks) or high post (elbows and nail area); boundaries are proposals checked against film
+- Nearest landmark within 0.9 m: elbow right or left, nail, block right or left
+- Angle sector (15°) and distance ring (0.5 m)
+- Implemented and tested in the repo's geometry module (`describe(x, y)`)
+
+**Movement grammar: from XY paths to named sets**
+
+- Movement primitives detected from each player's XY path over time: stand, jog, sprint, cut (basket, backdoor, flare, curl, straight, shallow), set a screen (stationary with contact), use a screen, seal, relocate, lift, drift, rim run, sprint to the corner, closeout
+- Each primitive stores start and end position descriptors, path shape (straight or curved, curvature), speed, duration, and direction relative to the basket and the ball
+- Actions are primitives of two or more players in relation: a screen is a stationary screener plus a teammate passing within about 1 m of him
+- Sets are sequences of actions. Names are compositional: a possession that matches no single named set is named by its parts, e.g. "Horns → Iverson → side pick-and-roll"
+- Every set instance is stored both as its name and as its full action sequence, so nothing is lost when names disagree
+
 ## Sync and events
 
 The on-screen scoreboard is the bridge: reading its game clock ties every video frame to the official play-by-play.

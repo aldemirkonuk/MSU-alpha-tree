@@ -95,3 +95,59 @@ def ring(r: float, width_m: float = 0.5) -> int:
 def elbow(court: Court, side: str = "right") -> tuple[float, float]:
     x = court.lane_half_width_m if side == "right" else -court.lane_half_width_m
     return x, court.free_throw_line_m
+
+
+# Post zones and landmarks. Proposals, to be checked against where players actually stand.
+LOW_POST_MAX_ABS_X_M = 2.6
+LOW_POST_MAX_Y_M = 2.0
+HIGH_POST_MAX_ABS_X_M = 2.6
+HIGH_POST_Y_RANGE_M = (3.4, 5.2)
+LANDMARK_RADIUS_M = 0.9
+
+
+def post_zone(x: float, y: float, court: Court) -> str:
+    """'low_post', 'high_post' or 'none'."""
+    if court.lane_half_width_m * 0.5 <= abs(x) <= LOW_POST_MAX_ABS_X_M and y <= LOW_POST_MAX_Y_M:
+        return "low_post"
+    lo, hi = HIGH_POST_Y_RANGE_M
+    if abs(x) <= HIGH_POST_MAX_ABS_X_M and lo <= y <= hi:
+        return "high_post"
+    return "none"
+
+
+def landmark(x: float, y: float, court: Court) -> str:
+    """Nearest named landmark within LANDMARK_RADIUS_M, else 'none'."""
+    marks = {
+        "elbow_right": elbow(court, "right"),
+        "elbow_left": elbow(court, "left"),
+        "nail": (0.0, court.free_throw_line_m),
+        "block_right": (court.lane_half_width_m, 0.9),
+        "block_left": (-court.lane_half_width_m, 0.9),
+    }
+    best, dist = "none", LANDMARK_RADIUS_M
+    for name, (mx, my) in marks.items():
+        d = math.hypot(x - mx, y - my)
+        if d <= dist:
+            best, dist = name, d
+    return best
+
+
+def describe(x: float, y: float, court: Court) -> dict:
+    """Full position descriptor for one player in one frame.
+
+    Every player, every frame: Cartesian position, distance and angle from the rim,
+    side, shooting spot, post zone, nearest landmark, angle sector and distance ring.
+    """
+    r, theta = polar(x, y)
+    return {
+        "x_m": round(x, 2),
+        "y_m": round(y, 2),
+        "r_m": round(r, 2),
+        "theta_deg": round(theta, 1),
+        "side": "right" if x >= 0 else "left",
+        "spot": spot(x, y, court),
+        "post_zone": post_zone(x, y, court),
+        "landmark": landmark(x, y, court),
+        "sector_15deg": sector(theta),
+        "ring_0p5m": ring(r),
+    }

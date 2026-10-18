@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from msu_alpha.geometry import Court, elbow, is_three, polar, ring, sector, spot  # noqa: E402
+from msu_alpha.geometry import Court, describe, elbow, is_three, polar, ring, sector, spot  # noqa: E402
 
 COURT = Court.load()
 
@@ -44,3 +44,22 @@ def test_bins():
     assert sector(45.0) == 3
     assert sector(180.0) == 11
     assert ring(4.57) == 9
+
+
+def test_describe_corner():
+    d = describe(6.7, 0.5, COURT)
+    assert d["spot"] == "corner_three_right"
+    assert math.isclose(d["theta_deg"], 4.3, abs_tol=0.1)
+    assert math.isclose(d["r_m"], 6.72, abs_tol=0.01)
+    assert d["post_zone"] == "none"
+
+
+def test_describe_low_and_high_post():
+    low = describe(-1.9, 0.9, COURT)
+    assert low["post_zone"] == "low_post"
+    assert low["landmark"] == "block_left"
+    high = describe(1.8, 4.2, COURT)
+    assert high["post_zone"] == "high_post"
+    assert high["landmark"] == "elbow_right"
+    nail = describe(0.1, 4.1, COURT)
+    assert nail["landmark"] == "nail"
