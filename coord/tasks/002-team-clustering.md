@@ -1,6 +1,6 @@
 ---
 id: 002
-status: queued
+status: paused
 gpu: L4
 max_gpu_hours: 0.75
 ---

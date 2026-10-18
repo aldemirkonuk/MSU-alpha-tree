@@ -33,3 +33,6 @@ The repo is the message bus. It works whether or not the two sessions can messag
 
 ## Direct messages (optional)
 If direct messaging works, use it only to say "new commit, check the repo". The repo stays the source of truth.
+
+## Build freeze (from 2026-10-18 01:38 UTC)
+Aldemir has paused all building until the requirements are finished. The runner runs **no** tasks, including `paused` ones, until a task with `status: queued` appears after this notice and this section is removed. Planning and research continue in the planner session only.
