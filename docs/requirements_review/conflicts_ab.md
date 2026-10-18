@@ -82,3 +82,7 @@ A = the synthesis recommendation, B = the main alternative. Detail and every per
 ## K09 decision (Aldemir, 2026-10-18, in chat)
 
 **Approved: hybrid** — `state_transitions` (typed, append-only) + `state_segments` (one row per dimension per interval, team-neutral, versioned) + `clock_map` (piecewise-linear game and shot clocks) are the stored truth; per-frame observations stay in `frames`, `ball_states`, `player_positions`; `state_frame` and `state_second` are rebuilt deterministically from segments after every change and never edited. This refines option A. Evidence and the approved requirement text: docs/requirements_review/k09_state_storage_research.md sections 4, 7 and 8 (R-MD-01, R-SR-06, N-MD-01, N-MD-02, N-SY-01, three segment-integrity invariants for N-IV-01, additions to N-SY-05 and N-CX-10). The texts there supersede the earlier proposed texts for those IDs in synthesis.md and proposals_consolidated.yaml.
+
+## N-CX-10 acceptance added (Mac session, delegated by Aldemir, 2026-10-18)
+
+N-CX-10 (with the K09 addition) gains this acceptance: after any state correction, re-scoring only the incidents that overlap the changed frame range yields exactly the same per-parameter contributions as re-scoring the whole game (0 differences, tolerance 1e-9), and no incident outside the changed frame range is re-scored (0 extra re-scores). N-IV-01 and N-SY-05 stand as written in k09_state_storage_research.md section 8.
