@@ -1764,3 +1764,4 @@ Also re-opened in this pass: [P2] https://pmc.ncbi.nlm.nih.gov/articles/PMC54244
 - cbbanalytics.com/glossary (404; the glossary lives at /resources/glossary)
 
 > Note 2026-10-18: the play-by-play scripts used for the college numbers in "Additions 2026-10-18" are saved in `docs/research/transition_full_assets/pbp_scripts/`.
+> Note 2026-10-18 (runner): those college numbers came from automated ESPN requests, which the board says ESPN terms forbid. Treat them as provisional until reproduced from hoopR prebuilt files or CBBD; see the scripts README.
