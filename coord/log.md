@@ -15,3 +15,4 @@
 | 2026-10-18T20:50Z | runner | requirements-improvement | done | review of 518 IDs, rules vocab, gap closures, 3 perspective panels, synthesis; inbox 008; markets fixes (109 tests) |
 | 2026-10-18T21:12Z | runner | inbox-008-live-doc | done | new tab in live doc; conflicts A/B pending |
 | 2026-10-18T21:59Z | runner | k01-k29 | done | all conflicts decided; K09 hybrid; live doc updated |
+| 2026-10-18T22:29Z | runner | fold-008 | done | main tab 748 IDs / 44 families; superseded tab created |
