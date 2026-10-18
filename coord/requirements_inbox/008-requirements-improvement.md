@@ -110,3 +110,9 @@ Inputs consolidated: quality review + acceptance tests (518 IDs, 181 with issues
 - D43: Send the written permission requests (Sports-Reference, Massey; Synergy via staff) for R-DS-08 / R-DS-12? [recommended: yes]
 - D44: Record the MSU film agreement status for R-RG-09? [recommended: record]
 - D45: Actions (not decisions): start Google Drive for desktop; rotate the CBBD and Parse keys that appeared in chat. [recommended: do]
+
+## Note 2026-10-18 (Aldemir, in chat)
+
+- **Off-ball players out of frame** (data-scientist risk 1, analyst risk 4): a solution for off-ball players who go missing from the broadcast frame already exists; nothing more can be done about the camera. The size of this edge case will be measured (share of player-seconds off frame per role, per game) and the decision taken later. Not a blocker.
+- **Apply to the live doc:** approved. Applied as a new tab "Improvement pass — 18 Oct (inbox 008)" (add-only; the 29 conflicts are listed there as A/B choices, pending).
+- The A/B table is also in docs/requirements_review/conflicts_ab.md.
