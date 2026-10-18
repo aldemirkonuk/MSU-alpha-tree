@@ -968,3 +968,1135 @@ Use the Franks et al. canonical guarding point (0.62 man / 0.11 ball / 0.27 hoop
 - S72 Coaches Insider, Stephens lob defense: https://coachesinsider.com/mens-basketball/post-defense-defending-the-lob-with-dwayne-stephens-western-michigan-university
 - S74 NBC CBT, MSU zone: https://collegebasketball.nbcsports.com/2015/10/03/michigan-state-playing-zone-its-possible/
 - S75 Cracked Sidewalks, Purdue preview 2025-26: https://www.crackedsidewalks.com/2025/10/purdue-preview-2025-26.html
+
+---
+
+## Additions 2026-10-18 (Job A deep research)
+
+Appended 2026-10-17 by the single writer for this file (date stamp corrected on 2026-10-17; the "2026-10-18" in this section's headings is kept only as the section label so that existing references still resolve). Nothing above this line was edited. This section merges two Job A research notes (man/ball-screen/handoff/off-ball, and zones/presses/junk/scheme changes/transition), both compiled 2026-10-17.
+
+**Rules for this section.**
+- Only items that are **new** to this file, or **richer** versions of an existing row (new evidence, numbers, roles, timings, college or MSU attribution), are listed. Each block names the existing row it extends. Rows already complete above are not repeated.
+- Units: metres, seconds, degrees. Court spots are **(r m, θ°)**: r from the rim centre, θ from the right baseline measured at the rim centre (θ = 0° along the baseline toward the right sideline, 90° straight up the lane, 180° toward the left sideline), as in `config/vocabulary_map.yaml` and §0.1. x = r·cos θ, y = r·sin θ. Every foot value found in a source was converted at 0.3048 m per foot. For presses the origin stays at the **defended** rim, so the offence's backcourt is y > 12.73 m (opponent FT line y ≈ 21.26 m, opponent top of the arc y ≈ 18.70 m, opponent baseline y ≈ 27.05 m). All y values assume the rim centre 1.60 m from the baseline (old §0.2). **Rim being shot at** = the far rim at (0, 25.45 m) in this defended-rim frame; "attacked rim" keeps its §0.1 meaning (the rim this defence protects).
+- Landmarks used below: top (7.6, 90°); right wing (7.3, 35°); left wing (7.3, 145°); wing centre (7.07, 45° / 135°); right corner (6.86, 3°); left corner (6.86, 177°); right block (2.0, 24°); left block (2.0, 156°); right elbow (4.57, 66.4°); left elbow (4.57, 113.6°); nail (4.19, 90°); right slot (7.47, 70°); left slot (7.47, 110°); short corner (4.02, 5.7° / 174.3°) [HEURISTIC; vocabulary_map: to be defined from film]; high screen point (7.34, 84°); right-wing screen point (7.56, 52.5°).
+- Detection primitives are those of §0.3–0.4, §F3.0 and §F8.0. **Screen:** this section uses the inherited `SCREEN` primitive of §0.4 / set_taxonomy §0 unchanged. A stricter rule (screener speed ≤ 0.3 m/s for ≥ 0.5 s within ≤ 1.2 m of a teammate's path) is listed only as a proposed alternative `SCREEN_v2`, pending the cross-file screen-rule decision flagged in `docs/taxonomy/motion_starts.md`. **Screen moment t₀** = the frame with the smallest screener-to-on-ball-defender distance, as used by McIntyre et al. `[N32]`; this is the operational definition of the F3.0 contact time t₀, not a second anchor. New primitives `SHAPE_MATCH`, `ONE_ON_BALL`, `CHASER`, `SLOT_RESIDUAL_k`, `PRESS_SETUP`, `INBOUND_LAG`, `GET_BACK` clocks, `OUTNUMBER`, `JAILBREAK`, `SPLIT`, `FAKE_TRAP`, `RECOVER` and `STEP_RELEASE` are defined in A0 below.
+- Tags: **unverified** = no source opened in the research confirmed it (or the opened page did not contain it). **[HEURISTIC]** = a detection threshold or template position proposed for this project. **Every numeric threshold, timing window and template coordinate below is [HEURISTIC] unless a source key is attached to that number.** **[CONVENTION]** = common coaching usage without a single opened source.
+- Source keys `[Nxx]` and `[DZxx]` resolve in **Additional sources (2026-10-18)** at the end of this section. `[Dxx]` and `[Sxx]` keys resolve in the existing Sources list above; where a D/S source was re-opened in this research it is also listed under its new key.
+- College (NCAA D-I) terms first. NBA and European terms are secondary aliases or secondary priors and are labelled that way.
+
+### A0. New detection primitives (extend §0.3–0.4) [HEURISTIC]
+
+| Primitive | Definition |
+|---|---|
+| `SHAPE_MATCH` (d̄_m) | Hungarian assignment of the 5 defenders to the 5 attackers minimising total distance; d̄_m = mean matched distance. Man and match-up zones give d̄_m ≤ 2.0 m in the half-court; pure zones give d̄_m ≥ 2.5 m when the offence overloads one side |
+| `ONE_ON_BALL` | Exactly one defender within 1.5 m of the ball-handler on ≥ 80% of frames outside `TRAP` windows. Encodes the match-up-zone rule "never two defenders on one player" `[DZ01][DZ59]` |
+| `CHASER(d,a)` | Defender d has follow score F ≥ 0.8 against attacker a and stays within 2.0 m of a on ≥ 85% of frames, even when a is two or more passes away (ordinary two-away man defenders sag to r_d − r_a ≤ −2 m) |
+| `SLOT_RESIDUAL_k` | Mean distance of the 5 defenders (optimally permuted) to the ball-location-conditioned template of zone family k (templates in the zone blocks below) |
+| `PRESS_SETUP` | t_setup = time from the opponent's made FG/FT (PBP timestamp) until ≥ 3 defenders sit within 2.0 m of backcourt template slots (y > 12.73 m) |
+| `INBOUND_LAG` | t_ib = time from the made basket to the inbound pass leaving the inbounder's hands (ball crosses the baseline plane, y ≈ 27.05 m) |
+| `GET_BACK` clocks | After a change of possession at t0 (defensive-rebound frame, steal frame or made-basket frame): **t_rim** = first time a defender of the team that lost the ball is at r ≤ 1.5 m from his own rim; **t_stop** = first time a defender is ≤ 2.0 m from the ball-handler *and* the handler's speed falls below 3.0 m/s; **n_back(t0+Δ)** = number of that team's players with y below the ball at Δ = 2, 3, 4 s |
+| `OUTNUMBER(k_o, k_d)` | At t0 + 2 s, count attackers and defenders with y < y_ball + 1.0 m in the attacking half (2v1, 3v2, 4v3, 5v4) |
+| `JAILBREAK` | The ball-handler reaches r ≤ 3.0 m with no defender within 1.5 m, ≤ 1.5 s after t₀ of a ball screen (see BS2) |
+| `SPLIT` | The ball-handler passes between X-ball and X-big while their separation is ≥ 1.2 m (see BS4) |
+| `FAKE_TRAP` | A second defender comes within 2.0 m of the handler and the approach does **not** meet `TRAP` (either the distance stays > 1.5 m or the 1.5 m contact lasts < 0.6 s), followed by a retreat ≥ 1.0 m within 1.0 s (see P-2). Every approach within 2.0 m is therefore either `TRAP` or `FAKE_TRAP`, with no gap between them |
+| `RECOVER(d,a)` | Defender d travels ≥ 1.5 m toward attacker a and ends within 2.0 m of a. `CLOSEOUT` (§0.4: ≥ 2.5 m travel, peak ≥ 4 m/s, end ≤ 1.5 m) is the strict subset. Closeout length classes use the end distance as the class variable: **hard** = `CLOSEOUT` ending ≤ 0.8 m; **short** = `RECOVER` ending 1.2–2.0 m (see M-4, BS-8) |
+| `STEP_RELEASE(d)` | Displacement ≥ 0.5 m toward the ball-handler starting within 0.4 s of a middle-dribble start (\|x_b\| decreasing ≥ 0.8 m), then a reversal ≥ 0.4 m toward d's own man within 0.5 s of the dribble pickup, with no matchup change. Replaces the 1.0 m `STUNT` threshold for the Izzo one-step help (M-1, M-5) |
+
+---
+
+### A1. Man principles (extends F1, F7)
+
+#### M-1. Izzo "head-up, help-not-deny" man (MSU "Defensive Anticipation") — RICHER (extends F1.6 and F1.1)
+- **Name and aliases:** Izzo man philosophy; "Defensive Anticipation"; "Pass Defense / Man Philosophy" (Izzo clinic notes).
+- **Family / sub-family:** F1.1 Help-first family (it is **not** pack line), program profile F1.6. New sub-family **F1.1.5 Help-position man (one big step off the line)**.
+- **Start alignment** (ball at the right wing, 5-out offence; X3 on the ball):
+
+  | Defender | Man at | Defender spot (r, θ) | Note |
+  |---|---|---|---|
+  | X3 on ball | right wing (7.3, 35°) | (6.4, 34°) | ≈ 0.9–1.0 m in front, square |
+  | X1 one pass away | top (7.6, 90°) | (6.0, 75°) | ≈ 1/3 of the way from man to ball, ≈ 0.8 m off the line toward the rim |
+  | X2 one pass away | right corner (6.86, 3°) | (6.0, 14°) | same rule |
+  | X4 two passes away | left wing (7.3, 145°) | (2.8, 116°) | both feet in the lane, \|x\| ≤ 1.83 m |
+  | X5 post | right block (2.0, 24°) | (2.4, 38°) | 3/4 high side, ball side |
+
+  Spots are [HEURISTIC]; one "big step" is taken as ≈ 0.8 m.
+- **Roles / rules** `[N10]`: guard the man head-up, body always between man and basket. On the ball: shoulder to shoulder, feet to feet, do not drop a foot to open up; stay square and split the man with one foot to force him (right foot forces left, left foot forces right); one hand pressures the ball, the other is down; mirror the ball. Off the ball: help position, not denial, one big step off the passer–receiver line; step at the dribbler to stop penetration, release back as he picks up the dribble. Move on the pass, not on the catch (all five). Closeouts with choppy steps, not a jump stop. Help ↔ ball in two steps each way. Post usually **not** fronted: 3/4 high side, ball side, elbow in the post's back ("chicken wing"); fronting is avoided because it hurts rebounding. Weak side "two feet in the paint". Rationale: taking away penetration lets the bigs help less, which helps rebounding `[N10]`. Also: ball pressure forces more turnovers than help; elbow help and block help; on a shot the post defender gets behind the post `[N12]` (= D4 re-opened).
+- **Ordered actions with timing:**
+  1. Pass released (t = 0). All five start moving during the flight (≈ 0.3–0.8 s on perimeter passes).
+  2. The new on-ball defender closes out with choppy steps and is set by the catch, or ≤ 0.4 s after it.
+  3. New one-pass-away defenders reach the help spot (≈ 0.8 m off the line) in two steps (≈ 0.6–0.9 s).
+  4. On a dribble toward the middle, the nearest helper steps at the ball (≈ 0.6–1.0 m) and releases back when the dribble is picked up `[N10][N38]`. Detected with `STEP_RELEASE` (A0), not `STUNT`.
+- **Usual counters:** skip passes over a help side that sits two steps from the ball rather than packed; quick reversal before helpers recover; low-side post seals against 3/4 high side. Backdoor is less effective than against denial. [CONVENTION; no opened source lists counters.]
+- **Detection signature [HEURISTIC]:**
+  - (a) **Help-line offset:** one-pass-away defenders sit 0.5–1.2 m off segment(man, ball) on the rim side, lane fraction t ∈ [0.2, 0.45]. Deny is ≤ 0.6 m on the line (F1.2); expected r_d for helpers whose man is at the arc is **5.5–6.3 m**, i.e. outside the pack line (r ≤ 5.3 m). This is the main Izzo-man vs pack-line separator.
+  - (b) **Move-on-pass latency:** median time from pass release to each off-ball defender's acceleration (≥ 1.5 m/s²) toward his new spot ≤ 0.25 s, and before the catch on ≥ 70% of passes.
+  - (c) **Choppy closeout:** deceleration spread over the last 1.0–1.5 m, no single-frame stop; end distance 0.8–1.2 m.
+  - (d) **Two-step help-to-ball:** a helper converted to on-ball defender travels ≤ 2.0 m in ≤ 0.9 s.
+  - (e) **Weak side in the paint:** two-pass-away defenders have \|x\| ≤ 1.83 m while the ball is on a wing or in a corner.
+  - (f) **Post:** with y_b > 4.19 m, the post defender is on the ball side and half-court side of the post within ≤ 0.9 m; full front on < 15% of post-entry-threat frames.
+  - (g) Square stance / stance split needs pose; not readable from positions.
+- **Teams documented (MSU first):** Michigan State (Izzo), clinic notes in a 2017 playbook compilation, clinic season **unverified** — https://thebasketballplaybook.com/wp-content/uploads/2017/08/Tom-Izzo-Michigan-State-Playbook.pdf `[N10]`. MSU practice video 2015 lists "six-eye" positioning, shell, Jump to the Ball, Negaunee — https://www.mensbasketballhoopscoop.com/?p=23659 `[N40]`. MSU 2010-11 practice video: 4-on-3 / 4-on-4 shell for ball pressure, communication and help-side recovery — https://onlinestore.coachingtoolbox.net/product/all-access-michigan-state-basketball-practice-with-tom-izzo/ `[N11]`.
+- **Sources:** `[N10][N12][N38][N40][N11]`.
+- **Confidence:** high for the principles (direct clinic text); thresholds and the 0.8 m step are heuristic; season of the notes **unverified**.
+
+#### M-2. Ball-line man (Tubby Smith) — NEW (F1.1 variant)
+- **Name and aliases:** ball-line defense; ball-line man; "ball line" help.
+- **Family / sub-family:** F1.1 Help-first family, new sub-family **F1.1.6 Ball-line man**.
+- **Definition** `[N1]`: man-to-man with on-ball pressure and off-ball help. The ball line is a horizontal line through the ball to each sideline (y = y_b). Defenders near the ball line stay close to their men; weak-side defenders farther away sink to the lane and basket. Discourages penetrating passes (toward the basket) and allows non-penetrating ones.
+- **Start alignments** (roles from `[N1]`; coordinates [HEURISTIC]):
+  - Ball at the top: X2 and X3 deny the wings at about (6.5, 45°) and (6.5, 135°); X4 steps off toward the left-corner help spot; X5 guards 5 and protects the basket.
+  - Ball at the right wing: X1 slides to the nail (4.19, 90°); X3 to the left elbow (4.57, 113.6°); X4 into the lane at about (2.0, 120°); X5 may front the post on the high side.
+  - Ball in the right corner: X5 fronts on the baseline side; X2 drops to the right mid-post; X1 below the FT line at about (3.5, 80°); X3 above the left block near the ball line.
+- **Roles / rules** `[N1]`: post entry → X2 and X5 double, X4 digs, X1 and X3 stay in the lane near the ball line. Post-front rule: ball above the FT-line extension → front high side; below it → front baseline side. Baseline/corner trap: the nearest off-ball defender traps with the on-ball defender; the open outlet is the non-penetrating pass.
+- **Ordered actions with timing [HEURISTIC]:** (1) pass to the wing/corner (t = 0); (2) all off-ball defenders reach y ≤ max(y_b + 0.5, 3.5) m within 1.0 s; (3) post-front side flips within 0.5 s of the ball crossing y = 4.19 m; (4) corner trap formed within 1.0 s of a corner catch.
+- **Usual counters:** skip over the sunken weak side; lob over the front; the open man opposite a corner trap [CONVENTION].
+- **Detection signature [HEURISTIC]:**
+  - (a) **Ball-line depth rule (wing ball, y_b ≥ 2.5 m):** Δy_d = y_d − y_b ≤ +0.5 m for **all** off-ball defenders. Pack line sets depth by radius (r_d ≤ 5.3 m), not by y relative to the ball. Single-rule form covering wing and corner: y_d ≤ max(y_b + 0.5, 3.5) m for all off-ball defenders.
+  - (b) **Corner ball (y_b < 2.5 m, e.g. y_b ≈ 0.4 m):** rule (a) is not used; test instead that all four off-ball defenders are at y_d ≤ 3.5 m and at least 3 at y_d ≤ 2.0 m (consistent with the start alignment, where X1 sits at y ≈ 3.45 m). Ball at the wing (y_b ≈ 4.2 m): helpers at the nail and elbow (y ≈ 4.2 m), not deeper.
+  - (c) Post-front side flips with y_b: high-side front when y_b > 4.19 m, baseline-side front when y_b < 4.19 m.
+  - (d) Corner trap: `TRAP` with the ball at θ ≤ 12° or ≥ 168°, second trapper = nearest off-ball defender.
+- **Teams documented:** Tubby Smith's programs, credited without a season — https://hoopstudent.com/ball-line-defense `[N1]`. No D-I team-season confirmed: **unverified**. MSU: none.
+- **Sources:** `[N1]`.
+- **Confidence:** medium for the principles (one coaching site); low for program attribution.
+
+#### M-3. Help-side "I" with "bottom out, top down" and the 1/3–2/3 deny rule — RICHER (extends F7.1 "I" alignments and F7.4)
+- **Name and aliases:** Helpside I; Low I / Top I; cover down; 1/3–2/3 deny rule.
+- **Family / sub-family:** F7.1 Help positions + F7.4 Rotations.
+- **Start alignment** (ball in the right corner (6.86, 3°)): Low I at about (1.2, 121°), on the midline near the rim; Top I at about (3.5, 98°), near the nail; strong-side helpers as F7.1.
+- **Roles / rules** `[N24]`: one pass away, deny stance about 1/3 of the way toward the man and 2/3 away from the ball. Two passes away with the ball above the FT-line extension: straddle the lane line just below the ball line. Ball below the FT-line extension: the two help-side defenders form the "I" on the midline. On paint penetration the Low I meets the drive (outside the lane if it threatens the rim), the Top I covers down to replace him ("bottom out, top down"), the last help-side defender X-outs to the open shooter. Shared calls make the rotation about **0.5 s** faster `[N24]`.
+- **Ordered actions with timing:** (1) drive enters the paint, t = 0; (2) Low I meets the driver by t + 0.5 s; (3) Top I drops ≥ 1.5 m toward the rim by t + 0.8 s; (4) last helper starts the X-out on the kick-out pass. Windows [HEURISTIC] except the 0.5 s gain `[N24]`.
+- **Usual counters:** lob to the Low I's man; kick to the Top I's man [CONVENTION].
+- **Detection signature [HEURISTIC]:**
+  - (a) "I" stack: two weak-side defenders with \|x\| ≤ 1.0 m and Δy ≥ 1.5 m between them while y_b < 4.19 m.
+  - (b) "Bottom out, top down": within 1.0 s of paint entry (ball \|x\| ≤ 1.83 m, y ≤ 4.19 m), the lower I moves toward the ball and the upper I's r falls ≥ 1.5 m; their HMM matchups change in sequence (a two-step `ROTATE` chain).
+  - (c) 1/3 rule: lane fraction t ≈ 0.33 from the man; with perpendicular offset ≤ 0.6 m → deny; 0.8–1.2 m → Izzo help (M-1).
+- **Teams documented:** generic coaching source, no team named — https://fastbreak.playbooktech.com/coaches-community/?p=2195 `[N24]`. X-out mechanics match LMH 2i — https://lowmanhelp.substack.com/p/the-blueprint-pick-and-roll-101?open=false `[N36]` (= D49 re-opened). MSU: **unverified**.
+- **Sources:** `[N24][N36]`.
+- **Confidence:** medium.
+
+#### M-4. Rotation policies: help the helper / rotate-and-recover / no rotation (KYP); strong-side corner rule; sink-and-fill; hard vs short closeout — RICHER (extends F7.4 and F7.5)
+- **Name and aliases:** help the helper; full rotation; rotate-and-recover; "KYP" (know your personnel) no-rotate; "don't help off the strong-side corner"; sink and fill; hard (long) closeout; short closeout.
+- **Family / sub-family:** F7.4 Rotations, new **rotation-policy** label set; F7.5 Closeouts (length class).
+- **Start alignment** (drive from the right wing; [HEURISTIC]): ball-side corner defender at (6.0, 10°) on a man at (6.86, 3°); weak-side low man at (1.2, 121°); weak-side top helper at (5.6, 117°); post defender at (2.4, 38°).
+- **Roles / rules** `[N22]` (NBA source; principles apply to D-I, secondary): help comes from the weak side, the low man is the first line at the rim; do not help out of the strong-side corner (some teams allow a jab step only); help the helper = after the first help another defender takes the newly open man; full rotation = a chain where the original helper recovers to the end and matchups change permanently; rotate-and-recover = the helper returns to his own man while a nearby defender stunts to buy time; no rotation = leave a non-shooter (KYP); sink and fill = a perimeter defender sinks to take away the interior pass and the nearest helper fills for him, then recovery to original men or an X-out; hard (long) closeout against shooters (fly-by is the extreme), short closeout against non-shooters.
+- **Ordered actions with timing [HEURISTIC]:** (1) help commits at t_help; (2) second line moves within 0.8 s; (3) policy resolves within t_help + 3 s.
+- **Usual counters:** kick to the man left by KYP when he can shoot; second-side drive against a short closeout [CONVENTION].
+- **Detection signature [HEURISTIC]:**
+  - **Strong-side corner rule:** the ball-side corner defender (man at θ ≤ 12°, same sign of x as the ball) moves ≤ 1.0 m toward the driver; a ≤ 0.5 m excursion that returns within 0.6 s = jab. Report the rate per drive.
+  - **Policy per drive:** count `ROTATE` events in [t_help, t_help + 3 s]. 0 rotations with the helper back on his man ≤ 2.0 s → rotate-and-recover. ≥ 2 sequential rotations with new matchups persisting ≥ 2 s → full rotation / help the helper. An open kick-out receiver whose nearest defender stays ≥ 3.5 m away for the window while that defender stays in the paint → no-rotation (KYP); validate against the receiver's 3P% metadata.
+  - **Sink-and-fill:** defender A moves ≥ 1.5 m toward the rim and defender B shifts ≥ 1.0 m toward A's vacated man within 0.8 s, without crossing paths (crossing = X-out, existing F7.4).
+  - **Closeout length:** hard = `CLOSEOUT` with end distance ≤ 0.8 m and speed ≥ 3 m/s at 1.5 m from the shooter; short = `RECOVER` (A0) that stops at 1.2–2.0 m. A short closeout never satisfies `CLOSEOUT` (end ≤ 1.5 m is required there), so it is built on `RECOVER`.
+- **Teams documented:** NBA league-wide principles (secondary) — https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/ `[N22]`. D-I team attribution **unverified**; MSU **unverified**.
+- **Sources:** `[N22]`.
+- **Confidence:** high for the definitions; thresholds heuristic.
+
+#### M-5. Izzo "Jump to the Ball" / step-and-release — NEW (F7.3 help action, MSU)
+- **Name and aliases:** jump to the ball; step-and-release; "see both".
+- **Family / sub-family:** F7.3 Help actions, new sub-family **on-pass jump + dribble step**.
+- **Start alignment:** attackers 0.30 m (converted from the source's foot) off the extended lane line (side not specified) `[N38]`; taking the outside side, \|x\| = 1.83 + 0.30 = 2.13 m just beyond the arc: (7.32, 73.1°) and (7.32, 106.9°) [HEURISTIC]; ball defender at about (6.6, 73°); helper at about (5.6, 100°), in the gap between the ball and the left elbow.
+- **Roles / rules:** FastModel's Izzo drill: two attackers pass back and forth; x2 starts on the ball and x1 in help; they swap help↔ball on every pass; the coach stands with the help defender and asks whether he can see both. Frame 2 adds a dribble toward the middle: the helper stays low, takes **one step** at the dribbler and releases back as the dribbler starts to pick up the ball `[N38]`. Generic definition: on a pass between adjacent perimeter spots the passer's defender side-jumps into the gap during the flight, taking away the face cut and middle penetration `[N23]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) pass in flight (0.3–0.6 s): the passer's defender starts the jump during the flight and reaches 1.0–2.0 m toward the ball side and the rim by catch + 0.5 s; (2) catch: the new on-ball defender closes out; (3) middle dribble: the helper steps ≈ 0.6–1.0 m toward the ball within 0.4 s of the dribble start; (4) pickup: the helper recovers ≥ 0.5 m toward his man within 0.5 s.
+- **Usual counters:** face cut when the jump is late; kick to the helper's man during the step [CONVENTION].
+- **Detection signature [HEURISTIC]:** **Jump** — the passer's defender moves ≥ 0.5 m inside [t_release, t_catch] (optionally ≥ 1.5 m/s × flight time) and ≥ 1.0 m by t_catch + 0.4 s, with Δx of the receiver's x sign, ending with r_d ≥ 0.8 m smaller than the passer's r. (From a stance start at about 4–5 m/s² a defender covers only ≈ 0.2–0.25 m in 0.3 s and ≈ 0.8–0.9 m in 0.6 s, so ≥ 1.0 m inside the flight would miss most real jumps; arithmetic only.) **Step-and-release** — `STEP_RELEASE` (A0), triggered by a middle dribble and released at the dribble-pickup event, not on the fixed 1.0 s `STUNT` timer. The trigger and the 0.5 m threshold separate it from F7.3 Stunt.
+- **Teams documented (MSU first):** Michigan State (Izzo drill; FastModel entry undated) — https://playbank.fastmodelsports.com/library/basketball/fastdraw/68911/play-Tom-Izzo-Jump-to-the-Ball `[N38]`; the Izzo course lists "Jump to the Ball" as a lesson — https://coachtube.com/course/basketball/defensive-skills-and-drills/118044 `[N37]`; MSU 2015 practice video lists the drill `[N40]`.
+- **Sources:** `[N38][N23][N37][N40]`.
+- **Confidence:** high for the definition; thresholds heuristic.
+
+---
+
+### A2. Ball-screen coverages (extends F3)
+
+#### BS-1. Ball-screen labelling backbone: screen moment, four coarse classes, priors — RICHER (extends F3.0 and F3.7)
+- **Name and aliases:** over / under / switch / trap (level-1 classes); hedge and show as named sub-types.
+- **Family / sub-family:** F3.0 measurement frame; F3.7 spectrum; F18 architecture.
+- **Start alignment:** any ball screen; reference high PnR = screener at (7.34, 84°), handler at (7.6, 90°), X-big within 1.5 m of the screener on the rim side.
+- **Roles / definitions (NBA SportVU)** `[N32]`: **Over** = the on-ball defender stays between handler and screener. **Under** = he does not. **Switch** = on-ball and screener defenders exchange matchups. **Trap** = both double the handler. Sub-types named but not modelled: **hedge** (the screener's defender jumps out on the handler) and **show** (slides out just far enough to present an obstacle). Each instance is labelled by its most defining characteristic (over then trap = trap).
+- **Ordered actions with timing:** t₀ = minimum screener-to-on-ball-defender distance; features from 10 frames before t₀ until the shot, pass, turnover or stoppage, from summary statistics of all pairwise distances among handler, on-ball defender, screener and screener defender (25 Hz) `[N32]`.
+- **Results (for priors):** multinomial logistic regression on 340 hand labels (199 over, 56 under, 57 switch, 28 trap): **69% (±3%) accuracy**; trap was the hardest class; 2013-14 Heat trapped 13.2% vs a 7.5% league average `[N32]`; applied to 270,823 screens over 4 seasons `[N31][N32]`. International prior (2019 FIBA World Cup, n = 515): switch 46.0%, over 24.5%, under 17.5%, trap 8.7%, ice 3.3%; effectiveness differed by type (χ² = 14.4, p = 0.006) `[N33]` — non-NCAA prior only.
+- **Usual counters:** n/a (labelling method).
+- **Detection signature [HEURISTIC]:** keep the four coarse classes as level-1 labels with the finer F3 coverages (drop depth, hedge type, ice, …) as level-2. Over/under test at t₀ ± 0.2 s: the on-ball defender's projection onto segment(handler, screener) has parameter 0 < t < 1 with perpendicular distance ≤ 0.8 m → over; otherwise rim side of the screener → under. Expect level-1 accuracy above 69% with 25 Hz college tracking plus pose; calibrate on MSU film.
+- **Teams documented:** NBA 2013-14 to 2016-17 (secondary) — https://www.sloansportsconference.com/research-papers/recognizing-and-analyzing-ball-screen-defense-in-the-nba `[N31]`; 2019 FIBA World Cup — https://pmc.ncbi.nlm.nih.gov/articles/PMC9820029/ `[N33]`.
+- **Sources:** `[N31][N32][N33]`.
+- **Confidence:** high for the cited methodology and numbers.
+
+#### BS-2. Point-of-attack options "Quickest path" and "Down"; jailbreak — NEW (Down, jailbreak) / RICHER for the name "quickest path" (F2 / F3.5)
+- **Name and aliases:** quickest path (label `poa_quickest_path`: over/under chosen by position; distinct from the F2.2 force-direction label "quickest path", which keeps its older meaning); down (= ice family); "jailbreak" (failure state).
+- **Family / sub-family:** F2 On-ball rules + F3.5 Directional.
+- **Start alignment:** high PnR reference (BS-1); X-ball at about (6.8, 95°) on the handler at (7.6, 90°).
+- **Roles / rules** `[N36]` (= D49 re-opened): the four standard POA options are Over, Under, Quickest Path (pick over or under from where you are in the action) and Down. With Down the POA defender and the big must agree; miscommunication causes "jailbreaks", which almost always end in baskets.
+- **Ordered actions with timing [HEURISTIC]:** POA choice is fixed by t₀ − 0.3 s; jailbreak resolves within t₀ + 1.5 s.
+- **Usual counters:** re-screen to flip the angle against Down; attack the miscommunication [CONVENTION].
+- **Detection signature [HEURISTIC]:** **`poa_quickest_path`** (team-level label): within a game, over/under per screen is predicted by the on-ball defender's pre-t₀ position (rim side of the handler–screener segment at t₀ − 0.3 s → under; handler side → over) with accuracy ≥ 0.8, and the team's over share is between 0.3 and 0.7 (no fixed preference), over ≥ 20 ball screens. **Jailbreak:** `JAILBREAK` primitive (A0).
+- **Teams documented:** generic — https://lowmanhelp.substack.com/p/the-blueprint-pick-and-roll-101?open=false `[N36]`. MSU **unverified**.
+- **Sources:** `[N36]`.
+- **Confidence:** medium.
+
+#### BS-3. "Through" (slide through, "open up") — RICHER (F3.1; path class existed in F3.0, coverage row was missing)
+- **Name and aliases:** slide through; through; open up and let him through.
+- **Family / sub-family:** F3.1 Containment, X-ball path.
+- **Start alignment:** screener at (7.34, 84°); X-big ≈ 1.0–1.5 m below him at about (6.0, 84°); X-ball on the handler at about (6.8, 92°).
+- **Roles / rules:** used when the handler is not a shooting threat. The screener's defender calls "Screen right/left … Through!" and steps back to open a lane; the screened defender drops below the screener and slides between screener and screener's defender `[N20]`. The same "open up" concept is used on down screens with a post–guard mismatch `[N35]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀ − 0.5 s: X-big steps back ≈ 0.5–1.0 m; (2) t₀: X-ball passes between screener and X-big; (3) t₀ + 0.5 s: X-ball re-attached at 1.0–2.0 m.
+- **Usual counters:** pull-up three over the screen; re-screen [CONVENTION].
+- **Detection signature [HEURISTIC]:** X-ball's path at t₀ crosses the segment between screener and X-big (path class "through"), X-big depth 0.8–2.0 m at t₀, and X-big moves ≥ 0.5 m away from the screener in [t₀ − 0.6, t₀]. Under differs: X-ball also passes on the rim side of X-big.
+- **Teams documented:** generic (ASEP coaching text) — https://coachesinsider.com/mens-basketball/defending-screens-article/ `[N20]`. D-I attribution **unverified**.
+- **Sources:** `[N20][N35]`.
+- **Confidence:** medium.
+
+#### BS-4. "Up to touch" with arrival timing; split event — RICHER (extends F3.1 "At the level")
+- **Name and aliases:** up to touch; at the level; level; "aggressive drop" / "level drop" (Eurohoops alias).
+- **Family / sub-family:** F3.1, boundary row between containment and show.
+- **Start alignment:** screener at (7.34, 84°); X-big ≤ 0.6 m from him on the rim side at about (6.9, 84°) at t₀.
+- **Roles / rules:** FIBA: the screener's defender starts at the level of the screen; flat hedge is just below the level `[N34]` (= D10 re-opened). New timing: the big must get up to touch, arriving at the screen **at the same time as the offensive big**, stand the handler up so the guard can recover, keep contact with the rolling screener so no backside switch is needed, and turn his head to the ball for a possible late switch `[N9]`. A level or aggressive drop sits much higher than drop and relies on the low man to tag the roll `[N2]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀ − 1.5 s to t₀: X-big moves with the screener, ≤ 1.0 m apart; (2) t₀: \|λ\| ≤ 0.6 m; (3) t₀ to t₀ + 0.8 s: X-big holds the handler; (4) recovery to the roller.
+- **Usual counters:** split the screen when the big is late; slip; early roll `[N9]`.
+- **Detection signature [HEURISTIC]:** arrival lag Δt_arr = (first time X-big is within 1.0 m of the screen point) − (time the screener becomes stationary). Up to touch: Δt_arr ≤ +0.2 s; late (split risk): Δt_arr > 0.5 s. Keep the existing \|λ\| ≤ 0.6 m geometry. `SPLIT` primitive (A0).
+- **Teams documented:** NBA examples (secondary) — https://slappinglass.substack.com/p/pnr-defense-canceling-screens `[N9]`. D-I **unverified**.
+- **Sources:** `[N34][N9][N2]`.
+- **Confidence:** high for the definition; thresholds heuristic.
+
+#### BS-5. Quick show-and-recover (soft show) with MSU attribution and the no-rotation check — RICHER (extends F3.2 "Soft hedge / show")
+- **Name and aliases:** quick show; show-and-recover; soft show; soft hedge.
+- **Family / sub-family:** F3.2 Show family.
+- **Start alignment (MSU high PnR):** screener (5) at (7.34, 84°); X5 up to touch at about (6.8, 86°); X-ball on the handler at (6.8, 95°); weak-side low man at about (1.5, 120°).
+- **Roles / rules:** the big briefly shows, then recovers to the roller, keeping the PnR a 2-on-2 and the defence out of rotation; the guard fights over, keeps contact, must not "die on the screen" `[N9]`. Show = the screener's defender slides out just far enough to present an obstacle `[N32]`. NBA example (secondary): in "last year's NBA Finals" (2020, inferred from the Feb 2021 article date) the Heat used a quick show-and-recover so that Butler or Crowder could stay on LeBron James instead of switching the screener's defender onto him `[N9]`. **MSU 2019-20:** base defence is generally to soft hedge ball screens; MSU rarely switches 1-5, and never switched 1-5 against Moritz Wagner in 2017-18 `[N43]` (= D25 re-opened). *Re-confirmation of F1.6 (line "Ball screens, 2017-20") and the F18.4 rows; not new evidence.*
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀: X-big shows 0.5–1.0 m into the handler's path; (2) t₀ + 0.4–0.8 s: X-ball re-attaches ("back, back"); (3) X-big back on the roller by t₀ + 1.2–1.6 s, no tag needed when on time.
+- **Usual counters:** split; slip; middle penetration on a late show `[N9]`.
+- **Detection signature [HEURISTIC]:** existing soft-hedge geometry (λ between −1.0 and +0.5 m, show ≤ 0.8 s) plus (a) **no-rotation check**: no off-ball `ROTATE` in [t₀, t₀ + 2 s] and no tag (no off-ball defender within 1.0 m of the roller) — the 2-on-2 property, the main split from hard hedge; (b) X-ball within 1.5 m of the handler by t₀ + 0.8 s.
+- **Teams documented (MSU first):** Michigan State 2019-20 (base) and 2017-18 (no 1-5 switch vs Michigan) — https://dylanburkhardt.substack.com/p/making-sense-of-michigan-at-michigan `[N43]` (re-confirmation of F1.6). Miami Heat, 2020 NBA Finals vs the Lakers (secondary; season inferred) — https://slappinglass.substack.com/p/pnr-defense-canceling-screens `[N9]`.
+- **Sources:** `[N9][N32][N43]`.
+- **Confidence:** high for the MSU 2019-20 attribution; mechanics from an NBA/European coaching source.
+
+#### BS-6. Late switch (after show-and-recover) — NEW (F3.4)
+- **Name and aliases:** late switch.
+- **Family / sub-family:** F3.4 Exchange family, new sub-family **conditional switch**.
+- **Start alignment:** as BS-4/BS-5 (up-to-touch or soft-show geometry at t₀).
+- **Roles / rules** `[N9]`: after recovering, the big switches onto the handler if the handler gets to the rim, and the guard takes the rolling big; the guard can use the roller's momentum to push or pin him under the rim (re-checked on the opened page in the 2026-10-17 fix pass: the late-switch section states this; the "limits offensive rebounds" rationale is not on the page — **unverified**).
+- **Ordered actions with timing [HEURISTIC]:** (1) show-and-recover, t₀ to t₀ + 1.2 s; (2) handler drives to r ≤ 3 m; (3) X-big leaves the roller and becomes the ball matchup at t₀ + 1.0 to 2.5 s; (4) X-ball takes the roller near the rim.
+- **Usual counters:** lob or dump to the roller over the smaller defender; offensive rebound [CONVENTION].
+- **Detection signature [HEURISTIC]:** soft-show or up-to-touch geometry at t₀, then `SWITCH(X-ball, X-big)` that **starts after t₀ + 1.0 s** with the handler at r ≤ 3.5 m at the switch moment (an ordinary switch completes by t₀ + 1.0 s).
+- **Teams documented:** none named in `[N9]` (https://slappinglass.substack.com/p/pnr-defense-canceling-screens). The Heat 2020 Finals example on that page illustrates the quick show-and-recover and is filed under BS-5. D-I **unverified**.
+- **Sources:** `[N9]`.
+- **Confidence:** medium.
+
+#### BS-7. Hard hedge: footwork, "scream and scare", MSU and college attribution — RICHER (extends F3.2 "Hard hedge")
+- **Name and aliases:** hard hedge; hard show; hedge-and-recover; "scream and scare" (Travis Ford).
+- **Family / sub-family:** F3.2 Show family.
+- **Start alignment:** screener at (7.34, 84°); X-big **≤ 0.5 m** behind the screener on the rim side at t₀ (bottom foot between the screener's feet); handler at (7.6, 92°); tagger (opposite post) at about (1.5, 150°).
+- **Roles / rules** `[N4]`: the screener's defender gets parallel to the sideline behind the screener, keeps contact, puts his bottom (baseline-side) foot between the screener's feet so there is no gap to split, then slides aggressively high as the handler comes off to force a retreat toward half-court. Calls: "Screen left/right!" then "Ball, ball, ball!". X-ball fights over low near the screener's hips, goes under the hedger and calls "Back, back, back!". The hedger sprints back with high hands; the lowest off-ball defender (often the opposite post) tags the roller. Generic: X-big takes 1–2 slides with the handler, then sprints back; the weak-side tag covers the screener temporarily `[N9]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀ − 0.5 s: call, X-big makes contact; (2) t₀: X-big slides high 1–2 steps (λ ≤ −0.6 m); (3) t₀ + 0.5 to 1.5 s: handler retreats, X-ball goes under the hedger and re-attaches; (4) "Back" call, X-big sprints ≥ 4 m/s to the roller; (5) low-man tag between t₀ + 0.5 and 1.8 s.
+- **Usual counters:** split if there is a gap; short-roll pocket pass; punishing the help; pick-and-pop (longer recovery) `[N4]`.
+- **Detection signature [HEURISTIC]:** add to the existing hard-hedge row: (a) **pre-contact gap** X-big–screener ≤ 0.5 m at t₀ − 0.2 s; > 1.0 m → split-risk flag; (b) **X-ball under the hedger**: at t₀ + 0.3–1.0 s X-ball passes on the rim side of X-big while staying on the handler side of the screener; (c) **retreat**: handler r increases ≥ 1.0 m, or velocity points away from the rim, for ≥ 0.4 s; (d) `TAG` by the weak-side defender with minimum y.
+- **Teams documented (MSU first):**
+  - Michigan State 2014-15 (vs Indiana, published 7 Jan 2015): main coverage was hedging perimeter ball screens and recovering to keep Indiana out of the paint; Schilling hedged, Nairn recovered; weak-side help came across the lane to strip a short-corner catch — https://www.insidethehall.com/2015/01/07/film-session-michigan-state/ `[N14]`.
+  - Michigan State through 2018-19: bigs usually flat or hard hedge; weak-side rotations cover the roller, then the bigs retreat — https://umhoops.com/?p=102796 `[N13]` (= S69 re-opened; re-confirmation of the older S69 flat/hard-hedge rows, not new evidence).
+  - Virginia (Tony Bennett) said to hard hedge every ball screen and led the ACC in steals per game (season not given); Saint Louis (Travis Ford coined "scream and scare") — https://www.hooperuniversity.com/breakdowns/ball-screen-defense-hard-hedging-ball-screens `[N4]`.
+- **Sources:** `[N4][N9][N13][N14]`.
+- **Confidence:** high for MSU 2014-15, MSU through 2018-19 and the footwork; medium for Virginia "every ball screen" (one secondary source; see Corrections C-7).
+
+#### BS-8. Hedge-and-plug — NEW (F3.2)
+- **Name and aliases:** hedge and plug; hedge-plug.
+- **Family / sub-family:** F3.2 Show family, new sub-family **hedge with POA roll-plug**.
+- **Start alignment:** as BS-7.
+- **Roles / rules** `[N18]` (podcast show notes; European/ACB context, secondary): pressure the ball without fully committing two defenders, protect the short roll and stay compact behind the play. The **on-ball defender disengages from the handler to plug the roll** while the big hedges. Key vulnerability: the on-ball defender's micro closeout after plugging.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀: X-big hedges high; (2) t₀ + 0.2–0.8 s: X-ball releases the handler into the roll lane (between roller and rim, or the short-roll spot at r ≈ 4.0–5.5 m); (3) t₀ + 0.8–1.8 s: X-big recovers toward the roller/screener while X-ball micro-closes back to the handler or the nearest perimeter man.
+- **Usual counters:** reject the hedge; Gortat screen on the recovering big; flip/hook the screen angle; "stick" the plug defender; boomerang re-screens that turn the hedge into a drop or switch `[N18]`.
+- **Detection signature [HEURISTIC]:** hard-hedge geometry (λ_Xbig ≤ −0.6 m) **plus** X-ball's distance to the handler rising to ≥ 2.0 m by t₀ + 0.8 s while X-ball comes within ≤ 1.5 m of the roller's path; no off-ball tag (X-ball took the tag role); then an X-ball `RECOVER` (A0) of ≥ 2.0 m back to the handler or a perimeter man within 2.0 s (`CLOSEOUT` would need ≥ 2.5 m and would miss short recoveries). Matchups return (not a switch).
+- **Teams documented:** none named (European, secondary) — https://www.buzzsprout.com/1288787/episodes/19494515-hedge-plug-solutions-learning-frameworks-and-european-film-sg-deep-dive `[N18]`. D-I **unverified**.
+- **Sources:** `[N18]`.
+- **Confidence:** medium for the definition (show notes only); low for prevalence.
+
+#### BS-9. Drop depth bands; high drop as "level/aggressive drop"; D-I attribution — RICHER (extends F3.1 Deep / High drop)
+- **Name and aliases:** drop; deep/low drop; high drop; level drop; aggressive drop; "KalkDrop" (Creighton).
+- **Family / sub-family:** F3.1 Containment.
+- **Start alignment:** screener at (7.34, 84°); standard-drop X-big 1.8–3.0 m below the screen at about (5.0, 85°); X-ball over the top on the handler at (7.0, 92°).
+- **Roles / rules:** FIBA: the screener's defender is a few steps below the screen and backpedals `[N34]`. HooperU: the drop defender sits **1.83–3.05 m** below the level of the screen (converted from the source's feet); X-ball chases over the top and funnels the handler to the drop; off-ball help is minimal against shooters `[N3]`. Eurohoops: drop keeps the rim at the big's back and never lets the roller get behind `[N2]`; level/aggressive drop sits much higher with the low man tagging `[N2]`. Creighton's "predetermined drop level" is left vague `[N25]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀: X-big at band depth; (2) t₀ to t₀ + 2 s: X-big backpedals with the roller behind him; (3) X-ball re-attaches from behind by t₀ + 1.0–1.5 s.
+- **Usual counters:** reject the screen; mid-range handler; pick-and-pop; offensive rebounds `[N3]`.
+- **Detection signature [HEURISTIC]:** depth bands at t₀ + 0.3 s (replacing the earlier "deep drop ≥ 3.5 m" as the only drop threshold; see Corrections C-3): **high/level drop 0.6–1.83 m; standard drop 1.83–3.05 m (sourced band `[N3]`, exact conversion of the source's feet); deep drop > 3.05 m or X-big at r ≤ 4.5 m**. Flat hedge = depth 0–0.6 m **and** lateral offset into the handler's path ≥ 0.5 m `[N34]` (old F3.1); up to touch = \|λ\| ≤ 0.6 m **and** dist(X-big, screener) ≤ 1.0 m (BS-4). The lateral-offset and screener-distance tests separate the two, whose depth bands overlap. "No man behind": roller-to-rim distance > X-big-to-rim distance on ≥ 90% of frames in [t₀, t₀ + 2 s]. X-ball path = over in ≥ 80% of the team's drop screens (guards fight over `[N3][N44]`). Team-level confirmatory outcome: high mid-range share allowed.
+- **Teams documented (MSU first):**
+  - Michigan State: no opened source shows drop as an MSU base — **unverified**.
+  - Purdue 2022-23: main coverage put Edey and Trey Kaufman-Renn in a deep drop, guards over; opponents' far-2 share 38.1% (2nd highest) and close-2 rate 25.4% (2nd lowest), per Torvik, via https://thehoosiernetwork.com/article/2023/02/iubb-purdue-film-preview `[N44]` (3 Feb 2023).
+  - Creighton 2023-24 (Kalkbrenner): drop; 3PA rate allowed 26% (2nd), rim-and-3 rate allowed 67% (1st), FT rate 13.1% (1st), opponent mid-range 41% FG and 0.83 PPP — https://www.actionnetwork.com/ncaab/college-basketball-film-breakdown-deep-dive-into-creighton-ryan-kalkbrenner `[N25]` (30 Dec 2023).
+  - USC: drop (photo caption, season not given) — https://www.hooperuniversity.com/breakdowns/ball-screen-defense-playing-drop-coverage `[N3]`.
+- **Sources:** `[N2][N3][N25][N34][N44]`.
+- **Confidence:** high for Purdue 2022-23 and Creighton 2023-24; depth bands partly sourced (1.83–3.05 m), otherwise heuristic.
+
+#### BS-10. Drop "load" (gap load) — NEW (help structure attached to F3.1 drop; F7.3)
+- **Name and aliases:** drop load; gap load; gap-defender slide. Label `drop_gap_load`, distinct from F7.5 `load_to_ball` (all five to the ball side with the ball in the corner) and from T-4 `transition_wall_load`.
+- **Family / sub-family:** F3.1 Containment + F7.3 Help actions.
+- **Start alignment:** handler at the top (7.6, 90°), screen point (7.34, 84°); X-big at 1.8–3.0 m depth, about (5.0, 85°); gap defender of the right-wing man (7.3, 35°) at about (5.8, 50°).
+- **Roles / rules** `[N2]`: in drop, a wing defender sits in the gap between his man and the handler; when the handler comes around the screen, he slides into the driving lane, then recovers. Risk: the wing shooter is open on a slow recovery.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀; (2) t₀ + 0.3–0.8 s: handler turns the corner, gap defender slides 1.0–2.0 m toward the drive line; (3) t₀ + 1.0–2.0 s: gap defender closes out to his man on a kick-out or retreat.
+- **Usual counters:** drive and kick to the loaded defender's man; pick-and-pop [CONVENTION].
+- **Detection signature [HEURISTIC]:** drop signature (X-big depth ≥ 1.8 m, no trap) plus one strong-side off-ball defender entering the handler's drive corridor (1.5 m wide, handler to rim) between t₀ and t₀ + 1.2 s and coming within ≤ 2.0 m of the handler, then returning ≥ 1.0 m toward his own man within 1.5 s; no matchup change (unlike Next or peel).
+- **Teams documented:** generic (European/NBA article, secondary) — https://www.eurohoops.net/en/trademarks/1409927/basketball-101-pick-and-roll-defense/3 `[N2]`. D-I **unverified**.
+- **Sources:** `[N2]`.
+- **Confidence:** medium.
+
+#### BS-11. Ice-and-switch — NEW (F3.5)
+- **Name and aliases:** ice and switch; ice-switch.
+- **Family / sub-family:** F3.5 Directional, new sub-family **ice → exchange**.
+- **Start alignment** (side PnR): handler at the right wing (7.3, 35°), screener at (7.56, 52.5°); X-ball on the handler's top/screen side at about (6.9, 42°); X-big below the screen toward the baseline at about (5.2, 30°).
+- **Roles / rules:** the handler is iced, then the two defenders switch as the handler dribbles down toward the sideline/baseline, preventing the pass back to the screener; Texas Tech credited with popularising it in college `[N28]` (Tony Miller, 30 May 2021). Base ice footwork: X-ball on the high side forces baseline; the screener's defender stays between ball and basket and never lets the screener behind him; the screener's defender calls "Ice, ice, ice!" and X-ball points the direction; off-ball defenders shrink; weakness = middle penetration `[N27]`. FIBA aliases "Fan", "Push down"; on side PnR the handler is pushed baseline `[N34]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀ − 1.0 to t₀: ice positioning; (2) t₀ to t₀ + 1.0 s: reject/dribble toward the baseline, X-big meets the handler; (3) t₀ + 0.6–1.5 s: X-big **stays** on the handler and X-ball takes the screener (persistent swap).
+- **Usual counters:** pick-and-pop before the switch; screener posts the small defender; middle drive when the ice fails `[N27][N28]`.
+- **Detection signature [HEURISTIC]:** existing ice pre-t₀ signature (X-ball between handler and P_s on the screen side ≥ 0.5 s; handler \|x\| increasing or v_y < 0) **followed by** `SWITCH(X-ball, X-big)` starting in [t₀ + 0.4, t₀ + 1.8 s] and persisting ≥ 2 s; the roller/popper's nearest defender is the former X-ball within 2.0 m by t₀ + 1.5 s (no open pass back).
+- **Teams documented:** Texas Tech (era not specified; credited with popularising) — https://aquicktimeout.substack.com/p/2-ball-screen-coverage-adjustments `[N28]`. MSU **unverified**.
+- **Sources:** `[N27][N28][N34]`.
+- **Confidence:** medium.
+
+#### BS-12. Switch-and-attack — NEW (F3.4 variant)
+- **Name and aliases:** switch and attack; aggressive switch.
+- **Family / sub-family:** F3.4 Exchange, sub-family switch (aggressive).
+- **Start alignment:** high PnR reference; X-big up to touch at (6.9, 84°).
+- **Roles / rules** `[N28]`: a straight switch in which the defender switching onto the handler attacks the handler's outside hand instead of waiting, for a poke-away chance and to stop a quick attempt. Zion Williamson at Duke (2018-19) cited as a strong practitioner.
+- **Ordered actions with timing [HEURISTIC]:** (1) swap at t₀ to t₀ + 0.5 s; (2) new ball defender closes ≥ 0.7 m within 0.5 s of the swap.
+- **Usual counters:** quick reject or split before the new defender arrives; roller seals the switched guard [CONVENTION].
+- **Detection signature [HEURISTIC]:** `SWITCH`, then the new ball defender closes from ≥ 1.5 m to ≤ 0.8 m within 0.5 s of the swap at ≥ 3 m/s. Passive switch: new defender distance ≥ 1.2 m held ≥ 1 s.
+- **Teams documented:** Duke 2018-19 (Williamson cited) — https://aquicktimeout.substack.com/p/2-ball-screen-coverage-adjustments `[N28]`.
+- **Sources:** `[N28]`.
+- **Confidence:** medium (preview text only).
+
+#### BS-13. Switch & Shrink (late-clock switch + packed shell) — NEW (F3.4 / F1.1 hybrid; European secondary)
+- **Name and aliases:** Switch & Shrink; switch-and-shrink.
+- **Family / sub-family:** F3.4 Exchange with an F1.1 pack-line shell; F11.5 coverage switching by shot clock.
+- **Start alignment** (after a switch on a right-slot PnR): guard fronting the roller at about (2.5, 60°); shrink defenders at about (2.0, 24°) and (2.0, 156°); elbow-gap defender at the left elbow (4.57, 113.6°).
+- **Roles / rules** `[N17]` (FC Barcelona, Jasikevičius, 2020-21 (season inferred from "first season at the helm", article 30 May 2021); late-possession PnR defence): switch, with the guard who switched onto the roller fronting with active hands; two defenders shrink toward the blocks; the opposite perimeter defender sits in the elbow gap; the bottom-block defender keeps a tight backline; the elbow helper stunts and may double late in the clock (**shot clock < 5 s**); the post double comes on the flight of the ball; on a skip everyone moves "on a string" to the next gap; in the outer third keep the ball on that side and load the backside.
+- **Ordered actions with timing:** (1) switch at t₀ to t₀ + 1.0 s; (2) shrink formed by t₀ + 2.0 s [HEURISTIC]; (3) late double only with shot clock < 5 s `[N17]`.
+- **Usual counters:** flare and flare-slip; hi-lo with a flare; bigs at the dunker spots with guards on the wings and corners (Zenit); shooting over the top `[N17]`.
+- **Detection signature [HEURISTIC]:** a ball-screen `SWITCH` with shot clock ≤ 10 s plus, within 1 s: (a) the switched guard on the ball side of the roller within 0.6 m (front); (b) ≥ 2 off-ball defenders within 1.5 m of the blocks (2.0, 24°)/(2.0, 156°); (c) one defender within 1.2 m of the weak-side elbow; (d) `TRAP` only when the shot clock is < 5 s.
+- **Teams documented:** FC Barcelona 2020-21 (season inferred from "first season at the helm"; EuroLeague; secondary, not NCAA) — https://slappinglass.substack.com/p/switch-and-shrink-barcelonas-unique `[N17]`. NCAA usage **unverified**.
+- **Sources:** `[N17]`.
+- **Confidence:** high for the description; NCAA usage **unverified**.
+
+#### BS-14. Scram (kick-out) switch: perimeter and swing-pass timing — RICHER (extends F7.4 "Scram switch" and F3.4 "Triple switch / scram")
+- **Name and aliases:** scram switch; kickout switch; scramming. Labels: the pass-triggered two-way swap (old F7.4 and this item) = `scram_2way`; the F3.4 "triple switch / scram" 3-cycle permutation within 3 s = `scram_3cycle`. The only new content here is the perimeter / swing-pass trigger window; the post-entry detection repeats F7.4.
+- **Family / sub-family:** F3.4 Exchange / F7.4 Rotations, sub-family **mismatch repair**.
+- **Start alignment:** after a switched PnR: guard X1 on big 5 at the left block (2.0, 156°); X5 on guard 1 at the left wing (7.3, 145°) or near the nail (4.19, 90°).
+- **Roles / rules:** existing file has the post-entry version (re-confirmed `[N6]` = D19 re-opened). New: the best time to scram is **on a pass while the ball is in the air**, including a **swing pass that sets up a post entry**. Example: Boston, Game 1 of the 2020 first round vs Philadelphia — after a swing to the corner, Theis switched with Tatum so the best post defender ended on Embiid. Needs constant communication. 2016-17 Warriors (Draymond Green) and the 2020 Rockets' small-ball defence named as heavy users `[N5]` (NBA only, secondary).
+- **Ordered actions with timing [HEURISTIC]:** (1) mismatch exists at t_m (guard on big within 1.5 m of the block); (2) during the swing or entry flight (0.3–0.8 s) the nearest big-sized defender sprints to the post and the guard leaves for the perimeter; (3) new matchups persist by catch + 0.3 s.
+- **Usual counters:** throw the entry early, before the scram; pass to the scrammer's vacated man [CONVENTION].
+- **Detection signature [HEURISTIC]:** `SWITCH` triggered by a `PASS` in flight (not a `SCREEN`) when the pre-switch matchup was a size mismatch (roster height/position), and the new matchup reduces it; starts after release and completes ≤ 0.5 s after the catch. Perimeter variant: receiver at r > 5 m, but the pass sets up a post entry within 3 s.
+- **Teams documented:** NBA (secondary): Celtics 2020, Warriors 2016-17, Rockets 2020 — https://mediumlights.substack.com/p/scram-switching `[N5]`. D-I **unverified**; MSU **unverified**.
+- **Sources:** `[N5][N6]`.
+- **Confidence:** high for definition and timing; low for college usage.
+
+#### BS-15. Peel switch: named variants and D-I attribution — RICHER (extends F3.4 / F7.4 "Peel switch")
+- **Name and aliases:** peel switch; peel; corner peel; post peel; nail peel; PnR peel.
+- **Family / sub-family:** F3.4 Exchange / F7.4 Rotations.
+- **Start alignment** (corner peel, drive from the right wing (7.3, 35°)): corner defender at about (6.0, 10°); beaten on-ball defender trailing at (6.5, 40°); post defender at about (2.4, 38°).
+- **Roles / rules:** FIBA: a help defender switches onto the handler and the original defender peels off to the man left open `[N34]`. Variants (Slappin' Glass, 24 Jan 2021; Will Voigt) `[N7]`: **corner peel** (45° drive: same-side corner defender takes the ball, beaten defender peels to the corner); **post peel** (45° or middle drive: post defender steps up, beaten guard peels inside the big); **top-drive corner peel** and a two-peel rotation from the nearest guard; **PnR peel (top)** (on-ball defender peels behind to the shake/lift man, low help/tag takes the handler, screener's big chokes or jams the roller); **PnR peel (empty corner)** (nail defender takes the handler). An early corner peel gives up the corner three `[N7]`. NCAA: Florida Atlantic (Dusty May, 2022-23 (inferred from "this past season", article 13 Sep 2023)) used the peel as a protection plan when a defender gambled or was beaten in the backcourt; the nearest logical defender rotates chest-first to the handler and the beaten defender peels behind the ball (e.g. the centre picks up a baseline driver and the beaten guard peels to the big) `[N45]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) blow-by at t_b (F2 "beaten"); (2) t_b + 0.2–0.6 s: peeler steps into the drive line chest-first; (3) t_b + 0.3–1.0 s: beaten defender re-routes behind the ball to the peeler's man; (4) matchups persist ≥ 1.5 s.
+- **Usual counters:** kick to the corner before the peel completes; re-screen on the new matchup `[N7]`.
+- **Detection signature [HEURISTIC]:** after a blow-by the helper becomes the HMM ball matchup within 0.8 s, and the beaten defender's next matchup is the helper's former man within 1.5 s (reciprocal swap); the beaten defender's path passes **behind** the ball (larger r than the handler) and stays ≥ 1.5 m from the handler. Sub-labels by the peeler's pre-drive role: corner peel (peeler's man at θ ≤ 12° or ≥ 168°), post peel (peeler's man at r ≤ 3 m), nail peel (peeler within 1.2 m of (4.19, 90°)).
+- **Teams documented (MSU first):** MSU — no evidence (**unverified**). Florida Atlantic 2022-23 (inferred from "this past season", article 13 Sep 2023) — https://backyardbuckets.substack.com/p/florida-atlantics-switching-defensive `[N45]`. Will Voigt (Angola national team; Telekom Bonn; secondary) — https://slappinglass.substack.com/p/the-peel-switch-a-primer `[N7]`.
+- **Sources:** `[N7][N34][N45]`.
+- **Confidence:** high for definition and variants; medium for the FAU attribution (single analyst blog).
+
+#### BS-16. "Catch" drop and "No screen" — status notes (no new item)
+- **"Catch" drop** (listed in the F3 hierarchy above): searched three ways; no opened source defines "catch" as a ball-screen coverage — not FIBA `[N34]`, not Eurohoops `[N2]`, not LMH `[N36]`. **Unverified**; no detection rule until a source or film definition exists (Corrections C-5).
+- **"No screen"**: no opened source defines it as a coverage. The sourced equivalents are ice/fan/push down (force a reject) `[N34][N27]` and top-lock for off-ball screens (F5). Treat as an alias of ice on side screens and of top denial before a screen is set. **Unverified**.
+- **Hedge-to-switch / blitz-to-switch / Next:** FIBA definitions re-verified `[N34]`; the Filios article only says Next is a jump-switch type coverage combining hedge, switch and drop, used in Europe, with no roles `[N8]`. Nothing to add beyond F3.2–F3.3.
+
+---
+
+### A3. Handoff (DHO) coverages (extends F4)
+
+#### H-1. MSU DHO switching "two ways by position" — RICHER (extends F4 "Switch" and F1.6 "Positioning")
+- **Name and aliases:** Three-Man DHO Switching (MSU drill).
+- **Family / sub-family:** F4 DHO, sub-family Switch (position-conditional).
+- **Start alignment** [HEURISTIC]: giver (big or guard) at the right slot (7.47, 70°) with the ball; receiver at the right wing (7.3, 35°) running toward the giver; d_giver at (6.6, 72°); d_receiver at (6.4, 38°); third defender (help) at the nail (4.19, 90°).
+- **Roles / rules:** MSU's 2015 open-practice video lists a Three Man DHO Switching drill that teaches **two ways to defend handoffs depending on which positions are involved** `[N40]` (= S6 re-opened). The two coverages are not described in the listing: content **unverified**. Most likely pairing is switch vs a non-switch coverage when a big is the giver, but that is unconfirmed.
+- **Ordered actions with timing [HEURISTIC]:** handoff at t_h; switch (if used) completes within 0.8 s (existing F4 Switch signature).
+- **Usual counters:** keep and turn the corner; receiver back-cut; giver slip (existing F4 `[D28]`).
+- **Detection signature [HEURISTIC]:** for MSU DHOs, switch rate conditional on giver role (guard vs big, roster position). Expect a bimodal policy — switch rate ≥ 0.7 for guard–guard/wing exchanges and lower for big-giver exchanges — *if* the two ways are switch vs non-switch.
+- **Teams documented:** Michigan State, 2015 practice video — https://www.mensbasketballhoopscoop.com/?p=23659 `[N40]`.
+- **Sources:** `[N40]`.
+- **Confidence:** high that position-dependent DHO rules exist; the rules' content **unverified**.
+
+*(Checked, nothing new: DHO "hedge and bounce" — the Grantz DHO page had no coverage content `[N21]`; the hedge-and-bounce drill page was not opened.)*
+
+---
+
+### A4. Off-ball screen coverages (extends F5)
+
+#### OB-1. Point switching (off-ball pre-screen release) — NEW (F5 switch variant)
+- **Name and aliases:** point switch; point-and-release.
+- **Family / sub-family:** F5 Off-ball screen coverages, sub-family switch (pre-screen release).
+- **Start alignment** (baseline exchange): cutter starts at the left corner (6.86, 177°) and runs the baseline to the right corner; cutter's defender at about (5.8, 170°); low/receiving defender at about (2.0, 41°) on the right side.
+- **Roles / rules** `[N45]`: the low defender points and takes the cutter through the lane; the original cutter's defender takes **two steps** with the cutter, hands him off, and fans back to the arc with a hand in the passing lane. Each defender releases **before the screen's point**, so both are square on the catch; removes curl, pop and fade reads and lets defenders be more aggressive with their hands; needs elite communication. Shown on back-cuts, baseline exchanges and staggers.
+- **Ordered actions with timing [HEURISTIC]:** (1) cut starts, t = 0; original defender trails two steps (≈ 1.2–1.6 m, ≈ 0.5–0.8 s); (2) receiving defender picks up the cutter ≥ 0.3 s before the cutter's closest approach to the screener; (3) original defender fans out to the open man or the arc.
+- **Usual counters:** screener slip (defenders already exchanged); screening the switcher; mismatch post-ups `[N45]`.
+- **Detection signature [HEURISTIC]:** `SWITCH` between d_cut and d_scr (or the low man) that **completes before** the cutter's closest approach to the screener (matchup flip at t ≤ t_closest − 0.3 s vs ≥ t_closest for an ordinary switch); the original defender's path with the cutter ≤ 2.0 m before he turns away; no defender–screener contact (distance ≥ 0.7 m).
+- **Teams documented (MSU first):** MSU **unverified**. Florida Atlantic 2022-23 (Dusty May; inferred from "this past season", article 13 Sep 2023) — https://backyardbuckets.substack.com/p/florida-atlantics-switching-defensive `[N45]`.
+- **Sources:** `[N45]`.
+- **Confidence:** medium.
+
+#### OB-2. Back screen: automatic contact switch with "jump out", invert, error flags — RICHER (extends F5.2)
+- **Name and aliases:** contact switch; jump out; step-in-front; invert (anticipate).
+- **Family / sub-family:** F5.2 Back screens / UCLA.
+- **Start alignment** (UCLA screen: 5 at the right elbow (4.57, 66.4°) screens for 1 at the right slot (7.47, 70°) after the pass to the wing): X5 at about (4.0, 70°), rim side of 5; X1 at about (6.6, 72°).
+- **Roles / rules** `[N19][N35]`: the screener's defender warns the cutter's defender (back to the screen) and **jumps out into the cutter's path** to the basket; the cutter's defender steps around the screener into strong denial so the screener cannot roll; the ball defender pressures the passer into dribbling; the switch is automatic on contact. Invert before the screen when possible to keep bigs inside `[N19]`. Errors: chasing under (lob or layup); show-and-recover on back screens (screener fakes or slips); cheating over early (pop); recovering after cheating (back-cut) `[N19]`. Coach's Clipboard: back screens are switched; the screened defender steps in front and around for inside position on the screener and switches back at the first chance, often the next perimeter pass `[N35]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) t₀ − 0.8 s: "Back screen!"; (2) t₀ − 0.3 to t₀: X5 steps into the cutter's lane; (3) t₀ to t₀ + 0.5 s: swap, X1 steps around to the ball side; (4) switch-back on the next perimeter pass.
+- **Usual counters:** screener slip; screener pop against a defender who cheats over; mismatch post-up `[N19]`.
+- **Detection signature [HEURISTIC]:** (a) in [t₀ − 0.5, t₀], d_scr moves ≥ 0.6 m laterally into the cutter's predicted path (cutter heading to the rim) and ends between cutter and rim; (b) `SWITCH` by t₀ + 0.5 s; (c) the new screener defender ends on the **ball side** of the screener within 1.0 m; (d) error flags: d_cut passes on the rim side of the screener with no switch (chase-under → lob risk); d_scr leaves the screener ≥ 1.0 m and returns without a swap (show-and-recover on a back screen); (e) **invert**: `SWITCH` before t₀ − 0.5 s when the cutter is a big.
+- **Teams documented:** generic coaching — https://hooptactics.net/premium/defense/disruptivepressure/defscreensoff4back.php `[N19]`; https://coachesclipboard.net/basketball-defending-screens.html `[N35]`. MSU **unverified**.
+- **Sources:** `[N19][N35]`.
+- **Confidence:** high for the technique.
+
+#### OB-3. Down screens "switch equals, open up on mismatches" (Fraschilla) and step-under timing — RICHER (extends F5.1 and F5.4)
+- **Name and aliases:** switch equals; open up / let him through; step under (inside screens).
+- **Family / sub-family:** F5.1 Down screens / F5.4 Cross and post screens.
+- **Start alignment** [HEURISTIC]: down screen — screener from the right elbow (4.57, 66.4°) down to the right block (2.0, 24°); cutter's defender at about (2.3, 30°); screener's defender at about (3.2, 55°).
+- **Roles / rules** `[N35][N6]`: default on down screens is chase, no switch. Fraschilla: switch **equals** (guard–guard, post–post); do not switch post-on-guard mismatches — the screener's defender opens up so the screened defender slides through. Inside post screens: the screened defender always steps under (toward the baseline) before the screen arrives; low cut = step under and stay (arm bar), high cut = step under and switch. Weak-side wing lateral screens: step under a step or two before the screen, then switch. Step under before contact, not after `[N35]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) step under in [t₀ − 0.8, t₀ − 0.1]; (2) low/high-cut branch at t₀ + 0.5 s.
+- **Usual counters:** curl against a late step-under; mismatch seal after an equal switch [CONVENTION].
+- **Detection signature [HEURISTIC]:** **switch-equals policy**: off-ball `SWITCH` probability conditioned on position difference cutter vs screener ≥ 0.6 for equals, ≤ 0.1 for mismatches. **Open-up**: on non-switched mismatch screens d_scr moves ≥ 0.5 m away from the screener in [t₀ − 0.5, t₀] and d_cut passes between them. **Step under**: d_cut's y decreases ≥ 0.4 m in [t₀ − 0.8, t₀ − 0.1] on inside screens; branch decided by the cutter's y at t₀ + 0.5 s (below or above the screener).
+- **Teams documented:** Fran Fraschilla's approach as named by Coach's Clipboard (program and season not given → **unverified**) — https://coachesclipboard.net/basketball-defending-screens.html `[N35]`; switching rules re-confirmed — https://www.coachesclipboard.net/basketball-switching-defense.html `[N6]`.
+- **Sources:** `[N35][N6]`.
+- **Confidence:** medium.
+
+*(Not added, unverified: hip-pocket trail with the screener's defender bumping the shooter out of the curl — Breakthrough page returned 403, overlaps F5 Chase + Bump. FIBA three-defender stagger rule — WABC page did not resolve. Existing F5 rows stand.)*
+
+---
+
+### A5. Zones and match-up rules (extends F8)
+
+#### Z-1. 3-2 zone (flat three-man top line) — NEW (split from the F8.2 "1-2-2 / 3-2" row)
+- **Name and aliases:** 3-2 zone. FIBA lists 3-2 separately from 1-2-2 `[D10]`.
+- **Family / sub-family:** F8.2 Odd-front zones, new sub-family **F8.2.a 3-2 (flat top line)**.
+- **Start alignment (ball at the top)** [HEURISTIC template from `[DZ16][DZ17]`]: X3 top (4.60, 90°) at moderate pressure `[DZ16]`; X1/X2 wings near the FT line extended (6.30, 46.9°) / (6.30, 133.1°). `[DZ16]` also gives a high-pressure top at (7.30, 90°): with the wings left at the FT line extended that shape is a **1-2-2 (Z-2)** by the C-4 rule; it stays a 3-2 only if the wings move up with the top to within 1.0 m of its y (e.g. wings at about (8.0, 65.9°) / (8.0, 114.1°), y ≈ 7.3 m, \|x\| ≈ 3.27 m [HEURISTIC]); X4/X5 low posts (2.15, 27.8°) / (2.15, 152.2°).
+- **Roles / rules:** the top defender (a long, mobile player, often the 3; Sharman White, Pace Academy HS, GA; secondary, non-college; article by Brian Williams) stays between ball and basket at all times; wings play the ball man-to-man when it is in 3-point range on their side; block defenders guard the low post and close out to the corner when the scouting report says shooter `[DZ17]`. Ball screens: generally switch `[DZ17]`.
+- **Ordered actions with timing [HEURISTIC windows]:**
+  1. Ball to the right wing: X1 closes out (arrive ≤ 1.0 s after the catch); X3 drops to the ball-side elbow (4.6, 66°); X5 fronts the ball-side post; X4 slides into the lane; X2 may sink against a basket cut `[DZ16]`.
+  2. Ball to the corner: X5 closes out, no baseline; X1 drops into the wing–post gap (4.48, 38.7°); X4 slides to the ball-side post; X3 owns the high post; X2 watches the weak side `[DZ16]`. White's version: top drops to ball level to protect the baseline, weak-side block tucks under the rim, opposite wing at the nail `[DZ17]`.
+  3. Reversal to the top: the nail defender guards the top until the original top recovers and bumps him back (temporary hand-off, typically < 2 s) `[DZ17]`.
+  4. Low-post catch: X4 + X5 double with high hands, X1 digs `[DZ16]`.
+  5. Optional corner trap: X1 + X5; X3 holds the high post, then jumps the wing pass (skip to the top is the danger if X3 commits early) `[DZ16]`.
+  6. Sliding variation: on a corner pass X3 slides all the way to the ball-side low post (front high side), X4 plays the low side → automatic X3/X4 double on a post entry `[DZ16]`.
+- **Usual counters:** dribble-drive teams; quick wing → corner → wing ball movement that tests every closeout `[DZ16]`; high post [CONVENTION].
+- **Detection signature [HEURISTIC]:** at `SET_DEF` with the ball at r > 6.75 m, θ 80–100°: a flat line of three defenders within 1.0 m of the same y, at any height with 4.0 ≤ y ≤ 7.5 m, outer two ≥ 7 m apart in x, plus two at r < 2.8 m with θ < 45° and θ > 135°. Versus 1-2-2: there the top defender is ≥ 1.5 m higher (y) than the two wings; a top 1.0–1.5 m above the wings is ambiguous (report both posteriors). Corner pass: the low ball-side defender (r < 2.8 m) travels ≥ 3.5 m to the corner within 1.2 s while the ball-side top-line defender drops ≥ 1.5 m. Top-recovery: after a reversal to the top, the nail defender (r 3.8–4.6 m, θ 80–100°) moves up ≥ 1.5 m and returns within 2.5 s as the original top arrives (screenless exchange). F8.0 zone features apply.
+- **Teams documented:** no D-I program with a primary 3-2 found. Iowa (McCaffery) reportedly showed 2-3 and 3-2 looks at Wisconsin — **unverified** (page returned 429; snippet only). MSU: none.
+- **Sources:** `[DZ16][DZ17][D10]` — https://hoopstudent.com/3-2-zone-defense/ ; https://coachingtoolbox.net/teaching-the-3-2-zone-positioning-communication-rotations
+- **Confidence:** medium for structure (two coaching sources agree); low for D-I usage.
+
+#### Z-2. 1-2-2 half-court zone; Purdue "1-2-2 man-zone hybrid" — RICHER (extends F8.2 "1-2-2 / 3-2" and F8.3 "1-2-2 match-up")
+- **Name and aliases:** 1-2-2 zone; Purdue: Painter avoids calling it a zone, reporters call it a man-zone hybrid most like a 1-2-2 `[DZ36]` or a 1-2-2 match-up zone `[DZ37]`. "Jug" alias **unverified**.
+- **Family / sub-family:** F8.2 (base 1-2-2) and F8.3 (Purdue hybrid / match-up).
+- **Start alignment** [HEURISTIC]: top X1 (7.30, 90°); second line (6.17, 63.0°) / (6.17, 117.0°); back line (2.50, 36.9°) / (2.50, 143.1°).
+- **Roles / rules** `[DZ19]`: stronger low-post and corner coverage than a 1-3-1, more conservative, concedes more perimeter shots; the top defender may drop deep into the lane to deny; back-line players must guard the corners; the high post/elbow needs an explicit rule. Purdue 2023-24 vs Northwestern's Boo Buie: for parts of possessions two layers of two defenders with arms spread forced the ball out of Buie's hands and limited inside entries, Zach Edey protecting the rim `[DZ36]`. Purdue (2025-26 preview, 8 Oct 2025): primarily man, flexing into a 1-2-2 match-up zone to limit dynamic guards; opponents took 31.3% of shots at the rim (season not stated; most likely 2024-25, from the Oct 2025 preview) `[DZ37]`.
+- **Ordered actions with timing [HEURISTIC, from `[DZ19][DZ36]`]:** (1) top meets the ball at r ≥ 7 m; (2) second-line pair shades the driving lanes, forcing a pass within ~2 s; (3) on the pass the nearest second-line defender closes out and the top drops toward the nail; (4) corner pass → back-line defender closes out; (5) corner trap available (top/wing + back line) `[DZ19]`.
+- **Usual counters:** a dominant post working FT line → low post; high-post catches; slow back-line closeouts to the corner `[DZ19]`; reversal before the trap [CONVENTION].
+- **Detection signature [HEURISTIC]:** 1-2-2 `SLOT_RESIDUAL` < 1.5 m with the ball at the top. **Purdue hybrid** (`hybrid_122_vs_star`): inside a possession otherwise labelled man (F ≥ 0.6), a window ≥ 3 s in which the star handler has **two** defenders within 3.5 m in front of him (both with y_d > y_ball − 1.0 m and \|x_d − x_ball\| ≤ 3.0 m) but neither within 1.0 m (no trap), while the two lowest defenders have r < 3.0 m. Expected trigger: the star brings the ball over half-court.
+- **Teams documented:** Purdue (Painter) 2023-24 hybrid vs Northwestern — https://www.crackedsidewalks.com/2024/09/purdue-preview-2024-25.html `[DZ36]`; Purdue 2025-26 occasional 1-2-2 match-up — https://www.crackedsidewalks.com/2025/10/purdue-preview-2025-26.html `[DZ37]` (= S75 re-opened); Boston College 1-2-2 → man (existing `[D80]`).
+- **Sources:** `[DZ19][DZ36][DZ37]`.
+- **Confidence:** medium.
+
+#### Z-3. 2-1-2 zone with slides and the "Buzz" extension — RICHER (extends F8.2 "2-1-2", which had no slides)
+- **Name and aliases:** 2-1-2 zone (FIBA lists it `[D10]`); a 2-3 variant with the centre starting at the high post `[DZ18]`.
+- **Family / sub-family:** **F8.1 Even-front zones** (two-guard front; see Corrections C-2 for the placement above).
+- **Start alignment** [HEURISTIC from `[DZ18]`]: tops (6.39, 69.9°) / (6.39, 110.1°); middle (4.00, 90°); wings/low (3.10, 14.9°) / (3.10, 165.1°).
+- **Roles / rules** `[DZ18]`: tops own the ball at or above the FT line extended and keep the high post hard to reach; wings own the ball below the FT line extended plus the weak-side post (lob protection); the middle owns the high post and paint and is a long, athletic shot-blocker who makes or breaks the defence.
+- **Ordered actions with timing [`[DZ18]`; windows HEURISTIC]:**
+  1. Ball at the top: tops pressure without fully committing; wings slide out and up to take a wing pass briefly; middle behind a high post.
+  2. Ball to the wing: ball-side wing takes the ball until a top bumps him (bump within ~1.5 s), then slides toward the baseline; weak-side top drops to the FT line to deny the high post; middle fronts the block; weak-side wing at the rim.
+  3. Ball to the corner: wing closes out (deny baseline); ball-side top drops to the elbow; middle fronts the block; weak-side top mid-paint watching skips; weak-side wing in the lane.
+  4. High-post catch: middle plays 1-on-1; tops do **not** converge; wings first deny the blocks, then widen to shooters.
+  5. Short corner: middle starts a trap that keeps the ball off the baseline, ball-side wing completes it; weak-side wing mid-paint; ball-side top cheats to the wing; weak-side top centre field.
+  6. Skip from the wing: weak-side wing takes it until bumped; skip from the corner: opposite top takes it.
+  7. Drives: middle stops the ball before the paint; wings force middle, never baseline.
+- **"Buzz" pressure variation** `[DZ18]`: tops pick up near the volleyball line (≈ 3 m beyond the arc — conversion of "volleyball line" is [HEURISTIC], exact distance **unverified**) and sit in passing lanes; middle stays about 4.57 m from the rim (converted from the source's feet), in line with ball and basket.
+- **Usual counters:** multiple perimeter shooters; overloads; lobs over smaller back players `[DZ18]`.
+- **Detection signature [HEURISTIC]:** ball at the top: one defender at r 3.5–4.6 m with \|x\| < 1.0 m and two at r < 3.5 m with θ < 25° or > 155° (in a 2-3 the centre sits at r < 2.5 m). High-post catch: the two tops' distances to the catcher **do not** fall by more than 1.0 m in the next 1.0 s (no swarm; contrast the aggressive 2-3 swarm `[D63]`). Buzz: tops' first contact with the ball at r ≥ 9.0 m; middle at r ≈ 4.0–5.0 m within 0.8 m of the ball–rim line.
+- **Teams documented:** none named. A 2-1-2 match-up variant (Hoop Student) seen in search results only — **unverified**. MSU: none.
+- **Sources:** `[DZ18][D10]` — https://www.basketballforcoaches.com/2-1-2-zone-defense/
+- **Confidence:** medium (one detailed coaching source).
+
+#### Z-4. Point zone (Dean Smith, North Carolina) — NEW (F8.3)
+- **Name and aliases:** point zone.
+- **Family / sub-family:** F8.3 Match-up zones (one on-ball "point" defender plus paired zone coverage), new sub-family **F8.3.a point zone**.
+- **Start alignment** [HEURISTIC from `[DZ57]`]: 2-3-like — tops (6.32, 66.7°) / (6.32, 113.3°); lows (3.42, 20.6°) / (3.42, 159.4°); X5 in the lane (1.50, 90°).
+- **Roles / rules** `[DZ57]`: whoever takes the ball calls "point" and plays it man-to-man; perimeter defenders work in complementary pairs (if X1 has point, X4 covers the baseline); X5 protects the basket from the lane.
+- **Ordered actions** `[DZ57]` (timing [HEURISTIC]): (1) ball at the top: X1 pressures, X3 lifts to the high post, X5 steps toward the FT line, X4 into the lane; (2) wing pass: X2 takes point (≤ 1.0 s after the catch), X1 drops to the ball-side elbow, X5 to the post, X4 short corner, X3 sinks weak side; (3) corner: X4 takes point, X2 drops between wing and low post; (4) every pass reassigns the point; others fill gaps; (5) stunts on middle penetration and baseline drives.
+- **Usual counters:** **unverified** (not in the source); expected: skips that force a long point change [CONVENTION].
+- **Detection signature [HEURISTIC]:** zone-like F (≤ 0.35) for 4 defenders but **one** defender within 1.2 m of the ball on every catch, with that identity changing on ≥ 70% of passes; the new point defender is the one whose template slot is nearest the receiver on ≥ 85% of passes. Pair check: when a perimeter defender takes point on a wing/corner catch, the paired defender's distance to the baseline band (y < 1.0 m) falls ≥ 1.0 m within 1.0 s.
+- **Teams documented:** North Carolina under Dean Smith (season not given) — https://hoopstudent.com/point-zone-defense/ `[DZ57]`.
+- **Sources:** `[DZ57]`.
+- **Confidence:** low–medium (one source; UNC usage not dated).
+
+#### Z-5. 2-3 match-up zone (rule set; Louisville, Oregon) — NEW (F8.3)
+- **Name and aliases:** 2-3 match-up zone; "matchup 2-3" (Oregon base-defence label `[DZ05]`); Louisville "matchup zone" (Pitino) `[DZ60]`.
+- **Family / sub-family:** F8.3, new sub-family **F8.3.b 2-3 match-up**.
+- **Start alignment** [HEURISTIC]: standard 2-3 slots (tops (6.32, 66.7°)/(6.32, 113.3°); forwards (3.42, 20.6°)/(3.42, 159.4°); centre (1.50, 90°)), then the defence takes the shape of the offence `[DZ01]`.
+- **Roles / rules** (TeamArete; a blend of Fred Litzenberger's Oregon 2-3 and Don Meyer's point-and-talk) `[DZ01]`: (1) point to your man and talk; (2) never two defenders on one attacker; (3) the defence takes the shape of the offence; (4) bigs in, smalls out; (5) the post defender leaves the paint only in emergencies (five out, or an elite shooter); (6) weak-side helpers straddle the weak-side lane line; (7) guards dig at the post; (8) switch to keep bigs in / smalls out, but **not** on the dribble; (9) pressure every shot; (10) guard only to the arc, protect paint and high post; (11) don't deny perimeter passes, pressure the ball; (12) box out, pursue, chin, outlet. Structural principle: two defenders guard three attackers, scaling to one-on-two, three-on-four, four-on-five `[DZ01]`. Oregon (Altman): on-ball man characteristics, off-ball help like a 2-3, frequent switches regardless of position `[DZ05]`; possessions often start with a press (usually 1-2-2) flowing into man or the match-up zone `[DZ03]` (see P-4).
+- **Ordered actions with timing [HEURISTIC]:** (1) as the ball crosses half, each defender points to the attacker in or nearest his area (≤ 1.5 s); (2) on-ball defender closes to ≤ 1.2 m; (3) cutters crossing a boundary are passed off unless cutting toward the ball (Z-7 Huber rule); (4) on a post catch guards dig, then recover on the kick-out.
+- **Usual counters:** driving into the lane (Boeheim on Louisville; snippet only — **unverified**); screening the zone; PG penetration into the middle (existing `[D76]`).
+- **Detection signature [HEURISTIC]:** `SHAPE_MATCH` d̄_m ≤ 2.0 m (man-like) **and** cutter test = pass-off on ≥ 60% of lane cuts ≥ 6 m (zone-like); `ONE_ON_BALL` holds; ≤ 0.1 half-court `TRAP` per possession; "bigs in": the tallest defender at r < 3.0 m on ≥ 80% of frames even when his nearest attacker is at r > 6.75 m (rule 5); `SWITCH` at screens and boundary crossings but not within 1.0 s of a screenless dribble move (rule 8); weak-side helpers' \|x\| within 0.5 m of the lane line (\|x\| ≈ 1.83 m) when two passes away (rule 6; separates it from the Temple match-up).
+- **Teams documented (MSU first):**
+  - Used **against** MSU: Louisville 2011-12, NCAA Sweet 16 (22 Mar 2012) — the match-up zone held MSU (the tournament's best-shooting team) to 28% FG in a 57-44 win; guards pressured from the top and Gorgui Dieng blocked seven shots — https://www.bangordailynews.com/2012/03/22/sports/louisville-knocks-off-top-seeded-michigan-state/ `[DZ60]`. The description of it as a man defence that switches everything (NBC 2012) could not be opened — **unverified**.
+  - Oregon (Altman): base listed as match-up 2-3 in 2021-22 — https://dailybruin.com/2022/01/13/scouting-report-ucla-mens-basketball-vs-oregon-oregon-state/ `[DZ05]`; press → match-up in 2019-20 — https://umhoops.com/2019/12/13/film-room-breaking-down-oregons-matchup-zone-defense/ `[DZ03]`; Oregon (Big Ten since 2024-25 `[DZ74]`) zone vs MSU on (inferred) 20 Jan 2026 worked for about 32 minutes before MSU pulled away, alignment not stated — https://spartanavenue.com/tom-izzo-kur-teng-can-t-guard-my-99-year-old-mother-01kfgk0xf6np `[DZ35]`. An Oregon assistant quote (MGoBlog 403) — **unverified**.
+- **Sources:** `[DZ01][DZ03][DZ05][DZ35][DZ60][DZ74]` — rule set: https://id3430.securedata.net/teamarete/23matchupzone.html
+- **Confidence:** medium (rules from a coaching site; usage from journalism).
+
+#### Z-6. 1-3-1 match-up zone (10-rule version) — NEW (F8.3)
+- **Name and aliases:** 1-3-1 match-up zone.
+- **Family / sub-family:** F8.3, new sub-family **F8.3.c 1-3-1 match-up**.
+- **Start alignment** [HEURISTIC]: top (7.00, 90°); wings (6.53, 40.0°) / (6.53, 140.0°); middle X5 (4.20, 90°); baseline (0.80, 90°).
+- **Roles / rules** (Coach's Clipboard 10 rules) `[DZ42]`: (1) 1-3-1 set with X5 in the middle; (2) **X5 plays O5 man-to-man at all times**, the other four rotate around him; (3) if O5 steps out, X5 goes with him (sag if O5 can't shoot); (4) flash cuts to the high post/elbow are played man-to-man (X4 follows O4; X1 drops to face the wing, foot beside O4's to avoid being hooked); (5) against the dribble: stay with your man and switch zones, not men; (6) switch on screens (perimeter ball screen: X2 takes the ball, X1 steps under to the screener — zones kept, men change); (7–9) shallow ball-side, deep ball-side and weak-side cut rules: the three perimeter defenders rotate clockwise around X5 toward the ball, option to stay man with the cutter; (10) baseline cut on reversal: X4 stays with O4 to the corner. Versus a 2-1-2 set: X1 takes the guard to his right, X2 the other guard, X3 and X4 drop to the corners, X5 the middle — aim to force a two-guard look. Against heavy hi-low teams X4 and X5 may play man on O4 and O5 throughout `[DZ42]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) set by `SET_DEF` + 1.5 s; (2) perimeter rotation completes within 1.5 s of a ball-side cut; (3) screen switch within 0.8 s of t₀.
+- **Usual counters:** high-to-low cuts and overloads that confuse the hand-offs `[DZ42][DZ43]`.
+- **Detection signature [HEURISTIC]:** one defender (X5) with F ≥ 0.8 against the opponent's centre for the whole possession regardless of region (even at r > 6.75 m), while the other four show F ≤ 0.45 and σ_reg < 2.0 m relative to 1-3-1 slots; on a ball-side cut the three non-X5 perimeter defenders' angular positions about X5 all change with the same rotational sign within 1.5 s; `SWITCH` on ≥ 80% of perimeter ball screens. Versus box/diamond-and-1 chasers: the man-marked attacker is a post (r < 4 m on ≥ 60% of frames) and the marker is the centre.
+- **Teams documented:** no D-I program named. Northwestern (Carmody) paired a match-up zone with its 1-3-1 (Z-8) but the opened articles do not say it followed these rules.
+- **Sources:** `[DZ42][DZ43]` — https://coachesclipboard.net/MatchupZone131.html
+- **Confidence:** medium.
+
+#### Z-7. Match-up pick-up rules by offensive set; cutter hand-offs (Huber rule) — RICHER (extends F8.3 "Match-up zone (generic)")
+- **Name and aliases:** match-up pick-up tables; Jim Huber cutter rule; "Match" call.
+- **Family / sub-family:** F8.3.
+- **Start alignment:** depends on the offence's front (tables below); default 2-1-2 match-up slots as Z-3.
+- **Roles / rules** `[DZ43]`: ball defender closes out tight as in man; off-ball defenders play zone that resembles help-side man; pressure the ball, front the low post, deny lanes, help on penetration; switch freely so bigs stay low and guards stay out. Pick-up tables: 2-1-2 match-up vs a 1-3-1 offence (X1 point, X2 right wing, X3 out to the left wing; vs 3-out-2-in X5 drops to the block); one-guard-front match-ups vs 2-1-2 (1-3-1 version: X1 guard to his right, X2 other guard, X3/X4 corners, X5 middle; 1-2-2 version: X1/X2 guards, X3 own-side wing/corner, X4 opposite corner, X5 high post); vs 1-4 high (X2/X3 gap between wing and elbow post and deny the wing; back-cut → X4/X5 pick up, gap defender slides to the vacated post); vs 1-4 low (X2/X3 gap and deny; X4/X5 three-quarter front the low posts; X1 tight on the point). Cutters: away from the ball → X2 bumps, denies, then switches with X4 at the corner; toward the ball → stay man to the corner; alternate: X4 drops in and takes the cutter to the opposite corner. **Huber rule:** let cutters moving away from the ball go; play cutters moving toward the ball man-to-man until a hand-off. Simplified option: after the initial match-ups disrupt the set, everyone goes man `[DZ43]`. College of Idaho: never two on the ball; always bump the wings; "Match" call on a high-post catch `[DZ59]` (= D99 re-opened).
+- **Ordered actions with timing [HEURISTIC]:** (1) pick-up complete by `SET_DEF` + 1.5 s; (2) cutter hand-off at the zone boundary within 1.0 s of the crossing.
+- **Usual counters:** screening the zone; PG into the middle (existing `[D76]`).
+- **Detection signature [HEURISTIC]:** **pick-up mirror test** at `SET_DEF` + 1.5 s: offensive front = number of attackers at r > 6.75 m with θ 60–120°; defensive front = defenders with y ≥ 5.0 m and 45° ≤ θ ≤ 135°, counted at the same moment; in a match-up zone the defensive front count equals the offensive front count at `SET_DEF` + 1.5 s on ≥ 85% of possessions (man pairs follow their men; fixed zones keep their own front). **Huber cutter asymmetry:** for cuts with velocity component toward the ball > 2.0 m/s the nearest defender follows ≥ 70% of the path; for cuts away ≤ 40%; asymmetry index = follow(toward) − follow(away) ≥ 0.3 → match-up zone; ≈ 0 for man (both high) or pure zone (both low).
+- **Teams documented:** College of Idaho (NAIA; rules) — https://coachingidaho.substack.com/p/lets-talk-some-zone `[DZ59]`; tables generic — https://www.coachesclipboard.net/MatchUpZone.html `[DZ43]`. MSU: none.
+- **Sources:** `[DZ43][DZ59]`.
+- **Confidence:** medium.
+
+#### Z-8. 1-3-1 Big Ten lineage (Northwestern/Carmody) and Oakland vs MSU — RICHER (extends F8.2 "1-3-1 (base)" and "1-3-1 trapping")
+- **Name and aliases:** 1-3-1 zone (Carmody's "signature defense" at Northwestern) `[DZ07]`.
+- **Family / sub-family:** F8.2 Odd-front, lineage label `odd_front_trap_131`.
+- **Start alignment:** one top, three just outside the FT line, one baseline defender guarding the corner threes side to side `[DZ06]`. Template [HEURISTIC]: top (7.00, 90°); line of three (6.53, 40°) / (4.20, 90°) / (6.53, 140°); baseline (0.80, 90°), sliding to the corners at about (6.3, 4.5°) / (6.3, 175.5°).
+- **Roles / rules:** the top (Jeremy Nash) pressured and trapped on the perimeter almost immediately after the ball crossed centre court, forcing skip passes that are easier to intercept; the baseline player (Craig Moore or Michael Thompson) ran side to side for the corners `[DZ06][DZ67]`. Unveiled vs Purdue (2008-09); NU used it extensively on the way to wins in five of its next six games; Purdue committed 22 turnovers; after Iowa found open corner threes (Iowa won 56-51) it became the backup to the match-up zone `[DZ06]`. Carmody calling it tiring and best used sparingly (NIT 2011) — snippet only, **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** (1) top meets the ball within ~2 s of it crossing half-court (y 11–13 m); (2) trap with a wing on the perimeter; (3) baseline defender sprints to the ball-side corner on a wing-to-corner pass (≥ 4.5 m in 1.5 s, or arrival within 1.5 m of the corner receiver by catch + 1.0 s).
+- **Usual counters:** corner threes (Iowa 2009) `[DZ06]`; gap drives + kick to corners `[DZ56]`; gap and rim attacks for free throws (MSU 2025) `[DZ11]`.
+- **Detection signature [HEURISTIC]:** existing 1-3-1 signature plus (a) **pick-up depth**: top's first contact (≤ 1.5 m) at y ≥ 11.0 m within 2.0 s of the ball crossing y = 12.73 m; (b) perimeter `TRAP` at r > 7.5 m, 35° < θ < 145°; (c) baseline lateral run \|Δx\| ≥ 8 m within 2.0 s after corner-to-corner ball movement.
+- **Teams documented (MSU first):**
+  - Oakland (Greg Kampe) vs MSU, 20 Dec 2025 (2025-26): 1-3-1; MSU won 79-70, 15-of-35 FG in the first half, better gap attacks and rim pressure after halftime (12-of-17 FT in the second half) — https://www.si.com/college/michiganstate/tom-izzo-drops-blunt-review-following-oakland-golden-grizzlie-game- `[DZ11]`. Oakland plays zone every possession except BLOBs, prefers 1-3-1 and 1-1-3, occasional 2-3/3-2 (2025-26, preview dated 12 Nov 2025) — https://gocoogs.com/?p=46293 `[DZ56]`.
+  - Northwestern (Carmody) 2008-09 — https://dailynorthwestern.com/2009/03/03/archive-manual/mens-basketball-cats-season-lives-dies-by-the-zone/ `[DZ06]`; https://dailynorthwestern.com/2009/01/19/archive-manual/mens-basketball-wildcats-1-3-1-zone-tops-tubby `[DZ67]`; 2010-11 — https://dailynorthwestern.com/2010/11/18/sports/mens-basketball-zone-boosts-cats-defense/ `[DZ07]`.
+  - Michigan (Beilein) and West Virginia (existing `[D32]`). West Virginia (Huggins) 1-3-1 from Beilein, 2009 and 2012 — **unverified** (WVU pages opened with empty bodies `[DZ72][DZ73]`).
+- **Sources:** `[DZ06][DZ07][DZ11][DZ56][DZ67]`.
+- **Confidence:** medium.
+
+#### Z-9. Amoeba: origin and two-guard-front form — RICHER (extends F8.3 "Amoeba")
+- **Name and aliases:** amoeba defense.
+- **Family / sub-family:** F8.3.
+- **Start alignment** [HEURISTIC]: diamond form — top (7.0, 90°); second (4.6, 90°); lane-line pair (3.81, 60.1°) / (3.81, 119.9°); rim (0.8, 90°). Two-guard-front form (a 2-1-2 with the rim defender moving up behind the high post) — tops (6.39, 69.9°) / (6.39, 110.1°); middle (3.0, 90°); lows (3.10, 14.9°) / (3.10, 165.1°).
+- **Roles / rules** `[DZ61]`: two quickest at the top of the key and just above the FT line, biggest under the basket, two on opposite lane sides just below the elbows; versus a two-guard front it becomes a 2-1-2; a high-post catch draws a triple team. Origin: Fran Webster developed it as a Pittsburgh assistant and refined it in the 1970s with Charles Ridl and Tim Grgurich; Grgurich later joined Tarkanian at UNLV; Pitt used it in its 1973-74 run (22 straight wins, Elite Eight); Webster's 1984 book is cited `[DZ61]`. (Origin note → Corrections C-1.)
+- **Ordered actions with timing [HEURISTIC]:** high-post catch → triple within 1.0 s; other slides as the existing amoeba row `[D60]`.
+- **Usual counters:** shape-shifting by the offence's front (existing); quick kick-out from the high-post triple [CONVENTION].
+- **Detection signature [HEURISTIC]:** add a **high-post triple** event: three defenders within 2.0 m of a high-post catcher (r 3.5–6.0 m, θ 60–120°) within 1.0 s of the catch. Gambling indicator: steals per 100 opponent possessions ≥ the 80th percentile of D-I, together with open layups when beaten (the source notes the gamble). Deflections are added only once a deflection event is defined (not a tracking primitive yet).
+- **Teams documented:** Pittsburgh 1973-74; UNLV (Tarkanian); Ole Miss in combination with other defences (no season) — https://en.wikipedia.org/wiki/Amoeba_defense `[DZ61]`; existing `[D60]`.
+- **Sources:** `[DZ61][D60]`.
+- **Confidence:** medium.
+
+#### Z-10. 2-3 zone used against MSU (2012–2026 log) and Ohio State's own 2-3 (2014-15) — RICHER (extends F8.1 teams, "MSU usage" row, F18.4)
+- **Name and aliases:** 2-3 zone.
+- **Family / sub-family:** F8.1.
+- **Start alignment** [HEURISTIC]: standard 2-3 slots (tops (6.32, 66.7°)/(6.32, 113.3°); forwards just outside the blocks (3.42, 20.6°)/(3.42, 159.4°); centre (1.50, 90°)).
+- **Roles / rules (re-confirmed):** two guards up, two forwards just outside the blocks, centre roaming the middle; one player on the ball, sprint on the pass, everyone rebounds his area; ball on the wing → deny the high post; high post "avoid at all costs" → centre on the ball, guards crowd, X3 denies the low post; corner-trap options `[DZ02]`. Matta (Ohio State): when the ball moves, all five shift together, connected like his man `[DZ34]`.
+- **Ordered actions with timing:** as existing F8.1 rows.
+- **Usual counters:** as existing F8.1; MSU's documented answers: gap attacks, rim pressure for free throws `[DZ11]`, second-half rim attacks (Iowa 2025 `[DZ12]`).
+- **Teams documented (MSU first; opponents zoning MSU unless stated):**
+
+  | Season | Opponent / event | What is documented | Source |
+  |---|---|---|---|
+  | 2025-26 | Oregon (Altman), 20 Jan 2026 (date inferred) | Zone-heavy plan worked ~32 minutes; MSU won by 16; Oregon scored 52 | https://spartanavenue.com/tom-izzo-kur-teng-can-t-guard-my-99-year-old-mother-01kfgk0xf6np `[DZ35]` |
+  | 2025-26 | Oakland, 20 Dec 2025 | 1-3-1 (Z-8) | `[DZ11]` |
+  | 2025-26 | Duke, 6 Dec 2025 | Zone in the final minutes; Izzo blamed his own zone offence | https://spartanavenue.com/tom-izzo-says-his-coaching-is-the-reason-michigan-state-isn-t-11-0-01kcs43bkpkj `[DZ10]` |
+  | 2024-25 | Iowa, Mar 2025 | Zone effective in the first half (MSU 4-of-16 3P, 16 paint points, 2 FT trips); MSU won 91-84 after 61.3% second-half FG | https://www.si.com/college/michiganstate/basketball/spartans-iowa-hawkeyes-big-ten-jase-richardson-jaden-akins-jaxon-kohler `[DZ12]` |
+  | 2024-25 | Indiana, 11 Feb 2025 | 2-3 after falling behind 20-8 in ~9 min; closed the half 12-2; MSU 38.2% FG, 4-of-23 3P; Ballo anchored, zone weaker when he sat with fouls | https://www.si.com/college/indiana/basketball/mike-woodson-s-inspired-switch-to-zone-defense-against-michigan-state-pays-off-for-indiana-01jkxd7dckhz `[DZ04]`; https://www.insidethehall.com/2025/02/12/iu-basketball-relies-on-zone-defense-total-team-effort-to-beat-no-11-michigan-state/ `[DZ08]` |
+  | 2024-25 | Penn State, Jan 2025 | Season-high 28 zone possessions vs MSU; MSU 10-of-24 with 3 TOs vs the zone | https://nittanysportsnow.com/2025/01/penn-state-basketball-has-a-new-look-on-defense/ `[DZ40]` |
+  | 2024-25 | Izzo response | Dared teams to zone MSU after the Indiana loss | https://spartanavenue.com/tom-izzo-dares-teams-to-play-zone-against-michigan-state-basketball-moving-forward-01jm2ywh2zcb `[DZ09]` |
+  | 2017-18 | Syracuse (Boeheim), NCAA 2nd round | MSU 26% FG, school-record 37 3PA with 8 makes; scoreless final 5:41 | https://www.espn.com.au/mens-college-basketball/recap/_/gameId/401025873 `[DZ38]` |
+  | 2011-12 | Louisville match-up zone | MSU 28% FG (Z-5) | `[DZ60]` |
+  | 2014-15 | Ohio State's own 2-3 | Primary defence for most of the season (until 3 Jan 2015); full-time man vs Illinois from 3 Jan 2015 after a timeout when down 8 (~4 min left in the 1st half); 6-2 after; opponents 42% FG / 34% 3P over 8 games | https://www.elevenwarriors.com/ohio-state-basketball/2015/02/49530/ohio-state-looks-like-a-different-team-largely-due-to-its-defensive-switch `[DZ34]` |
+  | 2011-12 | Syracuse's own 2-3 | All-zone on every possession after some early-season man `[DZ46]`; opponents' eFG 44.2 vs 52.7 the prior year; Fab Melo ~1 block per 8 min; asked whether he would leave the zone if an opponent got hot, Boeheim said no (hypothetical) `[DZ46]` | https://www.si.com/more-sports/2012/02/20/syracuse `[DZ46]` |
+
+- **MSU own usage:** still the existing "90-some % man, 2-3 change-up" (2015) `[S74]`; no MSU 2-3 usage found in 2024-26 coverage — gap.
+- **Detection signature additions [HEURISTIC]:** (a) **anchor dependency**: tag the 2-3 centre-slot occupant; when he is off the floor (lineup data) expect a rise in opponent rim attempts (Indiana/Ballo `[DZ08]`); (b) **zone onset after a deficit** — see SC-1.
+- **Sources:** `[DZ02][DZ04][DZ08][DZ09][DZ10][DZ11][DZ12][DZ34][DZ35][DZ38][DZ40][DZ46][DZ60]`; structure https://www.thehoopsgeek.com/2-3-zone-defense-basketball `[DZ02]`.
+- **Confidence:** high for events (game reports); medium for structure.
+
+---
+
+### A6. Presses (extends F9)
+
+#### P-1. 2-1-2 full-court press — NEW (F9.2 listed the name only)
+- **Name and aliases:** 2-1-2 press. Three-quarter-court variant (not full court): Cincinnati (Huggins) 1990s, "a lot of 2-1-2 pressure", usually three-quarter court, per Larry Harrison `[DZ25]`.
+- **Family / sub-family:** F9.2 Zone presses.
+- **Start alignment** [HEURISTIC from `[DZ24]`]: X1/X2 front line around the opponent's elbows (21.34, 85.1°) / (21.34, 94.9°); X3 middle, in front of the half-court circle on the backcourt side (14.56, 90°); X4/X5 back line in the defended half around the arc (6.88, 54.5°) / (6.88, 125.5°).
+- **Roles / rules** `[DZ24]`: X1 (ball-side guard) pressures the inbounded ball, steers it up the sideline toward X3 and rides the hip; X2 (weak-side guard) drops toward the middle, takes reversals, replaces X3 when X3 traps; X3 (middle) keeps the middle covered and is the **first trapper** once the dribble goes up the sideline; X4 (ball-side deep) moves toward the sideline and up for sideline passes; X5 (weak-side deep) protects the rim and reads deep passes.
+- **Ordered actions with timing [windows HEURISTIC]:**
+  1. Inbound (t = 0): no defender on the inbounder; X1/X2 play behind-inside the receivers to push the catch to the sideline.
+  2. 0–2 s: X1 pushes the dribble up the sideline; X2 drops to the middle; X3 inches ball-side; X4 out toward the sideline; X5 to the lane.
+  3. First trap, as close to half-court as possible: X3 sprints perpendicular to the sideline (outside foot on or out of bounds), X1 on the hip, X2 middle, X4 up on the nearest sideline receiver, X5 at the rim. Expected ≈ 2–5 s after the inbound at \|x\| > 5.5 m, 11.5 < y < 16 m.
+  4. Sideline pass out of the trap → second trap: X4 cuts off the sideline, X3 chases to complete; X1/X2 sprint back looking middle first, then basket; X5 stays in the lane.
+  5. Fall-back: not fully specified; weak-side deep keeps dropping, X5 protects the rim `[DZ24]`.
+- **Usual counters:** quick pass over X3 up the sideline (triggers trap 2); repeated reversals; deep passes behind the back line `[DZ24]` (the source author's inferences).
+- **Detection signature [HEURISTIC]:** pre-inbound after a made basket: 2 defenders at y 19.5–23 m with \|x\| ≤ 3.0 m, 1 at y 13.5–16.5 m with \|x\| ≤ 2.0 m, 2 at y < 9 m, none within 2.5 m of the inbounder. First `TRAP` at \|x\| > 5.5 m, 11.5 < y < 16 m with one trapper from the middle slot (pre-trap \|x\| < 2.0 m within 1.5 s before). Middle denial: no completed pass to an attacker at \|x\| < 3.0 m, 13 < y < 20 m before the first trap on ≥ 80% of press possessions. Versus 2-2-1 `[D65]`: two mid defenders at y 13–15 m with \|x\| ≈ 3–5 m; the 2-1-2 has one middle defender and two **deep** defenders.
+- **Teams documented:** generic — https://www.basketballforcoaches.com/2-1-2-press/ `[DZ24]`; Cincinnati (Huggins) 1990s, 2-1-2 pressure usually three-quarter court (a three-quarter-court variant, not this full-court template), per Larry Harrison — https://www.nbcsports.com/college-basketball/news/a-shift-in-philosophy-led-bob-huggins-to-build-press-virginia `[DZ25]`.
+- **Sources:** `[DZ24][DZ25]`.
+- **Confidence:** medium.
+
+#### P-2. 1-2-2 three-quarter press converting to 1-3-1 / 2-3; the 1-1-2-1 — NEW variant (F9.2 + F11.3)
+- **Name and aliases:** 1-2-2 three-quarter-court press; 1-1-2-1 (looks the same at first, more conservative) — Jay Wright (Villanova) clinic `[DZ44]`.
+- **Family / sub-family:** F9.2 Zone presses; F11.3 press → half-court mapping.
+- **Start alignment** [HEURISTIC]: X1 at the opponent's top of the arc (18.70, 90°); X2/X3 (16.14, 73.8°) / (16.14, 106.2°); X4 ball-side half line (12.18, 70.8°); X5 deep middle safety (5.50, 90°). 1-1-2-1: X2 behind X1 in the middle at (15.5, 90°).
+- **Roles / rules** `[DZ44]`: "attack small, retreat big"; fake and real traps; keep the ball out of the middle; get players to the ball side; handle reversal, skip and back-row containment; do not give up an open three while converting; after conversion stay aggressive and tag assignments with man principles. The 1-1-2-1 pairs with a half-court 2-3; the 1-2-2 converts to either 1-3-1 or 2-3. The exact five rules are behind a paywall — **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** (1) X1 influences the dribble to a sideline by y ≈ 17–19 m; (2) wing + X1 trap or fake-trap near y 13–16 m; (3) on the ball crossing half-court or a middle pass: retreat — X1 becomes the 1-3-1 point (or a 2-3 top), X4 the baseline/back line, X5 the middle (1-3-1) or rim (2-3); conversion complete ≤ 3 s after the ball crosses y = 12.73 m.
+- **Usual counters:** middle flash; skips; long diagonal over the back row [CONVENTION; partly `[D67]`].
+- **Detection signature [HEURISTIC]:** press slots held ≥ 1 s before the inbound; `FAKE_TRAP` events (A0); conversion = the half-court classifier's best template (1-3-1 vs 2-3) reaches posterior > 0.8 within 3 s after the ball crosses half-court, and the X1 track maps to the 1-3-1 point slot or a 2-3 top slot.
+- **Teams documented:** Villanova (Jay Wright) clinic content, recorded at the Spring 2015 Pittsburgh clinic, released 2016 `[DZ44]` — https://onlinestore.coachingtoolbox.net/product/jay-wright-1-2-2-and-1-1-2-1-three-quarter-court-pressure-defense/ `[DZ44]`. Iowa (McCaffery) 1-2-2 three-quarter press — page 404, **unverified**. See P-3 (Ohio State), P-4 (Oregon).
+- **Sources:** `[DZ44]`.
+- **Confidence:** low–medium.
+
+#### P-3. Ohio State 1-2-2 zone press (2015-16): timeout and dead-ball usage — RICHER (Big Ten program row for F9.5)
+- **Name and aliases:** Ohio State 1-2-2 press.
+- **Family / sub-family:** F9.5 Program systems; usage policy SC-3.
+- **Start alignment:** P-2 1-2-2 slots [HEURISTIC]; front line Keita Bates-Diop, JaQuan Lyle, and Marc Loving or Kam Williams `[DZ33]`.
+- **Roles / rules** `[DZ33]`: keep the ball out of the middle; Bates-Diop's length at the top tipped passes; sideline traps past half-court at Purdue (21 Jan 2016) forced throws over the top; used sparingly **out of timeouts and drawn-out dead balls**, then half-court man; against Northwestern it was extended full court and the ball did not cross half-court until 21 s remained on the shot clock (≈ 9 s burned of 30); practised after every made basket; Matta noted often only three and a half or four players engaged.
+- **Ordered actions with timing [HEURISTIC]:** (1) timeout/dead ball; (2) press set ≤ 3 s; (3) sideline trap just past half-court; (4) half-court man after the fall-back.
+- **Usual counters:** throws over the top out of the trap (the source shows them forced, not completed); tempo inbound [CONVENTION].
+- **Detection signature [HEURISTIC]:** press-active begins ≤ 3 s after a **dead ball following a timeout** (PBP) and is absent after live-ball changes of possession; backcourt time (inbound → ball crosses y = 12.73 m) ≥ 7 s on press possessions vs the team baseline; sideline `TRAP` at \|x\| > 5.0 m, 9 < y < 13 m; **engagement count** = defenders with y > y_ball − 2 m during the press (Matta's complaint ≈ ≤ 4).
+- **Teams documented:** Ohio State (Matta) 2015-16 — https://www.elevenwarriors.com/ohio-state-basketball/2016/02/67852/hoops-film-study-the-evolving-effective-ohio-state-zone-press `[DZ33]`.
+- **Sources:** `[DZ33]`.
+- **Confidence:** medium.
+
+#### P-4. Oregon (Altman) 1-2-2 press / trap after makes → man or match-up — RICHER (F9.5 + F11.3)
+- **Name and aliases:** Oregon 1-2-2 press/trap.
+- **Family / sub-family:** F9.5; F11.3 press → half-court mapping.
+- **Start alignment:** P-2 1-2-2 slots [HEURISTIC].
+- **Roles / rules:** Oregon typically starts defensive possessions with a press, usually a 1-2-2, flowing into man or the match-up zone (2019-20) `[DZ03]`; full-court pressure including a 1-2-2 trap after made baskets (2021-22) `[DZ05]`. Big Ten from 2024-25 `[DZ74]`.
+- **Ordered actions with timing [HEURISTIC]:** made FG → 1-2-2 set before the inbound (`PRESS_SETUP` ≤ 4 s) → trap or contain to half-court → fall-back → man (F ≥ 0.6) or match-up 2-3 (Z-5) within 3 s.
+- **Usual counters:** quick inbound before the set (see P-5); middle flash [CONVENTION].
+- **Detection signature [HEURISTIC]:** P(press \| previous possession = opponent made FG) − P(press \| defensive rebound) ≥ 0.4; record the **post-press scheme** and its per-game share (man vs match-up).
+- **Teams documented:** Oregon 2019-20 `[DZ03]`, 2021-22 `[DZ05]`; vs MSU 2025-26 zone (alignment not stated) `[DZ35]` (URLs in Z-5).
+- **Sources:** `[DZ03][DZ05][DZ35][DZ74]`.
+- **Confidence:** medium (older seasons; 2024-26 Big Ten press use not confirmed).
+
+#### P-5. Penn State (Rhoades) full-court pressure; MSU's quick-inbound counter — RICHER (F9.1, F9.5)
+- **Name and aliases:** Penn State press ("press matchups").
+- **Family / sub-family:** F9.1 Full-court man (matchup-assigned press) + F9.5 program row.
+- **Start alignment** [HEURISTIC]: man press — each defender within 1.5 m of his assigned attacker in the backcourt; ball defender on the inbounder or receiver at y ≥ 21 m (≈ (21.3, 90°)).
+- **Roles / rules:** full- and half-court pressure with opportunistic traps; 20 forced TOs vs St. Francis (Nov 2023) `[DZ68]` and 29 vs Morehead State (Nov 2023, including two 10-second violations) `[DZ69]`; man on 93.9% of 2024-25 possessions through 23 Jan 2025 `[DZ40]`. The press being **man-to-man**, and a diamond press at the end of halves, appear only in snippets — **unverified**. A Penn State player referred to "press matchups" assigned by the coach `[DZ13]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) made basket; (2) defenders locate assigned men (~2–4 s); (3) deny/pressure the inbound; (4) opportunistic sideline trap near half; (5) half-court man.
+- **Usual counters (MSU, 14 Feb 2024, MSU 80-72 at Penn State):** inbound quickly with the player nearest the boundary and throw early outlets to get up the floor before the press is set; Penn State forced only 11 MSU turnovers vs an average above 15 `[DZ13]`.
+- **Detection signature [HEURISTIC]:** backcourt F ≥ 0.6 for ≥ 4 defenders with HMM matchups equal to the half-court matchups (`[D35]` HMM) → "assigned man press". **Press beaten by tempo:** `INBOUND_LAG` < `PRESS_SETUP` → label `press_beaten_early`; compare TO rate vs set-press possessions (for MSU offence analysis, how often MSU beats presses with tempo).
+- **Teams documented (MSU first):** MSU counter 2023-24 — https://www.si.com/college/pennstate/basketball/penn-state-mens-basketball-michigan-state-spartans-defeat-nittany-lions-tom-izzo-mike-rhoades `[DZ13]`. Penn State 2023-24 — https://gopsusports.com/news/2023/11/15/defensive-dominance-drives-penn-state-to-win `[DZ68]`; https://bellisariostudentmedia.psu.edu/story/turnovers-free-throws-only-needed-for-penn-states-win-against-morehead-state `[DZ69]`; 2024-25 `[DZ40]`.
+- **Sources:** `[DZ13][DZ40][DZ68][DZ69]`.
+- **Confidence:** medium.
+
+#### P-6. Iowa (McCaffery) contained vs trapping press — RICHER (F9.5)
+- **Name and aliases:** Iowa 1-2-2 press (contain / trap).
+- **Family / sub-family:** F9.5; F9.2 1-2-2 "70" (contain) vs trapping variants.
+- **Start alignment:** 1-2-2 press slots as P-2 [HEURISTIC]; the structure of Iowa's 1-2-2 itself is **unverified**.
+- **Roles / rules (14 Feb 2023 press conference)** `[DZ14]`: Iowa plays both contained and trapping press and varies aggression game to game; the press disrupts rhythm; risk vs four-guard lineups; McCaffery said he learned the 1-2-2 press from Rollie Massimino `[DZ14]`. Iowa 2017-18 (article 1 Mar 2018): man on about 62% of possessions per Synergy (9th percentile man, 47th percentile zone); opened the 2017-18 game at Michigan in zone (first time in McCaffery's 17-year career, per announcers); split ~50-50 vs Illinois `[DZ15]`.
+- **Ordered actions with timing [HEURISTIC]:** contain — keep the ball in front with cushion ≥ 2.0 m to half-court; trap — first backcourt `TRAP` within 2–5 s of the inbound.
+- **Usual counters:** four-guard lineups `[DZ14]`.
+- **Detection signature [HEURISTIC]:** classify each press possession as **contain** (no `TRAP`, handler cushion ≥ 2.0 m; existing "70" signature `[D67]`) or **trap** (≥ 1 backcourt `TRAP`); report the per-game contain/trap ratio as the aggression dial.
+- **Teams documented:** Iowa (McCaffery) 2022-23 — https://hawkfanatic.com/?p=64664 `[DZ14]`; man/zone split 2017-18 (article 1 Mar 2018) — https://umhoops.com/?p=93283 `[DZ15]`.
+- **Sources:** `[DZ14][DZ15]`.
+- **Confidence:** low (press structure unverified).
+
+#### P-7. "Press Virginia" (Huggins / Kevin Mackey lineage) — RICHER (F9.5)
+- **Name and aliases:** Press Virginia.
+- **Family / sub-family:** F9.5 program systems (volume pressure).
+- **Start alignment:** man vs zone structure **not stated** in the source — **unverified**; use F9.0 press-active slots.
+- **Roles / rules** `[DZ25]`: Huggins studied Kevin Mackey (Cleveland State, 1986 Sweet 16 as a 14 seed) and moved to full-court pressure all the time; trapping and picking up full court; accepts the risk of transition points; 2014-15: turnovers forced on about 28% of opponent possessions, opponents' eFG 52.7%, the nation's most fouls (821, 23.5 per game), 25 wins and a Sweet 16.
+- **Ordered actions with timing [HEURISTIC]:** press on every possession including after misses; trap in the backcourt within 2–5 s.
+- **Usual counters:** beat the trap for transition points (the accepted risk) `[DZ25]`.
+- **Detection signature [HEURISTIC]:** volume rule as for "40 Minutes of Hell" (F9.5): press active on ≥ 70% of opponent possessions; plus a **foul-cost** feature (team fouls per 100 opponent possessions while pressing).
+- **Teams documented:** West Virginia 2014-15 (Big 12) — https://www.nbcsports.com/college-basketball/news/a-shift-in-philosophy-led-bob-huggins-to-build-press-virginia `[DZ25]`.
+- **Sources:** `[DZ25]`.
+- **Confidence:** medium.
+
+#### P-8. Zone-press fall-back rules — RICHER (extends F9.0 "Fall-back event")
+- **Name and aliases:** fall-back; sprint to the paint.
+- **Family / sub-family:** F9.0 primitives / F11.3.
+- **Start alignment:** at the break moment, 2-2-1 slots per existing F9 row `[D65]`.
+- **Roles / rules (2-2-1, re-opened `[D65]` = `[DZ45]`):** once the press is broken or the ball passes midcourt, every defender not on the ball sprints to the paint, unless an easy sideline or midcourt-corner trap is available; the on-ball defender stays on the ball and stops penetration; never let the ball get ahead of you; the weak-side deep defender comes up only for a clear interception. The 2-2-1 as a natural complement to a 2-3 (same shape stretched full court) — snippet only, **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** (1) ball crosses y = 12.73 m at t_x; (2) non-ball defenders sprint toward the rim during t_x … t_x + 1.5 s; (3) ≥ 3 of them at r < 5.5 m by t_x + 3.0 s.
+- **Usual counters:** advance pass ahead of the retreating defenders [CONVENTION].
+- **Detection signature [HEURISTIC]:** ≥ 3 of the 4 non-ball defenders that are at r > 8 m at t_x have mean radial speed toward the rim ≥ 2.5 m/s in [t_x, t_x + 1.5 s] (a team mean of 4 m/s is not reachable from a stance start, and the deep defender is already near the rim), and, as the outcome test, ≥ 3 of them at r < 5.5 m by t_x + 3.0 s; exception flag when a `TRAP` starts within 1.0 s of t_x at \|x\| > 5 m near half-court. "Ball ahead" violation = any non-ball defender with y > y_ball + 1.0 m after t_x for > 1.0 s.
+- **Teams documented:** generic — https://www.coachesclipboard.net/221ZonePress.html `[DZ45]`.
+- **Sources:** `[DZ45]`.
+- **Confidence:** medium.
+
+*(MSU 2026-27 exhibition press: see MSU-4.)*
+
+---
+
+### A7. Junk / combination defences (extends F10)
+
+#### J-1. Diamond-and-one: alignment by offensive front, rotations, chaser rules — RICHER (extends F10 "Diamond-and-1")
+- **Name and aliases:** diamond-and-1; amoeba resembles it vs a one-guard front (existing `[D60]`).
+- **Family / sub-family:** F10.
+- **Start alignment** [HEURISTIC from `[DZ22][DZ21]`]: top X1 covering elbow to elbow (5.50, 90°); wings X3/X4 covering elbow to block, on the lane line at mid-height (3.17, 54.8°) / (3.17, 125.2°) → x = ±1.83 m, y = 2.59 m; X5 on the ball–basket line near the rim (1.20, 90°), shifting along that line; chaser on the star anywhere. Vs a one-guard front align 1-3; vs a two-guard front the wing on that side steps up `[DZ22]`. Starting in a 1-2-2 or 2-3 and shifting after half-court — snippet only, **unverified**.
+- **Roles / rules** `[DZ22][DZ21]`: the denier plays total denial on the star's hip (not on top) and sends him to the side where a wing can extend; bump cutters; extend on every screen; force outside shots; know the shooters. The chaser should be mobile (PG/SG, sometimes SF/PF), ideally not the team's top scorer; multiple or rotating chasers are possible `[DZ21]`.
+- **Ordered actions with timing [HEURISTIC windows]:**
+  1. Wing-to-basket cut by the passer: X1 takes the cutter to the lane line, X4 absorbs him (hand-off within ~1 s) `[DZ22]`.
+  2. Wing-to-corner pass: X5 shows, X4 slides down and bumps X5 back to the rim (within ~1.5 s) `[DZ22]`.
+  3. Ball to the wing: X1 drops to deny the high post; no pass behind X1 into the heart of the zone `[DZ22]`. Hoop Student version: wing defender on the ball, X1 to the weak elbow, opposite wing to mid-post, X5 behind or in front of the low post `[DZ21]`.
+  4. Low-post catch: weak-side wing sprints across to double with X5; X1 drops into the lane and can close out on a skip `[DZ21]`.
+- **When used:** whole game, after timeouts, to stop a run, or for a set period such as until the opponent scores twice `[DZ22]`.
+- **Usual counters:** heavy screening to free the star `[DZ22]`; middle gap (high post / lane); two or more good low-post players `[DZ21]`.
+- **Detection signature [HEURISTIC]:** `CHASER(d, star)` true; the other four fit diamond slots (`SLOT_RESIDUAL` < 1.5 m) with the top at r 4.6–6.5 m and **no** defender between the top and the arc at the top of the key; X5 within 0.8 m of the ball–rim segment on ≥ 70% of frames. Onset/offset: change-point in the chaser feature within ±10 s of a timeout or a made basket (PBP); "until they score twice" → offset within one possession after the opponent's second made FG since onset (test on data).
+- **Teams documented:** no D-I program named — gap. MSU: none.
+- **Sources:** `[DZ21][DZ22]` — https://hoopstudent.com/diamond-and-1-defense/ ; https://coachingtoolbox.net/?p=414
+- **Confidence:** medium (structure), low (D-I usage).
+
+#### J-2. Triangle-and-two: screen rules, post traps, D-I examples — RICHER (extends F10 "Triangle-and-2")
+- **Name and aliases:** triangle-and-2.
+- **Family / sub-family:** F10.
+- **Start alignment** [HEURISTIC]: top (5.00, 90°); bottoms (2.19, 24.2°) / (2.19, 155.8°); two chasers on the targets.
+- **Roles / rules** `[DZ22][DZ23]`: the top of the triangle is the most athletic/crafty defender, never with both feet outside the arc, elbow to elbow; if the offence brings a third player high, a defender comes up to match `[DZ22]`. **Screen rules:** denied player screens denied player (cross-screen) → switch; an unguarded player screens a guarded player → trap it, or string it out and let the chaser fight over `[DZ22]`; if a chaser is screened, the nearest zone defender pressures temporarily, then the chaser recovers and sends him back `[DZ23]`. **Post rule:** on a post pass X1 traps down with a wing, only if the catch is in scoring position; the basket is never left empty `[DZ22]`. **Chaser rules:** one pass away → hard deny, forcing backdoor cuts into the zone; more than one pass away → keep denying or sink toward the mid-post at the lane line; on baseline runs stay on the high side, never trail beneath `[DZ23]`. Treat the opponent's third scorer as the only "shooter" among the other three `[DZ23]`.
+- **Ordered actions with timing [HEURISTIC]:** cross-screen switch within 1.0 s; post trap within 0.8 s of a scoring-position catch; temporary zone pressure on a screened chaser ≤ 2 s.
+- **Usual counters:** several shooters, post scorers (existing `[D70]`); screening the chasers [CONVENTION].
+- **Detection signature [HEURISTIC]:** two `CHASER` pairs on two different attackers; on a cross-screen between the two targets a `SWITCH` between the two chasers within 1.0 s; on a screen by an unguarded attacker for a target, either a `TRAP` on the target or the chaser stays (no switch) — never a zone defender holding the target > 2 s; post `TRAP` only when the catch is at r < 3.0 m.
+- **Teams documented (D-I):** Utah (Majerus) 1997-98 vs Arizona (Simon, Bibby), 76-51 Elite Eight; Sam Houston State vs Baylor, 2010 NCAA; Kansas (Self) vs North Carolina (Barnes, Bullock), 2012 Midwest Regional final, UNC scoreless over the final 3:58 — https://en.wikipedia.org/wiki/Triangle-and-two_defense `[DZ20]`. (The page also mentions use against Saint Joseph's in 2004 with ambiguous wording.) Bill Self's career-long use — snippet only, **unverified**. No Big Ten use found for 2023-26.
+- **Sources:** `[DZ20][DZ22][DZ23]` — https://hoopstudent.com/triangle-and-2-defense
+- **Confidence:** medium.
+
+#### J-3. Box-and-one: D-I usage notes — RICHER (teams only; structure already complete in F10 `[D68]`)
+- **Name and aliases:** box-and-1.
+- **Family / sub-family:** F10.
+- **Start alignment:** as F10 (re-confirmed: high pair at the FT line extended, low pair one foot in the lane on the blocks; weak-side high always denies the high post) `[DZ48]`.
+- **Roles / rules / actions / counters / detection:** as F10; nothing new `[DZ48]`.
+- **Teams documented:** Wikipedia names Allen Iverson (Georgetown) and Ray Allen (UConn) as college players who faced it, without opponents or seasons — https://en.wikipedia.org/wiki/Box-and-one_defense `[DZ47]`. Izzo joking in Feb 2015 about a box-and-one on D'Angelo Russell — snippet only, **unverified** and facetious. No Big Ten box-and-one found for 2023-26 — gap.
+- **Sources:** `[DZ47][DZ48]` — https://thehoopsgeek.com/basketball-plays/box-and-1-defense-roles-responsibilities/
+- **Confidence:** low.
+
+---
+
+### A8. Mid-possession and between-possession scheme changes (extends F11)
+
+#### SC-1. Score-run + timeout trigger — NEW policy (F11.4)
+- **Name and aliases:** timeout-after-run scheme change.
+- **Family / sub-family:** F11.4 Between-possession policies (trigger `timeout_after_run`).
+- **Start alignment:** n/a (policy); scheme before and after per F8/F1 templates.
+- **Roles / rules:** a defence changes scheme (man → zone or zone → man) at a timeout, often a media timeout, after the opponent opens a lead or a run, and holds the change for long stretches. Cases:
+  - Indiana vs MSU, 11 Feb 2025: down 20-8 in about the first nine minutes, Indiana went 2-3 and closed the half on a 12-2 run; won 71-67 `[DZ08][DZ04]`. The switch coming out of the under-12 media timeout — snippet only, **unverified**.
+  - Ohio State vs Illinois, 3 Jan 2015: down 8 with just over 4 minutes left in the first half, Matta called a timeout and went from 2-3 to man for good `[DZ34]`.
+  - Northwestern vs Northern Illinois, Nov 2010: opened man, fell behind 13-5, switched to the 1-3-1; a 19-3 run followed and NU never trailed again. Vs Texas-Pan American: stayed man until late in the second half, then switched to the zone, which helped build an 11-point lead after UTPA had come close to an upset `[DZ07]`.
+  - Northwestern vs Minnesota, Jan 2009: opened in a 2-3 match-up; Minnesota shot 14-of-18 in the first 15 minutes; trailing by nine late in the half, Carmody switched to the 1-3-1; Minnesota missed 5 of its last 6 first-half shots and had 15 of its 19 turnovers in the final 25 minutes `[DZ67]`.
+- **Ordered actions with timing [HEURISTIC]:** run → timeout → new scheme from the first live possession → dwell ≥ 10 possessions.
+- **Usual counters:** have the zone offence ready after timeouts (Izzo's own diagnosis in `[DZ10]`) [CONVENTION].
+- **Detection signature [HEURISTIC]:** scheme change-point (F11.6 HMM) at the first live possession after a timeout (PBP), preceded by an opponent run: margin change ≥ +8 for the opponent over the previous 6 game-minutes, or opponent FG% ≥ 65% over the previous 10 possessions. Label `trigger = timeout_after_run`. Expected dwell ≥ 10 possessions.
+- **Teams documented (MSU first):** Indiana vs MSU 2024-25 — URLs in Z-10 `[DZ04][DZ08]`; Ohio State 2014-15 `[DZ34]`; Northwestern 2008-09 `[DZ67]`, 2010-11 `[DZ07]`.
+- **Sources:** `[DZ04][DZ07][DZ08][DZ34][DZ67]`.
+- **Confidence:** high for the events; medium for the generalisation.
+
+#### SC-2. "Start in match-up, go 1-3-1 if not working" — NEW policy (F11.4)
+- **Name and aliases:** match-up base with 1-3-1 change-up.
+- **Family / sub-family:** F11.4.
+- **Start alignment:** match-up (Z-5/Z-7) then 1-3-1 (Z-8) templates.
+- **Roles / rules:** Northwestern 2009, after the Iowa loss: start in the match-up zone and switch to the 1-3-1 if needed; Carmody changed between the two by opponent, game flow and how comfortable the opponent looked `[DZ06]`.
+- **Ordered actions with timing [HEURISTIC]:** first scheme of the game = match-up; switch after ~10 half-court possessions if the opponent scores efficiently.
+- **Usual counters:** corner threes vs the 1-3-1 (Z-8).
+- **Detection signature [HEURISTIC]:** per-game sequence model: first scheme = match-up (Z-5/Z-7 signature); P(switch to 1-3-1 \| opponent PPP ≥ 1.15 over the first 10 half-court possessions) above the base rate.
+- **Teams documented:** Northwestern (Carmody) 2008-09 — https://dailynorthwestern.com/2009/03/03/archive-manual/mens-basketball-cats-season-lives-dies-by-the-zone/ `[DZ06]`.
+- **Sources:** `[DZ06]`.
+- **Confidence:** medium.
+
+#### SC-3. Dead-ball / timeout-only press — NEW policy (F11.4)
+- **Name and aliases:** situational press; timeout press.
+- **Family / sub-family:** F11.4.
+- **Start alignment:** P-3 slots.
+- **Roles / rules:** Ohio State 2015-16 used its 1-2-2 press mainly out of timeouts and long dead balls `[DZ33]`. Penn State's diamond press at the end of halves — snippet only, **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** press set ≤ 3 s after the dead ball; fall-back after half-court.
+- **Usual counters:** quick inbound is unavailable after a dead ball, so: middle flash, over-the-top pass [CONVENTION].
+- **Detection signature [HEURISTIC]:** P(press \| possession starts after a timeout or a dead ball ≥ 45 s) / P(press \| other) ≥ 3, with ≥ 10 timeout/dead-ball possessions in the sample; end-of-half variant: P(press \| game clock ≤ 60 s in the half).
+- **Teams documented:** Ohio State 2015-16 — https://www.elevenwarriors.com/ohio-state-basketball/2016/02/67852/hoops-film-study-the-evolving-effective-ohio-state-zone-press `[DZ33]`.
+- **Sources:** `[DZ33]`.
+- **Confidence:** medium.
+
+#### SC-4. Press after made shots, falling back into man or match-up — RICHER (extends F11.3 / F11.4 "After made FG")
+- **Name and aliases:** make-press.
+- **Family / sub-family:** F11.3 / F11.4.
+- **Start alignment:** P-4 slots.
+- **Roles / rules:** Oregon — press to start possessions (2019-20) and a 1-2-2 trap after made baskets (2021-22), flowing into man or match-up `[DZ03][DZ05]`. Auburn presses after made FGs and FTs (existing `[D79a][D79b]`). Syracuse pressing only after made baskets as a change-up from the 2-3 — snippets only, **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** as P-4.
+- **Usual counters:** quick inbound (P-5).
+- **Detection signature [HEURISTIC]:** see P-4; add the **back-off time** (existing F11.4) and the **post-press scheme** label.
+- **Teams documented:** Oregon 2019-20, 2021-22 `[DZ03][DZ05]` (URLs in Z-5).
+- **Sources:** `[DZ03][DZ05]`.
+- **Confidence:** medium.
+
+#### SC-5. All-zone team that plays man only on baseline out-of-bounds — NEW policy (F11.4 / F14 BLOB)
+- **Name and aliases:** BLOB-man exception.
+- **Family / sub-family:** F11.4; F14 BLOB.
+- **Start alignment:** zone templates (1-3-1, 1-1-3) in the half-court; man on BLOB inbounds.
+- **Roles / rules:** Oakland (Kampe) plays zone every possession except baseline out-of-bounds plays, where it goes man `[DZ56]`.
+- **Ordered actions with timing [HEURISTIC]:** BLOB inbound → man for the inbound window (5 s) and the possession; next non-BLOB possession → zone.
+- **Usual counters:** BLOB sets against man (offence_full F13.2) [CONVENTION].
+- **Detection signature [HEURISTIC]:** P(man \| possession starts with a frontcourt BLOB inbound, inbound spot y < 0) ≥ 0.8 while P(man \| other) ≤ 0.1.
+- **Teams documented (MSU first):** Oakland vs MSU 20 Dec 2025 confirms only the 1-3-1 `[DZ11]`; the BLOB rule is from a 2025-26 preview dated 12 Nov 2025 — https://gocoogs.com/?p=46293 `[DZ56]`.
+- **Sources:** `[DZ56][DZ11]`.
+- **Confidence:** medium-high (single dated 2025-26 preview with a direct observation; partly corroborated by the 20 Dec 2025 game `[DZ11]`).
+
+#### SC-6. Change-up zone dosing — NEW policy (F11.4)
+- **Name and aliases:** change-up zone; back-pocket zone.
+- **Family / sub-family:** F11.4.
+- **Start alignment:** 2-3 slots (Z-10).
+- **Roles / rules:** Penn State 2024-25: man on 93.9% of possessions; Rhoades calls the 2-3 a change-up kept in his back pocket; 75 zone possessions through 19 games (89 the whole previous season), 50 of them in three games (Oregon, MSU, Rutgers); MSU saw a season-high 28 zone possessions and went 10-of-24 with 3 turnovers; across the three games opponents scored 42 points on 50 zone possessions (0.84 PPP); used to disrupt rhythm and stop downhill attacks `[DZ40]`.
+- **Ordered actions with timing:** n/a (dosing policy).
+- **Usual counters:** zone offence readiness [CONVENTION].
+- **Detection signature [HEURISTIC]:** per-game zone share; flag "change-up" when the season zone share ≤ 10% but a single game ≥ 25%; store PPP by scheme per game for comparison with Synergy-style splits.
+- **Teams documented (MSU first):** Penn State vs MSU, Jan 2025 (2024-25) — https://nittanysportsnow.com/2025/01/penn-state-basketball-has-a-new-look-on-defense/ `[DZ40]`.
+- **Sources:** `[DZ40]`.
+- **Confidence:** high.
+
+#### SC-7. Late-game zone switch vs MSU (Duke, 6 Dec 2025) — NEW event (F11.4)
+- **Name and aliases:** late-game zone.
+- **Family / sub-family:** F11.4 (trigger `late_game`).
+- **Start alignment:** zone alignment not stated — **unverified**.
+- **Roles / rules:** Duke switched to a zone in the final minutes; Izzo said on his radio show that MSU would be 11-0 if his coaching against zones were better `[DZ10]`. Duration and alignment not stated; game outcome inferred — **unverified details**.
+- **Ordered actions with timing [HEURISTIC]:** change to zone with game clock ≤ 5:00 in the 2nd half.
+- **Usual counters:** n/a (not stated).
+- **Detection signature [HEURISTIC]:** change-point to zone with game clock ≤ 5:00 in the 2nd half; label `trigger = late_game`.
+- **Teams documented (MSU first):** Duke vs MSU 2025-26 — https://spartanavenue.com/tom-izzo-says-his-coaching-is-the-reason-michigan-state-isn-t-11-0-01kcs43bkpkj `[DZ10]`.
+- **Sources:** `[DZ10]`.
+- **Confidence:** low.
+
+---
+
+### A9. Transition defence (extends F12)
+
+**Definitions note.** The transition-offence windows in the project brief (Synergy "defence not set"; Hoop-Math shot ≤ 10 s after a defensive rebound with the ball live; FastScout possession ending in the first 10 s of the shot clock; Hudl InStat 4–8 s; coaching phases) belong to Job D. The Hoop-Math and FastScout pages could not be opened in this research (MGoBlog 403; Hudl support 404), so those definitions are **unverified** here. The `GET_BACK` clocks (A0) are built to be computed on any of those windows. NCAA clock facts used: 30 s shot clock and a 10 s backcourt count that does not reset after a stoppage in play (with few exceptions), and the 1.22 m restricted arc, all since 2015-16 `[DZ64]`.
+
+#### T-1. Two-guards-back geometry — RICHER (extends F12.1 "Two back")
+- **Name and aliases:** two back; guards back. Label `two_back_halfcourt` (vs break-every-time teams, `[DZ53]`); the old F12.1 Full Back / Half Back row becomes `two_back_full_half`. Both map to the parent `two_back`.
+- **Family / sub-family:** F12.1 Get-back rules.
+- **Start alignment:** two-back spots at the half-court line, one each side of the centre circle: (12.86, 81.8°) / (12.86, 98.2°), measured from the team's **own** defended rim.
+- **Roles / rules (re-opened `[D85]` = `[DZ53]`):** against teams that break every time, three bigs crash and two guards retreat to the half-court line, one on each side of the centre circle; the normal rule is one guard back as the safety beyond the arc; Underwood's shooter-back rule on 3PA.
+- **Ordered actions with timing [HEURISTIC]:** at own shot release + 1.0 s the two guards are moving toward their own rim; they are at their spots by release + 3.0 s, or by the opponent's defensive-rebound frame + 1.0 s. (At release the guards are near the arc of the rim being shot at, y ≈ 18.7 m; reaching y ≤ 14.0 m in 1.0 s would need ≈ 5–6 m/s average from near standstill.)
+- **Usual counters:** offensive-rebound loss (fewer crashers) — the trade-off in F12 `[D100]`.
+- **Detection signature [HEURISTIC]:** (a) kinematic test at own shot release + 1.0 s (as old F12.1): two players moving toward their own rim at ≥ 2 m/s; (b) position test by release + 3.0 s, or by the opponent's defensive-rebound frame + 1.0 s: the same two with 11.5 ≤ y ≤ 14.0 m and \|x\| ≤ 3.0 m on opposite sides (sign of x differs), moving toward their own rim or stationary (speed < 1.5 m/s), while 3 teammates are within 4 m of the rim being shot at (distance to (0, 25.45 m) < 4 m) at release + 1.0 s. Label `get_back_policy = two_back_halfcourt` (parent `two_back`). All timings [HEURISTIC].
+- **Teams documented:** generic — https://www.coachesclipboard.net/TransitionDefense.html `[DZ53]`.
+- **Sources:** `[DZ53]`.
+- **Confidence:** medium.
+
+#### T-2. 4-on-3 rules — NEW (F12.6 Outnumbered)
+- **Name and aliases:** 4-on-3 transition defence; stacked two back.
+- **Family / sub-family:** F12.6.
+- **Start alignment** [HEURISTIC]: stacked two back — top at (5.5, 90°), bottom at (1.5, 90°); third defender arriving at the nail (4.19, 90°).
+- **Roles / rules:** in a 4v4 drill the defender matched with the passer must touch the baseline first; the other three get back, stop the ball and match up in help positions until the fourth returns `[DZ54]`. In 4-on-4-on-4, the two back defenders are stacked: top stops the ball in the backcourt, bottom protects the paint; bottom closes out to the first receiver, top drops as low as the lowest attacker `[DZ55]`. The rule that the remaining two split the three off-ball attackers and the trailer takes the farthest from the ball — snippet only, **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** (1) ball stopped before r = 8 m; (2) three defenders in help spots; (3) matchups resolve within 2 s of the fourth crossing half-court.
+- **Usual counters:** quick ball movement before the fourth arrives [CONVENTION].
+- **Detection signature [HEURISTIC]:** `OUTNUMBER(4,3)`; `t_stop` before the ball reaches r = 8 m; the three defenders each inside triangle(ball, rim, nearest attacker) (existing gap occupancy); when the fourth crosses half-court the HMM matchup entropy drops ≥ 50% within 2 s.
+- **Teams documented:** generic drills — https://thehoopsgeek.com/basketball-drills/4-v-4-transition-drill/ `[DZ54]`; https://coachesclipboard.net/4on4on4Drill.html `[DZ55]`.
+- **Sources:** `[DZ54][DZ55]`.
+- **Confidence:** low–medium.
+
+#### T-3. Role-based get-back: Stopper / Protector / Sprinters (Travis Ford) — NEW (F12.1)
+- **Name and aliases:** Stopper, Protector, Sprinters.
+- **Family / sub-family:** F12.1 Get-back rules (role-based, not position-based).
+- **Start alignment** [HEURISTIC]: Protector at (1.4, 90°), outside the 1.22 m restricted arc, by t_rim; Stopper on the primary handler in the backcourt (y ≥ 12.73 m); Sprinters crash then retreat.
+- **Roles / rules** `[DZ26]`: **Stopper** = best full-court on-ball defender, keeps the primary handler from getting into rhythm; **Protector** = a slower player least likely to get an offensive rebound, protects the basket; **Sprinters** = three players who always crash the glass, then hustle back to stop specific shots. Cross-matchups can create an advantage when the ball is pushed up the wing.
+- **Ordered actions with timing [HEURISTIC]:** shot → Protector retreats immediately → Stopper picks up the handler → Sprinters retreat after the rebound is lost.
+- **Usual counters:** push past the Stopper up the wing (cross-matchup advantage noted) `[DZ26]`.
+- **Detection signature [HEURISTIC]:** from own-shot possessions across a game: Protector = largest share of first-to-own-rim events (t_rim) and lowest offensive-rebound share; Stopper = most often first within 2 m of the opposing primary handler after a change of possession, pickup at y ≥ 12.73 m; Sprinters = the three within 3 m of the rim being shot at (distance to (0, 25.45 m) < 3 m) at release + 1 s. Role stability (same player on ≥ 70% of possessions) separates a role system from a position system (PG back).
+- **Teams documented:** Travis Ford clinic, no team/season given — https://www.mensbasketballhoopscoop.com/?p=20023 `[DZ26]`.
+- **Sources:** `[DZ26]`.
+- **Confidence:** medium.
+
+#### T-4. Wall / loading to the ball / strong-side-first fill — NEW (F12.2 / F12.4)
+- **Name and aliases:** build a wall; post shadow; load to the ball; strong side first. Label `transition_wall_load`, distinct from F7.5 `load_to_ball` (half-court, ball in the corner) and from BS-10 `drop_gap_load`.
+- **Family / sub-family:** F12.2 Stop the ball / F12.4 Matchup on the fly.
+- **Start alignment** [HEURISTIC]: wall line at y 6.5–8.5 m (just above the arc) across the ball's lane, \|x − x_ball\| ≤ 2.5 m, e.g. (7.65, 78.7°) for a ball pushed up the right-centre lane.
+- **Roles / rules:** the defensive big sprints ahead of the ball and turns his body to stop middle penetration ("building a wall", "post shadow"), already positioned so his closeout goes one way; risk: a trailing big who can shoot (Zak Boisvert breakdown) `[DZ28]`. OKC vs Indiana (2025 NBA Finals; secondary): sprint back on the shot with no ball-watching, contest outlets, fill the strong side first with trailers rotating weak side, build a wall before the paint when a defender is already beaten, send extra help at the ball when back in numbers; Indiana's transition points fell to 14 and 13 in Games 1–2 `[DZ27]`.
+- **Ordered actions with timing [HEURISTIC]:** wall formed before the ball reaches r = 8 m; strong side filled first by the first two defenders back.
+- **Usual counters:** trailing big who can shoot `[DZ28]`.
+- **Detection signature [HEURISTIC]:** during transition (ball moving toward the defended rim at ≥ 3 m/s), ≥ 2 defenders with y between y_ball − 4 m and y_ball − 1 m within 3 m laterally of the ball's projected path, facing up court, approximated from positions as velocity toward own rim between 0 and 1.5 m/s while the ball is above the defender (y_ball > y_d); true backpedalling needs pose and is flagged as pose-dependent; all before the ball reaches r = 8 m. "Load" by the big: the tallest defender is one of them. Strong-side-first: the first two defenders below the ball have sign(x) = sign(x_ball) on ≥ 70% of transition possessions.
+- **Teams documented:** coaching/NBA (secondary), no D-I team named — https://coachingtoolbox.net/loading-to-the-basketball `[DZ28]`; https://lockdowndefense.substack.com/p/how-okc-shut-down-indianas-fast-break `[DZ27]`.
+- **Sources:** `[DZ27][DZ28]`.
+- **Confidence:** medium.
+
+#### T-5. Cross-match swap rule; size-matched ball stopper; rim protector = tallest — RICHER (extends F12.4)
+- **Name and aliases:** transition cross-match; swap; half-court cross-matching (NBA alias).
+- **Family / sub-family:** F12.4 Matchup on the fly.
+- **Start alignment** [HEURISTIC]: rim protector (tallest) at (1.4, 90°), outside the 1.22 m restricted arc; ball stopper of similar size on the handler at y ≈ 11–13 m.
+- **Roles / rules** `[DZ30]`: protect the basket first (rim protector should be the taller/longer defender, not necessarily the closest), stop or slow the ball (ideally a similar-size defender), then match three-point shooters and similar-size players. A mismatch is acceptable if the mismatched attacker does not have the ball; if it becomes a problem, the small defender cuts into the lane to protect the rim and the rim protector slides out to the attacker. Turn and backpedal to see ball and man. Half-court cross-matching (NBA; secondary): a centre guards a non-shooter while a wing takes the opposing big, keeping the rim protector out of ball screens; Boston, Charlotte and Houston named as base users `[DZ49]`.
+- **Ordered actions with timing [HEURISTIC]:** (1) rim protected by t_rim; (2) ball stopped; (3) matchups; (4) swap within 6 s after `SET_DEF` if needed.
+- **Usual counters:** post the mismatch before the swap [CONVENTION].
+- **Detection signature [HEURISTIC]:** at t0 + 3 s compute each HMM pair's height difference; cross-match = \|height_d − height_a\| ≥ 10 cm and the pair differs from the half-court home assignment (existing F12.4). **Swap event**: within 6 s after `SET_DEF`, a screenless reciprocal exchange between the mismatched small defender (moving to r < 2.5 m) and the rim protector (moving out to r > 5 m) → `transition_swap`. Rim-protector test: the first defender to r ≤ 1.5 m is the tallest of the five on ≥ 60% of possessions.
+- **Teams documented:** generic — https://hoopstudent.com/transition-defense/ `[DZ30]`; NBA (secondary) — https://www.thescore.com/nba/news/3195631 `[DZ49]`.
+- **Sources:** `[DZ30][DZ49]`.
+- **Confidence:** medium.
+
+#### T-6. Reaction rule (two quick first steps); one-guard vs two-guard back — RICHER (extends F12.1)
+- **Name and aliases:** first two steps; react, don't look.
+- **Family / sub-family:** F12.1.
+- **Start alignment:** first back at (1.4, 90°), one step out from the rim, outside the 1.22 m restricted arc (r 1.25–1.8 m band); t_rim's r ≤ 1.5 m stays the arrival test.
+- **Roles / rules** `[DZ29]`: all sprint back; the first back runs to the rim and takes one step out, forcing at least one pass; the second back stops the ball wherever it is, even just over half-court, buying a second or two; the other three sprint back with vision and match the shooters; usually one guard protects the basket after a score, rebound or steal; against a fast-breaking team use two guards back (or a press); the first two steps decide it — react with two quick steps rather than look then go.
+- **Ordered actions with timing [HEURISTIC; calibrate on MSU film]:** reaction ≤ 0.6 s; starting targets t_rim ≤ 3.5 s after a defensive rebound at the far end and ≤ 4.0 s after a made-basket inbound; report t_rim percentiles rather than a hard pass/fail. (A first back starting at y ≈ 15–18.7 m needs 13–17 m to reach r ≤ 1.5 m; 2.5 s would need 5.4–6.9 m/s average. Arithmetic only; no speed source opened — **unverified**.)
+- **Usual counters:** advance pass over the second back [CONVENTION].
+- **Detection signature [HEURISTIC]:** reaction latency = t0 to the first frame where a retreating player's speed toward his own rim exceeds 2.5 m/s; target ≤ 0.6 s for the two players nearest half-court. Second defender's pickup y at t_stop ≥ 11 m = "stop the ball past half" (existing F12.2).
+- **Teams documented:** generic newsletter (18 Jun 2025) — https://www.coachesclipboard.net/newsletters/CCNewsLetter06182025.html `[DZ29]`.
+- **Sources:** `[DZ29]`.
+- **Confidence:** medium.
+
+#### T-7. Contest the outlet receivers — RICHER (extends F12.5 "Jam / tag the rebounder")
+- **Name and aliases:** outlet contest; deny the outlet.
+- **Family / sub-family:** F12.5.
+- **Start alignment** [HEURISTIC]: outlet receiver at the near wing, about (7.3, 35°) at the opponent's end in full-court terms; contesting defender within 1.5 m of him.
+- **Roles / rules:** OKC contested outlet passes to Indiana's guards, forcing them back toward the ball and slowing the start of the break `[DZ27]` (NBA, secondary). Only one player should jam the rebounder; the others sprint back (existing `[D85]`, re-opened `[DZ53]`).
+- **Ordered actions with timing [HEURISTIC]:** contest inside t0 … t0 + 1.5 s after the defensive rebound.
+- **Usual counters:** rebounder dribbles out himself; long outlet over the top [CONVENTION].
+- **Detection signature [HEURISTIC]:** after a defensive rebound at t0, the primary outlet receiver (first pass target) has a defender within 1.5 m during t0 … t0 + 1.5 s; outlet delay = rebound → outlet pass, compared with and without the contest; rule check: ≤ 1 player within 2 m of the rebounder.
+- **Teams documented:** NBA (secondary) — https://lockdowndefense.substack.com/p/how-okc-shut-down-indianas-fast-break `[DZ27]`; generic — https://www.coachesclipboard.net/TransitionDefense.html `[DZ53]`.
+- **Sources:** `[DZ27][DZ53]`.
+- **Confidence:** medium.
+
+*(MSU progressive transition rules: see MSU-5.)*
+
+---
+
+### A10. MSU / Izzo defence (extends F1.6, F18.4)
+
+Items M-1 (Izzo man), M-5 (Jump to the Ball), BS-5 (MSU 2019-20 soft show), BS-7 (MSU 2014-15 and through 2018-19 hard hedge), H-1 (MSU DHO switching by position), Z-10 (zones faced by MSU) and P-5 (MSU's quick-inbound counter) are MSU-attributed and sit in their families above. This subsection adds the remaining MSU evidence.
+
+#### MSU-1. MSU off-ball coverage evidence: "Beat and Belt" flash denial, Pin Down & Flares, man/zone vs double screens — RICHER (extends F1.6 and F5)
+- **Name and aliases:** Beat and Belt (MSU 2015 video listing; the Izzo course lists "Beat the Belt" — see Corrections C-6); Pin Down & Flares; Defending Screen and Screen Players (screen-the-screener); Elbow and Block Coverage.
+- **Family / sub-family:** F5 Off-ball screen coverages; F1.6 MSU profile.
+- **Start alignment** [HEURISTIC]: weak-side attacker at the left wing (7.3, 145°) flashing to the high post (≈ (4.6, 100°)); his defender in help at (2.8, 116°) (M-1 spot), stepping ball-side of the flash path.
+- **Roles / rules:** MSU 2015 practice video: Pin Down & Flares drill teaches how to defend two common off-ball screens; Beat and Belt: players deny flash cuts into the high post and adjust quickly to stop the back cut `[N40]`. MSU 2010-11 video covers pin-down defence and how Izzo uses man and zone against double screens `[N11]`. Izzo course lessons include "Defending Screen and Screen Players" and "Elbow and Block Coverage" (titles only) `[N37]`. Coverage specifics **unverified**.
+- **Ordered actions with timing [HEURISTIC]:** flash cut starts (t = 0) → defender ball-side within 0.5 s → back-cut stopped within 1.0 s of the cutter's reversal.
+- **Usual counters:** back-cut behind the flash denial (the drill's second phase) `[N40]`.
+- **Detection signature [HEURISTIC]:** (a) **High-post flash denial:** when a weak-side attacker cuts toward the high-post region (\|x\| < 2.5 m, 3.5 < y < 6.5 m), his defender is ball-side of him (≤ 0.6 m from segment(ball, cutter)) within 0.5 s of the cut start. (b) **Zone-vs-double-screen flag:** on double/stagger screens the F8.0 man-vs-zone score may briefly flip toward zone for MSU (2010-11 claim); test the zone score in [t₀, t₀ + 3 s] around double screens.
+- **Teams documented:** Michigan State 2015 video — https://www.mensbasketballhoopscoop.com/?p=23659 `[N40]`; 2010-11 video — https://onlinestore.coachingtoolbox.net/product/all-access-michigan-state-basketball-practice-with-tom-izzo/ `[N11]`; Izzo course (undated) — https://coachtube.com/course/basketball/defensive-skills-and-drills/118044 `[N37]`.
+- **Sources:** `[N40][N11][N37]`.
+- **Confidence:** high that these drills/topics exist; coverage specifics **unverified**.
+
+#### MSU-2. MSU ball-screen coverage timeline 2010–2020 — RICHER (extends F1.6 rows and F18.4)
+- **Name and aliases:** MSU PnR coverage by season.
+- **Family / sub-family:** F3 (by season) / F18.4 MSU usage index.
+- **Start alignment:** see BS-5 (soft show) and BS-7 (hard hedge) MSU templates.
+- **Roles / rules (new evidence only):**
+
+  | Season | Base PnR coverage | Other | Source | Confidence |
+  |---|---|---|---|---|
+  | 2010-11 (practice video) | "Handles ball screens" (unspecified) | Man and zone vs double screens; 4v3/4v4 shell | `[N11]` | high (topic exists); coverage **unverified** |
+  | 2014-15 | **Hedge and recover** (Schilling, Nairn), keep out of the paint | Weak-side help across the lane strips short-corner catches | `[N14]` | high |
+  | 2015 (practice video) | Multiple ball-screen coverages (Continuous Ball Screens drill), options vs pull-up shooters, drivers and stretch bigs; side and top PnR coverages | DHO switching by position; Pin Down & Flares; Beat and Belt | `[N40]` | high (topics); specifics **unverified** |
+  | through 2018-19 | **Flat or hard hedge** by bigs; weak-side rotations cover the roller | vs Michigan 2018-19: **switched with the 5** on 27 possessions, 18 pts = 0.67 PPP (author's own count; **new**) | `[N13]` | high; base coverage is a re-confirmation (= F1.6 / old lines for S69) |
+  | 2018-19 (3 games vs Michigan) | Switching ball screens (re-confirmation of F1.6) | Michigan guards/wings: 64 ball-screen/iso plays, 37 pts, 0.58 points per play (**new**) | `[N43]` | high |
+  | 2017-18 | Did **not** switch 1-5 vs Wagner (re-confirmation of F1.6; not new) | — | `[N43]` | high |
+  | 2019-20 | **Soft hedge** base; rarely switch 1-5 (re-confirmation of F1.6 / F18.4) ; Tillman able to switch | MSU allowed 0.9 PPP in Big Ten play (as of 3 Jan 2020; **new**) | `[N43]` | high |
+  | 2024-25 | Hedge + recover and/or blitz; gap bump on the roller | existing `[D24]` (MGoBlog returned 403 in this research; not re-opened) | `[D24]` | as above |
+  | 2025-26 / 2026-27 | **Unverified** — no opened film source | — | — | — |
+
+- **Ordered actions with timing:** per BS-5 / BS-7.
+- **Usual counters (documented vs MSU):** slips against Kohler's hard hedge (existing `[D24]`).
+- **Detection signature / prior [HEURISTIC]:** P(show family: soft or hard hedge \| MSU ball screen) high across 2014-2020; switching is opponent-specific (Michigan 2018-19); expect a weak-side low-man tag after hedges (2014-15 and 2018-19 sources); expect few 1-5 switches except in game plans built around a switchable 5 (Tillman, 2019-20).
+- **Teams documented:** Michigan State — URLs: `[N14]` https://www.insidethehall.com/2015/01/07/film-session-michigan-state/ ; `[N13]` https://umhoops.com/?p=102796 ; `[N43]` https://dylanburkhardt.substack.com/p/making-sense-of-michigan-at-michigan ; `[N40]` https://www.mensbasketballhoopscoop.com/?p=23659 ; `[N11]` (URL in MSU-1).
+- **Sources:** `[N11][N13][N14][N40][N43]`.
+- **Confidence:** high for 2014-15 to 2019-20; 2025-27 **unverified**.
+
+#### MSU-3. MSU transition defence: "4 crash, PG back" re-confirmed; transition D as a first-half problem (2020) — RICHER (extends F12.1 "One back" MSU row)
+- **Name and aliases:** MSU one back.
+- **Family / sub-family:** F12.1.
+- **Start alignment** [HEURISTIC]: at release + 1.0 s, PG at or beyond the arc of the rim being shot at, about (17.85, 90°) in the defended-rim frame (7.6 m from the rim being shot at), moving toward his own rim at ≥ 2 m/s (as the old one-back signature); four within 4 m of the rim being shot at (distance to (0, 25.45 m) < 4 m). No own-end position is tested at 1.0 s.
+- **Roles / rules:** send 4 to the offensive glass, the PG gets back (= D4 re-opened) `[DZ52][N12]`; Izzo named transition defence as MSU's biggest first-half problem in one game (Feb 2020) `[DZ51]`.
+- **Ordered actions with timing [HEURISTIC]:** as existing F12 one-back row.
+- **Usual counters:** leak-outs against four crashers [CONVENTION].
+- **Detection signature [HEURISTIC]:** existing one-back count (expected 1 for MSU) plus the `GET_BACK` clocks (A0) per MSU possession, to track the 2020-type failure (report t_rim percentiles; provisional flag t_rim > 3.5 s after a defensive rebound or > 4.0 s after a made-basket inbound [HEURISTIC; calibrate on MSU film], or n_back(t0+2 s) ≤ 1 when outnumbered).
+- **Teams documented:** Michigan State (undated clinic notes) — https://coachingtoolbox.net/defense/d1-defensive-notes.html `[DZ52]`; Feb 2020 — https://www.si.com/college/michiganstate/basketball/tom-izzo-talks-michigan-state-basketball-ahead-of-the-iowa-hawkeyes `[DZ51]`.
+- **Sources:** `[DZ51][DZ52][N12]`.
+- **Confidence:** medium.
+
+#### MSU-4. MSU 2026-27 full-court press (exhibition) — RICHER (extends F9.5 "MSU 2023-24")
+- **Name and aliases:** MSU full-court pressure.
+- **Family / sub-family:** F9.5 program row; structure (F9.1 man vs F9.2 zone) **unverified**.
+- **Start alignment:** not described — **unverified**; use F9.0 press-active.
+- **Roles / rules:** in an exhibition vs UIW (89-59; game most likely 2 Oct 2026, article dated 3 Oct 2026) MSU used a full-court press from the start; UIW had several scoreless first-half stretches; MSU committed 18 turnovers; the writer read it as Izzo testing how much pressure the team can sustain `[DZ63]`.
+- **Ordered actions with timing:** **unverified**.
+- **Usual counters:** n/a.
+- **Detection signature [HEURISTIC]:** existing F9.0 press-active primitive; track MSU press rate by season (2023-24 exhibitions `[D5]`, 2026-27 exhibition `[DZ63]`); add `PRESS_SETUP` and the post-press scheme label.
+- **Teams documented:** Michigan State 2026-27 — https://roundtable.io/sports/ncaa/michigan-state/game-day/michigan-state-shows-off-in-89-59-exhibition-win-over-uiw `[DZ63]`.
+- **Sources:** `[DZ63]`.
+- **Confidence:** low–medium.
+
+#### MSU-5. MSU progressive transition drill rules (2v1, 3v2 stack, 4v3, 5v4) — RICHER (extends F12.6 Outnumbered; MSU-specific)
+- **Name and aliases:** Tom Izzo's Michigan State progressive transition drill.
+- **Family / sub-family:** F12.6 Outnumbered.
+- **Start alignment:** 3v2 stack — top (5.50, 90°), bottom (1.50, 90°) (outside the 1.22 m restricted arc, consistent with the tandem rule in `[DZ53]`); 2v1 — lone defender at r ≤ 2.0 m.
+- **Roles / rules** `[DZ50]`: sequence 2v1 → 3v2 → 4v3 → 5v4 → 5v5 full court, rebounders outletting to sideline wings and attackers sprinting back to become defenders; run 15–20 minutes. **1v2:** get as low as the lowest attacker, stay below the ball, concede the jumper, do not come up to challenge. **3v2:** stack one top, one low; the low defender takes the first pass and closes out, the top defender drops to the basket. **4v3 / 5v4:** stop the layup, talk, box out.
+- **Ordered actions with timing [HEURISTIC]:** 3v2 — (1) top meets the ball at r 6–8 m; (2) first pass to a wing → bottom closes out (arrive ≤ 1.0 s after the catch); (3) top's r drops ≥ 2.5 m within 1.5 s of the pass and reaches r ≤ 2.5 m within 2.5 s; (4) third defender arrives → match up.
+- **Usual counters:** quick second pass to the opposite wing after the bottom closes out [CONVENTION].
+- **Detection signature [HEURISTIC]:** `OUTNUMBER(3,2)` true at t0 + 2 s; two defenders within 1.0 m of the ball–rim line, separated radially by 3–5 m; on the first pass to a wing (θ < 60° or > 120°), the deeper defender's distance to the receiver drops ≥ 2.5 m within 1.0 s **and** the higher defender's r drops ≥ 2.5 m within 1.5 s. 2v1: lone defender at r ≤ 2.0 m while the ball is outside r = 5 m; a step > 2 m toward the handler counts as a rule violation.
+- **Teams documented:** Michigan State (Izzo) practice drill, season not stated — https://www.coachesclipboard.net/MSUTransitionDrill.html `[DZ50]`.
+- **Sources:** `[DZ50][DZ53]`.
+- **Confidence:** medium.
+
+---
+
+### A11. Detection literature (extends F18)
+
+#### X-1. Energy-based matchup HMM; unsupervised man/zone clustering — RICHER (extends F18.3)
+- **Energy-based matchup HMM** (Keshri, Oh, Zhang, Iyengar; NESSIS 2017) `[DZ65]`: defender location given assignment follows Franks et al.; transitions among the 5⁵ = 3125 matchings are made tractable with **bond energies** — 1-on-1 on-ball and off-ball bonds and "extra" on-ball/off-ball bonds. A double team (extra on-ball bond) has higher energy and is unstable, so the model expects reversion to 1-on-1 → usable as a **trap-detector prior** (`TRAP` = extra on-ball bond persisting ≥ 0.6 s [HEURISTIC]). Events are detected with binary HMMs on simple emissions: screens (on-ball defender to potential screener distance, hoop–handler distance, screener speed), drives (handler velocity toward the hoop), post-ups (on-ball defender–handler distance and handler speed). 25 Hz SportVU — https://www.nessis.org/nessis17/Keshri_adj.pdf
+- **Man vs zone clustering in football** (Dutta et al., arXiv 1906.11373) `[DZ66]`: unsupervised Gaussian mixtures and hierarchical clustering on tracking features separate man from zone coverage, labels assigned after viewing clusters; soft assignments allow mixed coverages. An analogue for labelling MSU possessions without hand labels, alongside the existing HMM analogue `[D36]` — https://arxiv.org/abs/1906.11373v3
+- **Screen-detection literature checked:** McQueen 2014 (21 quarters, 14 games, 2012-13) and McIntyre 2016 (2011-12 to 2014-15) are summarised in `[N30]` https://arxiv.org/pdf/2311.16564 ; a pipeline outline links the McQueen PDF but gives no thresholds `[N29]` https://github.com/akashsebastian/Automatically-Detect-On-Ball-Screens. The McQueen thresholds themselves were not opened (404) — **unverified**.
+- **Gap:** no basketball paper on automatic zone or press detection was found.
+- **Confidence:** medium.
+
+---
+
+### A12. Counts (this section)
+
+| Subsection | Items | New | Richer | Status-only notes (no item) |
+|---|---|---|---|---|
+| A1 Man principles (F1, F7) | 5 | 2 (M-2, M-5) | 3 (M-1, M-3, M-4) | — |
+| A2 Ball-screen coverages (F3) | 15 | 7 (BS-2, BS-6, BS-8, BS-10, BS-11, BS-12, BS-13) | 8 (BS-1, BS-3, BS-4, BS-5, BS-7, BS-9, BS-14, BS-15) | BS-16 (catch, no screen, hedge-to-switch) |
+| A3 Handoff coverages (F4) | 1 | 0 | 1 (H-1) | hedge-and-bounce (nothing new) |
+| A4 Off-ball coverages (F5) | 3 | 1 (OB-1) | 2 (OB-2, OB-3) | hip-pocket trail, FIBA stagger rule (unverified) |
+| A5 Zones and match-up rules (F8) | 10 | 4 (Z-1, Z-4, Z-5, Z-6) | 6 (Z-2, Z-3, Z-7, Z-8, Z-9, Z-10) | — |
+| A6 Presses (F9) | 8 | 2 (P-1, P-2) | 6 (P-3 to P-8) | — |
+| A7 Junk (F10) | 3 | 0 | 3 (J-1, J-2, J-3) | — |
+| A8 Scheme changes (F11) | 7 | 6 (SC-1, SC-2, SC-3, SC-5, SC-6, SC-7) | 1 (SC-4) | — |
+| A9 Transition defence (F12) | 7 | 3 (T-2, T-3, T-4) | 4 (T-1, T-5, T-6, T-7) | — |
+| A10 MSU / Izzo (F1.6, F18.4) | 5 | 0 | 5 (MSU-1 to MSU-5) | — |
+| A11 Detection literature (F18) | 1 | 0 | 1 (X-1) | — |
+| **Total** | **65** | **25** | **40** | 4 notes |
+
+Items with an MSU attribution: M-1, M-5, BS-5, BS-7, H-1, Z-5 (opponent vs MSU), Z-8 (opponent vs MSU), Z-10, P-5, SC-1, SC-5, SC-6, SC-7, MSU-1 to MSU-5 = 18. A new primitive table (A0) adds 13 primitives (11 original plus `RECOVER` and `STEP_RELEASE`, added in the 2026-10-17 fix pass). BS-2 counts as NEW for Down and jailbreak; its "quickest path" name is RICHER (`poa_quickest_path`, cf. F2.2).
+
+---
+
+### Additional sources (2026-10-18)
+
+All URLs below were opened in the Job A research (2026-10-17) with WebFetch, or downloaded and text-extracted locally where noted. "= Dxx / Sxx re-opened" marks a source already in this file's lists.
+
+**Man, ball-screen, handoff, off-ball (N keys)**
+- **N1**: Hoop Student, "Ball line defense". https://hoopstudent.com/ball-line-defense
+- **N2**: Eurohoops, "Basketball 101: pick-and-roll defense" (p. 3). https://www.eurohoops.net/en/trademarks/1409927/basketball-101-pick-and-roll-defense/3
+- **N3**: Hooper University, "Ball screen defense: playing drop coverage". https://www.hooperuniversity.com/breakdowns/ball-screen-defense-playing-drop-coverage
+- **N4**: Hooper University, "Ball screen defense: hard hedging ball screens". https://www.hooperuniversity.com/breakdowns/ball-screen-defense-hard-hedging-ball-screens
+- **N5**: Medium Lights, "Scram switching". https://mediumlights.substack.com/p/scram-switching
+- **N6**: Coach's Clipboard, "Basketball Switching Defense" (= D19 re-opened). https://www.coachesclipboard.net/basketball-switching-defense.html
+- **N7**: Slappin' Glass, "The peel switch: a primer". https://slappinglass.substack.com/p/the-peel-switch-a-primer
+- **N8**: Hoopscoop, Chris Filios, "The next defensive trend in basketball". https://www.mensbasketballhoopscoop.com/the-next-defensive-trend-in-basketball-by-chris-filios/
+- **N9**: Slappin' Glass, "PnR defense: canceling screens". https://slappinglass.substack.com/p/pnr-defense-canceling-screens
+- **N10**: The Basketball Playbook, Tom Izzo Michigan State playbook (PDF, text extracted locally). https://thebasketballplaybook.com/wp-content/uploads/2017/08/Tom-Izzo-Michigan-State-Playbook.pdf
+- **N11**: Coaching Toolbox store, "All Access Michigan State basketball practice with Tom Izzo". https://onlinestore.coachingtoolbox.net/product/all-access-michigan-state-basketball-practice-with-tom-izzo/
+- **N12**: Coaching Toolbox, "D1 Defensive Notes" (= D4 re-opened). https://coachingtoolbox.net/defense/d1-defensive-notes.html
+- **N13**: UM Hoops, 2019 MSU breakdown (= S69 re-opened). https://umhoops.com/?p=102796
+- **N14**: Inside the Hall, "Film session: Michigan State" (7 Jan 2015). https://www.insidethehall.com/2015/01/07/film-session-michigan-state/
+- **N17**: Slappin' Glass, "Switch and Shrink: Barcelona's unique …". https://slappinglass.substack.com/p/switch-and-shrink-barcelonas-unique
+- **N18**: Slappin' Glass podcast (Buzzsprout), "Hedge plug solutions …". https://www.buzzsprout.com/1288787/episodes/19494515-hedge-plug-solutions-learning-frameworks-and-european-film-sg-deep-dive
+- **N19**: HoopTactics, back-screen defence (disruptive pressure). https://hooptactics.net/premium/defense/disruptivepressure/defscreensoff4back.php
+- **N20**: Coaches Insider, "Defending screens". https://coachesinsider.com/mens-basketball/defending-screens-article/
+- **N21**: Hoopscoop, DHO article (opened; no coverage content). https://www.mensbasketballhoopscoop.com/?p=11247
+- **N22**: Cleaning the Glass, "How do NBA defensive rotations work?". https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/
+- **N23**: Hoop Student, "Basketball jump to the ball". https://hoopstudent.com/basketball-jump-to-the-ball/
+- **N24**: Playbook Tech coaches community, Helpside I / 1/3–2/3 deny. https://fastbreak.playbooktech.com/coaches-community/?p=2195
+- **N25**: Action Network, Creighton / Kalkbrenner film breakdown. https://www.actionnetwork.com/ncaab/college-basketball-film-breakdown-deep-dive-into-creighton-ryan-kalkbrenner
+- **N27**: Hooper University, "How to ice ball screens". https://hooperuniversity.com/breakdowns/ball-screen-defense-how-to-ice-ball-screens
+- **N28**: A Quick Timeout, "2 ball screen coverage adjustments". https://aquicktimeout.substack.com/p/2-ball-screen-coverage-adjustments
+- **N29**: GitHub, "Automatically-Detect-On-Ball-Screens". https://github.com/akashsebastian/Automatically-Detect-On-Ball-Screens
+- **N30**: arXiv 2311.16564 (PDF, text extracted locally; related work on screen detection). https://arxiv.org/pdf/2311.16564
+- **N31**: MIT Sloan SSAC, "Recognizing and analyzing ball screen defense in the NBA" (abstract page). https://www.sloansportsconference.com/research-papers/recognizing-and-analyzing-ball-screen-defense-in-the-nba
+- **N32**: Same paper, PDF (text extracted locally). https://cdn.prod.website-files.com/68d6be744d7efccc2207f571/68d6be744d7efccc2208063d_Recognizing%20and%20Analyzing%20Ball%20Screen%20Defense%20in%20the%20NBA.pdf
+- **N33**: PMC, 2019 FIBA World Cup ball-screen defence study. https://pmc.ncbi.nlm.nih.gov/articles/PMC9820029/
+- **N34**: FIBA Europe, *Basketball Terminology* (= D10 re-opened; text extracted locally). https://assets.fiba.basketball/image/upload/documents-corporate-regional-offices-europe-programs-fiba-europe-coaching-certificate-fiba-europe-basketball-terminology.pdf
+- **N35**: Coach's Clipboard, "Defending screens". https://coachesclipboard.net/basketball-defending-screens.html
+- **N36**: Low Man Help, "The Blueprint: Pick and Roll 101" (= D49 re-opened). https://lowmanhelp.substack.com/p/the-blueprint-pick-and-roll-101?open=false
+- **N37**: CoachTube, Izzo "Defensive skills and drills" course page. https://coachtube.com/course/basketball/defensive-skills-and-drills/118044
+- **N38**: FastModel, "Tom Izzo — Jump to the Ball". https://playbank.fastmodelsports.com/library/basketball/fastdraw/68911/play-Tom-Izzo-Jump-to-the-Ball
+- **N40**: Hoopscoop, Izzo Open Practice Series (= S6 re-opened). https://www.mensbasketballhoopscoop.com/?p=23659
+- **N43**: Dylan Burkhardt, "Making sense of Michigan at Michigan State" (= D25 re-opened). https://dylanburkhardt.substack.com/p/making-sense-of-michigan-at-michigan
+- **N44**: The Hoosier Network, IU–Purdue film preview (Feb 2023). https://thehoosiernetwork.com/article/2023/02/iubb-purdue-film-preview
+- **N45**: Backyard Buckets, "Florida Atlantic's switching defensive …". https://backyardbuckets.substack.com/p/florida-atlantics-switching-defensive
+
+**Zones, presses, junk, scheme changes, transition (DZ keys)**
+- **DZ01**: TeamArete, 2-3 match-up zone. https://id3430.securedata.net/teamarete/23matchupzone.html
+- **DZ02**: The Hoops Geek, "2-3 zone defense". https://www.thehoopsgeek.com/2-3-zone-defense-basketball
+- **DZ03**: UM Hoops, "Film room: Oregon's matchup zone" (Dec 2019). https://umhoops.com/2019/12/13/film-room-breaking-down-oregons-matchup-zone-defense/
+- **DZ04**: SI (Indiana), Woodson's switch to zone vs MSU (Feb 2025). https://www.si.com/college/indiana/basketball/mike-woodson-s-inspired-switch-to-zone-defense-against-michigan-state-pays-off-for-indiana-01jkxd7dckhz
+- **DZ05**: Daily Bruin, scouting report vs Oregon (Jan 2022). https://dailybruin.com/2022/01/13/scouting-report-ucla-mens-basketball-vs-oregon-oregon-state/
+- **DZ06**: Daily Northwestern, "Cats' season lives, dies by the zone" (Mar 2009). https://dailynorthwestern.com/2009/03/03/archive-manual/mens-basketball-cats-season-lives-dies-by-the-zone/
+- **DZ07**: Daily Northwestern, "Zone boosts Cats' defense" (Nov 2010). https://dailynorthwestern.com/2010/11/18/sports/mens-basketball-zone-boosts-cats-defense/
+- **DZ08**: Inside the Hall, IU zone beats MSU (Feb 2025). https://www.insidethehall.com/2025/02/12/iu-basketball-relies-on-zone-defense-total-team-effort-to-beat-no-11-michigan-state/
+- **DZ09**: Spartan Avenue, Izzo dares teams to zone MSU. https://spartanavenue.com/tom-izzo-dares-teams-to-play-zone-against-michigan-state-basketball-moving-forward-01jm2ywh2zcb
+- **DZ10**: Spartan Avenue, Izzo on not being 11-0 (Dec 2025). https://spartanavenue.com/tom-izzo-says-his-coaching-is-the-reason-michigan-state-isn-t-11-0-01kcs43bkpkj
+- **DZ11**: SI (MSU), Izzo review after Oakland (Dec 2025). https://www.si.com/college/michiganstate/tom-izzo-drops-blunt-review-following-oakland-golden-grizzlie-game-
+- **DZ12**: SI (MSU), MSU vs Iowa (Mar 2025). https://www.si.com/college/michiganstate/basketball/spartans-iowa-hawkeyes-big-ten-jase-richardson-jaden-akins-jaxon-kohler
+- **DZ13**: SI (Penn State), MSU beats Penn State (Feb 2024). https://www.si.com/college/pennstate/basketball/penn-state-mens-basketball-michigan-state-spartans-defeat-nittany-lions-tom-izzo-mike-rhoades
+- **DZ14**: Hawk Fanatic, McCaffery on the press (Feb 2023). https://hawkfanatic.com/?p=64664
+- **DZ15**: UM Hoops, Ethan Sears, "Breaking down Iowa's defensive options against Michigan" (1 Mar 2018; 2017-18). https://umhoops.com/?p=93283
+- **DZ16**: Hoop Student, "3-2 zone defense". https://hoopstudent.com/3-2-zone-defense/
+- **DZ17**: Coaching Toolbox, Sharman White 3-2 zone. https://coachingtoolbox.net/teaching-the-3-2-zone-positioning-communication-rotations
+- **DZ18**: Basketball for Coaches, "2-1-2 zone defense". https://www.basketballforcoaches.com/2-1-2-zone-defense/
+- **DZ19**: Better Basketball (AU), "1-2-2 or 3-2 zone defence". https://betterbasketball.com.au/1-2-2-or-3-2-zone-defence/
+- **DZ20**: Wikipedia, "Triangle-and-two defense". https://en.wikipedia.org/wiki/Triangle-and-two_defense
+- **DZ21**: Hoop Student, "Diamond-and-1 defense". https://hoopstudent.com/diamond-and-1-defense/
+- **DZ22**: Coaching Toolbox, Will Rey diamond-and-one / triangle-and-two. https://coachingtoolbox.net/?p=414
+- **DZ23**: Hoop Student, "Triangle-and-2 defense". https://hoopstudent.com/triangle-and-2-defense
+- **DZ24**: Basketball for Coaches, "2-1-2 press". https://www.basketballforcoaches.com/2-1-2-press/
+- **DZ25**: NBC Sports, Huggins and "Press Virginia". https://www.nbcsports.com/college-basketball/news/a-shift-in-philosophy-led-bob-huggins-to-build-press-virginia
+- **DZ26**: Hoopscoop, Travis Ford transition roles. https://www.mensbasketballhoopscoop.com/?p=20023
+- **DZ27**: Lockdown Defense, "How OKC shut down Indiana's fast break". https://lockdowndefense.substack.com/p/how-okc-shut-down-indianas-fast-break
+- **DZ28**: Coaching Toolbox, "Loading to the basketball" (Boisvert). https://coachingtoolbox.net/loading-to-the-basketball
+- **DZ29**: Coach's Clipboard newsletter (18 Jun 2025), transition defence. https://www.coachesclipboard.net/newsletters/CCNewsLetter06182025.html
+- **DZ30**: Hoop Student, "Transition defense". https://hoopstudent.com/transition-defense/
+- **DZ33**: Eleven Warriors, Ohio State zone press film study (Feb 2016). https://www.elevenwarriors.com/ohio-state-basketball/2016/02/67852/hoops-film-study-the-evolving-effective-ohio-state-zone-press
+- **DZ34**: Eleven Warriors, Ohio State's defensive switch (Feb 2015). https://www.elevenwarriors.com/ohio-state-basketball/2015/02/49530/ohio-state-looks-like-a-different-team-largely-due-to-its-defensive-switch
+- **DZ35**: Spartan Avenue, MSU vs Oregon (Jan 2026). https://spartanavenue.com/tom-izzo-kur-teng-can-t-guard-my-99-year-old-mother-01kfgk0xf6np
+- **DZ36**: Cracked Sidewalks, Purdue preview 2024-25. https://www.crackedsidewalks.com/2024/09/purdue-preview-2024-25.html
+- **DZ37**: Cracked Sidewalks, Purdue preview 2025-26 (= S75 re-opened). https://www.crackedsidewalks.com/2025/10/purdue-preview-2025-26.html
+- **DZ38**: ESPN recap, Syracuse vs MSU (Mar 2018). https://www.espn.com.au/mens-college-basketball/recap/_/gameId/401025873
+- **DZ40**: Nittany Sports Now, Penn State's new look on defense (Jan 2025). https://nittanysportsnow.com/2025/01/penn-state-basketball-has-a-new-look-on-defense/
+- **DZ42**: Coach's Clipboard, "1-3-1 match-up zone". https://coachesclipboard.net/MatchupZone131.html
+- **DZ43**: Coach's Clipboard, "Match-up zone". https://www.coachesclipboard.net/MatchUpZone.html
+- **DZ44**: Coaching Toolbox store, Jay Wright 1-2-2 and 1-1-2-1 pressure (recorded Spring 2015 Pittsburgh clinic, released 2016). https://onlinestore.coachingtoolbox.net/product/jay-wright-1-2-2-and-1-1-2-1-three-quarter-court-pressure-defense/
+- **DZ45**: Coach's Clipboard, "2-2-1 zone press" (= D65 re-opened). https://www.coachesclipboard.net/221ZonePress.html
+- **DZ46**: SI, Syracuse 2011-12 zone (Feb 2012). https://www.si.com/more-sports/2012/02/20/syracuse
+- **DZ47**: Wikipedia, "Box-and-one defense". https://en.wikipedia.org/wiki/Box-and-one_defense
+- **DZ48**: The Hoops Geek, box-and-1 roles. https://thehoopsgeek.com/basketball-plays/box-and-1-defense-roles-responsibilities/
+- **DZ49**: theScore, NBA cross-matching. https://www.thescore.com/nba/news/3195631
+- **DZ50**: Coach's Clipboard, MSU transition drill. https://www.coachesclipboard.net/MSUTransitionDrill.html
+- **DZ51**: SI (MSU), Izzo ahead of Iowa (Feb 2020). https://www.si.com/college/michiganstate/basketball/tom-izzo-talks-michigan-state-basketball-ahead-of-the-iowa-hawkeyes
+- **DZ52**: Coaching Toolbox, "D1 Defensive Notes" (= D4 re-opened). https://coachingtoolbox.net/defense/d1-defensive-notes.html
+- **DZ53**: Coach's Clipboard, "Transition Defense" (= D85 re-opened). https://www.coachesclipboard.net/TransitionDefense.html
+- **DZ54**: The Hoops Geek, 4-v-4 transition drill. https://thehoopsgeek.com/basketball-drills/4-v-4-transition-drill/
+- **DZ55**: Coach's Clipboard, 4-on-4-on-4 drill. https://coachesclipboard.net/4on4on4Drill.html
+- **DZ56**: GoCoogs, Oakland scouting (12 Nov 2025; 2025-26). https://gocoogs.com/?p=46293
+- **DZ57**: Hoop Student, "Point zone defense". https://hoopstudent.com/point-zone-defense/
+- **DZ59**: Coaching Idaho, "Let's talk some zone" (= D99 re-opened). https://coachingidaho.substack.com/p/lets-talk-some-zone
+- **DZ60**: Bangor Daily News, Louisville beats MSU (Mar 2012). https://www.bangordailynews.com/2012/03/22/sports/louisville-knocks-off-top-seeded-michigan-state/
+- **DZ61**: Wikipedia, "Amoeba defense". https://en.wikipedia.org/wiki/Amoeba_defense
+- **DZ62**: SI (Arizona), Baylor 1-1-3 (= D75 re-opened; confirms the existing row). https://www.si.com/college/arizona/basketball/arizona-basketball-navigating-baylor-bears-1-1-3-zone-defense
+- **DZ63**: Roundtable, MSU 89-59 exhibition vs UIW (Oct 2026). https://roundtable.io/sports/ncaa/michigan-state/game-day/michigan-state-shows-off-in-89-59-exhibition-win-over-uiw
+- **DZ64**: ESPN, NCAA rule changes for 2015-16. https://www.espn.com/mens-college-basketball/story/_/id/13037928/ncaa-announces-rule-changes-2015-16-including-30-second-shot-clock-fewer-outs
+- **DZ65**: NESSIS 2017, Keshri et al. (PDF, text extracted locally). https://www.nessis.org/nessis17/Keshri_adj.pdf
+- **DZ66**: arXiv 1906.11373, unsupervised man/zone coverage clustering (NFL). https://arxiv.org/abs/1906.11373v3
+- **DZ67**: Daily Northwestern, 1-3-1 tops Tubby's Minnesota (Jan 2009). https://dailynorthwestern.com/2009/01/19/archive-manual/mens-basketball-wildcats-1-3-1-zone-tops-tubby
+- **DZ68**: GoPSUsports, Penn State defensive dominance (Nov 2023). https://gopsusports.com/news/2023/11/15/defensive-dominance-drives-penn-state-to-win
+- **DZ69**: Bellisario Student Media, Penn State vs Morehead State (Nov 2023). https://bellisariostudentmedia.psu.edu/story/turnovers-free-throws-only-needed-for-penn-states-win-against-morehead-state
+- **DZ74**: Wikipedia, "2024–25 Big Ten Conference men's basketball season" (opened in the 2026-10-17 fix pass; four schools including Oregon joined in 2024). https://en.wikipedia.org/wiki/2024%E2%80%9325_Big_Ten_Conference_men%27s_basketball_season
+- **DZ72 / DZ73**: WVU Sports pages (2012, 2009) — opened, headline only, cited only to mark the WVU 1-3-1 claim **unverified**. https://wvusports.com/news/2012/12/22/22681_131465957237595816 ; https://wvusports.com/news/2009/3/2/14280_131441773651516892
+
+**Opened but not cited for any claim:** N15 https://www.insidethehall.com/2016/02/16/film-session-michigan-state-3/5/ ; N16 https://umhoops.com/2019/03/07/michigan-can-improve-ball-screen-defense-vs-michigan-state/ ; N26 https://umhoops.com/2021/02/12/film-room-how-michigan-built-the-best-defense-in-the-big-ten-part-2/ ; N39 https://playbank.fastmodelsports.com/library/basketball/fastdraw/70227/play-Tom-Izzo-Arm-Chop ; N41 https://www.active.com/basketball/articles/2-defensive-drills-by-tom-izzo ; N42 https://www.wxyz.com/sports/michigan-state-defense-stifles-michigan-77-70 ; DZ31 https://coachesinsider.com/mens-basketball/defensive-transition-drill-with-brad-underwood-univ-of-illinois ; DZ32 https://spartanavenue.com/michigan-state-s-defense-in-the-first-half-of-big-ten-play-has-been-historic-01kfy2sjbxah (MSU No. 1 KenPom defence 2025-26, no scheme detail) ; DZ39 https://statsbywill.substack.com/p/the-slow-death-of-zone-defenses ; DZ41 https://hawkeyesports.com/news/2010/11/3/a-first-look-at-the-new-look-hawkeyes ; DZ58 https://coachmarchart.substack.com/p/match-up-zone-defense ; DZ70 https://www.psucollegian.com/sports/men_basketball/very-physical-and-very-aggressive-northwestern-defeats-penn-state-men-s-basketball-behind-turnovers/article_946a282e-0c0b-4458-94aa-155f26e3c512.html ; DZ71 https://mgoblue.com/news/2015/2/5/postgame_quotes_iowa_72_michigan_54
+
+**Attempted, not opened (no claim rests on them):** theonlycolors.com (403), eu.detroitnews.com (402), msuspartans.com clips PDF (404), mgoblog.com State Report / Picture Pages / Oregon preview / hoop-math post (403), michigandaily.com switching article (429), wabc.fiba.com (DNS), breakthroughbasketball.com coverage, hip-pocket, down-screen, box/triangle/diamond and 2-3 pages (403), medium.com screen write-up (403), ece.engin.umich.edu (403), Sloan 2014 McQueen PDF (404), FastModel DHO progression (404), ncaa.com 2018 switching (empty), InsideNU 1-3-1 (403), NBC Sports Louisville 2012 (redirect), The Gazette Iowa pages (429), Cyclone Fanatic (403), Washington Times WVU (403), Daily Orange Syracuse press pages (403), hoopcoach.org McCaffery press (404), Hammer and Rails (403), PSU Collegian Nebraska/Rutgers (429), Hudl/FastScout support (404), 360Player drill (DNS), Rivals/On3 Indiana story (redirect).
+
+---
+
+### Corrections 2026-10-18
+
+These notes correct or qualify text above this section. The original text is left unchanged; the merge reader should apply these notes when using it.
+
+- **C-1 (F8.3 Amoeba row, "UNLV (Jerry Tarkanian, creator)"):** Wikipedia credits **Fran Webster** (Pittsburgh assistant) with developing the amoeba, refined in the 1970s with Charles Ridl and Tim Grgurich; Grgurich later joined Tarkanian at UNLV; Pitt used it in 1973-74 `[DZ61]`. Keep both attributions side by side: Webster/Pitt as origin per `[DZ61]`, Tarkanian as the coach most associated with it per `[D60]`.
+- **C-2 (F8 hierarchy and F8.2 table, 2-1-2 listed under odd-front zones):** the 2-1-2 is a two-guard (even) front `[DZ18]`; it belongs under **F8.1 Even-front zones**. Z-3 uses F8.1.
+- **C-3 (F3.1 drop thresholds and F18.2 rule 3, "drop ≥ 3.5 m, high drop 1–3.5 m"):** the sourced coaching depth for an ordinary drop is **1.83–3.05 m below the screen** `[N3]`. Use the bands in BS-9: high/level drop 0.6–1.83 m, standard drop 1.83–3.05 m, deep drop > 3.05 m or X-big at r ≤ 4.5 m. Flat hedge = depth 0–0.6 m **and** lateral offset into the handler's path ≥ 0.5 m (old F3.1); up to touch = \|λ\| ≤ 0.6 m **and** dist(X-big, screener) ≤ 1.0 m. All bands remain [HEURISTIC] except the 1.83–3.05 m range.
+- **C-4 (F8.2 row "1-2-2 / 3-2" treated as one zone):** the 3-2 with a flat three-man top line is distinct from the 1-2-2 `[DZ16][DZ17]` and FIBA lists them separately `[D10]`. Use Z-1 (3-2) and Z-2 (1-2-2) as separate labels; the distinguishing feature is the top defender's height relative to the wings (≥ 1.5 m higher in a 1-2-2, within 1.0 m in a 3-2), at any line height 4.0 ≤ y ≤ 7.5 m; a high top (7.30, 90°) with wings left at the FT line extended is a 1-2-2 [HEURISTIC].
+- **C-5 (F3 hierarchy, "Drop ─ variants: … 'catch' drop"):** no opened source defines a "catch" coverage (`[N34][N2][N36]` checked). Treat "catch" as **unverified**; do not train a label for it until a source or film definition exists.
+- **C-6 (F1.6 "Positioning" row, drill name "Beat and Belt"):** the 2015 video listing says "Beat and Belt" `[N40]`; the Izzo course lists "Beat the Belt" `[N37]`. Both spellings are in use; treat them as one drill.
+- **C-7 (F1.5 Virginia row, ball-screen default "Aggressive on the spectrum; no ice"):** one secondary source says Virginia **hard hedges every ball screen** (season not given) `[N4]`. This is consistent with "aggressive" `[D9]` and "no ice" `[D1]`, but it rules out a drop prior for Virginia. Confidence medium (single source).
+- **C-8 (F1.6 "Positioning" row, "Three-Man DHO Switching suggests DHOs are switched"):** the drill teaches **two ways** to defend handoffs depending on the positions involved `[N40]`. The prior should be position-conditional (H-1), not "DHOs are switched". The two ways themselves remain **unverified**.
+- **C-9 (F18.4 MSU usage index):** add MSU **2014-15 hedge-and-recover** (Schilling, Nairn) `[N14]`, the 2015 "multiple ball-screen coverages" listing `[N40]`, and the 2026-27 exhibition full-court press `[DZ63]`. (The 2017-18 no-1-5-switch vs Wagner `[N43]` is already in F1.6 and applies only to the F18.4 table, if that table lacks it.) See MSU-2 and MSU-4.
+- **C-10 (F1.6 "Ball screens, 2024-25" row, source `[D24]`):** MGoBlog returned HTTP 403 during this research, so `[D24]` was **not re-confirmed**. The claim stands on the earlier pass only.
+- **C-11 (§0.2 restricted-arc row "r = 1.22"):** confirmed for NCAA men since 2015-16, together with the 30 s shot clock and the 10 s backcourt count that does not reset after a stoppage in play (with few exceptions) `[DZ64]`.
+- **C-12 (F12 transition, definition windows):** the Hoop-Math and FastScout transition definitions cited in the project brief were **not** opened in Job A (pages 403/404). They stay **unverified** in this file until Job D confirms them.
+- **C-13 (F11.1 "Zone → man after a ball screen [UNVERIFIED]"):** still unverified after this research. The newly documented change triggers are a timeout after an opponent run (SC-1), a game-flow change-up (SC-2), the BLOB inbound (SC-5) and the late game (SC-7).
