@@ -1,0 +1,646 @@
+# Proposed schema (2026-10-18) for table free_throws. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: free_throws
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#free_throws
+grain: one row per free-throw attempt (including attempts cancelled by a violation and a one-and-one second attempt not taken) per pass
+primary_key:
+- free_throw_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - foul_id
+  references: fouls.foul_id
+- columns:
+  - pbp_event_id
+  references: events.event_id
+- columns:
+  - score_event_id
+  references: score_events.score_event_id
+requirements:
+- R-SR-09
+- R-IV-11
+- R-PE-05
+- R-RF-03
+- R-SR-03
+storage: Parquet, processed/<game_id>/<version>/free_throws.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- ft_sequence_id groups the attempts of one award; for false double / multiple fouls each foul has its own sequence (Rule 10-1 Penalty g).
+- 'award_type follows Rule 10-1 Penalty b-e, 8-2, 10-2, 10-3, 10-4. The live doc''s ''technical 2'' is refined: Class A = 2, Class B = 1, administrative = 1 (2 for Rule 10-2.6 and 10-2.7).'
+- 'One-and-one: attempts_n = 2 with second_attempt_conditional = true; the second row exists with result not_attempted when the first misses (makes accounting complete).'
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: free_throw_id
+  type: string
+  definition: game_id + pass + ft_sequence_id + attempt_k.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  definition: 'Processing pass: blind uses no PBP; anchored uses PBP. The per-game diff of the two is the CV error estimate (R-SR-13).'
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  nullable: false
+  proposed_global_addition: true
+- name: ft_sequence_id
+  type: string
+  definition: One free-throw award (one foul's penalty).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: attempt_k
+  type: int
+  range:
+  - 1
+  - 3
+  definition: Attempt number within the sequence.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: false
+- name: attempts_n
+  type: int
+  range:
+  - 1
+  - 3
+  definition: Attempts in the award (1, 2 or 3; one-and-one = 2 conditional). Name as in source_field_map.md 2.10 (hoopR NCAA ft_attempts).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: false
+- name: second_attempt_conditional
+  type: bool
+  definition: True for one_and_one (second only if the first is made, Rule 8-2.1).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: award_type
+  type: enum
+  values:
+  - shooting_2
+  - shooting_3
+  - and_one
+  - one_and_one
+  - double_bonus
+  - flagrant1
+  - flagrant2
+  - technical_class_a
+  - technical_class_b
+  - technical_admin_1
+  - technical_admin_2
+  - multiple_foul
+  - substitute_ft
+  definition: Why the free throws were awarded (see notes).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: false
+- name: rule_ref
+  type: string
+  definition: Rule that sets the award, e.g. '10-1 Penalty d.1'.
+  source: config/invariants.yaml mapping
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: ball_after
+  type: enum
+  values:
+  - live
+  - throw_in_opponent
+  - throw_in_shooting_team
+  - point_of_interruption
+  - next_sequence
+  - dead_other
+  definition: 'What follows the last attempt: live (missed last FT for a personal foul, Rule 8-7), throw_in_opponent (made last FT, Rule 7-3.1.c), throw_in_shooting_team (flagrant, Rule 8-6.1.c), point_of_interruption
+    (technical, Rule 8-6.1.b), next_sequence.'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-IV-08
+  nullable: false
+- name: team
+  type: enum
+  values:
+  - msu
+  - opponent
+  definition: Shooting team.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: shooter_player_id
+  type: string
+  definition: Player attempting (source_field_map.md 2.10 calls it shooter_id).
+  source: PBP; CV identity in blind pass
+  licence: ROW
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-PE-05
+  nullable: false
+- name: shooter_selection
+  type: enum
+  values:
+  - offended_player
+  - substitute_for_offended
+  - opponent_coach_choice
+  - own_coach_choice
+  - designated_any
+  definition: offended_player, substitute_for_offended (Rule 8-3.2), opponent_coach_choice (injured, Rule 8-3.3), designated_any (technical, Rule 8-3.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: foul_id
+  type: string
+  definition: FK fouls (dictionary_games.md).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-RF-03
+  nullable: true
+- name: fouling_player_id
+  type: string
+  definition: Player charged with the foul (null for bench or team technicals).
+  source: PBP
+  licence: ROW
+  as_of: by_pass
+  requirements:
+  - R-RF-03
+  nullable: true
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: team_fouls_defence_at_foul
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: Fouling team's team-foul total including this foul.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-09
+  nullable: false
+- name: video_ts_ms_disposal
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Ball placed at the shooter's disposal (attempt starts, Rule 8-1.3).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: video_ts_ms_release
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Ball released.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: release_latency_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Release minus disposal; must be <= 10 s (Rule 8-5.1.a).
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-11
+  nullable: true
+- name: result
+  type: enum
+  values:
+  - made
+  - missed
+  - cancelled_violation
+  - substitute_awarded
+  - not_attempted
+  definition: made, missed, cancelled_violation (shooting team violated, Rule 9-1 Penalty a), substitute_awarded (opponent violation on a miss, Penalty b.2), not_attempted (one-and-one second after a miss).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: made
+  type: bool
+  definition: result == 'made' (convenience column named as in source_field_map.md 2.10).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-PE-05
+  nullable: false
+- name: ring_contact
+  type: enum
+  values:
+  - 'yes'
+  - 'no'
+  - unknown
+  definition: Attempt touched ring or flange (a free throw must, Rule 8-5.1.a).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-07
+  nullable: false
+- name: lane_def_count
+  type: int
+  unit: count
+  range:
+  - 0
+  - 4
+  definition: Opponents of the shooter in marked lane spaces (max 4, Rule 8-4.4).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: true
+- name: lane_off_count
+  type: int
+  unit: count
+  range:
+  - 0
+  - 2
+  definition: Teammates of the shooter in marked lane spaces (max 2).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: true
+- name: lane_occupant_ids
+  type: list[string]
+  definition: Roster IDs by lane space, ordered L1..L4 left then R1..R4 right from the basket out; empty string for an empty space.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: false
+- name: lane_expected_empty
+  type: bool
+  definition: 'Lane players not expected: ball dead regardless of result (Rule 8-4.8), double foul with one flagrant (10-1 Penalty f), or resumption of play (Rule 4-32).'
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-11
+  nullable: false
+- name: violation
+  type: enum
+  values:
+  - none
+  - a_10s
+  - b_fake
+  - c_line
+  - d_semicircle
+  - e_lane_early
+  - f_disconcert
+  - g_behind_line
+  - h_lane_plane
+  - i_foot_beyond
+  - j_too_many
+  - k_block_space_empty
+  - l_teammate_low_space
+  definition: Free-throw violation code (Rule 9-1.1.a-l) or none.
+  source: CV; PBP
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-11
+  nullable: false
+- name: violation_team
+  type: enum
+  values:
+  - msu
+  - opponent
+  - none
+  definition: Team that violated.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-11
+  nullable: false
+- name: predicted_at_whistle
+  type: bool
+  definition: The state model predicted 'free throws coming' at the foul whistle (R-SR-09).
+  source: state model
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: predicted_award_type
+  type: enum
+  values:
+  - shooting_2
+  - shooting_3
+  - and_one
+  - one_and_one
+  - double_bonus
+  - flagrant1
+  - flagrant2
+  - technical_class_a
+  - technical_class_b
+  - technical_admin_1
+  - technical_admin_2
+  - multiple_foul
+  - substitute_ft
+  - none
+  definition: Predicted award type at the whistle.
+  source: state model
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: prediction_correct
+  type: bool
+  definition: Prediction matched the actual award.
+  source: derived
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: lane_formation_confirmed
+  type: bool
+  definition: Lane formation seen in video confirmed the free-throw state before disposal.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: score_event_id
+  type: string
+  definition: FK score_events when made.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: ft_src
+  type: enum
+  values:
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the free-throw value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-09
+  nullable: false
+- name: ft_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the free-throw value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-09
+  nullable: false
+- name: ft_dq
+  type: enum
+  values:
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the free-throw value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-09
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

@@ -1,0 +1,28 @@
+# Proposed schema for table 'lines_odds_snapshots' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: lines_odds_snapshots
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: 'view: one row per sportsbook or consensus priced outcome x snapshot'
+primary_key:
+- (as market_snapshots)
+foreign_keys: []
+storage: view over market_snapshots
+as_of_default:
+  rule: SNAPSHOT
+  text: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09, R-MK-07,
+    R-PC-14).
+requirements:
+- R-MK-01
+- R-MK-02
+- R-MK-06
+- R-PR-03
+view_of: market_snapshots
+filter: source in (cbbd, espn, sbro, oddsapi) and provider_type in (book, consensus)
+columns_ref: identical to market_snapshots (SnapshotRow in src/msu_alpha/markets/models.py)
+notes:
+- Columns are exactly SnapshotRow in src/msu_alpha/markets/models.py (schema_version from msu_alpha.markets.SCHEMA_VERSION);
+  do not redefine.
+- Closing line for a game = rows with snapshot_label in (close, close_reported); a CBBD null spread with a total present is
+  flagged possible_pickem (R-MK-28).
+columns: {}

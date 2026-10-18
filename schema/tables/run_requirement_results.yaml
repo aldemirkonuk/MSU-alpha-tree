@@ -1,0 +1,358 @@
+# Proposed schema for table 'run_requirement_results' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: run_requirement_results
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Runs, errors and review
+grain: one row per run x requirement x metric (x slice)
+primary_key:
+- run_id
+- requirement_id
+- metric
+- slice_key
+foreign_keys: []
+storage: 'repo: results/<task>/ (metrics only)'
+as_of_default:
+  rule: RUN
+  text: Run or audit metadata; never a model feature.
+requirements:
+- R-RR-02
+- R-RR-04
+- R-RR-06
+- R-VA-06
+- R-VA-02
+- R-VA-03
+- R-VA-04
+- R-VA-05
+- R-VA-09
+- R-GT-01
+- R-GT-02
+- R-GT-04
+- R-HR-09
+columns:
+  run_id:
+    type: string
+    unit: null
+    range: '''<UTC yyyymmddThhmmssZ>-<task_id>'''
+    nullable: false
+    definition: Pipeline run that produced the row (run_records).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-01
+    - R-EN-04
+  requirement_id:
+    type: string
+    unit: null
+    range: R-* ID
+    nullable: false
+    definition: Requirement tested.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+  metric:
+    type: string
+    unit: null
+    range: metric name
+    nullable: false
+    definition: Metric.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+  slice_key:
+    type: string
+    unit: null
+    range: '''all'' or ''dim=value'''
+    nullable: false
+    definition: Slice (camera shot type, arena, jersey pairing, orientation, height px, occlusion, period, ball state, lighting).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-03
+    - R-RR-04
+  target:
+    type: float64
+    unit: metric unit
+    range: per metric
+    nullable: true
+    definition: Target from config (planner-owned).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+    - R-RR-07
+  value:
+    type: float64
+    unit: metric unit
+    range: per metric
+    nullable: true
+    definition: Measured value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+  result:
+    type: enum[pass, fail, not_testable, pass_weak_slice]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Result ('not testable' when no gold sample, never 'pass').
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+    - R-RR-04
+  n:
+    type: int32
+    unit: count
+    range: '>= 0'
+    nullable: false
+    definition: Sample size.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+  ci95_lo:
+    type: float64
+    unit: metric unit
+    range: per metric
+    nullable: true
+    definition: 95% interval low (bootstrap by game).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+    - R-VA-06
+  ci95_hi:
+    type: float64
+    unit: metric unit
+    range: per metric
+    nullable: true
+    definition: 95% interval high.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-02
+    - R-VA-06
+  delta_vs_previous:
+    type: float64
+    unit: metric points
+    range: per metric
+    nullable: true
+    definition: Delta vs previous run on the same gold set.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-06
+  gate:
+    type: enum[G1, G2, G3, G4, G5, G6, G7, G8, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Vision gate tested.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-GT-04
+  source_tier:
+    type: enum[youtube_below_1080p, youtube_1080p, b1g_plus, other]
+    unit: null
+    range: enum
+    nullable: true
+    definition: Footage tier.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-GT-03
+  robustness_variant:
+    type: enum[none, dropped_1pct, low_bitrate, brightness_minus20, brightness_plus20]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Robustness re-test.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-GT-02
+  hold_game:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Unseen hold game from a different arena.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-GT-01
+  descriptive_only:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: 95% interval half-width above the minimum-count rule.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-VA-05
+    - R-VZ-03

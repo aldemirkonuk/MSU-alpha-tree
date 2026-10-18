@@ -1,0 +1,151 @@
+# Proposed schema for table 'identity_confusions' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: identity_confusions
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Profiles, quality and research
+grain: one row per game x pair of players mixed up
+primary_key:
+- game_id
+- player_a_id
+- player_b_id
+- run_id
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: RUN
+  text: Run or audit metadata; never a model feature.
+requirements:
+- R-ID-11
+- R-ID-14
+columns:
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-FD-02
+  run_id:
+    type: string
+    unit: null
+    range: '''<UTC yyyymmddThhmmssZ>-<task_id>'''
+    nullable: false
+    definition: Pipeline run that produced the row (run_records).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-RR-01
+    - R-EN-04
+  player_a_id:
+    type: string
+    unit: null
+    range: ESPN athlete ID or local x- ID
+    nullable: false
+    definition: First player.
+    sources:
+      CBBD: athleteId -> players.sourceId (assumed ESPN, verify)
+      ESPN files already pulled: athlete.id / participants[].athlete.id
+      hoopR ESPN releases: athlete_id_1 / participants_0_athlete_id
+      hoopR NCAA engine: player_*_id via mbb_player_crosswalk
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: identity pipeline (track -> player)
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-ID-11
+  player_b_id:
+    type: string
+    unit: null
+    range: ESPN athlete ID or local x- ID
+    nullable: false
+    definition: Second player.
+    sources:
+      CBBD: athleteId -> players.sourceId (assumed ESPN, verify)
+      ESPN files already pulled: athlete.id / participants[].athlete.id
+      hoopR ESPN releases: athlete_id_1 / participants_0_athlete_id
+      hoopR NCAA engine: player_*_id via mbb_player_crosswalk
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: identity pipeline (track -> player)
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-ID-11
+  n_confusions:
+    type: int32
+    unit: count
+    range: '>= 0'
+    nullable: false
+    definition: Times mixed up.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-ID-11
+  player_frames:
+    type: int32
+    unit: frames
+    range: '>= 0'
+    nullable: false
+    definition: Player-frames at risk.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-ID-11
+    - R-ID-14

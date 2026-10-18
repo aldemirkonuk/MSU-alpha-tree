@@ -1,0 +1,837 @@
+# Proposed schema for table 'market_snapshots' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: market_snapshots
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: one row per priced outcome x market x book or exchange x snapshot (SnapshotRow)
+primary_key:
+- game_id
+- source
+- book
+- market
+- market_phase
+- snapshot_label
+- side
+- team_or_player_id
+- line
+- snapshot_time_utc
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - team_id
+  references: teams.team_id
+- columns:
+  - player_id
+  references: players.player_id
+storage: 'private: MyDrive/MSU-Alpha-3/markets/snapshots/ (hive partitions source/season/month)'
+as_of_default:
+  rule: SNAPSHOT
+  text: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09, R-MK-07,
+    R-PC-14).
+requirements:
+- R-MK-01
+- R-MK-02
+- R-MK-03
+- R-MK-14
+- R-MK-15
+- R-MK-16
+- R-MK-25
+- R-MK-26
+- R-MK-27
+notes:
+- Columns are exactly SnapshotRow in src/msu_alpha/markets/models.py (schema_version from msu_alpha.markets.SCHEMA_VERSION);
+  do not redefine.
+- team_or_player_id in the key = coalesce(team_id, player_id), as SnapshotRow.dedup_key() (C-14).
+- 'Storage: MyDrive/MSU-Alpha-3/markets/snapshots/ (collector_design.md 3.2); never git (R-MK-24).'
+columns:
+  source:
+    type: enum[cbbd, espn, sbro, oddsapi, kalshi, polymarket, polymarket_us]
+    unit: null
+    range: Source enum
+    nullable: false
+    definition: Market source (models.Source).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.source
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-14
+  book:
+    type: string
+    unit: null
+    range: book key
+    nullable: false
+    definition: Sportsbook key, ESPN provider id+name, or kalshi/polymarket.
+    sources:
+      CBBD: lines[].provider
+      ESPN files already pulled: odds provider
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.book
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6; CBBD: model input allowed; ESPN files
+      already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-02
+    - R-MK-14
+  market:
+    type: enum[moneyline, spread, total, moneyline_1h, spread_1h, total_1h, team_total, prop_points, prop_rebounds, prop_assists,
+      prop_threes, prop_pra]
+    unit: null
+    range: Market enum
+    nullable: false
+    definition: Market (models.Market).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.market
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-02
+  side:
+    type: enum[team, over, under, yes, no]
+    unit: null
+    range: Side enum
+    nullable: false
+    definition: Outcome side (models.Side).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.side
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-14
+  snapshot_time_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: Our fetch time, or the source's snapshot time for historical pulls.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.snapshot_time_utc
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-16
+    - R-MK-25
+  fetched_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: Fetch time from the manifest.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.fetched_at_utc
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MK-13
+  season:
+    type: int16
+    unit: year
+    range: '[2008, 2035]'
+    nullable: false
+    definition: Ending year.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.season
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-14
+  source_event_id:
+    type: string
+    unit: null
+    range: source id
+    nullable: false
+    definition: Source's event ID.
+    sources:
+      CBBD: gameId
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.source_event_id
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6; CBBD: model input allowed'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-17
+  raw_ref:
+    type: string
+    unit: null
+    range: sha256
+    nullable: false
+    definition: sha256 of the raw body.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.raw_ref
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-13
+    - R-DQ-05
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID
+    nullable: true
+    definition: ESPN event ID; null until matched (R-MK-17).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-FD-02
+    - R-MK-14
+    - R-MK-17
+  market_phase:
+    type: enum[pregame, live]
+    unit: null
+    range: Phase enum
+    nullable: false
+    definition: Pre-game or live.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.market_phase
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-16
+  team_id:
+    type: string
+    unit: null
+    range: ESPN team ID
+    nullable: true
+    definition: Team for spreads, moneylines, team totals; never home/away.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.team_id
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-14
+    - R-MK-18
+  player_id:
+    type: string
+    unit: null
+    range: ESPN athlete ID
+    nullable: true
+    definition: Player for props.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.player_id
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-14
+  line:
+    type: float32
+    unit: points
+    range: '[-60, 260]'
+    nullable: true
+    definition: Line, signed from this team's point of view.
+    sources:
+      CBBD: spread/overUnder/spreadOpen/overUnderOpen
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.line
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6; CBBD: model input allowed'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-01
+    - R-MK-28
+  line_is_integer:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Whole-number line (push possible).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.line_is_integer
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-29
+  price_american:
+    type: int32
+    unit: American odds
+    range: '[-100000, 100000], not in (-100, 100)'
+    nullable: true
+    definition: American price as received.
+    sources:
+      CBBD: homeMoneyline/awayMoneyline
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.price_american
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6; CBBD: model input allowed'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-26
+  price_decimal:
+    type: float64
+    unit: decimal odds
+    range: '> 1'
+    nullable: true
+    definition: Decimal price derived from American.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.price_decimal
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-26
+  price_decimal_source:
+    type: float64
+    unit: decimal odds
+    range: '> 1'
+    nullable: true
+    definition: Source's own decimal when sent.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.price_decimal_source
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-26
+  implied_prob:
+    type: float64
+    unit: probability
+    range: (0, 1)
+    nullable: true
+    definition: 'Implied probability (exchanges: mid).'
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.implied_prob
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-04
+  booksum:
+    type: float64
+    unit: null
+    range: '> 0'
+    nullable: true
+    definition: Sum of implied probabilities of the complementary set.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.booksum
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-30
+  fair_prob_power:
+    type: float64
+    unit: probability
+    range: (0, 1)
+    nullable: true
+    definition: Fair probability, power method.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.fair_prob_power
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-04
+    - R-MK-15
+  fair_prob_shin:
+    type: float64
+    unit: probability
+    range: (0, 1)
+    nullable: true
+    definition: Fair probability, Shin method.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.fair_prob_shin
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-04
+    - R-MK-15
+  fair_prob_mult:
+    type: float64
+    unit: probability
+    range: (0, 1)
+    nullable: true
+    definition: Fair probability, multiplicative baseline.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.fair_prob_mult
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-15
+  power_k:
+    type: float64
+    unit: null
+    range: '> 0'
+    nullable: true
+    definition: Power-method parameter.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.power_k
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-15
+  shin_z:
+    type: float64
+    unit: null
+    range: '[0, 1)'
+    nullable: true
+    definition: Shin z.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.shin_z
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-15
+  bid:
+    type: float64
+    unit: probability
+    range: '[0, 1]'
+    nullable: true
+    definition: Exchange best bid.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.bid
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  ask:
+    type: float64
+    unit: probability
+    range: '[0, 1]'
+    nullable: true
+    definition: Exchange best ask.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.ask
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  last:
+    type: float64
+    unit: probability
+    range: '[0, 1]'
+    nullable: true
+    definition: Exchange last trade.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.last
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  bid_size:
+    type: float64
+    unit: contracts
+    range: '>= 0'
+    nullable: true
+    definition: Bid size.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.bid_size
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  ask_size:
+    type: float64
+    unit: contracts
+    range: '>= 0'
+    nullable: true
+    definition: Ask size.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.ask_size
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  volume:
+    type: float64
+    unit: contracts or USD (per source)
+    range: '>= 0'
+    nullable: true
+    definition: Volume.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.volume
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  open_interest:
+    type: float64
+    unit: contracts
+    range: '>= 0'
+    nullable: true
+    definition: Open interest.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.open_interest
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-03
+  source_time_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: true
+    definition: Source's own last-change time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.source_time_utc
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-25
+  snapshot_label:
+    type: enum[open, open_first_seen, open_reported, t-24h, t-1h, close, close_reported, gameday, sweep, inplay_1m, movement]
+    unit: null
+    range: SnapshotLabel enum
+    nullable: false
+    definition: Snapshot label.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.snapshot_label
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-16
+  observed_post_event:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Pre-game value fetched after the game (never a pre-game feature).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.observed_post_event
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-07
+    - R-CX-09
+  dq_flags:
+    type: list<string>
+    unit: null
+    range: rule IDs C-01..C-16, XS-*
+    nullable: false
+    definition: Contract and cross-source flags.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.dq_flags
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-21
+    - R-MK-22
+  schema_version:
+    type: int16
+    unit: null
+    range: '>= 1'
+    nullable: false
+    definition: Schema version.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.schema_version
+    licence: 'markets collector: per source, docs/markets/collector_design.md section 6'
+    as_of: 'SNAPSHOT: Carries its own as-of time; usable only when that time is before the cutoff (tip minus horizon; R-CX-09,
+      R-MK-07, R-PC-14).'
+    requirements:
+    - R-MK-31

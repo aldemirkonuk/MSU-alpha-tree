@@ -1,0 +1,640 @@
+# Proposed schema for table 'substitutions' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: substitutions
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Play-by-play, possessions and official events
+grain: one row per player entering or leaving the floor (paired in/out when the source pairs them)
+primary_key:
+- game_id
+- sub_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - player_in_id
+  references: players.player_id
+- columns:
+  - player_out_id
+  references: players.player_id
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: IN_GAME
+  text: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models only as aggregates
+    of earlier games.
+requirements:
+- R-SY-03
+- R-EV-11
+- R-IV-03
+- R-DQ-09
+columns:
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-FD-02
+  sub_id:
+    type: string
+    unit: null
+    range: '''<game_id>:sub:<n>'''
+    nullable: false
+    definition: Substitution key.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  event_id:
+    type: string
+    unit: null
+    range: '''<game_id>:<source>:<int>'''
+    nullable: true
+    definition: Event key '<game_id>:<source>:<seq>' (FK events).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: events
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-EV-01
+    - R-EV-12
+  team_id:
+    type: string
+    unit: null
+    range: ESPN team ID (digits); MSU = 127
+    nullable: false
+    definition: ESPN team ID of the team this row belongs to.
+    sources:
+      CBBD: teamId -> teams.sourceId (ESPN team ID)
+      ESPN files already pulled: team.id
+      hoopR ESPN releases: team_id / home_team_id / away_team_id
+      hoopR NCAA engine: '*_espn_team_id'
+      Torvik: team name via hoopR mbb_team_crosswalk.bart_team
+      KenPom: team name via mbb_team_crosswalk.kp_team
+      Kaggle archive: TEAM / TeamName via crosswalk
+      EvanMiya exports: team via crosswalk
+      computed by us: id_crosswalk
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; Kaggle archive: reference only until the archive licence is
+      checked (contains KenPom/Torvik-derived columns); EvanMiya exports: reference only (EvanMiya terms: no redistribution;
+      R-DS-10); computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-FD-02
+    - R-DS-05
+  player_in_id:
+    type: string
+    unit: null
+    range: ESPN athlete ID or local x- ID
+    nullable: true
+    definition: Player entering.
+    sources:
+      CBBD: athleteId -> players.sourceId (assumed ESPN, verify)
+      ESPN files already pulled: athlete.id / participants[].athlete.id
+      hoopR ESPN releases: athlete_id_1 / participants_0_athlete_id
+      hoopR NCAA engine: player_*_id via mbb_player_crosswalk
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: identity pipeline (track -> player)
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  player_out_id:
+    type: string
+    unit: null
+    range: ESPN athlete ID or local x- ID
+    nullable: true
+    definition: Player leaving.
+    sources:
+      CBBD: athleteId -> players.sourceId (assumed ESPN, verify)
+      ESPN files already pulled: athlete.id / participants[].athlete.id
+      hoopR ESPN releases: athlete_id_1 / participants_0_athlete_id
+      hoopR NCAA engine: player_*_id via mbb_player_crosswalk
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: identity pipeline (track -> player)
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  video_ts_ms:
+    type: int64
+    unit: ms
+    range: '[0, 3.6e7]'
+    nullable: true
+    definition: Milliseconds from the first frame's presentation time in the original file (original PTS kept for VFR, R-VI-12).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: decoder PTS
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements: &id001
+    - R-SY-03
+    - R-EV-11
+  frame_index:
+    type: int32
+    unit: null
+    range: '[0, 2.2e6]'
+    nullable: true
+    definition: 0-based index of the decoded frame in the original file.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: decoder
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements: *id001
+  period:
+    type: int8
+    unit: null
+    range: '[1, 9]'
+    nullable: true
+    definition: Period (1, 2 halves; 3+ overtime).
+    sources:
+      CBBD: period
+      ESPN files already pulled: period.number
+      hoopR ESPN releases: period_number
+      hoopR NCAA engine: period
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: state_frame
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements: *id001
+  game_clock_s:
+    type: float32
+    unit: s
+    range: '[0, 1200] halves; [0, 300] overtime'
+    nullable: true
+    definition: 'Game clock: seconds remaining in the period.'
+    sources:
+      CBBD: secondsRemaining (integer s) / clock
+      ESPN files already pulled: clock.displayValue (mm:ss -> s)
+      hoopR ESPN releases: start_quarter_seconds_remaining / clock_display_value
+      hoopR NCAA engine: clock (mm:ss) / sec_left
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: scoreboard OCR, R-MD-08 map
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements: *id001
+  shot_clock_s:
+    type: float32
+    unit: s
+    range: '[0, 30]'
+    nullable: true
+    definition: Shot clock reading in seconds; null only when shot_clock_state = off (R-MD-01 explicit off).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: scoreboard OCR (state_frame) or reconstructed per R-MD-06
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements: *id001
+  team_points_at:
+    type: int16
+    unit: points
+    range: '[0, 200]'
+    nullable: true
+    definition: Team points at the substitution (CBBD subIn/subOut.teamPoints).
+    sources:
+      CBBD: subIn.teamPoints / subOut.teamPoints
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  opp_points_at:
+    type: int16
+    unit: points
+    range: '[0, 200]'
+    nullable: true
+    definition: Opponent points at the substitution.
+    sources:
+      CBBD: subIn.opponentPoints / subOut.opponentPoints
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  during_dead_ball:
+    type: bool
+    unit: null
+    range: must be true (R-IV-03)
+    nullable: true
+    definition: Substitution happened during a dead ball (invariant; false = flag).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: state_frame
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-IV-03
+  during_timeout:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: true
+    definition: Made during a timeout (lineup change during timeout, R-EV-15).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: timeouts (state-record)
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-EV-15
+  reason_inferred:
+    type: enum[rotation, foul_trouble, fouled_out, injury, after_error, blowout, end_game_specialist, unknown]
+    unit: null
+    range: enum
+    nullable: true
+    definition: Inferred reason (coach record).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: rule
+      manual (Aldemir): label
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs); manual (Aldemir): private
+      (Aldemir''s input; R-RG-06)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-CC-03
+    - R-PE-06
+  timing_error_flag:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: PBP substitution timing disagrees with video by > 1 s (R-DQ-09 bias).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: sync
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-DQ-09
+  source_timing:
+    type: string
+    unit: null
+    range: free text
+    nullable: true
+    definition: Raw timing as received.
+    sources:
+      CBBD: subIn.secondsRemaining/period
+      ESPN files already pulled: Substitution play clock
+      hoopR ESPN releases: none
+      hoopR NCAA engine: players_in / players_out (stint level)
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR NCAA engine:
+      model input allowed (hoopR release)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-SY-03
+  source:
+    type: enum[cbbd, espn, hoopr_espn, hoopr_ncaa, torvik, kenpom, kaggle, evanmiya, markets, cv, ocr, audio, pbp_fused, manual,
+      rules, computed]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Source that produced this row (every value carries its source, R-MD-09; any source can be swapped later).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: set by the loader or pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-SR-15
+    - R-DS-10
+  source_ref:
+    type: string
+    unit: null
+    range: '''<raw sha256>#<json pointer or row number>'''
+    nullable: true
+    definition: Pointer to the raw pull or upstream rows this row came from (lineage).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: raw store manifest
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-DQ-05
+  pulled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: UTC time the raw source was pulled, or the time the row was computed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-05
+    - R-MK-25
+  transform_version:
+    type: string
+    unit: null
+    range: git commit (7-40 hex) + transform name
+    nullable: false
+    definition: Code version that produced the row.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: git
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-EN-04
+    - R-RR-01
+  model_version:
+    type: string
+    unit: null
+    range: free text, e.g. 'det-yolo11x@a1b2c3'
+    nullable: true
+    definition: Model version for model outputs; null for loaded official data.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model registry
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-EN-04
+  confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Confidence of the row's main value; official data carries 1.0.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model output or 1.0
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+  dq_flag:
+    type: enum[observed, inferred, carried, imputed, quarantined]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Data-quality flag of the row's main value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-19
+    - R-DQ-03
+  pass:
+    type: enum[blind, anchored, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Blind = produced without play-by-play; anchored = play-by-play used; none = not a vision output.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-SR-13
+    - R-SR-15
+  licence_class:
+    type: enum[model_input_allowed, reference_only, blocked, own, private]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Licence class of this row, from its source (data_sources_catalog.md); reference_only and blocked rows never
+      reach a model.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: from source
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DS-10
+    - R-RG-04
+    - R-RG-11
+  schema_version:
+    type: int16
+    unit: null
+    range: '[1, 999]'
+    nullable: false
+    definition: Version of this table's schema at write time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: schema/tables/<table>.yaml
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-EN-01
+    - R-MK-31

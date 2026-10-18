@@ -1,0 +1,756 @@
+# Proposed schema for table 'team_box' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: team_box
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: one row per team x game (official box score)
+primary_key:
+- game_id
+- team_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - team_id
+  references: teams.team_id
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: POST_GAME
+  text: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).
+requirements:
+- R-DQ-06
+- R-IV-04
+- R-IV-15
+- R-FD-05
+notes:
+- 'Cross-source check (R-DQ-01): CBBD vs hoopR-ESPN vs NCAA engine; disagreements flagged per field.'
+columns:
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-02
+  team_id:
+    type: string
+    unit: null
+    range: ESPN team ID (digits); MSU = 127
+    nullable: false
+    definition: ESPN team ID of the team this row belongs to.
+    sources:
+      CBBD: teamId -> teams.sourceId (ESPN team ID)
+      ESPN files already pulled: team.id
+      hoopR ESPN releases: team_id / home_team_id / away_team_id
+      hoopR NCAA engine: '*_espn_team_id'
+      Torvik: team name via hoopR mbb_team_crosswalk.bart_team
+      KenPom: team name via mbb_team_crosswalk.kp_team
+      Kaggle archive: TEAM / TeamName via crosswalk
+      EvanMiya exports: team via crosswalk
+      computed by us: id_crosswalk
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; Kaggle archive: reference only until the archive licence is
+      checked (contains KenPom/Torvik-derived columns); EvanMiya exports: reference only (EvanMiya terms: no redistribution;
+      R-DS-10); computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-02
+    - R-DS-05
+  points:
+    type: int16
+    unit: points
+    range: '[0, 200]'
+    nullable: false
+    definition: Points.
+    sources:
+      CBBD: teamStats.points.total
+      ESPN files already pulled: competitors[].score
+      hoopR ESPN releases: team_score
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-IV-04
+    - R-DQ-06
+  fgm:
+    type: int16
+    unit: count
+    range: '[0, 80]'
+    nullable: false
+    definition: Field goals made.
+    sources:
+      CBBD: fieldGoals.made
+      ESPN files already pulled: fieldGoalsMade-fieldGoalsAttempted
+      hoopR ESPN releases: field_goals_made
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+    - R-IV-15
+  fga:
+    type: int16
+    unit: count
+    range: '[0, 120]'
+    nullable: false
+    definition: Field goals attempted.
+    sources:
+      CBBD: fieldGoals.attempted
+      ESPN files already pulled: fieldGoalsMade-fieldGoalsAttempted
+      hoopR ESPN releases: field_goals_attempted
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  fg3m:
+    type: int16
+    unit: count
+    range: '[0, 40]'
+    nullable: false
+    definition: Three-point makes.
+    sources:
+      CBBD: threePointFieldGoals.made
+      ESPN files already pulled: threePointFieldGoalsMade-...
+      hoopR ESPN releases: three_point_field_goals_made
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  fg3a:
+    type: int16
+    unit: count
+    range: '[0, 70]'
+    nullable: false
+    definition: Three-point attempts.
+    sources:
+      CBBD: threePointFieldGoals.attempted
+      ESPN files already pulled: threePointFieldGoalsMade-...
+      hoopR ESPN releases: three_point_field_goals_attempted
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  ftm:
+    type: int16
+    unit: count
+    range: '[0, 60]'
+    nullable: false
+    definition: Free throws made.
+    sources:
+      CBBD: freeThrows.made
+      ESPN files already pulled: freeThrowsMade-freeThrowsAttempted
+      hoopR ESPN releases: free_throws_made
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  fta:
+    type: int16
+    unit: count
+    range: '[0, 80]'
+    nullable: false
+    definition: Free throws attempted.
+    sources:
+      CBBD: freeThrows.attempted
+      ESPN files already pulled: freeThrowsMade-freeThrowsAttempted
+      hoopR ESPN releases: free_throws_attempted
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  oreb:
+    type: int16
+    unit: count
+    range: '[0, 40]'
+    nullable: false
+    definition: Offensive rebounds (players + team).
+    sources:
+      CBBD: rebounds.offensive
+      ESPN files already pulled: offensiveRebounds
+      hoopR ESPN releases: offensive_rebounds
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+    - R-SY-05
+  dreb:
+    type: int16
+    unit: count
+    range: '[0, 60]'
+    nullable: false
+    definition: Defensive rebounds.
+    sources:
+      CBBD: rebounds.defensive
+      ESPN files already pulled: defensiveRebounds
+      hoopR ESPN releases: defensive_rebounds
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  ast:
+    type: int16
+    unit: count
+    range: '[0, 45]'
+    nullable: false
+    definition: Assists (home scorekeepers credit more, R-DQ-09).
+    sources:
+      CBBD: assists
+      ESPN files already pulled: assists
+      hoopR ESPN releases: assists
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-09
+    - R-EV-03
+  stl:
+    type: int16
+    unit: count
+    range: '[0, 30]'
+    nullable: false
+    definition: Steals.
+    sources:
+      CBBD: steals
+      ESPN files already pulled: steals
+      hoopR ESPN releases: steals
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-09
+  blk:
+    type: int16
+    unit: count
+    range: '[0, 25]'
+    nullable: false
+    definition: Blocks.
+    sources:
+      CBBD: blocks
+      ESPN files already pulled: blocks
+      hoopR ESPN releases: blocks
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-09
+  tov:
+    type: int16
+    unit: count
+    range: '[0, 40]'
+    nullable: false
+    definition: Turnovers including team turnovers.
+    sources:
+      CBBD: turnovers.total
+      ESPN files already pulled: totalTurnovers
+      hoopR ESPN releases: total_turnovers
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  team_tov:
+    type: int16
+    unit: count
+    range: '[0, 10]'
+    nullable: true
+    definition: Team turnovers.
+    sources:
+      CBBD: turnovers.teamTotal
+      ESPN files already pulled: teamTurnovers
+      hoopR ESPN releases: team_turnovers
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  pf:
+    type: int16
+    unit: count
+    range: '[0, 45]'
+    nullable: false
+    definition: Personal fouls.
+    sources:
+      CBBD: fouls.total
+      ESPN files already pulled: fouls
+      hoopR ESPN releases: fouls
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-SR-03
+    - R-IV-09
+  tech_fouls:
+    type: int8
+    unit: count
+    range: '[0, 10]'
+    nullable: true
+    definition: Technical fouls.
+    sources:
+      CBBD: fouls.technical
+      ESPN files already pulled: technicalFouls
+      hoopR ESPN releases: technical_fouls
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-SR-03
+  flagrant_fouls:
+    type: int8
+    unit: count
+    range: '[0, 5]'
+    nullable: true
+    definition: Flagrant fouls.
+    sources:
+      CBBD: fouls.flagrant
+      ESPN files already pulled: flagrantFouls
+      hoopR ESPN releases: flagrant_fouls
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-SR-03
+  fast_break_points:
+    type: int16
+    unit: points
+    range: '[0, 60]'
+    nullable: true
+    definition: Official fast-break points (NCAA stats-manual definition).
+    sources:
+      CBBD: points.fastBreak
+      ESPN files already pulled: fastBreakPoints
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-TR-18
+    - R-TR-27
+  points_in_paint:
+    type: int16
+    unit: points
+    range: '[0, 100]'
+    nullable: true
+    definition: Points in the paint.
+    sources:
+      CBBD: points.inPaint
+      ESPN files already pulled: pointsInPaint
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-SY-07
+  points_off_turnovers:
+    type: int16
+    unit: points
+    range: '[0, 60]'
+    nullable: true
+    definition: Points off turnovers.
+    sources:
+      CBBD: points.offTurnovers
+      ESPN files already pulled: turnoverPoints
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-VL-11
+  largest_lead:
+    type: int16
+    unit: points
+    range: '[0, 80]'
+    nullable: true
+    definition: Largest lead.
+    sources:
+      CBBD: points.largestLead
+      ESPN files already pulled: largestLead
+      hoopR ESPN releases: largest_lead
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases:
+      model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-MD-17
+  possessions_source:
+    type: float32
+    unit: possessions
+    range: '[40, 110]'
+    nullable: true
+    definition: Possessions as the source estimates them (CBBD formula, unverified; not our count).
+    sources:
+      CBBD: teamStats.possessions
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: box.php game possessions
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to
+      confirm)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-IV-15
+    - R-SY-06
+  game_minutes:
+    type: float32
+    unit: min
+    range: '[40, 75]'
+    nullable: true
+    definition: Game length in minutes (40 + 5 per OT).
+    sources:
+      CBBD: gameMinutes
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-DQ-06
+  source:
+    type: enum[cbbd, espn, hoopr_espn, hoopr_ncaa, torvik, kenpom, kaggle, evanmiya, markets, cv, ocr, audio, pbp_fused, manual,
+      rules, computed]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Source that produced this row (every value carries its source, R-MD-09; any source can be swapped later).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: set by the loader or pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-SR-15
+    - R-DS-10
+  source_ref:
+    type: string
+    unit: null
+    range: '''<raw sha256>#<json pointer or row number>'''
+    nullable: true
+    definition: Pointer to the raw pull or upstream rows this row came from (lineage).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: raw store manifest
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-DQ-05
+  pulled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: UTC time the raw source was pulled, or the time the row was computed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-05
+    - R-MK-25
+  transform_version:
+    type: string
+    unit: null
+    range: git commit (7-40 hex) + transform name
+    nullable: false
+    definition: Code version that produced the row.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: git
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-EN-04
+    - R-RR-01
+  model_version:
+    type: string
+    unit: null
+    range: free text, e.g. 'det-yolo11x@a1b2c3'
+    nullable: true
+    definition: Model version for model outputs; null for loaded official data.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model registry
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-EN-04
+  confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Confidence of the row's main value; official data carries 1.0.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model output or 1.0
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+  dq_flag:
+    type: enum[observed, inferred, carried, imputed, quarantined]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Data-quality flag of the row's main value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-19
+    - R-DQ-03
+  pass:
+    type: enum[blind, anchored, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Blind = produced without play-by-play; anchored = play-by-play used; none = not a vision output.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-SR-13
+    - R-SR-15
+  licence_class:
+    type: enum[model_input_allowed, reference_only, blocked, own, private]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Licence class of this row, from its source (data_sources_catalog.md); reference_only and blocked rows never
+      reach a model.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: from source
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DS-10
+    - R-RG-04
+    - R-RG-11
+  schema_version:
+    type: int16
+    unit: null
+    range: '[1, 999]'
+    nullable: false
+    definition: Version of this table's schema at write time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: schema/tables/<table>.yaml
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-EN-01
+    - R-MK-31

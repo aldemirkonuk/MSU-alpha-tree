@@ -1,0 +1,986 @@
+# Proposed schema (2026-10-18) for table state_second. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: state_second
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#state_second
+grain: 'one row per second per pass: per second of video for blind and anchored passes (time_base = video_s); per game-clock second for pbp_only (time_base = game_clock_s)'
+primary_key:
+- game_id
+- pass
+- time_base
+- t_index
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - possession_id
+  references: possessions.possession_id
+- columns:
+  - chance_id
+  references: chances.chance_id
+- columns:
+  - ft_sequence_id
+  references: free_throws.ft_sequence_id
+requirements:
+- R-SR-05
+- R-SR-09
+- R-SR-11
+- R-SR-12
+- R-SR-13
+- R-MD-05
+- R-MD-13
+- R-MD-16
+- R-MD-17
+- R-PE-01
+- R-PE-04
+- R-PE-07
+storage: Parquet, processed/<game_id>/<version>/state_second.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- 'Video-second rows summarise the 60 (or 30) state_frame rows of that second: state at the first frame plus shares over the second.'
+- pbp_only rows let the possession engine (R-PE-01, R-PE-08) use the same state vocabulary for all D-I games without video; dead-ball time is invisible there, so live shares are null.
+- Window thresholds (two-for-one, foul to extend, last shot, clutch) are proposals stored in config/invariants.yaml constants, never hard-coded (R-EN-06).
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  - pbp_only
+  definition: blind, anchored, or pbp_only (games or stretches with no video, built from PBP alone for the possession engine, R-SY-06, R-PE-08).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  - R-SY-06
+  - R-PE-08
+  nullable: false
+  proposed_global_addition: true
+- name: time_base
+  type: enum
+  values:
+  - video_s
+  - game_clock_s
+  definition: video_s (t_index = whole seconds from video start, per video_id) or game_clock_s (t_index = elapsed game seconds since tip, pbp_only).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-05
+  nullable: false
+- name: t_index
+  type: int
+  unit: s
+  range:
+  - 0
+  - null
+  definition: Second index in the chosen time base.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-05
+  nullable: false
+- name: video_id
+  type: string
+  definition: Video file for video_s rows; null for pbp_only.
+  source: video registry
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-01
+  nullable: true
+- name: video_ts_ms_start
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time of the first frame of the second; null for pbp_only.
+  source: video decode
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-08
+  nullable: true
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: clock_running_share
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share of the second with the game clock running.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-MD-05
+  nullable: true
+- name: shot_clock_status
+  type: enum
+  values:
+  - 'on'
+  - 'off'
+  - unknown
+  definition: As in state_frame, at the first frame.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  nullable: false
+- name: shot_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: As in state_frame, at the first frame; null when status off/unknown.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-PE-04
+  nullable: true
+- name: score_msu
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: MSU points at the start of the second.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: score_opp
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: Opponent points at the start of the second.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: margin
+  type: int
+  unit: points
+  range:
+  - -250
+  - 250
+  definition: score_msu - score_opp.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-MD-17
+  nullable: false
+- name: team_in_possession
+  type: enum
+  values: &id001
+  - msu
+  - opponent
+  - none
+  definition: At the start of the second.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  nullable: false
+- name: possession_id
+  type: int
+  range:
+  - 0
+  - null
+  definition: FK possessions.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-04
+  nullable: true
+- name: chance_id
+  type: int
+  range:
+  - 0
+  - null
+  definition: FK chances.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  nullable: true
+- name: chance_number
+  type: int
+  range:
+  - 1
+  - 20
+  definition: Chance number in the possession.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  nullable: true
+- name: phase
+  type: enum
+  values:
+  - half_court
+  - transition
+  - throw_in
+  - free_throw
+  - jump_ball
+  - timeout
+  - review
+  - other_dead
+  - intermission
+  definition: 'Game phase (R-SR-05): half_court, transition (R-TR-08 definition), throw_in, free_throw, jump_ball, timeout, review, other_dead, intermission.'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-TR-08
+  nullable: false
+- name: secs_since_control_change
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game-clock seconds since team_in_possession last changed (live time only).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-PE-04
+  nullable: true
+- name: possession_arrow
+  type: enum
+  values: *id001
+  definition: Arrow at the start of the second.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-12
+  nullable: false
+- name: share_msu_ball
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share of the second in state msu_ball (R-MD-05 split; the six shares sum to 1).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: share_opponent_ball
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share in opponent_ball.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: share_contested
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share in contested.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: share_in_flight
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share in in_flight.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: share_inbound_pending
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share in inbound_pending.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: share_dead
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Share in dead.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-05
+  nullable: true
+- name: ft_state
+  type: enum
+  values:
+  - none
+  - ft_pending
+  - lane_set
+  - attempt
+  - ft_result
+  - ft_live_rebound
+  definition: 'Free-throw state machine (R-SR-09): none, ft_pending (award known, lane not set), lane_set, attempt (ball at shooter''s disposal to release), ft_result (attempt ended, another follows), ft_live_rebound
+    (last attempt missed for a personal foul, ball live).'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  - R-IV-11
+  nullable: false
+- name: ft_sequence_id
+  type: string
+  definition: Current free-throw sequence (FK free_throws.ft_sequence_id).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: ft_attempt_k
+  type: int
+  range:
+  - 1
+  - 3
+  definition: Attempt number within the sequence.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: ft_attempts_n
+  type: int
+  range:
+  - 1
+  - 3
+  definition: Attempts awarded in the sequence (one-and-one counts 2, conditional).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: ft_predicted
+  type: bool
+  definition: At the most recent whistle the system predicted 'free throw coming' (from foul type, shooting act and team-foul count).
+  source: state model
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: ft_pred_prob
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Probability behind ft_predicted.
+  source: state model
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: team_fouls_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: MSU team fouls this half (OT continues the second half).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+- name: team_fouls_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: Opponent team fouls this half.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+- name: msu_bonus_state
+  type: enum
+  values: &id002
+  - none
+  - bonus
+  - double_bonus
+  definition: As in state_frame.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+- name: opp_bonus_state
+  type: enum
+  values: *id002
+  definition: As in state_frame.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+- name: fouls_to_give_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 6
+  definition: 'Fouls MSU can commit before the opponent is in the bonus: max(0, 6 - team_fouls_msu).'
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-PE-07
+  nullable: false
+- name: fouls_to_give_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 6
+  definition: max(0, 6 - team_fouls_opp).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-PE-07
+  nullable: false
+- name: timeouts_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: MSU charged timeouts left.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: timeouts_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Opponent charged timeouts left.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: media_segment_id
+  type: string
+  definition: 'Media-timeout segment: H<half>-S<k>, k = number of media timeouts already taken this half (S0 = from 20:00 to the first). Extra periods: OT<n>. Boundaries are the media timeouts actually
+    taken (first dead ball at or after 16:00, 12:00, 8:00, 4:00; Rule 5-14.10.c, A.R. 5-33).'
+  source: derived + timeouts
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-04
+  - R-MD-13
+  nullable: false
+- name: ten_min_bucket_id
+  type: string
+  definition: Analysis bucket H1-A (20:00-10:00), H1-B, H2-A, H2-B, OT<n>. NCAA men play halves; these are analysis buckets only (R-SR-03).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  nullable: false
+- name: five_min_window_id
+  type: string
+  definition: H<half>-W<1..4>, OT<n> (R-MD-13).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-13
+  nullable: false
+- name: last4_flag
+  type: bool
+  definition: Game clock <= 240 s in period >= 2.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-13
+  nullable: false
+- name: clutch_flag
+  type: bool
+  definition: <= 300 s left in period >= 2 and |margin| <= 5 (R-MD-13).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-13
+  nullable: false
+- name: two_for_one_window
+  type: bool
+  definition: Team gains or holds control with the game clock inside config window two_for_one_window_s (proposal [33, 45] s) of any period.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-PE-07
+  nullable: false
+- name: foul_to_extend_window
+  type: bool
+  definition: Trailing team on defence, period >= 2, game clock <= config foul_to_extend_clock_s (proposal 60 s), deficit within config foul_to_extend_margin (proposal 1-9).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-PE-07
+  nullable: false
+- name: last_shot_window
+  type: bool
+  definition: Team in control and the shot clock is off (game clock below a shot-clock period) or game clock <= shot clock.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-PE-07
+  nullable: false
+- name: foul_trouble_msu
+  type: list[string]
+  definition: 'MSU players in foul trouble: >= 2 personal fouls in the first half, >= 4 in the second half or extra periods (R-SR-11 proposal; config).'
+  source: derived + foul_state
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-MD-16
+  - R-PE-06
+  nullable: false
+- name: foul_trouble_opp
+  type: list[string]
+  definition: Same for opponent players.
+  source: derived + foul_state
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-11
+  - R-MD-16
+  - R-PE-06
+  nullable: false
+- name: lead_changes
+  type: int
+  unit: count
+  range:
+  - 0
+  - 100
+  definition: Lead changes so far in the game.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-17
+  nullable: false
+- name: run_msu_2min
+  type: int
+  unit: points
+  range:
+  - 0
+  - 40
+  definition: MSU points in the last 120 game-clock seconds.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-17
+  nullable: false
+- name: run_opp_2min
+  type: int
+  unit: points
+  range:
+  - 0
+  - 40
+  definition: Opponent points in the last 120 game-clock seconds.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-17
+  nullable: false
+- name: xpts_possession
+  type: float
+  unit: points
+  range:
+  - 0
+  - 6
+  definition: Expected points of the current possession (value owned by the possession_value table, R-SR-12; stamped here).
+  source: value layer
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-12
+  nullable: true
+- name: clock_src
+  type: enum
+  values: &id003
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the clock value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: clock_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the clock value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: clock_dq
+  type: enum
+  values: &id004
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the clock value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-01
+  nullable: false
+- name: possession_src
+  type: enum
+  values: *id003
+  definition: Source of the possession and phase value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-05
+  nullable: false
+- name: possession_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the possession and phase value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-05
+  nullable: false
+- name: possession_dq
+  type: enum
+  values: *id004
+  definition: Data-quality flag of the possession and phase value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-05
+  nullable: false
+- name: fouls_src
+  type: enum
+  values: *id003
+  definition: Source of the foul and bonus value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-03
+  nullable: false
+- name: fouls_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the foul and bonus value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-03
+  nullable: false
+- name: fouls_dq
+  type: enum
+  values: *id004
+  definition: Data-quality flag of the foul and bonus value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-03
+  nullable: false
+- name: ft_src
+  type: enum
+  values: *id003
+  definition: Source of the free-throw state value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-09
+  nullable: false
+- name: ft_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the free-throw state value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-09
+  nullable: false
+- name: ft_dq
+  type: enum
+  values: *id004
+  definition: Data-quality flag of the free-throw state value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-09
+  nullable: false
+- name: invariant_breaks
+  type: list[string]
+  definition: Invariant IDs broken in this second.
+  source: invariant checker
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-01..16
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

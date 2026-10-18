@@ -1,0 +1,270 @@
+# Proposed schema for table 'review_queue' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: review_queue
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Runs, errors and review
+grain: one row per flagged item waiting for human review
+primary_key:
+- item_id
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: LABEL
+  text: Human label; gold or training target, never an inference-time input (R-HR-07).
+requirements:
+- R-HR-01
+- R-HR-02
+- R-HR-03
+- R-HR-04
+columns:
+  item_id:
+    type: string
+    unit: null
+    range: '''<game_id>:rv:<n>'''
+    nullable: false
+    definition: Key.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-FD-02
+  video_id:
+    type: string
+    unit: null
+    range: 64 hex chars
+    nullable: false
+    definition: Video file ID = SHA-256 of the original file (one game can have several files; same key as video_id in the
+      state-record tables) (R-FD-09).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: hash of the Drive file
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-FD-09
+    - R-VI-09
+  center_ts_ms:
+    type: int64
+    unit: ms
+    range: '[0, 3.6e7]'
+    nullable: false
+    definition: Milliseconds from the first frame's presentation time in the original file (original PTS kept for VFR, R-VI-12).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: decoder PTS
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-MD-01
+    - R-VI-12
+  clip_window_s:
+    type: list<float32>
+    unit: s
+    range: '[-3, +3]'
+    nullable: false
+    definition: Clip window around the moment.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  trigger:
+    type: enum[low_identity_confidence, ball_lost_or_scramble, player_count_not_10, scoreboard_pbp_disagree, set_match_low_or_unmatched,
+      coverage_or_matchup_unclear, scoreboard_flag, gold_failed_case, imputation_gap]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Flag trigger (six R-HR-01 triggers + scoreboard flags, failed gold cases, imputation gaps).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-01
+    - R-DT-11
+    - R-SB-02
+  target_table:
+    type: string
+    unit: null
+    range: table name
+    nullable: false
+    definition: Table whose value is reviewed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  target_key:
+    type: string
+    unit: null
+    range: PK of the reviewed row
+    nullable: false
+    definition: Row reviewed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  model_guess:
+    type: string
+    unit: null
+    range: serialised value
+    nullable: true
+    definition: Model's guess, prefilled.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  priority:
+    type: float32
+    unit: null
+    range: '>= 0'
+    nullable: false
+    definition: Expected gain = uncertainty x downstream impact; failed gold cases first.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-03
+  status:
+    type: enum[open, labelled, skipped, expired]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Status.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-04
+  budget_week:
+    type: string
+    unit: null
+    range: ISO week
+    nullable: false
+    definition: Review-budget week.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-04

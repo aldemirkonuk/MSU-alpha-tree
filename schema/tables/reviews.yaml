@@ -1,0 +1,521 @@
+# Proposed schema (2026-10-18) for table reviews. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: reviews
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#reviews
+grain: one row per instant-replay review, coach's challenge, appeal or correctable-error / timing correction per pass
+primary_key:
+- review_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - timeout_id
+  references: timeouts.timeout_id
+- columns:
+  - pbp_event_id
+  references: events.event_id
+requirements:
+- R-SR-04
+- R-RF-07
+- R-SB-01
+- R-SB-02
+- R-MB-05
+- R-IV-05
+- R-IV-12
+storage: Parquet, processed/<game_id>/<version>/reviews.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- Broadcast replays shown during a review are flagged in state_frame.replay_flag; this table records the officials' review itself.
+- Rule 2-9.19 (new in the 2026-27 post-clinic interpretations, 15 Oct 2026) makes the scorer record coach's challenges.
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: review_id
+  type: string
+  definition: game_id + pass + review_seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  - pbp_only
+  definition: blind, anchored, or pbp_only (games or stretches with no video, built from PBP alone for the possession engine, R-SY-06, R-PE-08).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  - R-SY-06
+  - R-PE-08
+  nullable: false
+  proposed_global_addition: true
+- name: review_seq
+  type: int
+  range:
+  - 1
+  - 40
+  definition: Order in the game.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_at_stop_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock when play stopped for the review.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: video_ts_ms_start
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Review starts.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: video_ts_ms_end
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Review result signalled.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: review_kind
+  type: enum
+  values:
+  - voluntary
+  - mandatory
+  - coach_challenge
+  - appeal
+  - correctable_error
+  - timing_correction
+  definition: voluntary (Rule 11-2), mandatory (11-3), coach_challenge (11-4), appeal (11-5), correctable_error (2-12), timing_correction (5-12).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-RF-07
+  nullable: false
+- name: subject
+  type: enum
+  values:
+  - two_vs_three
+  - scoring_mistake
+  - shot_clock_release
+  - goaltending_basket_interference
+  - out_of_bounds
+  - restricted_area
+  - flagrant_severity
+  - foul_attribution
+  - game_clock_time
+  - shot_clock_time
+  - end_of_period_try
+  - end_of_period_foul
+  - ft_shooter
+  - wrong_basket
+  - fight
+  - other
+  definition: What is reviewed.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-MB-05
+  nullable: false
+- name: rule_ref
+  type: string
+  definition: Rule article allowing the review (e.g. '11-2.1.b.1').
+  source: config
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: requested_by
+  type: enum
+  values:
+  - official
+  - head_coach_msu
+  - head_coach_opp
+  - table
+  definition: Who started it.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: call_on_floor
+  type: string
+  definition: Original call in plain words.
+  source: PBP; CV/manual
+  licence: ROW
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: outcome
+  type: enum
+  values:
+  - confirmed
+  - overturned
+  - stands
+  - corrected
+  definition: confirmed, overturned, stands (no indisputable evidence, Rule 11-1.1), corrected (clock or score changed).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: challenge_number
+  type: int
+  range:
+  - 1
+  - 2
+  definition: 1 or 2 for coach's challenges (second only after a successful first, Rule 11-4.1.d).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: timeout_charged
+  type: bool
+  definition: A timeout was charged (unsuccessful challenge or appeal, Rule 11-4.1.h, 11-5.1).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+- name: timeout_id
+  type: string
+  definition: FK timeouts.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: game_clock_before_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock before the review.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-05
+  nullable: true
+- name: game_clock_after_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock after (a correction may move it up, flagged official_clock_correction).
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-05
+  nullable: true
+- name: shot_clock_before_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock before.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-07
+  nullable: true
+- name: shot_clock_after_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock after.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-07
+  nullable: true
+- name: score_delta_msu
+  type: int
+  unit: points
+  range:
+  - -3
+  - 3
+  definition: Change to MSU score from the review.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: score_delta_opp
+  type: int
+  unit: points
+  range:
+  - -3
+  - 3
+  definition: Change to the opponent score.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: possession_after
+  type: enum
+  values:
+  - msu
+  - opponent
+  - none
+  definition: Team awarded the ball after the review.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: arrow_used
+  type: bool
+  definition: Possession decided by the arrow (e.g. reversed goaltending with no team control, Rule 11-2.1.b.6.a).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-12
+  nullable: false
+- name: review_src
+  type: enum
+  values:
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the review value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: review_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the review value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: review_dq
+  type: enum
+  values:
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the review value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-04
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

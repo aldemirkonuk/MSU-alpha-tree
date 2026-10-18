@@ -1,0 +1,488 @@
+# Proposed schema (2026-10-18) for table score_events. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: score_events
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#score_events
+grain: one row per change of either team's score per pass, including official and scorer corrections as their own rows
+primary_key:
+- score_event_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - made_basket_event_id
+  references: made_basket_events.make_id
+- columns:
+  - free_throw_id
+  references: free_throws.free_throw_id
+- columns:
+  - shot_id
+  references: shots.shot_id
+- columns:
+  - pbp_event_id
+  references: events.event_id
+- columns:
+  - review_id
+  references: reviews.review_id
+requirements:
+- R-SR-02
+- R-IV-04
+- R-SB-01
+- R-SB-03
+- R-MB-01
+- R-DQ-06
+storage: Parquet, processed/<game_id>/<version>/score_events.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- Sum of delta_points per team equals the final score of the box score (R-IV-04, R-DQ-06).
+- A correction (board fixed during a timeout or review) is a row with event_kind official_correction or scorer_correction and a signed delta; the earlier wrong row is never edited.
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: score_event_id
+  type: string
+  definition: game_id + pass + seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  definition: 'Processing pass: blind uses no PBP; anchored uses PBP. The per-game diff of the two is the CV error estimate (R-SR-13).'
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  nullable: false
+  proposed_global_addition: true
+- name: seq
+  type: int
+  range:
+  - 1
+  - 400
+  definition: Order of the score change in the game for this pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time of the make (ball through the net) or of the board change for awarded points / corrections.
+  source: CV; OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  - R-SB-03
+  nullable: true
+- name: frame_index
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame of video_ts_ms.
+  source: video decode
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: team
+  type: enum
+  values:
+  - msu
+  - opponent
+  definition: Team credited with the points.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: delta_points
+  type: int
+  unit: points
+  range:
+  - -3
+  - 3
+  definition: 'Signed change: +1, +2, +3 for scores; negative only for corrections.'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  - R-IV-04
+  nullable: false
+- name: event_kind
+  type: enum
+  values:
+  - field_goal
+  - free_throw
+  - awarded_goaltending
+  - awarded_basket_interference
+  - own_basket_credit
+  - illegal_assistance_award
+  - official_correction
+  - scorer_correction
+  definition: field_goal, free_throw, awarded_goaltending, awarded_basket_interference (Rule 9-15 penalty), own_basket_credit (ball into own basket counts 2 for the opponent, Rule 5-1.4.a), illegal_assistance_award
+    (Rule 9-16.1.c), official_correction, scorer_correction.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  - R-IV-04
+  - R-MB-05
+  nullable: false
+- name: score_msu_after
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: MSU score after the event.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: score_opp_after
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: Opponent score after the event.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: false
+- name: scorer_player_id
+  type: string
+  definition: Credited player; null for own-basket credit (not credited to a player, Rule 5-1.4.a) and corrections.
+  source: PBP; CV identity in blind pass
+  licence: ROW
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: made_basket_event_id
+  type: string
+  definition: FK made_basket_events for field goals.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-01
+  nullable: true
+- name: free_throw_id
+  type: string
+  definition: FK free_throws for free throws.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-09
+  nullable: true
+- name: shot_id
+  type: string
+  definition: FK shots (dictionary_games.md).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-EV-07
+  nullable: true
+- name: review_id
+  type: string
+  definition: FK reviews when the event comes from or was changed by a review.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SB-01
+  nullable: true
+- name: seen_ocr
+  type: bool
+  definition: Board score change observed.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: seen_cv
+  type: bool
+  definition: Vision make cue present (made_basket_events).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SB-01
+  - R-MB-01
+  nullable: false
+- name: seen_pbp
+  type: bool
+  definition: PBP scoring play matched (anchored pass).
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: ocr_change_video_ts_ms
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time the board score changed.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SB-03
+  nullable: true
+- name: board_lag_s
+  type: float
+  unit: s
+  range:
+  - -5
+  - 120
+  definition: ocr_change_video_ts_ms minus make video time; the per-game distribution is the lag table (R-SB-03).
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SB-03
+  nullable: true
+- name: flag_ids
+  type: list[string]
+  definition: scoreboard_flags raised for this event.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: score_src
+  type: enum
+  values:
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the score event value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-02
+  nullable: false
+- name: score_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the score event value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-02
+  nullable: false
+- name: score_dq
+  type: enum
+  values:
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the score event value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-02
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

@@ -1,0 +1,1146 @@
+# Proposed schema for table 'games' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: games
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: one row per game (any D-I game in scope; MSU games first)
+primary_key:
+- game_id
+foreign_keys:
+- columns:
+  - venue_id
+  references: venues.venue_id
+- columns:
+  - home_team_id
+  references: teams.team_id
+- columns:
+  - away_team_id
+  references: teams.team_id
+- columns:
+  - home_head_coach_id
+  references: coaches.coach_id
+- columns:
+  - away_head_coach_id
+  references: coaches.coach_id
+- columns:
+  - primary_video_id
+  references: video_files.video_id
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: PRE_TIP
+  text: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff (R-CX-09).
+requirements:
+- R-FD-01
+- R-FD-02
+- R-MD-14
+- R-MD-18
+- R-MD-20
+- R-CX-04
+- R-CX-07
+- R-CX-15
+notes:
+- Scores, attendance and colours are POST_GAME or IN_GAME and are never pre-game features; scheduled facts are PRE_TIP.
+- 'registry/games.csv (MSU-centric: opponent, msu_score) is the current partial instance; this table is home/away-neutral
+  so it also holds every D-I game for R-SY-06.'
+- Closing lines are not stored here; read them from market_snapshots (snapshot_label = close) to keep one source of truth.
+columns:
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-FD-02
+  season:
+    type: int16
+    unit: year
+    range: '[2003, 2035]'
+    nullable: false
+    definition: Season named by its ending year (2026 = 2025-26), as ESPN and CBBD do.
+    sources:
+      CBBD: season
+      ESPN files already pulled: season.year
+      hoopR ESPN releases: season
+      hoopR NCAA engine: season
+      Torvik: year in file name
+      KenPom: Season
+      Kaggle archive: YEAR / Season
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; Kaggle archive: reference only until the archive licence is
+      checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  season_type:
+    type: enum[preseason, regular, postseason]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Season type as the source labels it (Big Ten tournament is 'regular' in ESPN; game_type fixes that).
+    sources:
+      CBBD: seasonType
+      ESPN files already pulled: season.type (2 regular, 3 postseason)
+      hoopR ESPN releases: season_type
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  game_type:
+    type: enum[exhibition, non_conference, big_ten, big_ten_tournament, ncaa_tournament, conference, conference_tournament,
+      nit, other_postseason]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Game type. The first five values are the global_metadata.yaml enum; the last four are proposed for non-MSU
+      D-I games (open question).
+    sources:
+      CBBD: gameType, conferenceGame, tournament
+      ESPN files already pulled: notes[].headline + conferenceCompetition
+      hoopR ESPN releases: conference_competition, notes_headline
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: rule on notes text
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed; computed by us: own (model input allowed; inherits the
+      strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-MD-14
+    - R-CX-15
+  tournament_name:
+    type: string
+    unit: null
+    range: free text
+    nullable: true
+    definition: Tournament or event name (e.g. 'NCAA Men's Basketball Championship', 'Big Ten Tournament').
+    sources:
+      CBBD: tournament
+      ESPN files already pulled: notes[].headline
+      hoopR ESPN releases: notes_headline
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-CX-15
+    - R-MD-14
+  tournament_round:
+    type: enum[none, first_four, r64, r32, s16, e8, f4, final, conf_r1, conf_r2, conf_qf, conf_sf, conf_final, mte_r1, mte_r2,
+      mte_final, other]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Round within the tournament ('none' outside tournaments).
+    sources:
+      CBBD: gameNotes
+      ESPN files already pulled: notes[].headline
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: parsed
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); CBBD: model input allowed; computed by us:
+      own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-CX-15
+  home_seed:
+    type: int8
+    unit: null
+    range: '[1, 16]'
+    nullable: true
+    definition: Seed of the home-listed team in a seeded tournament.
+    sources:
+      CBBD: homeSeed
+      ESPN files already pulled: competitors[].curatedRank? (unverified)
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: SEED
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); Kaggle archive:
+      reference only until the archive licence is checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-14
+    - R-CX-15
+  away_seed:
+    type: int8
+    unit: null
+    range: '[1, 16]'
+    nullable: true
+    definition: Seed of the away-listed team.
+    sources:
+      CBBD: awaySeed
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: SEED
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; Kaggle archive: reference only until the archive licence is checked (contains KenPom/Torvik-derived
+      columns)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-14
+    - R-CX-15
+  tip_scheduled_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: Scheduled tip time.
+    sources:
+      CBBD: startDate
+      ESPN files already pulled: event.date
+      hoopR ESPN releases: start_date
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: registry date_utc
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed; computed by us: own (model input allowed; inherits the
+      strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-18
+    - R-MK-25
+  tip_actual_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: true
+    definition: Actual tip time (first live ball), from the PBP wallclock of the opening jump or from video.
+    sources:
+      CBBD: plays.wallclock
+      ESPN files already pulled: plays[0].wallclock
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: video sync
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); CBBD: model input allowed; computed by us:
+      own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-MD-18
+  start_time_tbd:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Tip time not yet announced.
+    sources:
+      CBBD: startTimeTbd
+      ESPN files already pulled: none
+      hoopR ESPN releases: time_valid (inverse)
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  tip_local:
+    type: string
+    unit: null
+    range: ISO local time with offset
+    nullable: false
+    definition: Local tip time at the venue (computed from UTC and venue tz).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: zoneinfo(venue.tz)
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-18
+  home_team_id:
+    type: string
+    unit: null
+    range: ESPN team ID
+    nullable: false
+    definition: Home-listed team (also on neutral sites, as ESPN lists it).
+    sources:
+      CBBD: homeTeamId
+      ESPN files already pulled: competitors[homeAway=home].id
+      hoopR ESPN releases: home_id / home_team_id
+      hoopR NCAA engine: home_espn_team_id
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed; hoopR NCAA engine: model input allowed (hoopR release)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-MK-14
+  away_team_id:
+    type: string
+    unit: null
+    range: ESPN team ID
+    nullable: false
+    definition: Away-listed team.
+    sources:
+      CBBD: awayTeamId
+      ESPN files already pulled: competitors[homeAway=away].id
+      hoopR ESPN releases: away_id / away_team_id
+      hoopR NCAA engine: away_espn_team_id
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed; hoopR NCAA engine: model input allowed (hoopR release)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  neutral_site:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Played at a neutral site.
+    sources:
+      CBBD: neutralSite
+      ESPN files already pulled: neutralSite
+      hoopR ESPN releases: neutral_site
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-MD-14
+    - R-CX-04
+  conference_game:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Conference game (counts in conference standings).
+    sources:
+      CBBD: conferenceGame
+      ESPN files already pulled: conferenceCompetition
+      hoopR ESPN releases: conference_competition
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-14
+    - R-CX-15
+  venue_id:
+    type: string
+    unit: null
+    range: ESPN venue ID or local v- ID
+    nullable: false
+    definition: Venue (FK venues).
+    sources:
+      CBBD: venueId (CBBD id; map via venues.cbbd_venue_id)
+      ESPN files already pulled: venue.id
+      hoopR ESPN releases: venue_id
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-FD-11
+  attendance:
+    type: int32
+    unit: people
+    range: '[0, 80000]'
+    nullable: true
+    definition: Announced attendance.
+    sources:
+      CBBD: attendance
+      ESPN files already pulled: attendance
+      hoopR ESPN releases: attendance
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+    - R-CX-04
+  status:
+    type: enum[scheduled, in_progress, final, postponed, canceled]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Game status.
+    sources:
+      CBBD: status
+      ESPN files already pulled: status.type.name
+      hoopR ESPN releases: status_type_name
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  home_score:
+    type: int16
+    unit: points
+    range: '[0, 200]'
+    nullable: true
+    definition: Final home points (including overtime).
+    sources:
+      CBBD: homePoints
+      ESPN files already pulled: competitors[].score
+      hoopR ESPN releases: home_score
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+    - R-IV-04
+  away_score:
+    type: int16
+    unit: points
+    range: '[0, 200]'
+    nullable: true
+    definition: Final away points.
+    sources:
+      CBBD: awayPoints
+      ESPN files already pulled: competitors[].score
+      hoopR ESPN releases: away_score
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); CBBD: model input allowed'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+    - R-IV-04
+  home_period_points:
+    type: list<int16>
+    unit: points
+    range: each [0, 120]
+    nullable: true
+    definition: Home points per period (half 1, half 2, OT1, ...).
+    sources:
+      CBBD: homePeriodPoints
+      ESPN files already pulled: competitors[].linescores[].value
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: HalfScoring.H1_PF/H2_PF (team level)
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02); Kaggle archive:
+      reference only until the archive licence is checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+  away_period_points:
+    type: list<int16>
+    unit: points
+    range: each [0, 120]
+    nullable: true
+    definition: Away points per period.
+    sources:
+      CBBD: awayPeriodPoints
+      ESPN files already pulled: competitors[].linescores[].value
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed; ESPN files already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+  overtime_periods:
+    type: int8
+    unit: null
+    range: '[0, 7]'
+    nullable: true
+    definition: Number of overtime periods played.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: len(period_points) - 2
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - R-FD-01
+    - R-DQ-06
+  home_head_coach_id:
+    type: string
+    unit: null
+    range: coach_id
+    nullable: true
+    definition: Home head coach (FK coaches).
+    sources:
+      CBBD: none
+      ESPN files already pulled: summary header coaches (unverified)
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: REF _ Current NCAAM Coaches (current only)
+      EvanMiya exports: none
+      manual (Aldemir): school site
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); Kaggle archive: reference only until the archive
+      licence is checked (contains KenPom/Torvik-derived columns); manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-CC-01
+  away_head_coach_id:
+    type: string
+    unit: null
+    range: coach_id
+    nullable: true
+    definition: Away head coach (FK coaches).
+    sources:
+      CBBD: none
+      ESPN files already pulled: summary header coaches (unverified)
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): school site
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); manual (Aldemir): private (Aldemir''s input;
+      R-RG-06)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-CC-01
+  broadcast_network:
+    type: string
+    unit: null
+    range: e.g. CBS, TNT, BTN, FOX, FS1, ESPN, ESPN2, Peacock, B1G+
+    nullable: true
+    definition: Primary TV network.
+    sources:
+      CBBD: games/media broadcasts[].broadcastName
+      ESPN files already pulled: broadcasts[].media.shortName
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: registry broadcast
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); CBBD: model input allowed; computed by us:
+      own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-MD-20
+  graphics_package_id:
+    type: string
+    unit: null
+    range: scorebug template ID
+    nullable: true
+    definition: Broadcast graphics package (scorebug template) used for OCR.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: assigned at intake
+      manual (Aldemir): confirmed by Aldemir
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs); manual (Aldemir): private
+      (Aldemir''s input; R-RG-06)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-MD-20
+    - R-VI-11
+  broadcast_crew:
+    type: list<string>
+    unit: null
+    range: names
+    nullable: true
+    definition: Play-by-play and analyst names (public broadcast credits).
+    sources:
+      CBBD: none
+      ESPN files already pulled: broadcasts (names not always present)
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): broadcast
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06); ESPN files already pulled: reference only (ESPN direct;
+      R-DS-02)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  home_jersey_colour:
+    type: string
+    unit: null
+    range: 'hex #RRGGBB + name'
+    nullable: true
+    definition: Jersey colour worn by the home team in this game (from video).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: video colour clustering
+      manual (Aldemir): confirmed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs); manual (Aldemir): private
+      (Aldemir''s input; R-RG-06)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-FD-01
+    - R-CX-07
+    - R-DT-03
+  away_jersey_colour:
+    type: string
+    unit: null
+    range: 'hex #RRGGBB + name'
+    nullable: true
+    definition: Jersey colour worn by the away team.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: video colour clustering
+      manual (Aldemir): confirmed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs); manual (Aldemir): private
+      (Aldemir''s input; R-RG-06)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-FD-01
+    - R-CX-07
+  jersey_contrast_de:
+    type: float32
+    unit: CIEDE2000
+    range: '[0, 100]'
+    nullable: true
+    definition: Colour contrast between the two jerseys (CIEDE2000 distance).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-CX-07
+  pbp_available:
+    type: enum[none, espn, cbbd, ncaa, multiple]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Which play-by-play feeds exist for the game.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader check
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-SY-06
+  shot_coords_available:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Shot coordinates exist in at least one source.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader check (ESPN coordinate x/y, CBBD shotInfo.location, NCAA shot_x/shot_y)
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-SY-07
+  primary_video_id:
+    type: string
+    unit: null
+    range: 64 hex
+    nullable: true
+    definition: Best footage file for this game (FK video_files).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: video_files
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-FD-09
+  footage_quality_score:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: true
+    definition: Share of usable possessions in the primary footage (R-VI-06).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: video intake
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+    - R-VI-06
+  opening_arrow_team_id:
+    type: string
+    unit: null
+    range: ESPN team ID
+    nullable: true
+    definition: Team the possession arrow first points to (team that did not gain control of the opening tip).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: jump_balls
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'IN_GAME: Known at in-game instant t (video_ts_ms / game clock); live models may use it from t on; pre-game models
+      only as aggregates of earlier games.'
+    requirements:
+    - R-EV-14
+    - R-MD-12
+  excitement_cbbd:
+    type: float32
+    unit: null
+    range: '[0, 10] (unverified scale)'
+    nullable: true
+    definition: CBBD game excitement index (post-game).
+    sources:
+      CBBD: excitement
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'CBBD: model input allowed'
+    as_of: 'POST_GAME: Known only after the final horn; a feature only for games that tip after this game ended (R-FD-07).'
+    requirements:
+    - new-FD-1
+  notes:
+    type: string
+    unit: null
+    range: free text
+    nullable: true
+    definition: Source notes (e.g. tournament headline).
+    sources:
+      CBBD: gameNotes
+      ESPN files already pulled: notes[].headline
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: registry notes
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); CBBD: model input allowed; computed by us:
+      own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'PRE_TIP: Known before tip (schedule, venue, assignment); usable pre-game once its known_at_utc is before the cutoff
+      (R-CX-09).'
+    requirements:
+    - R-FD-01
+  registry_written_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: When this registry row was first written (must precede any video processing, R-FD-01).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-FD-01
+    - R-FD-10
+  source:
+    type: enum[cbbd, espn, hoopr_espn, hoopr_ncaa, torvik, kenpom, kaggle, evanmiya, markets, cv, ocr, audio, pbp_fused, manual,
+      rules, computed]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Source that produced this row (every value carries its source, R-MD-09; any source can be swapped later).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: set by the loader or pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-SR-15
+    - R-DS-10
+  source_ref:
+    type: string
+    unit: null
+    range: '''<raw sha256>#<json pointer or row number>'''
+    nullable: true
+    definition: Pointer to the raw pull or upstream rows this row came from (lineage).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: raw store manifest
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-DQ-05
+  pulled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: UTC time the raw source was pulled, or the time the row was computed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-05
+    - R-MK-25
+  transform_version:
+    type: string
+    unit: null
+    range: git commit (7-40 hex) + transform name
+    nullable: false
+    definition: Code version that produced the row.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: git
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-EN-04
+    - R-RR-01
+  model_version:
+    type: string
+    unit: null
+    range: free text, e.g. 'det-yolo11x@a1b2c3'
+    nullable: true
+    definition: Model version for model outputs; null for loaded official data.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model registry
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-EN-04
+  confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Confidence of the row's main value; official data carries 1.0.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model output or 1.0
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+  dq_flag:
+    type: enum[observed, inferred, carried, imputed, quarantined]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Data-quality flag of the row's main value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-19
+    - R-DQ-03
+  pass:
+    type: enum[blind, anchored, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Blind = produced without play-by-play; anchored = play-by-play used; none = not a vision output.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-SR-13
+    - R-SR-15
+  licence_class:
+    type: enum[model_input_allowed, reference_only, blocked, own, private]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Licence class of this row, from its source (data_sources_catalog.md); reference_only and blocked rows never
+      reach a model.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: from source
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DS-10
+    - R-RG-04
+    - R-RG-11
+  schema_version:
+    type: int16
+    unit: null
+    range: '[1, 999]'
+    nullable: false
+    definition: Version of this table's schema at write time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: schema/tables/<table>.yaml
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-EN-01
+    - R-MK-31

@@ -1,0 +1,1433 @@
+# Proposed schema (2026-10-18) for table state_frame. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: state_frame
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#state_frame
+grain: one row per decoded video frame per pass (blind, anchored) of a game video
+primary_key:
+- game_id
+- video_id
+- frame_index
+- pass
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - video_id
+  - frame_index
+  references: frames.(video_id, frame_index)
+- columns:
+  - possession_id
+  references: possessions.possession_id
+- columns:
+  - chance_id
+  references: chances.chance_id
+- columns:
+  - last_score_event_id
+  references: score_events.score_event_id
+requirements:
+- R-SR-01
+- R-SR-02
+- R-SR-03
+- R-SR-04
+- R-SR-05
+- R-SR-06
+- R-SR-10
+- R-SR-13
+- R-SR-15
+- R-MD-01
+- R-MD-02
+- R-MD-04
+- R-MD-07
+- R-MD-08
+- R-MD-12
+- R-MD-19
+- R-IV-01..16
+storage: Parquet, processed/<game_id>/<version>/state_frame.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- Carries every field of schema/global_metadata.yaml under its exact name (R-MD-01); fields that cannot exist hold an explicit status (shot_clock_status = off), never a silent null.
+- 'Field-level provenance: each state group has <group>_src, <group>_conf, <group>_dq companions. When one field of a group has a different source (e.g. game clock interpolated while score is read), the
+  group companions describe the weakest field and the field-specific flag (clock_inferred, ball_inferred) says which.'
+- Replay frames (replay_flag = true) keep the last live state, dq = carried; no state change is ever taken from a replay frame (Principle 7, R-VI-04).
+- 'Storage: Parquet under processed/<game_id>/<version>/ (R-EN-07), outside the repo; ~430k frames per pass for a 2-hour 60 fps video.'
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: season
+  type: string
+  definition: Season label as in the registry (e.g. '2026-27').
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: game_type
+  type: enum
+  values:
+  - exhibition
+  - non_conference
+  - big_ten
+  - big_ten_tournament
+  - ncaa_tournament
+  definition: As in global metadata.
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  - R-MD-14
+  global_metadata: true
+  nullable: false
+- name: video_id
+  type: string
+  definition: ID of the video file (one game can have several files); FK to the video files / frames tables in dictionary_games.md.
+  source: video registry
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-VI-01
+  - R-MD-01
+  nullable: false
+  proposed_global_addition: true
+- name: frame_index
+  type: int
+  range:
+  - 0
+  - null
+  definition: 0-based decoded frame number within video_id.
+  source: video decode
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Presentation time of the frame from the start of the video file.
+  source: video decode (frames table)
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-01
+  - R-MD-08
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  definition: 'Processing pass: blind uses no PBP; anchored uses PBP. The per-game diff of the two is the CV error estimate (R-SR-13).'
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  nullable: false
+  proposed_global_addition: true
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: clock_running
+  type: bool
+  definition: Game clock is running in this frame (from successive readings; Rule 5-10 start and 5-11 stop events).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  - R-IV-06
+  nullable: false
+- name: clock_inferred
+  type: bool
+  definition: Game clock not read in this frame (scorebug hidden, replay, ad break); value interpolated from the last reading.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  nullable: false
+- name: shot_clock_status
+  type: enum
+  values:
+  - 'on'
+  - 'off'
+  - unknown
+  definition: on = shot clock running or stopped with a value; off = turned off because the game clock shows less than a shot-clock period (Rule 2-11.2) or between periods; unknown = not readable and not
+    inferable.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-MD-01
+  - R-IV-07
+  nullable: false
+  proposed_global_addition: true
+- name: shot_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock value. Null only when shot_clock_status is off or unknown (status carries the explicit value, R-MD-01). Tenths optional under 5 s (Rule 1-19.2).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-07
+  - R-MD-06
+  global_metadata: true
+  nullable: true
+- name: live_ball
+  type: bool
+  definition: Ball is live (Rule 6-1) vs dead (Rule 6-5). Live from the toss leaving the official's hand / disposal of the thrower-in or free-thrower.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-MD-05
+  nullable: false
+- name: period_src
+  type: enum
+  values: &id001
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the period value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: period_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the period value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: period_dq
+  type: enum
+  values: &id002
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the period value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-01
+  nullable: false
+- name: game_clock_src
+  type: enum
+  values: *id001
+  definition: Source of the game clock value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: game_clock_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the game clock value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: game_clock_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the game clock value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-01
+  nullable: false
+- name: shot_clock_src
+  type: enum
+  values: *id001
+  definition: Source of the shot clock value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: shot_clock_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the shot clock value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: shot_clock_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the shot clock value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-01
+  nullable: false
+- name: live_ball_src
+  type: enum
+  values: *id001
+  definition: Source of the live/dead value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: live_ball_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the live/dead value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-01
+  nullable: false
+- name: live_ball_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the live/dead value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-01
+  nullable: false
+- name: score_msu
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: MSU points.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  - R-IV-04
+  global_metadata: true
+  nullable: false
+- name: score_opp
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: Opponent points.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  - R-IV-04
+  global_metadata: true
+  nullable: false
+- name: margin
+  type: int
+  unit: points
+  range:
+  - -250
+  - 250
+  definition: score_msu - score_opp.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  - R-MD-17
+  global_metadata: true
+  nullable: false
+- name: last_score_event_id
+  type: string
+  definition: Most recent score_events row at or before this frame.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: score_src
+  type: enum
+  values: *id001
+  definition: Source of the score value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-02
+  nullable: false
+- name: score_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the score value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-02
+  nullable: false
+- name: score_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the score value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-02
+  nullable: false
+- name: team_fouls_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: MSU team fouls in the current half (personal incl. player-control + Class A technicals, Rule 8-2.3). Extra periods continue the second-half count (Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-MD-07
+  - R-IV-09
+  global_metadata: true
+  nullable: false
+- name: team_fouls_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: Opponent team fouls, same definition.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-MD-07
+  - R-IV-09
+  global_metadata: true
+  nullable: false
+- name: bonus_state
+  type: enum
+  values: &id003
+  - none
+  - bonus
+  - double_bonus
+  definition: 'Global field kept as defined. Proposed reading (dated note): the bonus that a common foul by the defending team would award now, i.e. from the side of team_in_possession; none when no team
+    control. Team-specific values are in msu_bonus_state / opp_bonus_state.'
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-MD-07
+  global_metadata: true
+  nullable: false
+- name: msu_bonus_state
+  type: enum
+  values: *id003
+  definition: 'MSU shoots bonus free throws: bonus when team_fouls_opp >= 7, double_bonus when >= 10 (Rule 8-2.1, 8-2.2).'
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+  proposed_global_addition: true
+- name: opp_bonus_state
+  type: enum
+  values: *id003
+  definition: 'Opponent shoots bonus free throws: from team_fouls_msu with the same thresholds.'
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-03
+  - R-SR-11
+  nullable: false
+  proposed_global_addition: true
+- name: fouls_src
+  type: enum
+  values: *id001
+  definition: Source of the team-foul and bonus value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-03
+  nullable: false
+- name: fouls_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the team-foul and bonus value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-03
+  nullable: false
+- name: fouls_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the team-foul and bonus value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-03
+  nullable: false
+- name: timeouts_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: MSU charged timeouts left, all lengths together (global field).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  - R-MD-07
+  global_metadata: true
+  nullable: false
+- name: timeouts_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Opponent charged timeouts left, all lengths.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  - R-MD-07
+  global_metadata: true
+  nullable: false
+- name: to30_left_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: 'MSU 30-second timeouts left (media format: 3 per game, max 2 carried into the second half, +1 per extra period; Rule 5-14.10).'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: to60_left_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 1
+  definition: 'MSU 60-second timeouts left (media format: 1 per game; Rule 5-14.10.b).'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: to75_left_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: 'MSU 75-second timeouts left (non-media formats: 4 per game, +1 per extra period; Rule 5-14.8, 5-14.9).'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: to30_left_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Opponent 30-second timeouts left.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: to60_left_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 1
+  definition: Opponent 60-second timeouts left.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: to75_left_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Opponent 75-second timeouts left.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+  proposed_global_addition: true
+- name: challenge_available_msu
+  type: bool
+  definition: MSU head coach may still use a coach's challenge (one per game; a second only after an overturned first; needs a legal timeout; Rule 11-4.1.d-e).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+  proposed_global_addition: true
+- name: challenge_available_opp
+  type: bool
+  definition: Same for the opponent.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+  proposed_global_addition: true
+- name: stoppage_kind
+  type: enum
+  values:
+  - none
+  - team_timeout
+  - media_timeout
+  - review
+  - injury
+  - intermission
+  - other_dead
+  definition: What the current dead ball is, if any.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-SR-05
+  nullable: false
+- name: timeouts_src
+  type: enum
+  values: *id001
+  definition: Source of the timeout, challenge and stoppage value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: timeouts_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the timeout, challenge and stoppage value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: timeouts_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the timeout, challenge and stoppage value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-04
+  nullable: false
+- name: team_in_possession
+  type: enum
+  values: &id004
+  - msu
+  - opponent
+  - none
+  definition: Team with team control (Rule 4-9.2), or none (jump ball, try in flight, rebound tap, dead ball; Rule 4-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-04
+  global_metadata: true
+  nullable: false
+- name: possession_id
+  type: int
+  range:
+  - 0
+  - null
+  definition: Our possession (ends only when the other team gains control); FK possessions.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-04
+  global_metadata: true
+  nullable: true
+- name: chance_id
+  type: int
+  range:
+  - 0
+  - null
+  definition: Chance inside the possession (an offensive rebound starts a new chance); FK chances.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-04
+  global_metadata: true
+  nullable: true
+- name: chance_number
+  type: int
+  range:
+  - 1
+  - 20
+  definition: 1 for the first chance of a possession, 2 after the first offensive rebound, ...
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-SY-05
+  global_metadata: true
+  nullable: true
+- name: possession_arrow
+  type: enum
+  values: *id004
+  definition: Team the alternating-possession arrow favours; none before the opening tip is controlled (Rule 6-3.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-05
+  - R-MD-12
+  nullable: false
+  proposed_global_addition: true
+- name: possession_src
+  type: enum
+  values: *id001
+  definition: Source of the possession, chance and arrow value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-05
+  nullable: false
+- name: possession_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the possession, chance and arrow value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-05
+  nullable: false
+- name: possession_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the possession, chance and arrow value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-05
+  nullable: false
+- name: ball_control_state
+  type: enum
+  values:
+  - msu_ball
+  - opponent_ball
+  - contested
+  - in_flight
+  - inbound_pending
+  - dead
+  definition: Global six-state label.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-06
+  - R-MD-02
+  global_metadata: true
+  nullable: false
+- name: ball_handler_player_id
+  type: string
+  definition: Roster ID of the player in control (Rule 4-9.1); null when no player control.
+  source: CV; PBP for anchored identity
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-06
+  - R-BL-02
+  nullable: true
+- name: ball_x_m
+  type: float
+  unit: m
+  range:
+  - -8.62
+  - 8.62
+  definition: 'Ball x in the attacked-rim frame (src/msu_alpha/geometry.py: origin on the floor under the centre of the attacked rim; x across the court).'
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  - R-BL-01
+  nullable: true
+- name: ball_y_m
+  type: float
+  unit: m
+  range:
+  - -2.6
+  - 28.05
+  definition: Ball y in the attacked-rim frame (toward half court positive).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  - R-BL-01
+  nullable: true
+- name: ball_z_m
+  type: float
+  unit: m
+  range:
+  - 0
+  - 15
+  definition: Ball centre height above the floor.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  nullable: true
+- name: ball_r_m
+  type: float
+  unit: m
+  range:
+  - 0
+  - 30
+  definition: Distance of the ball's floor projection from the attacked rim centre.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  nullable: true
+- name: ball_theta_deg
+  type: float
+  unit: degrees
+  range:
+  - 0
+  - 360
+  definition: Angle from the right baseline at the rim centre (vocabulary_map.yaml).
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  nullable: true
+- name: ball_visible
+  type: bool
+  definition: Ball detected in this frame.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  nullable: false
+- name: ball_inferred
+  type: bool
+  definition: Ball position is last-known or interpolated (not visible).
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  nullable: false
+- name: try_in_flight
+  type: bool
+  definition: A try for goal is in flight (released, not yet ended; Rule 5-1.12).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-06
+  - R-IV-07
+  nullable: false
+- name: ring_contact_this_try
+  type: enum
+  values:
+  - 'yes'
+  - 'no'
+  - unknown
+  - none
+  definition: 'For the current or just-ended try: did it touch the ring or flange (needed for 20 s reset, Rule 2-11.6.d.1).'
+  source: CV; inferred from shot-clock reset
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-06
+  - R-MB-07
+  - R-IV-07
+  nullable: false
+- name: inbound_side
+  type: enum
+  values:
+  - sideline
+  - baseline
+  - none
+  definition: Side of a pending throw-in.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-03
+  - R-SR-08
+  global_metadata: true
+  nullable: false
+- name: basket_attacked
+  type: enum
+  values:
+  - north
+  - south
+  definition: Basket attacked by team_in_possession in court-fixed terms.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: players_on_floor
+  type: list[string]
+  definition: 'The 10 roster IDs on court: positions 0-4 MSU, 5-9 opponent, each sorted by roster ID.'
+  source: PBP substitutions + CV identity
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-07
+  - R-SY-03
+  - R-IV-01
+  global_metadata: true
+  nullable: false
+- name: ball_src
+  type: enum
+  values: *id001
+  definition: Source of the ball state and position value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-06
+  nullable: false
+- name: ball_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the ball state and position value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-06
+  nullable: false
+- name: ball_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the ball state and position value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-06
+  nullable: false
+- name: players_src
+  type: enum
+  values: *id001
+  definition: Source of the players-on-floor value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-07
+  nullable: false
+- name: players_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the players-on-floor value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-07
+  nullable: false
+- name: players_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the players-on-floor value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-07
+  nullable: false
+- name: camera_shot_type
+  type: enum
+  values:
+  - main_wide
+  - close_up
+  - replay
+  - slow_motion
+  - crowd
+  - bench
+  - studio
+  - commercial
+  - graphic
+  definition: 'Global enum. Mapping of R-SR-10 words: tight -> close_up; ad break -> commercial; bench or crowd -> bench / crowd. reverse_angle proposed as an added value (dated note).'
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  - R-VI-03
+  global_metadata: true
+  nullable: false
+- name: reverse_angle
+  type: bool
+  definition: Live shot from a non-main camera angle (R-SR-10 'reverse angle').
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  nullable: false
+  proposed_global_addition: true
+- name: replay_flag
+  type: bool
+  definition: Frame belongs to a broadcast replay or slow-motion segment.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  - R-VI-04
+  nullable: false
+- name: court_visible_frac
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Fraction of the court floor area in view.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  - R-VI-05
+  nullable: false
+- name: court_mapping_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the image-to-court homography.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  nullable: false
+- name: scorebug_visible
+  type: bool
+  definition: Broadcast scorebug detected.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-10
+  - R-SY-01
+  nullable: false
+- name: coverage_score
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Global coverage score (R-VI-05 formula).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-VI-05
+  - R-MD-11
+  global_metadata: true
+  nullable: false
+- name: defense_scheme_state
+  type: string
+  definition: Global field, label from the defense taxonomy; owned by the defense layer, stamped here.
+  source: DF layer
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: true
+- name: defense_scheme_confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Global field.
+  source: DF layer
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: true
+- name: broadcast_src
+  type: enum
+  values: *id001
+  definition: Source of the broadcast-state value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-10
+  nullable: false
+- name: broadcast_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the broadcast-state value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-10
+  nullable: false
+- name: broadcast_dq
+  type: enum
+  values: *id002
+  definition: Data-quality flag of the broadcast-state value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-10
+  nullable: false
+- name: invariant_breaks
+  type: list[string]
+  definition: IDs from config/invariants.yaml broken at this frame (empty list when none).
+  source: invariant checker
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-01..16
+  - R-HR-01
+  nullable: false
+- name: flag_ids
+  type: list[string]
+  definition: scoreboard_flags rows raised at this frame.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SB-01
+  nullable: false
+- name: correction_ids
+  type: list[string]
+  definition: state_corrections rows that change a value of this frame (raw values stay as written).
+  source: review
+  licence: computed_by_us
+  as_of: post_review
+  requirements:
+  - R-SR-15
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

@@ -11,3 +11,4 @@
 | 2026-10-18T01:39Z | planner | 002 | paused | build freeze: requirements first (Aldemir) |
 | 2026-10-18T05:02Z | runner | prompt-002 | done | research jobs A, B1, C, D, E pushed; B2 code not started; ESPN-terms flag on Job D numbers |
 | 2026-10-18T13:14Z | runner | b2-foundation | done | markets package, config (all sources disabled), 105 tests passing; no live calls |
+| 2026-10-18T19:51Z | runner | prompt-003 | done | W1, W2, W3 + ontology coverage; 2 games downloaded and audited; specs committed, data private |

@@ -1,6 +1,6 @@
 game_id,season,season_type,date_utc,site,venue,city,opponent,opponent_id,msu_score,opp_score,result,attendance,broadcast,notes,status,footage_source,footage_path
-401856571,2026,postseason,2026-03-28T01:55Z,neutral,Capital One Arena,Washington,UConn Huskies,41,63,67,L,19445,CBS,NCAA Men's Basketball Championship - East Region - Sweet 16,STATUS_FINAL,,
-401856531,2026,postseason,2026-03-21T18:45Z,neutral,KeyBank Center,Buffalo,Louisville Cardinals,97,77,69,W,17499,CBS,NCAA Men's Basketball Championship - East Region - 2nd Round,STATUS_FINAL,,
+401856571,2026,postseason,2026-03-28T01:55Z,neutral,Capital One Arena,Washington,UConn Huskies,41,63,67,L,19445,CBS,NCAA Men's Basketball Championship - East Region - Sweet 16,STATUS_FINAL,youtube:March Madness:Vm0FqeGo-8g,MyDrive/MSU-Alpha-3/raw_video/2025-26/2026-03-27_uconn_youtube.webm
+401856531,2026,postseason,2026-03-21T18:45Z,neutral,KeyBank Center,Buffalo,Louisville Cardinals,97,77,69,W,17499,CBS,NCAA Men's Basketball Championship - East Region - 2nd Round,STATUS_FINAL,youtube:March Madness:Ze8frxZxNyk,MyDrive/MSU-Alpha-3/raw_video/2025-26/2026-03-21_louisville_youtube.webm
 401856483,2026,postseason,2026-03-19T20:27Z,neutral,KeyBank Center,Buffalo,North Dakota State Bison,2449,92,67,W,17182,TNT,NCAA Men's Basketball Championship - East Region - 1st Round,STATUS_FINAL,,
 401851383,2026,regular,2026-03-14T01:00Z,neutral,United Center,Chicago,UCLA Bruins,26,84,88,L,18238,BTN,Big Ten Tournament - Quarterfinal,STATUS_FINAL,,
 401825568,2026,regular,2026-03-08T20:30Z,away,Crisler Center,Ann Arbor,Michigan Wolverines,130,80,90,L,12707,CBS,,STATUS_FINAL,,

@@ -1,0 +1,432 @@
+# Proposed schema for table 'id_crosswalk' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: id_crosswalk
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: one row per entity x source x valid period
+primary_key:
+- entity_type
+- source
+- source_key
+- valid_from
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: STATIC
+  text: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from <=
+    T.
+requirements:
+- R-DS-05
+- R-MK-18
+- new-DS-1
+notes:
+- Same structure as markets TeamXwalkEntry and SourceEventMapEntry (src/msu_alpha/markets/models.py), generalised to players,
+  venues, officials and coaches.
+- 'new-DS-1 (proposed): player-level crosswalk ESPN <-> CBBD <-> NCAA <-> Torvik/KenPom names; R-DS-05 names only game and
+  team IDs.'
+columns:
+  entity_type:
+    type: enum[game, team, player, venue, official, coach]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Kind of entity mapped.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: crosswalk
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-DS-05
+    - new-DS-1
+  espn_id:
+    type: string
+    unit: null
+    range: ESPN ID or local x-/v-/o-/c- ID
+    nullable: false
+    definition: Our ID (ESPN where it exists).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: mbb_team_crosswalk.espn_team_id / mbb_player_crosswalk.espn_athlete_id / mbb_schedule_crosswalk.espn_game_id
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-DS-05
+    - R-FD-02
+  source:
+    type: enum[cbbd, torvik, kenpom, kaggle, evanmiya, ncaa, fox, yahoo, oddsapi, kalshi, polymarket, sbro, school_site]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Other source.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: crosswalk
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-DS-05
+    - R-MK-18
+  source_key:
+    type: string
+    unit: null
+    range: source's ID or exact name string
+    nullable: false
+    definition: The source's ID or name exactly as received (e.g. Torvik 'Michigan St.').
+    sources:
+      CBBD: id
+      ESPN files already pulled: none
+      hoopR ESPN releases: bart_team / kp_team / fox_team_id / yahoo_team_id / bart_muid / kp_game_id
+      hoopR NCAA engine: ncaa_team_id / contest_id / player_id
+      Torvik: none
+      KenPom: none
+      Kaggle archive: TEAM NO / TEAM ID / TeamName
+      EvanMiya exports: team / name / p_id_string_*
+    licence: 'hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel); CBBD: model input allowed;
+      hoopR NCAA engine: model input allowed (hoopR release); Kaggle archive: reference only until the archive licence is
+      checked (contains KenPom/Torvik-derived columns); EvanMiya exports: reference only (EvanMiya terms: no redistribution;
+      R-DS-10)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-DS-05
+  source_name:
+    type: string
+    unit: null
+    range: free text
+    nullable: true
+    definition: Display name in the source.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: espn_display_name / bart_team / kp_team
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-DS-05
+  valid_from:
+    type: date
+    unit: null
+    range: date
+    nullable: false
+    definition: First date valid.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: versioning
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-MK-18
+    - R-FD-10
+  valid_to:
+    type: date
+    unit: null
+    range: date
+    nullable: true
+    definition: Last date valid.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: versioning
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-MK-18
+  method:
+    type: enum[exact_id, exact_name, manual, fuzzy_reviewed, hoopr_crosswalk]
+    unit: null
+    range: enum
+    nullable: false
+    definition: How the mapping was made; fuzzy matches never auto-accept State vs non-State or ambiguous St. names.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: match_method
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: matcher
+    licence: 'hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel); computed by us: own (model
+      input allowed; inherits the strictest class of its inputs)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-MK-18
+  match_confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Match confidence.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: match_confidence / bart_match_confidence / kp_match_confidence
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+    licence: 'hoopR ESPN releases: model input allowed (hoopR release; R-DS-02 allowed channel)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-MK-18
+  reviewed_by:
+    type: string
+    unit: null
+    range: name
+    nullable: true
+    definition: Who reviewed a non-exact match.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'STATIC: Entity attribute versioned by valid_from/valid_to; a model for a game at tip T uses the version with valid_from
+      <= T.'
+    requirements:
+    - R-MK-18
+  source_ref:
+    type: string
+    unit: null
+    range: '''<raw sha256>#<json pointer or row number>'''
+    nullable: true
+    definition: Pointer to the raw pull or upstream rows this row came from (lineage).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: raw store manifest
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-DQ-05
+  pulled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: UTC time the raw source was pulled, or the time the row was computed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-05
+    - R-MK-25
+  transform_version:
+    type: string
+    unit: null
+    range: git commit (7-40 hex) + transform name
+    nullable: false
+    definition: Code version that produced the row.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: git
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-EN-04
+    - R-RR-01
+  model_version:
+    type: string
+    unit: null
+    range: free text, e.g. 'det-yolo11x@a1b2c3'
+    nullable: true
+    definition: Model version for model outputs; null for loaded official data.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model registry
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-EN-04
+  confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Confidence of the row's main value; official data carries 1.0.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model output or 1.0
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+  dq_flag:
+    type: enum[observed, inferred, carried, imputed, quarantined]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Data-quality flag of the row's main value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-19
+    - R-DQ-03
+  pass:
+    type: enum[blind, anchored, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Blind = produced without play-by-play; anchored = play-by-play used; none = not a vision output.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-SR-13
+    - R-SR-15
+  licence_class:
+    type: enum[model_input_allowed, reference_only, blocked, own, private]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Licence class of this row, from its source (data_sources_catalog.md); reference_only and blocked rows never
+      reach a model.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: from source
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DS-10
+    - R-RG-04
+    - R-RG-11
+  schema_version:
+    type: int16
+    unit: null
+    range: '[1, 999]'
+    nullable: false
+    definition: Version of this table's schema at write time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: schema/tables/<table>.yaml
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-EN-01
+    - R-MK-31

@@ -1,0 +1,477 @@
+# Proposed schema for table 'ratings_snapshots' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: ratings_snapshots
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Registry and reference
+grain: one row per entity x rating system x metric x as-of date (long format)
+primary_key:
+- entity_type
+- entity_id
+- system
+- metric_code
+- as_of_date
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: DAY_BEFORE
+  text: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot, flagged with its
+    date.
+requirements:
+- R-FD-06
+- R-DS-04
+- R-OS-01
+- R-PR-03
+- R-PC-13
+notes:
+- Long format so any system or metric can be added without a schema change.
+- Kaggle archive and EvanMiya export rows are reference only; KenPom rows wait for the API (R-DS-14).
+columns:
+  entity_type:
+    type: enum[team, player, lineup, conference]
+    unit: null
+    range: enum
+    nullable: false
+    definition: What is rated.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-06
+    - R-DS-04
+  entity_id:
+    type: string
+    unit: null
+    range: ESPN team/player ID, lineup_key, or conference ID
+    nullable: false
+    definition: Rated entity in our IDs (via id_crosswalk).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: id_crosswalk
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-DS-05
+  season:
+    type: int16
+    unit: year
+    range: '[2003, 2035]'
+    nullable: false
+    definition: Season named by its ending year (2026 = 2025-26), as ESPN and CBBD do.
+    sources:
+      CBBD: season
+      ESPN files already pulled: season.year
+      hoopR ESPN releases: season
+      hoopR NCAA engine: season
+      Torvik: year in file name
+      KenPom: Season
+      Kaggle archive: YEAR / Season
+      EvanMiya exports: none
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; Kaggle archive: reference only until the archive licence is
+      checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-01
+  system:
+    type: enum[kenpom, torvik, cbbd_adjusted, cbbd_srs, cbbd_elo, evanmiya, espn_bpi, net, ap_poll, kaggle_538, kaggle_rppf,
+      kaggle_teamrankings, haslametrics]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Rating system.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-06
+    - R-DS-09
+  metric_code:
+    type: enum[adj_o, adj_d, adj_em, adj_t, raw_o, raw_d, raw_t, barthag, sos, ncsos, wab, luck, elo, srs, net_rating, bpr,
+      obpr, dbpr, bpi, bpi_o, bpi_d, net_rank, ap_rank, ap_points, tempo, poss_length_off_s, poss_length_def_s, continuity,
+      effective_height_cm, experience_years, talent, porpag, dporpag, preseason_adj_em]
+    unit: null
+    range: enum
+    nullable: false
+    definition: 'Metric. Source columns: KenPom AdjOE/AdjDE/AdjEM/AdjTempo (KG ''INT _ KenPom _ Summary'': AdjOE, AdjDE, AdjEM,
+      AdjTempo; ''KenPom Barttorvik'': KADJ O, KADJ D, KADJ EM, KADJ T); Torvik adjoe/adjde/barthag/adjt/WAB (2026_team_results.csv;
+      KG BADJ O/BADJ D/BADJ EM/BARTHAG/BADJ T/WAB/TALENT/EXP/EFF HGT); CBBD ratings/adjusted offensiveRating/defensiveRating/netRating,
+      ratings/srs rating, ratings/elo elo, games homeTeamEloStart; EvanMiya obpr/dbpr/bpr (EvanMiya_Teams/Players), O RATE/D
+      RATE (KG EvanMiya.csv); KenPom ''Avg Possession Length (Offense)'' (KG INT _ KenPom _ Efficiency); poll ranks from CBBD
+      rankings.'
+    sources:
+      CBBD: /ratings/adjusted, /ratings/srs, /ratings/elo, /rankings
+      ESPN files already pulled: powerindex bpi (pulled? no; reference)
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: '{YEAR}_team_results.csv, Time Machine'
+      KenPom: ratings, archive endpoints (docs)
+      Kaggle archive: archive-3 and archive files (see definition)
+      EvanMiya exports: EvanMiya_Teams.csv, EvanMiya_Players.csv, EvanMiya_Lineups.csv
+    licence: 'KenPom: blocked until the KenPom API is bought (R-DS-14); then model input allowed; Torvik: model input allowed,
+      provisional (no Torvik terms page found; Aldemir to confirm); CBBD: model input allowed; EvanMiya exports: reference
+      only (EvanMiya terms: no redistribution; R-DS-10); Kaggle archive: reference only until the archive licence is checked
+      (contains KenPom/Torvik-derived columns); ESPN files already pulled: reference only (ESPN direct; R-DS-02)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-06
+    - R-DS-04
+    - R-OS-01
+  value:
+    type: float64
+    unit: per metric (points/100 poss, poss/40 min, probability, rank, s, cm, years)
+    range: per metric
+    nullable: false
+    definition: Metric value; unit given by metric_code (e.g. adj_o points per 100 possessions; adj_t possessions per 40 min;
+      barthag probability 0-1; poss_length_off_s seconds).
+    sources:
+      CBBD: see definition
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: see definition
+      KenPom: see definition
+      Kaggle archive: see definition
+      EvanMiya exports: see definition
+    licence: 'KenPom: blocked until the KenPom API is bought (R-DS-14); then model input allowed; Torvik: model input allowed,
+      provisional (no Torvik terms page found; Aldemir to confirm); CBBD: model input allowed; EvanMiya exports: reference
+      only (EvanMiya terms: no redistribution; R-DS-10); Kaggle archive: reference only until the archive licence is checked
+      (contains KenPom/Torvik-derived columns)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-06
+  rank:
+    type: int16
+    unit: rank
+    range: '[1, 400]'
+    nullable: true
+    definition: Rank in the system, when given.
+    sources:
+      CBBD: rankings.*
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: '* Rank'
+      KenPom: Rank*
+      Kaggle archive: '* RANK'
+      EvanMiya exports: none
+    licence: 'KenPom: blocked until the KenPom API is bought (R-DS-14); then model input allowed; Torvik: model input allowed,
+      provisional (no Torvik terms page found; Aldemir to confirm); CBBD: model input allowed; Kaggle archive: reference only
+      until the archive licence is checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-FD-06
+  as_of_date:
+    type: date
+    unit: null
+    range: date
+    nullable: false
+    definition: Date the rating describes (point-in-time; end-of-season ratings never used in backtests).
+    sources:
+      CBBD: 'season-level only (no date: as_of = pull date, flagged)'
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: Time Machine date
+      KenPom: archive date
+      Kaggle archive: season-level, end-of-season or pre-tournament (flagged leaky)
+      EvanMiya exports: none
+    licence: 'Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until
+      the KenPom API is bought (R-DS-14); then model input allowed; CBBD: model input allowed; Kaggle archive: reference only
+      until the archive licence is checked (contains KenPom/Torvik-derived columns)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-DS-04
+    - R-FD-06
+  is_point_in_time:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: True only if the value was published on as_of_date (archive/time machine or our own daily pull); end-of-season
+      files are false and barred from backtests.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader rule
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-DS-04
+    - R-CX-09
+  snapshot_kind:
+    type: enum[daily_archive, own_daily_pull, preseason, pre_tournament, end_of_season, unknown]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Kind of snapshot.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: loader
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'DAY_BEFORE: Value as of the US-Eastern day before tip (R-FD-06, R-DS-04); missing -> nearest earlier snapshot,
+      flagged with its date.'
+    requirements:
+    - R-DS-04
+  source:
+    type: enum[cbbd, espn, hoopr_espn, hoopr_ncaa, torvik, kenpom, kaggle, evanmiya, markets, cv, ocr, audio, pbp_fused, manual,
+      rules, computed]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Source that produced this row (every value carries its source, R-MD-09; any source can be swapped later).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: set by the loader or pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-SR-15
+    - R-DS-10
+  source_ref:
+    type: string
+    unit: null
+    range: '''<raw sha256>#<json pointer or row number>'''
+    nullable: true
+    definition: Pointer to the raw pull or upstream rows this row came from (lineage).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: raw store manifest
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-DQ-05
+  pulled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: UTC time the raw source was pulled, or the time the row was computed.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-05
+    - R-MK-25
+  transform_version:
+    type: string
+    unit: null
+    range: git commit (7-40 hex) + transform name
+    nullable: false
+    definition: Code version that produced the row.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: git
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DQ-04
+    - R-EN-04
+    - R-RR-01
+  model_version:
+    type: string
+    unit: null
+    range: free text, e.g. 'det-yolo11x@a1b2c3'
+    nullable: true
+    definition: Model version for model outputs; null for loaded official data.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model registry
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+    - R-EN-04
+  confidence:
+    type: float32
+    unit: null
+    range: '[0, 1]'
+    nullable: false
+    definition: Confidence of the row's main value; official data carries 1.0.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: model output or 1.0
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-09
+  dq_flag:
+    type: enum[observed, inferred, carried, imputed, quarantined]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Data-quality flag of the row's main value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-MD-19
+    - R-DQ-03
+  pass:
+    type: enum[blind, anchored, none]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Blind = produced without play-by-play; anchored = play-by-play used; none = not a vision output.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-SR-13
+    - R-SR-15
+  licence_class:
+    type: enum[model_input_allowed, reference_only, blocked, own, private]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Licence class of this row, from its source (data_sources_catalog.md); reference_only and blocked rows never
+      reach a model.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: from source
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-DS-10
+    - R-RG-04
+    - R-RG-11
+  schema_version:
+    type: int16
+    unit: null
+    range: '[1, 999]'
+    nullable: false
+    definition: Version of this table's schema at write time.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: schema/tables/<table>.yaml
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'RUN: Run or audit metadata; never a model feature.'
+    requirements:
+    - R-EN-01
+    - R-MK-31

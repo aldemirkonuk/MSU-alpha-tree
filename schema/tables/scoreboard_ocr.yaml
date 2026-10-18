@@ -1,0 +1,456 @@
+# Proposed schema (2026-10-18) for table scoreboard_ocr. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: scoreboard_ocr
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#scoreboard_ocr
+grain: one row per OCR reading of one scoreboard display in one sampled frame (raw readings, immutable, pass-independent)
+primary_key:
+- reading_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - video_id
+  - frame_index
+  references: frames.(video_id, frame_index)
+requirements:
+- R-SY-01
+- R-SR-01
+- R-SR-02
+- R-SR-15
+- R-SB-01
+- R-SB-03
+- R-MD-08
+- R-MD-20
+- R-DQ-05
+storage: Parquet, processed/<game_id>/<version>/scoreboard_ocr.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- 'Immutable: written once, never updated or deleted; a re-read by a new OCR model is a new row with a new ocr_model_version. Corrections live in state_corrections and scoreboard_flags (R-SR-15).'
+- Home/away as printed on the display; mapping to msu/opponent happens downstream via games (MSU side), so a raw row never depends on our interpretation.
+- 'Sampling: every frame where the scorebug is visible is the target (R-SY-01 asks every second of live play as the minimum).'
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: reading_id
+  type: string
+  definition: game_id + video_id + frame_index + display + ocr_model_version.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-15
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: video_id
+  type: string
+  definition: Video file.
+  source: video registry
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: frame_index
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame read.
+  source: video decode
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: video_ts_ms
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Presentation time of the frame from the start of the video file.
+  source: video decode (frames table)
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-01
+  - R-MD-08
+  global_metadata: true
+  nullable: false
+- name: display
+  type: enum
+  values:
+  - broadcast_scorebug
+  - arena_scoreboard
+  - shot_clock_unit
+  - scorer_table_led
+  definition: Which display was read.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  - R-SB-01
+  nullable: false
+- name: scorebug_template_id
+  type: string
+  definition: Broadcast graphics package template (R-MD-20).
+  source: OCR template registry
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-20
+  nullable: true
+- name: bbox_x_px
+  type: int
+  unit: px
+  range:
+  - 0
+  - 7680
+  definition: Display box left.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: bbox_y_px
+  type: int
+  unit: px
+  range:
+  - 0
+  - 4320
+  definition: Display box top.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: bbox_w_px
+  type: int
+  unit: px
+  range:
+  - 1
+  - 7680
+  definition: Display box width.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: bbox_h_px
+  type: int
+  unit: px
+  range:
+  - 1
+  - 4320
+  definition: Display box height.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-01
+  nullable: false
+- name: period_raw
+  type: string
+  definition: Text as read (e.g. '1st', '2ND', 'OT', 'HALF').
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: game_clock_raw
+  type: string
+  definition: Text as read (e.g. '12:34', '45.6').
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: shot_clock_raw
+  type: string
+  definition: Text as read; blank display recorded as ''.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: score_home_raw
+  type: string
+  definition: Home score text.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: score_away_raw
+  type: string
+  definition: Away score text.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: team_fouls_home_raw
+  type: string
+  definition: Home team fouls text.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: team_fouls_away_raw
+  type: string
+  definition: Away team fouls text.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: bonus_home_raw
+  type: string
+  definition: Home bonus indicator text ('BONUS', 'BONUS+', 'DBL BONUS', '').
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: bonus_away_raw
+  type: string
+  definition: Away bonus indicator text.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: timeouts_home_raw
+  type: string
+  definition: Home timeouts text or pip count.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: timeouts_away_raw
+  type: string
+  definition: Away timeouts text or pip count.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: arrow_raw
+  type: string
+  definition: Possession-arrow indicator as read ('home', 'away', '').
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MD-12
+  nullable: true
+- name: period_parsed
+  type: int
+  range:
+  - 1
+  - 12
+  definition: Parsed period.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: game_clock_parsed_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Parsed game clock.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: shot_clock_parsed_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Parsed shot clock (null when blank).
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-01
+  nullable: true
+- name: score_home_parsed
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: Parsed home score.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: score_away_parsed
+  type: int
+  unit: points
+  range:
+  - 0
+  - 250
+  definition: Parsed away score.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: team_fouls_home_parsed
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: Parsed.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: team_fouls_away_parsed
+  type: int
+  unit: count
+  range:
+  - 0
+  - 60
+  definition: Parsed.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-03
+  nullable: true
+- name: timeouts_home_parsed
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Parsed.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: timeouts_away_parsed
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Parsed.
+  source: OCR parser
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: field_conf_json
+  type: string
+  definition: JSON map field -> OCR confidence (0-1) for every parsed field.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  nullable: false
+- name: ocr_model_version
+  type: string
+  definition: OCR model and template version.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-MD-09
+  nullable: false
+- name: crop_sha256
+  type: string
+  definition: SHA-256 of the cropped display image (crop stored privately, never in the repo), so a reading can be audited.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  - R-DQ-05
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: Write time (write-once).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-15
+  nullable: false

@@ -1,0 +1,1104 @@
+# Invariants checked on the state record (live doc "State record and invariants", R-IV-01..16)
+# plus proposed new invariants implied by the 2026-27 NCAA men's rules.
+# Status: PROPOSAL (2026-10-18, prompt 003 W2 item 5). The requirements session approves; nothing here is final.
+#
+# Rule numbers were checked against docs/rules/PRMBB_RulesBook.pdf ("2026-27 NCAA Men's Basketball Rules",
+# August 2026 edition), plus PRMBB_CaseBook.pdf, 2025-26PRMBB_RulesChanges.pdf and
+# 2026-27PRMBB_PostClinicInterpretations.pdf (15 Oct 2026). Text was extracted with pdftotext 2026-10-18.
+# Page convention: pdf_page = page index in the PDF file; printed_page = number printed on the page
+# (printed = pdf - 3 throughout the rules book). Headings are quoted exactly; rule content is paraphrased.
+#
+# Expression language for `check` (proposal; the checker implements it):
+#   - Evaluated per (game_id, pass) over the named tables; column names as in schema/tables/*.yaml.
+#   - `row.<col>` current row; `prev(<col>)` / `next(<col>)` same column in the previous / next row of the
+#     same table, game, pass and period ordered by time; `rows(<table>, <predicate>)` set of rows;
+#     count(), sum(), all(), any(), min(), max(); `cfg.<key>` = constants below; `rule_value(<table>, <cause>)`
+#     looks up a reset table below; `msu`/`opponent` are team labels; times in seconds unless named *_ms.
+#   - `when:` is the precondition; rows failing `when` are not checked. `exceptions:` are cases that are
+#     logged but are not breaks (the checker tags them `excepted:<name>`).
+# Actions (on_break.action):
+#   flag          -> scoreboard_flags row (flag_type invariant_break), no blocking
+#   human_review  -> flag + review-queue item (R-HR-01..03); game cannot enter training until answered (R-SB-02)
+#   quarantine    -> flag + affected rows go to the quarantine store (R-DQ-03) until a reviewer releases them
+# All thresholds live in `constants` (R-EN-06). Numbers marked (proposal) are starting targets.
+
+version: 0.1.0
+status: proposed
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+requirements: [R-IV-01..16, R-SR-15, R-SB-01, R-SB-02, R-SY-09, R-MD-06, R-MD-07, R-DQ-02, R-DQ-03, R-HR-01, R-EN-06]
+rulebook:
+  file: docs/rules/PRMBB_RulesBook.pdf
+  edition: 2026-27 NCAA Men's Basketball Rules (August 2026)
+  page_convention: printed_page = pdf_page - 3
+  companions:
+    - docs/rules/PRMBB_CaseBook.pdf
+    - docs/rules/2025-26PRMBB_RulesChanges.pdf
+    - docs/rules/2026-27PRMBB_PostClinicInterpretations.pdf
+
+constants:
+  players_per_team_on_court: 5
+  officials_on_court_allowed: [2, 3]          # Rule 2-1.1.a; three-person crews expected in D-I (points of emphasis 2026-27)
+  half_length_s: 1200                          # Rule 5-6.1
+  extra_period_length_s: 300                   # Rule 5-6.1, 5-9.3
+  tenths_display_below_s: 60                   # Rule 1-18.2
+  game_clock_stop_after_fg_at_or_below_s: 59.9 # Rule 2-10.12, 5-11.9 (periods >= 2)
+  min_clock_off_on_touch_s: 0.3                # Rule 5-10.2.d, 5-10.3.d
+  tap_only_at_or_below_s: 0.3                  # Rule 5-1.19
+  shot_clock_full_s: 30                        # Rule 2-11.1
+  shot_clock_offensive_reset_s: 20             # Rule 2-11.6.d
+  shot_clock_tenths_below_s: 5                 # Rule 1-19.2 (optional display)
+  bonus_team_foul: 7                           # Rule 8-2.1
+  double_bonus_team_foul: 10                   # Rule 8-2.2
+  team_fouls_reset_at: [start_of_period_2]     # per half; extra periods extend the second half (Rule 5-9.4)
+  foul_out_count: 5                            # personal + Class A technical, Rule 4-12.1
+  flagrant1_dq_count: 3                        # Rule 4-12.1
+  disqualified_replace_s: 20                   # Rule 4-12.5
+  backcourt_count_s: 10                        # Rule 9-10
+  closely_guarded_count_s: 5                   # Rule 9-14.2 (holding only, frontcourt)
+  closely_guarded_distance_m: 1.83             # 6 ft, Rule 4-17.2, 9-14.1
+  throw_in_count_s: 5                          # Rule 7-6.6, 9-4.1.d
+  free_throw_release_s: 10                     # Rule 8-5.1.a, 9-1.1.a
+  three_seconds_s: 3                           # Rule 9-9.2
+  three_point_arc_m: 6.75                      # 22 ft 1.75 in = 6.750 m, Rule 1-7.1
+  three_point_corner_m: 6.60                   # 21 ft 7.875 in = 6.601 m, Rule 1-7.1
+  restricted_area_radius_m: 1.22               # 4 ft, Rule 1-8, 4-31
+  lane_max_players: 6                          # Rule 8-4.4
+  lane_max_defence: 4
+  lane_max_offence: 2
+  designated_spot_width_m: 0.91                # 3 ft, Rule 7-6.8.b
+  throw_in_spot_end_line_outside_lane_m: 0.91  # 3 ft outside the lane line, Rule 7-3.2.a-b
+  throw_in_spot_sideline_mark_m: 8.53          # 28-foot mark from the end line, Rule 7-3.2.a-b
+  media_marks_s: [960, 720, 480, 240]          # 16-, 12-, 8-, 4-minute marks, Rule 5-14.10.c
+  media_marks_alt_s: [900, 600, 300]           # 15-, 10-, 5-minute marks, Rule 5-14.10.c
+  media_pre_mark_window_s: 30                  # Rule 5-14.10.e
+  timeouts:
+    at_least_3_media:                          # Rule 5-14.10 (usual televised D-I format)
+      to30_per_game: 3
+      to60_per_game: 1
+      to30_carry_max_into_h2: 2
+      per_extra_period: {to30: 1}
+    fewer_than_3_media:                        # Rule 5-14.9
+      to75_per_game: 4
+      to30_per_game: 2
+      per_extra_period: {to75: 1}
+    no_media:                                  # Rule 5-14.8
+      to75_per_game: 4
+      to30_per_game: 2
+      per_extra_period: {to75: 1}
+  timeout_length_s: {to30: 30, to60: 60, to75: 75, excessive_media: 30, excessive_no_media: 75}  # Rule 5-14.4, 5-17.2
+  challenges: {per_game: 1, extra_if_overturned: 1}   # Rule 11-4.1.d
+  scoreboard_lag_window_initial_s: 15          # R-SB-03 (reset from the measured lag)
+  physics:                                     # R-IV-13 (proposal)
+    max_player_speed_mps: 10
+    max_player_accel_mps2: 12
+    ball_handler_max_dist_m: 1.5
+  foul_trouble: {period_1: 2, period_2_and_ot: 4}     # R-SR-11 (proposal)
+  two_for_one_window_s: [33, 45]               # R-SR-11 (proposal)
+  foul_to_extend_clock_s: 60                   # R-SR-11 (proposal)
+  foul_to_extend_margin: [1, 9]                # R-SR-11 (proposal)
+  possession_count_diff_max_per_half: 1        # R-IV-15
+
+# Shot-clock value required after each cause (Rule 2-11.6, 2-11.8; 2026-27 book pdf 43-46, printed 40-43).
+# value: 30 | 20 | max20 (20 or the time remaining, whichever is greater) | no_reset (unexpired time continues)
+shot_clock_reset_table:
+  - {cause: throw_in_touched_inbounds, value: start, rule: 2-11.5.a, note: "starts, no reset by itself"}
+  - {cause: change_of_team_control_live_or_after_opponent_score, value: 30, rule: 2-11.6.b.1}
+  - {cause: control_reestablished_in_backcourt_after_loss, value: 30, rule: 2-11.6.b.2, note: "not after a try that missed the ring (Note 2)"}
+  - {cause: held_ball_or_arrow_favours_defence_backcourt_throw_in, value: 30, rule: 2-11.6.b.3}
+  - {cause: ring_contact_then_non_shooting_team_control, value: 30, rule: 2-11.6.b.4}
+  - {cause: defensive_foul_offence_in_control_in_backcourt, value: 30, rule: 2-11.6.b.5}
+  - {cause: double_foul_one_flagrant_against_offence_defence_backcourt_throw_in, value: 30, rule: 2-11.6.b.6}
+  - {cause: violation_defence_awarded_backcourt_throw_in, value: 30, rule: 2-11.6.b.7}
+  - {cause: inadvertent_whistle_no_control_arrow_backcourt, value: 30, rule: 2-11.6.b.8}
+  - {cause: jump_ball_out_of_bounds_backcourt_throw_in, value: 30, rule: 2-11.6.b.9}
+  - {cause: defensive_personal_or_technical_foul_frontcourt_throw_in, value: max20, rule: 2-11.6.c.1, note: "only before a try that hits the ring"}
+  - {cause: defensive_kick_or_fist_violation, value: max20, rule: 2-11.6.c.2}
+  - {cause: inadvertent_whistle_or_double_foul_no_control_arrow_frontcourt, value: max20, rule: 2-11.6.c.3}
+  - {cause: defensive_off_ball_foul_try_in_air_misses_rim_frontcourt, value: max20, rule: 2-11.6.c.4}
+  - {cause: offensive_rebound_frontcourt_after_ring_contact, value: 20, rule: 2-11.6.d.1, note: "flat 20 whatever was left; also after a missed live FT"}
+  - {cause: defensive_loose_ball_foul_after_ring_contact_or_ft_miss_or_during_successful_try_frontcourt, value: 20, rule: 2-11.6.d.2, note: "backcourt throw-in -> 30"}
+  - {cause: offence_retains_after_out_of_bounds_following_ring_contact, value: 20, rule: 2-11.6.d.3}
+  - {cause: held_ball_arrow_offence_after_ring_contact_or_bi_gt_review, value: 20, rule: 2-11.6.d.4}
+  - {cause: defensive_kick_or_fist_after_ring_contact_frontcourt, value: 20, rule: 2-11.6.d.5}
+  - {cause: violation_or_player_team_control_foul_defence_frontcourt_throw_in, value: 20, rule: 2-11.6.d.6}
+  - {cause: double_foul_one_flagrant_against_offence_defence_frontcourt_throw_in, value: 20, rule: 2-11.6.d.7}
+  - {cause: jump_ball_out_of_bounds_frontcourt_throw_in, value: 20, rule: 2-11.6.d.8}
+  - {cause: ring_contact_batted_into_backcourt_out_of_bounds_by_shooting_team, value: 20, rule: 2-11.6.d.9}
+  - {cause: ball_out_of_bounds_off_defence, value: no_reset, rule: 2-11.6.a.1}
+  - {cause: injury_or_contact_lens, value: no_reset, rule: 2-11.6.a.2}
+  - {cause: timeout_concluded, value: no_reset, rule: 2-11.6.a.3}
+  - {cause: held_ball_arrow_favours_team_in_control, value: no_reset, rule: 2-11.6.a.4}
+  - {cause: double_or_simultaneous_fouls_with_control_no_change, value: no_reset, rule: 2-11.6.a.5}
+  - {cause: inadvertent_whistle_with_team_control, value: no_reset, rule: 2-11.6.a.6}
+  - {cause: technical_on_team_in_control_or_entitled, value: no_reset, rule: 2-11.6.a.7}
+  - {cause: simultaneous_held_ball_on_throw_in_or_airball_arrow_to_same_team, value: no_reset, rule: 2-11.6.a.8}
+  - {cause: simultaneous_touch_out_of_bounds_arrow_to_team_in_control, value: no_reset, rule: 2-11.6.a.9}
+  - {cause: game_clock_below_shot_clock_period, value: "off", rule: 2-11.2, note: "reactivated at 20 when a 2-11.6.d situation occurs (2-11.8)"}
+
+# Free throws awarded by foul (Rule 10-1 Penalty, 8-2, 10-2, 10-3, 10-4).
+free_throw_award_table:
+  - {award_type: and_one, attempts: 1, rule: "10-1 Penalty b.1"}
+  - {award_type: shooting_2, attempts: 2, rule: "10-1 Penalty d.1"}
+  - {award_type: shooting_3, attempts: 3, rule: "10-1 Penalty e"}
+  - {award_type: one_and_one, attempts: 2, conditional_second: true, rule: "8-2.1; 10-1 Penalty c", applies: "team fouls 7-9 in the half, common foul incl. loose-ball team-control foul"}
+  - {award_type: double_bonus, attempts: 2, rule: "8-2.2; 10-1 Penalty d.3", applies: "team fouls >= 10 in the half"}
+  - {award_type: flagrant1, attempts: 2, plus_ball: true, rule: "4-15.2.c; 10-1 Penalty d.2"}
+  - {award_type: flagrant2, attempts: 2, plus_ball: true, ejection: true, rule: "4-15.2.c; 10-1 Penalty d.2"}
+  - {award_type: technical_class_a, attempts: 2, counts_team_foul: true, rule: "10-3 Penalty"}
+  - {award_type: technical_class_b, attempts: 1, counts_team_foul: false, rule: "10-4 Penalty"}
+  - {award_type: technical_admin_1, attempts: 1, counts_team_foul: false, rule: "10-2 Penalty (Arts. 1-5, 8)"}
+  - {award_type: technical_admin_2, attempts: 2, counts_team_foul: false, rule: "10-2.6, 10-2.7 Penalty"}
+  - {award_type: multiple_foul, attempts: "1 per foul (2 when a 3-point try misses)", rule: "10-1 Penalty b.2-b.4, d.6"}
+  - {award_type: none, attempts: 0, rule: "10-1 Penalty a, f", applies: "common foul before the bonus; player-control foul; team-control foul not loose-ball; double or simultaneous personal fouls"}
+
+invariants:
+
+# ------------------------------------------------------------------ live-doc invariants R-IV-01..16
+- id: R-IV-01
+  tier: Shall
+  statement: "Exactly 5 players per team on court during live play; each player on one team; jersey numbers unique per team."
+  scope: per_frame
+  tables: [state_frame]
+  when: "row.live_ball and row.replay_flag == false"
+  check: |
+    len([p for p in row.players_on_floor[0:5] if p]) == cfg.players_per_team_on_court
+    and len([p for p in row.players_on_floor[5:10] if p]) == cfg.players_per_team_on_court
+    and set(row.players_on_floor[0:5]).isdisjoint(row.players_on_floor[5:10])
+    and jersey_numbers(row.players_on_floor[0:5]) are unique and jersey_numbers(row.players_on_floor[5:10]) are unique
+  exceptions:
+    - "off-screen player = not_seen (carried by frame-exit memory), not absent"
+    - "injury or blood exit pending replacement (Rule 3-6.3, 5-11.8)"
+    - "team reduced below five because no eligible substitute remains (Rule 3-2.2)"
+  on_break: {action: human_review, queue: identity_review}
+  rule_refs:
+    - {rule: "1-1.1", heading: "SECTION 1. THE GAME", pdf_page: 21, printed_page: 18}
+    - {rule: "3-2.1, 3-2.2", heading: "SECTION 2. THE TEAM", pdf_page: 48, printed_page: 45}
+    - {rule: "10-2.6", heading: "SECTION 2. ADMINISTRATIVE TECHNICAL FOULS", pdf_page: 109, printed_page: 106}
+    - {rule: "1-22.7.b.2, 1-22.7.b.5", heading: "SECTION 22. UNIFORMS (GAME JERSEY AND SHORTS)", pdf_page: 34, printed_page: 31}
+    - {rule: "10-2.3.a", heading: "SECTION 2. ADMINISTRATIVE TECHNICAL FOULS", pdf_page: 108, printed_page: 105}
+  live_doc_rule: "3-4, 3-6"
+  verification: {result: corrected, note: "3-4 is the pre-game lineup filing and 3-6 is substitutions; five per team is 1-1.1 / 3-2, more than five is penalised by 10-2.6, unique numbers 1-22.7.b.5 and 10-2.3.a. See corrections."}
+
+- id: R-IV-02
+  tier: Shall
+  statement: "Officials on court: two or three (referee and one or two umpires); three expected in D-I games."
+  scope: per_frame
+  tables: [state_frame, tracks]
+  when: "row.live_ball and row.camera_shot_type == 'main_wide' and row.court_visible_frac >= 0.9"
+  check: "count(officials tracked in frame, including not_seen carried) in cfg.officials_on_court_allowed and (game is D-I -> count == 3)"
+  exceptions:
+    - "official injured or replaced"
+    - "a two-official game (legal under Rule 2-1.1.a): set in the games registry, then the D-I clause is off"
+  on_break: {action: human_review, queue: detection_review}
+  rule_refs:
+    - {rule: "2-1.1.a", heading: "SECTION 1. THE OFFICIALS", pdf_page: 38, printed_page: 35}
+    - {rule: "Points of Emphasis 1 (Mechanics)", heading: "Points of Emphasis", pdf_page: 10, printed_page: 7}
+  live_doc_rule: "2-1"
+  verification: {result: corrected, note: "Rule number right, statement too strict: 2-1.1.a allows a referee and one umpire or a referee and two umpires. 'Three' is D-I practice (three-person system in the 2026-27 points of emphasis), not the rule."}
+
+- id: R-IV-03
+  tier: Shall
+  statement: "Substitutions only during dead balls (entry when beckoned); a disqualified player (5 fouls counting personal and Class A technical, or 3 Flagrant 1) never re-enters."
+  scope: per_event
+  tables: [state_frame, foul_state, events]
+  when: "event.type == 'substitution'"
+  check: |
+    state_at(event).live_ball == false
+    and not (event.entering_player_id in rows(foul_state, subject_id == event.entering_player_id and disqualified == true and bucket_end_clock_s >= event.game_clock_s))
+    and not (period >= 2 and clock_stopped_after_fg_last_59_9 and not permitted_by_3_6_1_h)
+  exceptions:
+    - "Rule 3-6.1.h list (injury, blood, violation, foul, disqualification, timeout, monitor review for a score, contact lens)"
+    - "Rule 3-6.1.d: an illegal entry becomes a player when the ball becomes live (then flag, not reject)"
+  on_break: {action: human_review, queue: pbp_or_identity_review}
+  rule_refs:
+    - {rule: "3-6.1.c-d, 3-6.1.h, 3-6.1.j, 3-6.2", heading: "SECTION 6. SUBSTITUTIONS", pdf_page: 49, printed_page: 46}
+    - {rule: "4-12.1, 4-12.5", heading: "SECTION 12. DISQUALIFIED PLAYER", pdf_page: 54, printed_page: 51}
+    - {rule: "2-8.3", heading: "SECTION 8. OFFICIALS' DUTIES RELATED TO CONDUCT", pdf_page: 40, printed_page: 37}
+    - {rule: "4-14.2.e", heading: "SECTION 14. EJECTION", pdf_page: 55, printed_page: 52}
+    - {rule: "10-1 Penalty", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 106, printed_page: 103}
+  live_doc_rule: "3-6, 10"
+  verification: {result: refined, note: "3-6 right; 'Rule 10' alone is too broad. Disqualification is defined in 4-12.1 (fifth foul includes Class A technicals; three Flagrant 1 also disqualify); participating after disqualification is an ejection (4-14.2.e)."}
+
+- id: R-IV-04
+  tier: Shall
+  statement: "Each score change is +1, +2 or +3 (corrections signed); a free throw is +1; final scoreboard = PBP sum = box score."
+  scope: per_event_and_game
+  tables: [score_events, free_throws, games]
+  when: "true"
+  check: |
+    all(e.delta_points in (1, 2, 3) for e in rows(score_events, event_kind not in ('official_correction', 'scorer_correction')))
+    and all(e.delta_points == 1 for e in rows(score_events, event_kind == 'free_throw'))
+    and all(e.delta_points == 2 for e in rows(score_events, event_kind == 'own_basket_credit'))
+    and sum(delta_points where team == msu) == games.msu_score and sum(delta_points where team == opponent) == games.opp_score
+  exceptions:
+    - "official or scorer correction (R-SB): signed delta row, not a break"
+    - "goaltending on a free throw awards 1 point plus a Class B technical (9-15 Penalty a.1)"
+  on_break: {action: human_review, queue: scoreboard_review}
+  rule_refs:
+    - {rule: "5-1.2-5-1.4, 5-1.4.a, 5-1.13", heading: "SECTION 1. SCORING/TRY FOR GOAL", pdf_page: 67, printed_page: 64}
+    - {rule: "9-15 Penalty a-b", heading: "SECTION 15. BASKET INTERFERENCE AND GOALTENDING", pdf_page: 102, printed_page: 99}
+    - {rule: "2-9.13, 2-9.17", heading: "SECTION 9. DUTIES OF SCORERS", pdf_page: 41, printed_page: 38}
+  live_doc_rule: "5"
+  verification: {result: refined, note: "Rule 5 right; specific sections added. Note 5-1.4.a: a field goal into the opponent's basket counts 2 for the opponent and is not credited to a player."}
+
+- id: R-IV-05
+  tier: Shall
+  statement: "Game clock never goes up within a period and runs only in live play."
+  scope: per_frame
+  tables: [state_frame, reviews]
+  when: "row.period == prev(period) and row.game_clock_dq != 'quarantined'"
+  check: |
+    row.game_clock_s <= prev(game_clock_s) + 0.05
+    and (row.clock_running implies row.live_ball)
+    and (row.game_clock_s < prev(game_clock_s) - 0.05 implies prev(clock_running) or row.clock_running)
+  exceptions:
+    - "official timing correction or replay review: jump up allowed, row flagged official_clock_correction and linked to reviews (Rule 5-12.2, 11-2.1.c, 11-3.1.a)"
+    - "OCR misread already flagged by the reading's confidence"
+  on_break: {action: human_review, queue: clock_review}
+  rule_refs:
+    - {rule: "5-10", heading: "SECTION 10. STARTING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+    - {rule: "5-11", heading: "SECTION 11. STOPPING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+    - {rule: "5-12", heading: "SECTION 12. TIMING MISTAKES AND MALFUNCTIONS", pdf_page: 72, printed_page: 69}
+    - {rule: "11-2.1.c", heading: "SECTION 2. INSTANT REPLAY—VOLUNTARY USE (EXCEPT WHERE NOTED)", pdf_page: 118, printed_page: 115}
+    - {rule: "11-3.1.a", heading: "SECTION 3. INSTANT REPLAY—MANDATORY USE", pdf_page: 120, printed_page: 117}
+  live_doc_rule: "5-12, 11-2"
+  verification: {result: confirmed, note: "Start and stop conditions (5-10, 5-11) added."}
+
+- id: R-IV-06
+  tier: Shall
+  statement: "Game clock stops after a made field goal with 59.9 s or less left in the second half or any extra period; otherwise it keeps running after a made field goal."
+  scope: per_event
+  tables: [score_events, state_frame]
+  when: "event.event_kind == 'field_goal'"
+  check: |
+    (event.period >= 2 and event.game_clock_s <= cfg.game_clock_stop_after_fg_at_or_below_s)
+      == (state_frame at event.video_ts_ms + 1.0 s).clock_running == false
+  exceptions:
+    - "timeout, foul or violation at the same moment"
+    - "period 1: clock keeps running after a make even under 60 s"
+  on_break: {action: human_review, queue: clock_review}
+  rule_refs:
+    - {rule: "2-10.12", heading: "SECTION 10. DUTIES OF TIMERS", pdf_page: 42, printed_page: 39}
+    - {rule: "5-11.9", heading: "SECTION 11. STOPPING GAME AND SHOT CLOCKS", pdf_page: 72, printed_page: 69}
+  live_doc_rule: "2-10.12"
+  verification: {result: confirmed, note: "5-11.9 added as the companion rule."}
+
+- id: R-IV-07
+  tier: Shall
+  statement: "Shot clock <= 30 s; it resets only on listed events (shot_clock_reset_table); it is off when the game clock shows less than a shot-clock period, except the 2-11.8 reactivation; every reset read on the scoreboard maps to an event."
+  scope: per_reset
+  tables: [state_frame, restarts, scoreboard_flags]
+  when: "row.shot_clock_status == 'on' and prev(shot_clock_status) == 'on' and row.shot_clock_s > prev(shot_clock_s) + 0.5"
+  check: |
+    row.shot_clock_s <= cfg.shot_clock_full_s
+    and exists cause c in events within ±1 s of row such that
+        rule_value(shot_clock_reset_table, c) in (30, 20, 'max20')
+        and row.shot_clock_s == resolve(rule_value, prev(shot_clock_s))
+    and (row.game_clock_s < cfg.shot_clock_full_s and not reactivation_2_11_8) implies row.shot_clock_status == 'off'
+  exceptions:
+    - "one working shot clock allowed (Rule 1-19.3, changed 2025-26): read whichever is visible"
+    - "operator error on the real clock: kept as read and flagged h_shot_clock_not_reset_or_wrong; corrected only within the same shot-clock period (5-12.4)"
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.1, 2-11.2, 2-11.5, 2-11.6.a-d", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 43, printed_page: 40, note: "2-11.6 spans pdf 43-45 (printed 40-42)"}
+    - {rule: "2-11.8", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 46, printed_page: 43}
+    - {rule: "1-19.3", heading: "SECTION 19. SHOT-CLOCK DISPLAYS", pdf_page: 30, printed_page: 27}
+    - {rule: "5-10.3", heading: "SECTION 10. STARTING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+  live_doc_rule: "2-11.6, 2-11.8"
+  verification: {result: confirmed, note: "20 s after an offensive rebound off the ring is a flat 20 (2-11.6.d.1, also A.R. 2-14 in the case book); 'whichever is greater' applies only to 2-11.6.c. Exception rule 'Rule 1-19, 2025-26' is 1-19.3."}
+
+- id: R-IV-08
+  tier: Shall
+  statement: "After a made field goal or a made last free throw for a personal foul, the other team gets the ball; after a defensive rebound or turnover, control switches; jump ball only at the start of the game and of extra periods; later held balls follow the arrow, which flips after each alternating-possession throw-in; the second half starts with an arrow throw-in at the division line."
+  scope: per_possession
+  tables: [restarts, score_events, free_throws, state_second]
+  when: "true"
+  check: |
+    for each restart r after score_events e with event_kind in ('field_goal', 'awarded_goaltending', 'awarded_basket_interference')
+        or after a free_throws row with result == 'made' and ball_after == 'throw_in_opponent':
+      r.restart_team != e.team and r.restart_type == 'throw_in_end_line_after_score'
+    and all(r.restart_type != 'jump_ball' for r in restarts where not (r.dead_ball_reason == 'period_start' and r.period != 2))
+    and all(r.arrow_after != r.arrow_before for r in restarts where r.restart_type in ('throw_in_alternating_possession', 'second_half_ap_division_line') and throw_in_ended_legally)
+  exceptions:
+    - "technical-foul free throws: play resumes at the point of interruption (8-6.1.b)"
+    - "flagrant-foul free throws: the shooting team keeps the ball (8-6.1.c, 7-4.13)"
+    - "alternating-possession throw-in lost by a throw-in violation: arrow goes to the opponent (6-3.7)"
+    - "re-toss when nobody gains control of a jump ball (6-3.5)"
+  on_break: {action: human_review, queue: possession_review}
+  rule_refs:
+    - {rule: "6-2.1", heading: "SECTION 2. JUMP BALL", pdf_page: 79, printed_page: 76}
+    - {rule: "6-3.2, 6-3.4, 6-3.6", heading: "SECTION 3. ALTERNATING-POSSESSION PROCEDURE", pdf_page: 80, printed_page: 77}
+    - {rule: "6-4.1", heading: "SECTION 4. ALTERNATING-POSSESSION SITUATIONS", pdf_page: 80, printed_page: 77}
+    - {rule: "7-3.1.c", heading: "SECTION 3. BALL AWARDED OUT OF BOUNDS", pdf_page: 83, printed_page: 80}
+    - {rule: "7-4.6.a", heading: "SECTION 4. OUT OF BOUNDS, BALL IN PLAY FROM", pdf_page: 85, printed_page: 82}
+    - {rule: "8-6.1", heading: "SECTION 6. FREE THROW—NEXT PLAY", pdf_page: 92, printed_page: 89}
+    - {rule: "8-7", heading: "SECTION 7. FREE THROW—UNSUCCESSFUL", pdf_page: 93, printed_page: 90}
+    - {rule: "4-9.3", heading: "SECTION 9. CONTROL—PLAYER, TEAM", pdf_page: 53, printed_page: 50}
+  live_doc_rule: "4, 6"
+  verification: {result: refined, note: "'4, 6' kept as parents; the exact sections are listed. Added: second half starts with the arrow throw-in (6-3.6), and the made-last-FT rule is for personal fouls only."}
+
+- id: R-IV-09
+  tier: Shall
+  statement: "Team fouls (personal incl. player-control + Class A technical) never go down within a half; they reset at the start of the second half only (extra periods continue the second-half count); bonus (one-and-one) from the 7th, double bonus from the 10th."
+  scope: per_foul
+  tables: [state_frame, foul_state, free_throws]
+  when: "row.period == prev(period) or (prev(period) >= 2)"
+  check: |
+    row.team_fouls_msu >= prev(team_fouls_msu) and row.team_fouls_opp >= prev(team_fouls_opp)
+    and (row.period == 2 and prev(period) == 1 implies row.team_fouls_msu <= carried_second_half_technicals)
+    and row.opp_bonus_state == ('double_bonus' if row.team_fouls_msu >= cfg.double_bonus_team_foul else 'bonus' if row.team_fouls_msu >= cfg.bonus_team_foul else 'none')
+    and row.msu_bonus_state == (same rule on row.team_fouls_opp)
+  exceptions:
+    - "flagrant reviewed at half time from the first half counts to the first half (2026-27 interpretation A.R. 11-32)"
+    - "technical after the first half ended counts toward the second half (Rule 5-7.6; case book A.R. 5-20)"
+    - "foul rescinded on review (11-2.1.d.1) or scorer bookkeeping correction (2-9.17): count may go down, logged as state_corrections"
+    - "administrative and Class B technicals never count (10-2 Penalty, 10-4 Penalty)"
+  on_break: {action: human_review, queue: foul_review}
+  rule_refs:
+    - {rule: "8-2.1, 8-2.2, 8-2.3", heading: "SECTION 2. BONUS FREE THROWS", pdf_page: 90, printed_page: 87}
+    - {rule: "10-1 Penalty c, d.3", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 106, printed_page: 103}
+    - {rule: "2-9.11", heading: "SECTION 9. DUTIES OF SCORERS", pdf_page: 41, printed_page: 38}
+    - {rule: "5-9.4", heading: "SECTION 9. PERIODS—EXTRA", pdf_page: 71, printed_page: 68}
+    - {rule: "5-7.4, 5-7.6", heading: "SECTION 7. PERIODS-BEGINNING AND END", pdf_page: 70, printed_page: 67}
+    - {rule: "A.R. 11-32", heading: "Case Book Corrections", pdf_page: 2, printed_page: null, file: docs/rules/2026-27PRMBB_PostClinicInterpretations.pdf}
+  live_doc_rule: "2-9.11, 4"
+  verification: {result: corrected, note: "The bonus rule itself is 8-2 (and 10-1 Penalty c, d.3); 2-9.11 is only the scorer's signal; 'Rule 4' is the definitions rule. Added: no reset for extra periods (5-9.4)."}
+
+- id: R-IV-10
+  tier: Shall
+  statement: "Timeouts left never go up and never below 0, except the extra allotment per extra period (one 30 s in the usual media format; one 75 s in the other formats); they can drop at half time without use because at most two 30 s timeouts carry into the second half (media format)."
+  scope: per_timeout
+  tables: [timeouts, state_frame]
+  when: "true"
+  check: |
+    for consecutive state rows within a period: row.timeouts_msu <= prev(timeouts_msu) and row.timeouts_opp <= prev(timeouts_opp)
+    and row.timeouts_msu >= 0 and row.timeouts_opp >= 0
+    and at start of each extra period: increase == allotment(media_format).per_extra_period, granted only after the ball becomes live (5-14.10.g)
+    and at start of period 2 (media format): to30_left <= cfg.timeouts.at_least_3_media.to30_carry_max_into_h2
+  exceptions:
+    - "unsuccessful coach's challenge costs a timeout (11-4.1.h); successful one is not charged (5-16.1.e)"
+    - "appeal not upheld costs a timeout (11-5.1), charged to the half of the appeal (A.R. 11-32)"
+    - "excessive timeout granted with an administrative technical (5-17, 10-2.7): count stays at 0"
+    - "injury/blood timeouts converted to media timeouts are not charged (5-14.12.b)"
+  on_break: {action: human_review, queue: timeout_review}
+  rule_refs:
+    - {rule: "5-13", heading: "SECTION 13. TIMEOUTS", pdf_page: 73, printed_page: 70}
+    - {rule: "5-14.8, 5-14.9, 5-14.10", heading: "SECTION 14. TIMEOUTS GRANTED AND CHARGED", pdf_page: 74, printed_page: 71}
+    - {rule: "5-16.1", heading: "SECTION 16. NO TIMEOUT CHARGED", pdf_page: 77, printed_page: 74}
+    - {rule: "5-17", heading: "SECTION 17. EXCESSIVE TIMEOUT", pdf_page: 78, printed_page: 75}
+    - {rule: "11-4.1.h", heading: "SECTION 4. COACH'S CHALLENGE", pdf_page: 121, printed_page: 118}
+    - {rule: "11-5.1", heading: "SECTION 5. APPEALS", pdf_page: 121, printed_page: 118}
+  live_doc_rule: "5-13, 5-14"
+  verification: {result: corrected, note: "Rule numbers right; the statement 'one extra 75-second timeout per extra period' holds only without the media format (5-14.8.d, 5-14.9.f). In the media format (5-14.10.f) it is one extra 30-second timeout. The halftime carry-over cap (5-14.10.a.1) was missing."}
+
+- id: R-IV-11
+  tier: Shall
+  statement: "During free throws the game clock does not run until a missed last attempt that stays live is legally touched; at most 6 players on the lane (4 opponents, 2 teammates of the shooter); the two lowest lane spaces stay empty; opponents occupy the spaces above the blocks; the number of attempts matches the award."
+  scope: per_ft_sequence
+  tables: [free_throws, state_frame]
+  when: "free_throws sequence s"
+  check: |
+    all(not f.clock_running_during_attempt for f in s)
+    and all(f.lane_def_count <= cfg.lane_max_defence and f.lane_off_count <= cfg.lane_max_offence for f in s if not f.lane_expected_empty)
+    and all(lowest_spaces_empty(f.lane_occupant_ids) for f in s)
+    and len(s) == free_throw_award_table[s.award_type].attempts (one_and_one: 1 when the first is missed)
+    and all(f.release_latency_s <= cfg.free_throw_release_s for f in s if f.release_latency_s is not null)
+  exceptions:
+    - "resumption-of-play procedure (ball placed at the shooter's disposal with the lane empty, 4-32, 8-4.5)"
+    - "ball dead regardless of the result (technical, flagrant, non-last attempt): no lane players (8-4.8)"
+    - "double foul with one flagrant: free throws with no players in the lane (10-1 Penalty f)"
+  on_break: {action: human_review, queue: ft_review}
+  rule_refs:
+    - {rule: "8-4.4, 8-4.4.a, 8-4.5, 8-4.8", heading: "SECTION 4. POSITIONS DURING ATTEMPT", pdf_page: 91, printed_page: 88}
+    - {rule: "8-5.1, 8-5.2", heading: "SECTION 5. FREE-THROW REQUIREMENTS", pdf_page: 92, printed_page: 89}
+    - {rule: "9-1.1", heading: "SECTION 1. FREE-THROW VIOLATIONS", pdf_page: 94, printed_page: 91}
+    - {rule: "5-10.2.c", heading: "SECTION 10. STARTING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+    - {rule: "10-1 Penalty b-e", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 106, printed_page: 103}
+  live_doc_rule: "8"
+  verification: {result: refined, note: "Rule 8 right; sections added. Lane composition and clock-start rule made explicit."}
+
+- id: R-IV-12
+  tier: Shall
+  statement: "A made 3 means the shooter's last floor contact before release was behind the arc (6.75 m; 6.60 m in the corners; the line itself is 2-point area)."
+  scope: per_make
+  tables: [made_basket_events, shots]
+  when: "make.decision in ('confirmed', 'vision_only') and (make.points_board == 3 or make.points_pbp == 3)"
+  check: "make.points_cv == 3"
+  exceptions:
+    - "official review changes 3 to 2 (11-2.1.b.1)"
+    - "goaltending or basket interference on a 3-point try awards 3 without the ball entering (9-15 Penalty a.3)"
+    - "field goal into the opponent's basket always counts 2 (5-1.4.a)"
+  on_break: {action: human_review, queue: value_review}
+  rule_refs:
+    - {rule: "1-7.1", heading: "SECTION 7. THREE-POINT FIELD-GOAL LINE", pdf_page: 23, printed_page: 20}
+    - {rule: "5-1.4, 5-1.5", heading: "SECTION 1. SCORING/TRY FOR GOAL", pdf_page: 67, printed_page: 64}
+  live_doc_rule: "1-7, 5-1"
+  verification: {result: confirmed, note: "Distances check: 22 ft 1.75 in = 6.750 m; 21 ft 7.875 in = 6.601 m (book distances are to the outside edge of the line). 5-1.5 defines a three-point try."}
+
+- id: R-IV-13
+  tier: Shall
+  statement: "Physics: player speed <= 10 m/s and acceleration <= 12 m/s2 frame to frame; the ball handler is within 1.5 m of the ball while in control; the ball is in one place (proposals to calibrate)."
+  scope: per_frame
+  tables: [state_frame, tracks]
+  when: "row.camera_shot_type == 'main_wide' and row.court_mapping_conf >= 0.8 and prev(camera_shot_type) == 'main_wide'"
+  check: |
+    all(track.speed_mps <= cfg.physics.max_player_speed_mps and track.accel_mps2 <= cfg.physics.max_player_accel_mps2 for track in frame)
+    and (row.ball_handler_player_id is not null and row.ball_visible implies dist(handler, ball) <= cfg.physics.ball_handler_max_dist_m)
+    and count(ball detections accepted) <= 1
+  exceptions: ["camera cut or mapping failure"]
+  on_break: {action: quarantine, queue: identity_swap_or_mapping_review, note: "affected frames quarantined until reviewed"}
+  rule_refs: []
+  live_doc_rule: "n/a"
+  verification: {result: confirmed, note: "Not a rule of the game; a physical plausibility check."}
+
+- id: R-IV-14
+  tier: Should
+  statement: "10-second backcourt count; no return to the backcourt with team control."
+  scope: per_possession
+  tables: [state_frame, events]
+  when: "team control in backcourt (count starts on a legal touch, or on player control after a rebound or jump ball)"
+  check: |
+    continuous_backcourt_control_s(possession) < cfg.backcourt_count_s or a 10-second violation is recorded
+    and no first touch in the backcourt by the team that last touched it in the frontcourt with team control, unless the defence deflected it (9-12.5) or 9-12.6-12.10 apply
+  exceptions:
+    - "count resets on clock stoppages except defence-caused out of bounds, offence keeps the ball after a held ball, or a technical on the offence; always resets on an offensive timeout (9-10)"
+    - "rebound and jump-ball start rules (9-10)"
+  on_break: {action: flag, queue: possession_review}
+  rule_refs:
+    - {rule: "9-10", heading: "SECTION 10. 10-SECOND BACKCOURT", pdf_page: 99, printed_page: 96}
+    - {rule: "9-12", heading: "SECTION 12. BACKCOURT", pdf_page: 99, printed_page: 96}
+    - {rule: "2-7.9", heading: "SECTION 7. OFFICIALS' DUTIES", pdf_page: 40, printed_page: 37}
+  live_doc_rule: "9-10, 9-12"
+  verification: {result: confirmed, note: "2-7.9 added: officials use the shot clock for the 10-second count."}
+
+- id: R-IV-15
+  tier: Shall
+  statement: "Box consistency: team totals = sum of players; possessions of the two teams differ by <= 1 per half."
+  scope: per_game
+  tables: [foul_state, score_events, possessions]
+  when: "game complete"
+  check: |
+    team totals in box == sum(player totals) for points, FGA, FGM, FTA, FTM, rebounds, fouls
+    and abs(count(possessions msu, half h) - count(possessions opponent, half h)) <= cfg.possession_count_diff_max_per_half for h in (1, 2)
+  exceptions: ["end-of-half possessions (start and end of a half can add one)"]
+  on_break: {action: quarantine, queue: data_review, note: "game kept out of training until reviewed (R-DQ-03, R-DQ-06)"}
+  rule_refs:
+    - {rule: "2-9.13", heading: "SECTION 9. DUTIES OF SCORERS", pdf_page: 41, printed_page: 38, note: "scorebook progressive totals are authoritative"}
+  live_doc_rule: "n/a"
+  verification: {result: confirmed, note: "No playing rule; 2-9.13 noted for the authority of the scorebook."}
+
+- id: R-IV-16
+  tier: Shall
+  statement: "Halves start at 20:00, extra periods at 5:00."
+  scope: per_period
+  tables: [state_frame, scoreboard_ocr]
+  when: "first live frame of each period"
+  check: "row.game_clock_s == (cfg.half_length_s if row.period <= 2 else cfg.extra_period_length_s)"
+  exceptions: ["non-varsity or agreed shorter periods (5-6.2) are out of scope; registry must say so"]
+  on_break: {action: human_review, queue: ocr_review}
+  rule_refs:
+    - {rule: "5-6.1", heading: "SECTION 6. PERIODS-LENGTH", pdf_page: 69, printed_page: 66}
+    - {rule: "5-9.3", heading: "SECTION 9. PERIODS—EXTRA", pdf_page: 71, printed_page: 68}
+  live_doc_rule: "5-6, 5-9"
+  verification: {result: confirmed, note: ""}
+
+# ------------------------------------------------------------------ proposed new invariants (not yet in the live doc)
+- id: new-IV-01
+  tier: Shall
+  status: proposed
+  statement: "Shot-clock full value is 30 s and it starts only when a throw-in is legally touched inbounds, a team gains initial control after a jump ball or an unsuccessful try, or team control changes."
+  scope: per_frame
+  tables: [state_frame, restarts]
+  when: "row.shot_clock_status == 'on'"
+  check: "0 <= row.shot_clock_s <= cfg.shot_clock_full_s and (row.shot_clock_s < prev(shot_clock_s) implies a 5-10.3 start condition has occurred since the last stop)"
+  exceptions: ["one working shot clock (1-19.3)"]
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.1, 2-11.5", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 43, printed_page: 40}
+    - {rule: "5-10.3", heading: "SECTION 10. STARTING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+  serves: [R-IV-07, R-MD-06, R-SY-08]
+
+- id: new-IV-02
+  tier: Shall
+  status: proposed
+  statement: "After an offensive rebound in the frontcourt off a try (or pass or deflection) that touched the ring or flange, the shot clock shows exactly 20 s, even if more or less time remained."
+  scope: per_reset
+  tables: [restarts, state_frame, shots]
+  when: "chance starts with chance_number >= 2 and the previous try has ring_contact == 'yes' and offence gains control in frontcourt"
+  check: "shot_clock_s at control == cfg.shot_clock_offensive_reset_s (or shot_clock_status == 'off' when game clock < 20 s, 2-11.8)"
+  exceptions: ["air ball or try missing the ring: no reset (2-11.6.b.2 Note 2, 2-11.9)"]
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.6.d.1", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 45, printed_page: 42}
+    - {rule: "A.R. 2-14", heading: "Rule 2 case plays", pdf_page: 16, printed_page: 11, file: docs/rules/PRMBB_CaseBook.pdf}
+  serves: [R-IV-07, R-MB-07, R-SY-09, R-PE-01]
+
+- id: new-IV-03
+  tier: Shall
+  status: proposed
+  statement: "Defensive foul or kicked/fisted ball with a frontcourt throw-in (before any ring contact): shot clock = max(20, time remaining)."
+  scope: per_reset
+  tables: [restarts]
+  when: "restart cause in (defensive_personal_or_technical_foul_frontcourt_throw_in, defensive_kick_or_fist_violation, inadvertent_whistle_or_double_foul_no_control_arrow_frontcourt, defensive_off_ball_foul_try_in_air_misses_rim_frontcourt)"
+  check: "r.shot_clock_set_s == max(20, r.shot_clock_before_s)"
+  exceptions: ["shot clock off because game clock < shot-clock period"]
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.6.c.1-c.4", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 44, printed_page: 41}
+  serves: [R-IV-07, R-SY-09]
+
+- id: new-IV-04
+  tier: Shall
+  status: proposed
+  statement: "No-reset situations keep the unexpired shot-clock time (ball out of bounds off the defence, injury, end of a timeout, arrow favours the team in control, inadvertent whistle with control, technical on the team in control, etc.)."
+  scope: per_restart
+  tables: [restarts]
+  when: "restart cause has value no_reset in shot_clock_reset_table"
+  check: "abs(r.shot_clock_set_s - r.shot_clock_before_s) <= 0.1"
+  exceptions: ["timing mistake corrected by officials within the shot-clock period (5-12.4)"]
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.6.a.1-a.9", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 43, printed_page: 40}
+  serves: [R-IV-07, R-SY-09]
+
+- id: new-IV-05
+  tier: Shall
+  status: proposed
+  statement: "When on, the shot clock never shows more than the game clock; it is turned off when a reset would exceed the game clock, and reactivated at 20 s for 2-11.6.d situations."
+  scope: per_frame
+  tables: [state_frame]
+  when: "row.shot_clock_status == 'on' and row.clock_running"
+  check: "row.shot_clock_s <= row.game_clock_s + 1.0"
+  exceptions: ["display lag of one reading (tolerance 1 s, proposal)"]
+  on_break: {action: flag, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "2-11.2, 2-11.8", heading: "SECTION 11. DUTIES OF SHOT-CLOCK OPERATOR", pdf_page: 43, printed_page: 40}
+  serves: [R-IV-07, R-SR-01]
+
+- id: new-IV-06
+  tier: Shall
+  status: proposed
+  statement: "A shot-clock violation requires that the try was not released before the horn, or was released and then did not touch the ring or flange or enter the basket."
+  scope: per_event
+  tables: [events, made_basket_events, shots]
+  when: "event.type == 'shot_clock_violation'"
+  check: "last try before horn has release_vs_horn == 'after' or ring_contact == 'no'"
+  exceptions: ["horn not audible: zeros on the shot clock, then the LED strip, decide (11-1.3)"]
+  on_break: {action: human_review, queue: shot_clock_review}
+  rule_refs:
+    - {rule: "9-11.2, 9-11.4", heading: "SECTION 11. SHOT CLOCK", pdf_page: 99, printed_page: 96}
+    - {rule: "11-1.3", heading: "SECTION 1. GAMES WITH REPLAY/TELEVISION EQUIPMENT", pdf_page: 116, printed_page: 113}
+  serves: [R-MB-06, R-MB-07]
+
+- id: new-IV-07
+  tier: Shall
+  status: proposed
+  statement: "Free-throw award matches the foul and the team-foul count: common foul before the 7th team foul -> no free throws (throw-in); 7th-9th -> one-and-one; 10th+ -> two; player-control and non-loose-ball team-control fouls -> no free throws; loose-ball team-control fouls are bonus-eligible."
+  scope: per_foul
+  tables: [free_throws, foul_state, events]
+  when: "foul is common and not in the act of shooting"
+  check: |
+    expected = ('none' if foul.kind in ('player_control', 'team_control_not_loose_ball') or team_fouls_including_this < cfg.bonus_team_foul
+                else 'one_and_one' if team_fouls_including_this < cfg.double_bonus_team_foul else 'double_bonus')
+    award_type_of(foul) == expected
+  exceptions: ["double or simultaneous personal fouls: no free throws (10-1 Penalty f)"]
+  on_break: {action: human_review, queue: foul_review}
+  rule_refs:
+    - {rule: "8-2.1, 8-2.2", heading: "SECTION 2. BONUS FREE THROWS", pdf_page: 90, printed_page: 87}
+    - {rule: "10-1 Penalty a, c, d.3, f", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 106, printed_page: 103}
+  serves: [R-SR-03, R-SR-09, R-IV-09, R-PE-02]
+
+- id: new-IV-08
+  tier: Shall
+  status: proposed
+  statement: "Shooting-foul awards: made try -> 1 (and-one); missed 2-point try -> 2; missed 3-point try -> 3; flagrant -> 2 plus the ball; Class A technical -> 2; Class B technical -> 1; administrative technical -> 1 (2 for 10-2.6 and 10-2.7); technical free throws by one designated player."
+  scope: per_ft_sequence
+  tables: [free_throws]
+  when: "true"
+  check: "s.attempts_n == free_throw_award_table[s.award_type].attempts and (s.award_type starts with 'technical' implies one shooter for all attempts)"
+  exceptions: ["multiple fouls (10-1 Penalty b.2-b.4, d.6)", "false double / false multiple fouls carry their own penalties (10-1 Penalty g)"]
+  on_break: {action: human_review, queue: ft_review}
+  rule_refs:
+    - {rule: "10-1 Penalty b-e", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 106, printed_page: 103}
+    - {rule: "10-2 Penalty", heading: "SECTION 2. ADMINISTRATIVE TECHNICAL FOULS", pdf_page: 108, printed_page: 105}
+    - {rule: "10-3 Penalty", heading: "SECTION 3. CLASS A UNSPORTING TECHNICAL INFRACTIONS", pdf_page: 110, printed_page: 107}
+    - {rule: "10-4 Penalty", heading: "SECTION 4. CLASS B TECHNICAL INFRACTIONS", pdf_page: 113, printed_page: 110}
+    - {rule: "8-3.4", heading: "SECTION 3. WHO ATTEMPTS", pdf_page: 91, printed_page: 88}
+  serves: [R-SR-09, R-IV-11, R-PE-05]
+
+- id: new-IV-09
+  tier: Shall
+  status: proposed
+  statement: "What follows the last free throw: missed last FT for a personal foul -> ball live (rebound); made -> opponent throw-in from the end line; technical -> point of interruption; flagrant -> shooting team throw-in at the designated spot."
+  scope: per_ft_sequence
+  tables: [free_throws, restarts, state_frame]
+  when: "last attempt of a sequence"
+  check: "observed next state (live rebound / restart_type / restart_team) == ball_after expected from award_type and result"
+  exceptions: ["free throws after the period-end horn: period ends after them (8-6.2, 10-1 Penalty i)"]
+  on_break: {action: human_review, queue: possession_review}
+  rule_refs:
+    - {rule: "8-6.1, 8-6.2", heading: "SECTION 6. FREE THROW—NEXT PLAY", pdf_page: 92, printed_page: 89}
+    - {rule: "8-7", heading: "SECTION 7. FREE THROW—UNSUCCESSFUL", pdf_page: 93, printed_page: 90}
+    - {rule: "7-4.13", heading: "SECTION 4. OUT OF BOUNDS, BALL IN PLAY FROM", pdf_page: 86, printed_page: 83}
+  serves: [R-SR-09, R-IV-08, R-PE-01]
+
+- id: new-IV-10
+  tier: Shall
+  status: proposed
+  statement: "Free-thrower releases within 10 s of disposal; lane players may not enter early; the shooter stays behind the line and in the semicircle until the ball touches the ring, flange or backboard."
+  scope: per_ft_attempt
+  tables: [free_throws]
+  when: "f.video_ts_ms_release is not null"
+  check: "f.release_latency_s <= cfg.free_throw_release_s or f.violation == 'a_10s'"
+  exceptions: []
+  on_break: {action: flag, queue: ft_review}
+  rule_refs:
+    - {rule: "8-5.1.a, 8-5.1.c-e", heading: "SECTION 5. FREE-THROW REQUIREMENTS", pdf_page: 92, printed_page: 89}
+    - {rule: "9-1.1.a, c-e", heading: "SECTION 1. FREE-THROW VIOLATIONS", pdf_page: 94, printed_page: 91}
+  serves: [R-IV-11, R-SR-09]
+
+- id: new-IV-11
+  tier: Shall
+  status: proposed
+  statement: "Disqualification: a player is disqualified at the 5th foul (personal + Class A technical) or the 3rd Flagrant 1; ejected for a Flagrant 2, two Class A technicals, one Class A + two Class B, or three Class B technicals; must be replaced within 20 s."
+  scope: per_foul
+  tables: [foul_state, state_frame, timeouts]
+  when: "player foul count changes"
+  check: |
+    (personal_fouls_player_cum >= cfg.foul_out_count or flagrant1_player_cum >= cfg.flagrant1_dq_count or ejection condition) implies disqualified
+    and disqualified player absent from players_on_floor within cfg.disqualified_replace_s of real time after notification (plus timeout if one is granted)
+  exceptions: ["team has no eligible substitute (3-2.2)"]
+  on_break: {action: human_review, queue: foul_review}
+  rule_refs:
+    - {rule: "4-12.1, 4-12.5", heading: "SECTION 12. DISQUALIFIED PLAYER", pdf_page: 54, printed_page: 51}
+    - {rule: "4-14.2", heading: "SECTION 14. EJECTION", pdf_page: 55, printed_page: 52}
+    - {rule: "10-3 Ejection", heading: "SECTION 3. CLASS A UNSPORTING TECHNICAL INFRACTIONS", pdf_page: 110, printed_page: 107}
+    - {rule: "10-4 Ejection", heading: "SECTION 4. CLASS B TECHNICAL INFRACTIONS", pdf_page: 114, printed_page: 111}
+  serves: [R-IV-03, R-SR-03, R-PE-06]
+
+- id: new-IV-12
+  tier: Shall
+  status: proposed
+  statement: "Timeout allotment per media format: at least three media timeouts per half -> three 30 s + one 60 s per team per game, at most two 30 s carried into the second half, +1 x 30 s per extra period; otherwise four 75 s + two 30 s, +1 x 75 s per extra period."
+  scope: per_game
+  tables: [timeouts, state_frame]
+  when: "media_format known"
+  check: "initial timeouts and per-period additions == cfg.timeouts[media_format]; each charged timeout length <= cfg.timeout_length_s[kind]"
+  exceptions: ["media_format unknown: flag only, no break"]
+  on_break: {action: human_review, queue: timeout_review}
+  rule_refs:
+    - {rule: "5-14.4, 5-14.8, 5-14.9, 5-14.10", heading: "SECTION 14. TIMEOUTS GRANTED AND CHARGED", pdf_page: 74, printed_page: 71}
+  serves: [R-IV-10, R-SR-04, R-MD-07]
+
+- id: new-IV-13
+  tier: Shall
+  status: proposed
+  statement: "Media timeouts (16/12/8/4 or 15/10/5 format): at most one per mark per half, taken at the first dead ball at or after the mark; a timeout, review or challenge creating a dead ball within 30 s before a mark becomes that media timeout; the first team timeout of the second half takes the media length; a missed mark is taken at the next dead ball and the following mark only after the clock has properly started (A.R. 5-33)."
+  scope: per_half
+  tables: [timeouts]
+  when: "media_format == 'at_least_3_media'"
+  check: |
+    for each half: count(media timeouts per mark) <= 1
+    and each media timeout t: t.first_dead_ball_after_mark or within_pre_mark_window(t) or missed_mark_rule(t)
+  exceptions: ["agreement-specific formats (media_marks == 'agreement_other')", "NCAA tournament: committee may make the first team timeout of each half a media timeout (5-14.10 Note)"]
+  on_break: {action: flag, queue: timeout_review}
+  rule_refs:
+    - {rule: "5-14.10.c-e", heading: "SECTION 14. TIMEOUTS GRANTED AND CHARGED", pdf_page: 75, printed_page: 72}
+    - {rule: "A.R. 5-33", heading: "Case Book Corrections", pdf_page: 2, printed_page: null, file: docs/rules/2026-27PRMBB_PostClinicInterpretations.pdf}
+  serves: [R-SR-04, R-MD-13, R-SR-03]
+
+- id: new-IV-14
+  tier: Shall
+  status: proposed
+  statement: "Coach's challenge: one per team per game; a second only after the first is overturned; a legal timeout is needed; an unsuccessful challenge costs that timeout; only out of bounds (any time), goaltending/basket interference and restricted-area calls (until the last two minutes of regulation)."
+  scope: per_review
+  tables: [reviews, timeouts]
+  when: "review_kind == 'coach_challenge'"
+  check: |
+    challenge_number <= 1 + (count(prior overturned challenges by team) >= 1)
+    and team had >= 1 timeout left at the request
+    and (outcome != 'overturned') == timeout_charged
+    and subject in ('out_of_bounds',) or (subject in ('goaltending_basket_interference', 'restricted_area') and not last_two_minutes_of_regulation)
+  exceptions: ["complete replay-equipment failure: no timeout and no challenge lost (11-4.1.d.2)"]
+  on_break: {action: flag, queue: review_review}
+  rule_refs:
+    - {rule: "11-4.1.a-h", heading: "SECTION 4. COACH'S CHALLENGE", pdf_page: 120, printed_page: 117}
+    - {rule: "5-14.1.e", heading: "SECTION 14. TIMEOUTS GRANTED AND CHARGED", pdf_page: 73, printed_page: 70}
+    - {rule: "5-16.1.e", heading: "SECTION 16. NO TIMEOUT CHARGED", pdf_page: 77, printed_page: 74}
+    - {rule: "2-9.19 (new, record coach's challenges)", heading: "Rules Book Corrections", pdf_page: 1, printed_page: null, file: docs/rules/2026-27PRMBB_PostClinicInterpretations.pdf}
+  serves: [R-SR-04, R-RF-07]
+
+- id: new-IV-15
+  tier: Shall
+  status: proposed
+  statement: "Closely guarded: a frontcourt player holding (not dribbling) the ball, guarded within 6 ft (1.83 m) by the same opponent, may not hold it for 5 s."
+  scope: per_touch
+  tables: [events, tracks]
+  when: "holder in frontcourt, holding, nearest defender in guarding stance <= cfg.closely_guarded_distance_m (forward foot to forward foot), no player between"
+  check: "continuous_hold_s < cfg.closely_guarded_count_s or a 9-14 violation is recorded"
+  exceptions: ["guarding interrupted or another player between (9-14.3, 9-14.4)", "dribbling: no closely guarded count in NCAA men's rules"]
+  on_break: {action: flag, queue: possession_review}
+  rule_refs:
+    - {rule: "9-14.1-9-14.4", heading: "SECTION 14. CLOSELY GUARDED", pdf_page: 101, printed_page: 98}
+    - {rule: "4-17.2", heading: "SECTION 17. GUARDING", pdf_page: 58, printed_page: 55}
+  serves: [R-EV-04, R-DF-02, R-ST-23]
+
+- id: new-IV-16
+  tier: Shall
+  status: proposed
+  statement: "Throw-in: released within 5 s of disposal; designated spot 3 ft wide; after a score the thrower may run the end line."
+  scope: per_restart
+  tables: [restarts]
+  when: "restart_type starts with 'throw_in'"
+  check: "r.throw_in_count_s <= cfg.throw_in_count_s or a 9-4.1.d violation is recorded"
+  exceptions: []
+  on_break: {action: flag, queue: possession_review}
+  rule_refs:
+    - {rule: "7-6.6, 7-6.8", heading: "SECTION 6. THROW-IN — REQUIREMENTS", pdf_page: 88, printed_page: 85}
+    - {rule: "9-4.1.d", heading: "SECTION 4. THROW-IN", pdf_page: 96, printed_page: 93}
+    - {rule: "7-4.6.a", heading: "SECTION 4. OUT OF BOUNDS, BALL IN PLAY FROM", pdf_page: 85, printed_page: 82}
+  serves: [R-SR-08, R-MD-03]
+
+- id: new-IV-17
+  tier: Should
+  status: proposed
+  statement: "Three seconds in the lane: no offensive player stays in the frontcourt lane more than 3 consecutive seconds while his team controls the ball (not during a throw-in; count suspended on a move to shoot)."
+  scope: per_frame
+  tables: [tracks, state_frame]
+  when: "team control in frontcourt and not throw-in"
+  check: "max consecutive time in lane per offensive player < cfg.three_seconds_s or a 9-9 violation is recorded"
+  exceptions: ["9-9.3 move to try for goal"]
+  on_break: {action: flag, queue: possession_review, note: "officials' judgement; used to label, never to overrule PBP"}
+  rule_refs:
+    - {rule: "9-9.1-9-9.3", heading: "SECTION 9. THREE SECONDS IN THE LANE", pdf_page: 98, printed_page: 95}
+  serves: [R-DF-07, R-ST-01]
+
+- id: new-IV-18
+  tier: Shall
+  status: proposed
+  statement: "Throw-in spot after a frontcourt stoppage with the offence keeping the ball: end line 3 ft outside the lane line or the sideline 28-ft mark (Rule 7-3.2.b as changed in 2025-26); defence-caused out of bounds: spot where the ball went out."
+  scope: per_restart
+  tables: [restarts]
+  when: "court_half == 'front' and restart_type == 'throw_in_designated_spot' and the offence retains the ball"
+  check: "r.throw_in_spot in ('end_line_3ft_outside_lane', 'sideline_28ft_mark') or (dead_ball_reason == 'violation_out_of_bounds' and caused_by_defence and r.throw_in_spot in ('sideline_spot', 'end_line_spot'))"
+  exceptions: ["backcourt: point of interruption or nearest spot (7-3.2.c)"]
+  on_break: {action: flag, queue: possession_review}
+  rule_refs:
+    - {rule: "7-3.2.a-d", heading: "SECTION 3. BALL AWARDED OUT OF BOUNDS", pdf_page: 84, printed_page: 81}
+    - {rule: "Proposal 6 (Rule 7-3.2.b)", heading: "2025-26 and 2026-27 Men's Basketball Rules Changes", pdf_page: 2, printed_page: null, file: docs/rules/2025-26PRMBB_RulesChanges.pdf}
+  serves: [R-SR-08]
+
+- id: new-IV-19
+  tier: Shall
+  status: proposed
+  statement: "Possession arrow: set to the team that did not gain control of the opening jump; flips each time an alternating-possession throw-in ends; reversed in direction (not in team) at half time; the second half starts with the arrow team at the division line opposite the scorers' table."
+  scope: per_game
+  tables: [restarts, state_frame]
+  when: "true"
+  check: |
+    first arrow value != team that gained control of the opening tip
+    and the period-2 first restart is restart_type 'second_half_ap_division_line' by arrow_before team
+    and arrow changes only at alternating-possession throw-in ends or throw-in violations by the arrow team
+  exceptions: ["jump ball re-toss (6-3.5)", "foul during an AP throw-in does not cost the arrow (6-3.8)", "A.R. 11-32 half-time flagrant: second half starts with the offended team at the division line, no change to the arrow"]
+  on_break: {action: human_review, queue: possession_review}
+  rule_refs:
+    - {rule: "6-3.2, 6-3.4, 6-3.6, 6-3.7, 6-3.8", heading: "SECTION 3. ALTERNATING-POSSESSION PROCEDURE", pdf_page: 80, printed_page: 77}
+    - {rule: "1-20.1", heading: "SECTION 20. POSSESSION INDICATOR", pdf_page: 30, printed_page: 27}
+  serves: [R-MD-12, R-IV-08, R-RF-07]
+
+- id: new-IV-20
+  tier: Shall
+  status: proposed
+  statement: "Extra periods: 5 min each, no change of baskets, 1-minute intermission, started by a jump ball; team fouls carry from the second half."
+  scope: per_period
+  tables: [state_frame, restarts, foul_state]
+  when: "row.period >= 3"
+  check: "basket_attacked per team same as period 2 and first restart is a jump_ball and team_fouls at start == team_fouls at end of period 2"
+  exceptions: ["technical assessed before an extra period: free throws then jump ball (8-6.5)"]
+  on_break: {action: human_review, queue: ocr_review}
+  rule_refs:
+    - {rule: "5-9.2-5-9.4", heading: "SECTION 9. PERIODS—EXTRA", pdf_page: 71, printed_page: 68}
+    - {rule: "6-2.1", heading: "SECTION 2. JUMP BALL", pdf_page: 79, printed_page: 76}
+  serves: [R-IV-09, R-IV-16, R-MD-07]
+
+- id: new-IV-21
+  tier: Shall
+  status: proposed
+  statement: "Teams change baskets at half time."
+  scope: per_game
+  tables: [state_frame]
+  when: "period 1 and period 2 both observed"
+  check: "basket_attacked for MSU in period 2 != basket_attacked for MSU in period 1"
+  exceptions: ["officials let teams go the wrong way: activity counts, play resumes the right way (5-1.20)"]
+  on_break: {action: human_review, queue: mapping_review}
+  rule_refs:
+    - {rule: "1-1.3", heading: "SECTION 1. THE GAME", pdf_page: 21, printed_page: 18}
+    - {rule: "5-1.20", heading: "SECTION 1. SCORING/TRY FOR GOAL", pdf_page: 68, printed_page: 65}
+  serves: [R-CG-02, R-CG-06, R-MD-01]
+
+- id: new-IV-22
+  tier: Shall
+  status: proposed
+  statement: "Game clock shows tenths under one minute; in the last 59.9 s at least 0.3 s comes off on any legal touch followed by an immediate stop; with 0.3 s or less on the game or shot clock at a throw-in or free throw, a score can only come from a tap."
+  scope: per_event
+  tables: [state_frame, made_basket_events, scoreboard_ocr]
+  when: "game_clock_s < cfg.tenths_display_below_s"
+  check: |
+    OCR resolution is 0.1 s
+    and for touch-and-stop sequences: prev(game_clock_s) - row.game_clock_s >= cfg.min_clock_off_on_touch_s
+    and (restart with game_clock_s <= cfg.tap_only_at_or_below_s and a make follows) implies make is a tap
+  exceptions: ["clock not visible"]
+  on_break: {action: human_review, queue: clock_review}
+  rule_refs:
+    - {rule: "1-18.2", heading: "SECTION 18. SCOREBOARD, GAME-CLOCK DISPLAY", pdf_page: 29, printed_page: 26}
+    - {rule: "5-10.2.d, 5-10.3.d", heading: "SECTION 10. STARTING GAME AND SHOT CLOCKS", pdf_page: 71, printed_page: 68}
+    - {rule: "5-1.19", heading: "SECTION 1. SCORING/TRY FOR GOAL", pdf_page: 68, printed_page: 65}
+  serves: [R-SR-01, R-MB-06]
+
+- id: new-IV-23
+  tier: Shall
+  status: proposed
+  statement: "A goal at the end of a period counts only if the try was released before the game clock read zeros (red light / horn when the clock is not visible); a try in flight ends the period when the try ends."
+  scope: per_make
+  tables: [made_basket_events, reviews]
+  when: "make within 3 s of a period end"
+  check: "make.release_vs_horn == 'before' or make.decision == 'rejected' or edge_case == 'waved_off_period_horn'"
+  exceptions: ["foul before zeros: free throws after the horn (5-7.3.c, 8-6.2)"]
+  on_break: {action: human_review, queue: value_review}
+  rule_refs:
+    - {rule: "5-7.2.a, 5-7.3", heading: "SECTION 7. PERIODS-BEGINNING AND END", pdf_page: 70, printed_page: 67}
+    - {rule: "11-1.2", heading: "SECTION 1. GAMES WITH REPLAY/TELEVISION EQUIPMENT", pdf_page: 116, printed_page: 113}
+    - {rule: "11-3.1.a", heading: "SECTION 3. INSTANT REPLAY—MANDATORY USE", pdf_page: 120, printed_page: 117}
+  serves: [R-MB-06, R-MB-05]
+
+- id: new-IV-24
+  tier: Shall
+  status: proposed
+  statement: "Points without the ball going through: goaltending or basket interference by the defence awards 1 (free throw, plus Class B technical), 2 or 3; a violation at a team's own basket awards no points; illegal assistance to block a try awards the try's points."
+  scope: per_event
+  tables: [score_events, made_basket_events]
+  when: "event_kind in ('awarded_goaltending', 'awarded_basket_interference', 'illegal_assistance_award')"
+  check: "delta_points == value of the try (1 / 2 / 3) and the make row has cue1_present == false allowed"
+  exceptions: []
+  on_break: {action: human_review, queue: value_review}
+  rule_refs:
+    - {rule: "9-15 Penalty a-e", heading: "SECTION 15. BASKET INTERFERENCE AND GOALTENDING", pdf_page: 102, printed_page: 99}
+    - {rule: "9-16.1.c Penalty", heading: "SECTION 16. ILLEGAL ASSISTANCE", pdf_page: 103, printed_page: 100}
+  serves: [R-MB-05, R-IV-04]
+
+- id: new-IV-25
+  tier: Shall
+  status: proposed
+  statement: "Free-throw substitutions: an entering player may not replace the free-thrower; during multiple free throws for personal fouls, substitutes enter only before the final attempt (or after it is made); for technical or flagrant free throws, before the first or after the last."
+  scope: per_ft_sequence
+  tables: [free_throws, events]
+  when: "substitution during a free-throw sequence"
+  check: "substitution time is before the last attempt's disposal (personal) or before the first / after the last (technical, flagrant), and entering player != replaced shooter"
+  exceptions: ["required replacements (disqualification, injury, blood, contact lens; 3-6.2.d)"]
+  on_break: {action: flag, queue: pbp_or_identity_review}
+  rule_refs:
+    - {rule: "3-6.2.a-d", heading: "SECTION 6. SUBSTITUTIONS", pdf_page: 50, printed_page: 47}
+  serves: [R-IV-03, R-SR-09, R-SY-03]
+
+- id: new-IV-26
+  tier: Shall
+  status: proposed
+  statement: "No substitutions while the clock is stopped after a made field goal in the last 59.9 s of the second half or an extra period, except those the rules permit; a withdrawn player re-enters only after the clock has properly started."
+  scope: per_event
+  tables: [events, state_frame]
+  when: "substitution with period >= 2 and game_clock_s <= 59.9 and clock stopped after a made FG"
+  check: "substitution permitted by 3-6.1.h.1 (injury, blood, violation, foul, disqualification, timeout, monitor review for a score, contact lens)"
+  exceptions: ["3-6.1.j exceptions 1 and 2 (opponent violation/foul; official or scorer error)"]
+  on_break: {action: flag, queue: pbp_or_identity_review}
+  rule_refs:
+    - {rule: "3-6.1.h, 3-6.1.j", heading: "SECTION 6. SUBSTITUTIONS", pdf_page: 49, printed_page: 46}
+  serves: [R-IV-03, R-SY-03]
+
+- id: new-IV-27
+  tier: Shall
+  status: proposed
+  statement: "Timing corrections are made within the half (or extra period) of the mistake and never carried over; shot-clock corrections only within the same shot-clock period."
+  scope: per_review
+  tables: [reviews, state_corrections]
+  when: "review_kind in ('timing_correction',) or subject in ('game_clock_time', 'shot_clock_time')"
+  check: "correction applied in the same period as the mistake (and the same shot-clock period for shot-clock fixes)"
+  exceptions: []
+  on_break: {action: flag, queue: clock_review}
+  rule_refs:
+    - {rule: "5-7.5", heading: "SECTION 7. PERIODS-BEGINNING AND END", pdf_page: 70, printed_page: 67}
+    - {rule: "5-12.1, 5-12.4", heading: "SECTION 12. TIMING MISTAKES AND MALFUNCTIONS", pdf_page: 72, printed_page: 69, note: "5-12.4 on pdf 73 / printed 70"}
+    - {rule: "11-2.1.c.1.c, 11-2.1.c.2", heading: "SECTION 2. INSTANT REPLAY—VOLUNTARY USE (EXCEPT WHERE NOTED)", pdf_page: 118, printed_page: 115}
+  serves: [R-IV-05, R-SB-01]
+
+- id: new-IV-28
+  tier: Shall
+  status: proposed
+  statement: "No timeout is granted to the opponents of the throw-in team after the throw-in starts, during an interrupted dribble, or (except at a dead ball) without player control by the requesting team; none before the opening jump ends; none in the last two minutes until review results are reported (except a challenge timeout)."
+  scope: per_timeout
+  tables: [timeouts, state_frame]
+  when: "timeout_type starts with 'team_'"
+  check: "state at request: (live_ball == false) or (ball_control_state == team_ball_of(t.team) and not interrupted_dribble)"
+  exceptions: ["head coach requests during throw-ins and running clock only in the last two minutes of the second half or overtime (5-14.1.a exception)"]
+  on_break: {action: flag, queue: timeout_review}
+  rule_refs:
+    - {rule: "5-14.1.a-c", heading: "SECTION 14. TIMEOUTS GRANTED AND CHARGED", pdf_page: 73, printed_page: 70}
+    - {rule: "5-15.1", heading: "SECTION 15. TIMEOUTS NOT GRANTED", pdf_page: 77, printed_page: 74}
+  serves: [R-SR-04, R-PE-07]
+
+- id: new-IV-29
+  tier: Shall
+  status: proposed
+  statement: "Lane spaces for free throws: first space above each block for opponents of the shooter, second for teammates, third for opponents; no teammate in the spaces nearest the basket."
+  scope: per_ft_attempt
+  tables: [free_throws]
+  when: "not f.lane_expected_empty"
+  check: "occupant team in each lane space matches the 8-4.4.b pattern; spaces L1 and R1 (nearest the end line) empty"
+  exceptions: ["resumption-of-play (8-4.5)"]
+  on_break: {action: flag, queue: ft_review}
+  rule_refs:
+    - {rule: "8-4.4.a-b, 8-4.5, 8-4.7", heading: "SECTION 4. POSITIONS DURING ATTEMPT", pdf_page: 91, printed_page: 88}
+    - {rule: "8-5.2", heading: "SECTION 5. FREE-THROW REQUIREMENTS", pdf_page: 92, printed_page: 89}
+    - {rule: "9-1.1.j-l", heading: "SECTION 1. FREE-THROW VIOLATIONS", pdf_page: 94, printed_page: 91}
+  serves: [R-IV-11, R-SR-09]
+
+- id: new-IV-30
+  tier: Shall
+  status: proposed
+  statement: "Score of a forfeited game is recorded 2-0 unless 30 minutes of playing time were completed (then the score stands); a team with a single player forfeits unless both can still win."
+  scope: per_game
+  tables: [games, score_events]
+  when: "games.status indicates forfeit"
+  check: "final score == (2-0) or elapsed playing time >= 1800 s"
+  exceptions: []
+  on_break: {action: quarantine, queue: data_review}
+  rule_refs:
+    - {rule: "5-3.5", heading: "SECTION 3. FORFEIT/NO CONTEST", pdf_page: 69, printed_page: 66}
+    - {rule: "3-2.3", heading: "SECTION 2. THE TEAM", pdf_page: 48, printed_page: 45}
+  serves: [R-IV-04, R-DQ-06]
+
+- id: new-IV-31
+  tier: Shall
+  status: proposed
+  statement: "A score change on the board happens only while the ball is dead after a goal or free throw, during a review or timeout correction, or for a goal released before the horn; never in the middle of live play without a goal."
+  scope: per_event
+  tables: [score_events, state_frame]
+  when: "seen_ocr"
+  check: "event_kind in ('field_goal', 'free_throw', awarded kinds) with a make or award within cfg.scoreboard_lag_window_initial_s (then the measured lag), or event_kind is a correction during a dead ball"
+  exceptions: ["scorebug lag (R-SB-01 j)"]
+  on_break: {action: human_review, queue: scoreboard_review}
+  rule_refs:
+    - {rule: "6-5.1.a", heading: "SECTION 5. DEAD BALL", pdf_page: 81, printed_page: 78}
+    - {rule: "2-9.13, 2-9.17", heading: "SECTION 9. DUTIES OF SCORERS", pdf_page: 41, printed_page: 38}
+  serves: [R-SB-01, R-MB-01]
+
+- id: new-IV-32
+  tier: Shall
+  status: proposed
+  statement: "Double and simultaneous personal fouls award no free throws (both charged; team fouls count); play resumes at the point of interruption, unless exactly one of the fouls is flagrant."
+  scope: per_foul
+  tables: [free_throws, foul_state, restarts]
+  when: "foul part of a double or simultaneous personal foul"
+  check: "no free_throws sequence for it unless one foul is flagrant; next restart is throw_in_point_of_interruption or AP throw-in when no control"
+  exceptions: ["one flagrant: common-foul free throws then flagrant free throws, lane empty (10-1 Penalty f)"]
+  on_break: {action: flag, queue: foul_review}
+  rule_refs:
+    - {rule: "10-1 Penalty f", heading: "SECTION 1. PERSONAL FOULS", pdf_page: 107, printed_page: 104}
+    - {rule: "4-15.2.b, 4-15.2.d", heading: "SECTION 15. FOUL", pdf_page: 56, printed_page: 53}
+    - {rule: "7-4.8-7-4.12", heading: "SECTION 4. OUT OF BOUNDS, BALL IN PLAY FROM", pdf_page: 86, printed_page: 83}
+  serves: [R-SR-09, R-SR-08]
+
+- id: new-IV-33
+  tier: Should
+  status: proposed
+  statement: "Officials' scorebook authority: when sources disagree and the discrepancy is unresolved, the official scorebook (as published in PBP and the box score) wins over the arena board, which wins over the broadcast scorebug."
+  scope: per_game
+  tables: [score_events, scoreboard_flags, state_corrections]
+  when: "flag unresolved after review"
+  check: "corrected final state equals the box score"
+  exceptions: ["referee knowledge permitting another decision (2-9.13)"]
+  on_break: {action: human_review, queue: scoreboard_review}
+  rule_refs:
+    - {rule: "2-9.13", heading: "SECTION 9. DUTIES OF SCORERS", pdf_page: 41, printed_page: 38}
+  serves: [R-SB-02, R-SR-15]
+
+- id: new-IV-34
+  tier: Should
+  status: proposed
+  statement: "Physical limits of the court: every tracked player and ball position lies inside the court plus a 1 m margin (sideline 7.62 m from centre, end lines 1.60 m behind the rim centre); ball height within 0-15 m."
+  scope: per_frame
+  tables: [state_frame, tracks]
+  when: "court_mapping_conf >= 0.8"
+  check: "abs(x_m) <= 8.62 and -2.6 <= y_m <= 28.05 (attacked-rim frame) and 0 <= ball_z_m <= 15"
+  exceptions: ["players off court in bench area or out of bounds legitimately (still within margin)"]
+  on_break: {action: quarantine, queue: mapping_review}
+  rule_refs:
+    - {rule: "1-2.2", heading: "SECTION 2. THE PLAYING COURT—DIMENSIONS", pdf_page: 21, printed_page: 18}
+  serves: [R-DQ-02, R-IV-13]
+
+corrections:
+  # old -> new for every live-doc rule reference or statement found wrong or imprecise (2026-10-18).
+  - id: R-IV-01
+    old: "Rule 3-4, 3-6"
+    new: "1-1.1, 3-2.1, 3-2.2, 10-2.6 (five players); 1-22.7.b.2, 1-22.7.b.5, 10-2.3.a (jersey numbers); 3-6 (substitutions)"
+    why: "3-4 is the pre-game roster/lineup filing; the five-player rule is 1-1.1 and 3-2; unique numbers are 1-22.7.b.5 (penalty 10-2.3.a). Exception added: a team may continue with fewer than five (3-2.2)."
+  - id: R-IV-02
+    old: "Three officials on court (Rule 2-1)"
+    new: "Two or three officials (Rule 2-1.1.a); three expected in D-I"
+    why: "2-1.1.a allows a referee and one umpire or a referee and two umpires; three-person crews are D-I practice (points of emphasis), not a rule."
+  - id: R-IV-03
+    old: "Rule 3-6, 10"
+    new: "3-6.1, 3-6.2; 4-12.1, 4-12.5; 2-8.3; 4-14.2.e; 10-1 Penalty"
+    why: "Disqualification is defined in 4-12.1 and includes Class A technicals in the five and three Flagrant 1 fouls; 'Rule 10' alone is too broad."
+  - id: R-IV-04
+    old: "Rule 5"
+    new: "5-1.2-5-1.4 (incl. 5-1.4.a), 5-1.13, 9-15 Penalty, 2-9.13, 2-9.17"
+    why: "Precision; adds the own-basket credit (2 points to the opponent, no player credit) and awarded points."
+  - id: R-IV-08
+    old: "Rule 4, 6"
+    new: "6-2.1, 6-3.2, 6-3.4, 6-3.6, 6-4.1, 7-3.1.c, 7-4.6.a, 8-6.1, 8-7, 4-9.3"
+    why: "Precision; adds the second-half arrow start (6-3.6) and limits the 'made last free throw' rule to personal fouls."
+  - id: R-IV-09
+    old: "Rule 2-9.11, 4"
+    new: "8-2.1, 8-2.2, 8-2.3, 10-1 Penalty c and d.3, 2-9.11, 5-9.4, 5-7.6; A.R. 11-32"
+    why: "The bonus is set by 8-2 and the 10-1 penalty; 2-9.11 is only the scorer's signal and Rule 4 is definitions. Team fouls are not reset for extra periods (5-9.4: each extra period is an extension of the second half)."
+  - id: R-IV-10
+    old: "except one extra 75-second timeout per extra period (Rule 5-13, 5-14)"
+    new: "extra allotment per extra period: one 30-second timeout in the media format (5-14.10.f), one 75-second timeout otherwise (5-14.8.d, 5-14.9.f); at most two 30-second timeouts carry into the second half (5-14.10.a.1)"
+    why: "Televised D-I games use the media format, where 75-second timeouts do not exist; the halftime carry-over cap was missing."
+  - id: R-IV-11
+    old: "Rule 8"
+    new: "8-4.4, 8-4.4.a, 8-4.5, 8-4.8, 8-5.1, 8-5.2, 9-1.1, 5-10.2.c, 10-1 Penalty b-e"
+    why: "Precision; lane rules and the clock start on a missed live free throw."
+  - id: R-IV-12
+    old: "Rule 1-7, 5-1"
+    new: "1-7.1, 5-1.4, 5-1.5"
+    why: "Precision only (numbers verified: 6.750 m and 6.601 m)."
+  - id: R-SR-03 (exceptions column)
+    old: "Player-control and team-control fouls award no bonus free throws"
+    new: "Player-control fouls and team-control fouls that are not loose-ball fouls award no free throws; loose-ball team-control fouls are bonus-eligible (8-2.1 exception, 10-1 Penalty c)"
+    why: "8-2.1 and 10-1 Penalty c include team-control fouls during a loose ball (fumble, deflection, release of a try) in the bonus."
+  - id: R-SR-09
+    old: "technical 2"
+    new: "Class A technical 2 (10-3 Penalty); Class B technical 1 (10-4 Penalty); administrative technical 1, or 2 for 10-2.6 and 10-2.7"
+    why: "Only Class A technicals award two free throws."
+  - id: R-SR-03 / R-MD-07
+    old: "bonus state ... reset at half (overtime per config)"
+    new: "reset at the start of the second half only; extra periods keep the second-half count (5-9.4)"
+    why: "Makes the 'Overtime counts follow the rulebook entry in config' of R-MD-07 concrete."
+  - id: R-SR-04
+    old: "media-timeout slot (first dead ball at or after 16:00, 12:00, 8:00, 4:00 of each half)"
+    new: "same, plus: the alternative 15/10/5 marks (5-14.10.c); a timeout or review creating a dead ball within 30 s before a mark becomes the media timeout (5-14.10.e); the first team timeout of the second half takes the media length (5-14.10.d); missed marks per A.R. 5-33 (2026-27 interpretations)"
+    why: "Completeness; the segment boundaries in state_second.media_segment_id depend on these rules."
+
+verified_unchanged:
+  - {id: R-IV-05, rule: "5-12, 11-2"}
+  - {id: R-IV-06, rule: "2-10.12"}
+  - {id: R-IV-07, rule: "2-11.6, 2-11.8 (and exception 1-19.3)"}
+  - {id: R-IV-14, rule: "9-10, 9-12"}
+  - {id: R-IV-16, rule: "5-6, 5-9"}
+  - {id: R-IV-13, rule: "n/a"}
+  - {id: R-IV-15, rule: "n/a"}
+  - {id: "State record intro", rule: "2-9.13 (scorebook authority) confirmed, pdf 41 / printed 38"}
+  - {id: R-SR-08, rule: "7-3.2.b as changed in 2025-26 confirmed (proposal 6 of the 2025-26 changes; text on pdf 84 / printed 81)"}
+  - {id: R-MD-06 / R-SY-09, rule: "2-11.6.d.1 flat 20 s confirmed"}

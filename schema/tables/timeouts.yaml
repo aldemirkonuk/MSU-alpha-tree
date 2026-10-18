@@ -1,0 +1,522 @@
+# Proposed schema (2026-10-18) for table timeouts. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: timeouts
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#timeouts
+grain: 'one row per stoppage that is a timeout: team-charged, media, injury-charged, appeal- or challenge-charged, excessive; one row per (game, pass, timeout_seq)'
+primary_key:
+- timeout_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - review_id
+  references: reviews.review_id
+- columns:
+  - pbp_event_id
+  references: events.event_id
+requirements:
+- R-SR-04
+- R-IV-10
+- R-MD-07
+- R-MD-13
+- R-PE-07
+storage: Parquet, processed/<game_id>/<version>/timeouts.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- 'Media format per game (media_format) decides the allotment: at_least_3_media (Rule 5-14.10: three 30 s + one 60 s; at most two 30 s carried into the second half; +1 x 30 s per extra period), fewer_than_3_media
+  (5-14.9) or no_media (5-14.8: four 75 s + two 30 s; +1 x 75 s per extra period).'
+- Read from PBP where available; the live doc says the format depends on the media agreement per game.
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: timeout_id
+  type: string
+  definition: game_id + pass + timeout_seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  - pbp_only
+  definition: blind, anchored, or pbp_only (games or stretches with no video, built from PBP alone for the possession engine, R-SY-06, R-PE-08).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  - R-SY-06
+  - R-PE-08
+  nullable: false
+  proposed_global_addition: true
+- name: timeout_seq
+  type: int
+  range:
+  - 1
+  - 60
+  definition: Order in the game.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms_start
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time the timeout starts (official signals).
+  source: CV; OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: video_ts_ms_end
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time play resumes (ball live).
+  source: CV; OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: duration_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Real time of the stoppage.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: media_format
+  type: enum
+  values:
+  - at_least_3_media
+  - fewer_than_3_media
+  - no_media
+  - unknown
+  definition: Game's timeout format.
+  source: PBP + registry broadcast
+  licence: computed_by_us
+  as_of: pre_game
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+- name: media_marks
+  type: enum
+  values:
+  - '16_12_8_4'
+  - '15_10_5'
+  - agreement_other
+  - none
+  definition: Media marks in use.
+  source: PBP + OCR
+  licence: computed_by_us
+  as_of: pre_game
+  requirements:
+  - R-SR-04
+  - R-MD-13
+  nullable: false
+- name: timeout_type
+  type: enum
+  values:
+  - team_30
+  - team_60
+  - team_75
+  - media
+  - injury_charged
+  - appeal_charged
+  - challenge
+  - excessive
+  - official_stoppage
+  definition: 'team_30, team_60, team_75, media, injury_charged, appeal_charged (Rule 11-5), challenge (Rule 11-4), excessive (Rule 5-17), official_stoppage (not charged). Name as in source_field_map.md
+    2.12; its coarse values map: short -> team_30, full -> team_60 or team_75 by media_format, media/OfficialTVTimeOut -> media, official -> official_stoppage.'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: team
+  type: enum
+  values:
+  - msu
+  - opponent
+  - none
+  definition: Team that called or is charged; none for media and official stoppages.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: called_by
+  type: enum
+  values:
+  - head_coach
+  - player
+  - official
+  - media
+  - unknown
+  definition: Who requested it.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: requesting_player_id
+  type: string
+  definition: Player who requested, when a player did.
+  source: PBP; CV
+  licence: ROW
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: charged
+  type: bool
+  definition: Charged to the team (false for media, official stoppages, successful challenges, injury rules of Rule 5-16).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+- name: became_media
+  type: bool
+  definition: Team timeout converted into the media timeout (first dead ball at or after a mark, within 30 s before a mark, or first team timeout of the second half; Rule 5-14.10.d-e).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-MD-13
+  nullable: false
+- name: media_slot
+  type: string
+  definition: H<half>-<mark> (e.g. H1-16, H2-4), H2-first_team, OT<n>-first, or none.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-MD-13
+  nullable: false
+- name: mark_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game-clock value of the media mark this timeout serves (960, 720, 480, 240 for 16/12/8/4).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: first_dead_ball_after_mark
+  type: bool
+  definition: Media timeout taken at the first dead ball at or after its mark (Rule 5-14.10.c).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: true
+- name: shortened
+  type: bool
+  definition: Timeout shortened by the requesting team (Rule 5-14.14).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: false
+- name: left_after_msu
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: MSU charged timeouts left after this row (all lengths).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+- name: left_after_opp
+  type: int
+  unit: count
+  range:
+  - 0
+  - 12
+  definition: Opponent charged timeouts left after this row.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  - R-IV-10
+  nullable: false
+- name: halftime_carry_loss
+  type: int
+  unit: count
+  range:
+  - 0
+  - 3
+  definition: 30 s timeouts lost at half because only two carry over (Rule 5-14.10.a.1); recorded on a synthetic row at period 2 start.
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-IV-10
+  nullable: true
+- name: ato_set_instance_id
+  type: string
+  definition: After-timeout set started at the next live ball (link to sets layer).
+  source: ST layer
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: review_id
+  type: string
+  definition: Linked review for challenge or appeal timeouts.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-04
+  nullable: true
+- name: timeouts_src
+  type: enum
+  values:
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the timeout value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: timeouts_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the timeout value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-04
+  nullable: false
+- name: timeouts_dq
+  type: enum
+  values:
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the timeout value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-04
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

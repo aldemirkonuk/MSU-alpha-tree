@@ -1,0 +1,332 @@
+# Proposed schema (2026-10-18) for table cv_events_unmatched. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: cv_events_unmatched
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#cv_events_unmatched
+grain: one row per CV-detected event that has no matching PBP event (anchored pass), kept forever as its own stream
+primary_key:
+- cv_event_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - event_id
+  references: events.event_id (the same event in the core events table)
+- columns:
+  - nearest_pbp_event_id
+  references: events.event_id
+requirements:
+- R-SR-14
+- R-SY-10
+- R-EV-09
+- R-EV-01
+storage: Parquet, processed/<game_id>/<version>/cv_events_unmatched.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- Every CV event in the blind pass is unmatched by construction; this table is written in the anchored pass, where matching is possible. Blind-pass events live in events with pass = blind.
+- 'Never zero rows for a full game without a written reason (R-SR-14 test): the reason goes into the run record.'
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: cv_event_id
+  type: string
+  definition: game_id + 'anchored' + seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-14
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: event_id
+  type: string
+  definition: Same event's row in the core events table.
+  source: pipeline
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-EV-01
+  nullable: false
+- name: event_type
+  type: enum
+  values:
+  - deflection
+  - screen
+  - hand_off
+  - tip
+  - box_out
+  - closeout
+  - help_rotation
+  - loose_ball_recovery
+  - contest
+  - drive
+  - pass
+  - shot_unlogged
+  - foul_unlogged
+  - turnover_unlogged
+  - rebound_unlogged
+  - substitution_unlogged
+  - timeout_unlogged
+  - other
+  definition: Type of event.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  - R-SY-10
+  nullable: false
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms_start
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Event start.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  nullable: false
+- name: video_ts_ms_end
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Event end.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  nullable: false
+- name: team
+  type: enum
+  values:
+  - msu
+  - opponent
+  - none
+  definition: Team performing the event.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  nullable: false
+- name: player_ids
+  type: list[string]
+  definition: Players involved (actor first).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  nullable: false
+- name: x_m
+  type: float
+  unit: m
+  range:
+  - -8.62
+  - 8.62
+  definition: Location x (attacked-rim frame).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-EV-01
+  nullable: true
+- name: y_m
+  type: float
+  unit: m
+  range:
+  - -2.6
+  - 28.05
+  definition: Location y.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-EV-01
+  nullable: true
+- name: r_m
+  type: float
+  unit: m
+  range:
+  - 0
+  - 30
+  definition: Distance from the attacked rim.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-EV-01
+  nullable: true
+- name: theta_deg
+  type: float
+  unit: degrees
+  range:
+  - 0
+  - 360
+  definition: Angle from the right baseline at the rim centre.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-EV-01
+  nullable: true
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Detector confidence.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-14
+  - R-MD-09
+  global_metadata: true
+  nullable: false
+- name: nearest_pbp_event_id
+  type: string
+  definition: Closest PBP event in game time (for audit).
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-10
+  nullable: true
+- name: nearest_pbp_dt_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game-clock gap to it.
+  source: derived
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-SY-10
+  nullable: true
+- name: unmatched_reason
+  type: enum
+  values:
+  - type_not_logged_by_pbp
+  - pbp_missing_event
+  - outside_time_window
+  - identity_mismatch
+  - possible_false_positive
+  - unknown
+  definition: Why there is no match.
+  source: matcher
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-SR-14
+  - R-SY-10
+  nullable: false
+- name: review_status
+  type: enum
+  values:
+  - not_queued
+  - queued
+  - confirmed_real
+  - false_positive
+  definition: Review state.
+  source: manual review
+  licence: computed_by_us
+  as_of: post_review
+  requirements:
+  - R-HR-01
+  nullable: false
+- name: model_version
+  type: string
+  definition: Detector versions.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-MD-09
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: Write time.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false

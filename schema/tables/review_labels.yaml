@@ -1,0 +1,372 @@
+# Proposed schema for table 'review_labels' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: review_labels
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Runs, errors and review
+grain: one row per human label (append-only; corrections are new rows)
+primary_key:
+- label_id
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: LABEL
+  text: Human label; gold or training target, never an inference-time input (R-HR-07).
+requirements:
+- R-HR-05
+- R-HR-06
+- R-HR-07
+- R-HR-08
+- R-HR-12
+- R-VA-01
+- R-HR-10
+- R-ST-10
+columns:
+  label_id:
+    type: string
+    unit: null
+    range: '''<item_id>:<n>'''
+    nullable: false
+    definition: Key.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  item_id:
+    type: string
+    unit: null
+    range: review_queue key
+    nullable: true
+    definition: Item (null for gold-set labelling outside the queue).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-FD-02
+  label_type:
+    type: string
+    unit: null
+    range: e.g. identity, ball_state, control_state, event, set, coverage, transition_class, scoreboard_answer
+    nullable: false
+    definition: Kind of label.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-08
+  target_table:
+    type: string
+    unit: null
+    range: table
+    nullable: false
+    definition: Table labelled.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  target_key:
+    type: string
+    unit: null
+    range: row key
+    nullable: false
+    definition: Row labelled.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  value:
+    type: string
+    unit: null
+    range: serialised
+    nullable: false
+    definition: Label value.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  action:
+    type: enum[confirm, correct]
+    unit: null
+    range: enum
+    nullable: false
+    definition: One-click confirm or correct.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-02
+  labeller:
+    type: string
+    unit: null
+    range: name
+    nullable: false
+    definition: Who.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+    - R-HR-12
+  labelled_at_utc:
+    type: timestamp[us, UTC]
+    unit: UTC
+    range: 2000-01-01 .. 2040-01-01
+    nullable: false
+    definition: When.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  model_version:
+    type: string
+    unit: null
+    range: version
+    nullable: true
+    definition: Model version shown.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+  tool:
+    type: string
+    unit: null
+    range: tool@version (CVAT, Label Studio, FiftyOne, Roboflow)
+    nullable: false
+    definition: Labelling tool and version.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-05
+    - R-HR-11
+  is_repeat_blind:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: false
+    definition: Re-shown blind (5% consistency check).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-06
+  agrees_with_previous:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: true
+    definition: Agreement with the earlier label on a repeat.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-06
+  prelabel_by:
+    type: string
+    unit: null
+    range: session name
+    nullable: true
+    definition: Pre-labelling session (gold-v1).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-12
+  gold_set:
+    type: string
+    unit: null
+    range: e.g. gold-v1
+    nullable: true
+    definition: Gold set membership (frozen, never trained on).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: runner / pipeline
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-HR-07
+    - R-VA-01
+  reason:
+    type: string
+    unit: null
+    range: free text
+    nullable: true
+    definition: Reason for a correction.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-SR-15
+    - R-SB-02

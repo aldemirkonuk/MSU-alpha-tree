@@ -1,0 +1,573 @@
+# Proposed schema (2026-10-18) for table restarts. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: restarts
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#restarts
+grain: one row per transition from dead ball to live ball (and each period start) per pass
+primary_key:
+- restart_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - possession_id
+  references: possessions.possession_id
+- columns:
+  - pbp_event_id
+  references: events.event_id
+requirements:
+- R-SR-08
+- R-MD-03
+- R-MD-12
+- R-IV-07
+- R-IV-08
+- R-SY-08
+- R-SY-09
+storage: Parquet, processed/<game_id>/<version>/restarts.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- 'Throw-in spot after a frontcourt stoppage: end line 3 ft (0.91 m) outside the lane line, or the 28-foot (8.53 m) mark on the sideline, per Rule 7-3.2.b as changed in 2025-26 (proposal 6 of the 2025-26
+  changes says below vs above the free-throw line extended; the 2026-27 book text describes an imaginary line from the end-line/sideline corner to the free-throw line extended; see open questions).'
+- The shot-clock value set at the restart is checked against config/invariants.yaml (R-SY-09).
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: restart_id
+  type: string
+  definition: game_id + pass + restart_seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-08
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  - pbp_only
+  definition: blind, anchored, or pbp_only (games or stretches with no video, built from PBP alone for the possession engine, R-SY-06, R-PE-08).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  - R-SY-06
+  - R-PE-08
+  nullable: false
+  proposed_global_addition: true
+- name: restart_seq
+  type: int
+  range:
+  - 1
+  - 600
+  definition: Order in the game.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: false
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms_dead
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Ball became dead.
+  source: CV; audio whistle
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  - R-RF-01
+  nullable: true
+- name: video_ts_ms_live
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Ball became live (disposal of thrower-in / free-thrower, toss).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: dead_duration_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 3600
+  definition: Real-time length of the dead ball.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: dead_ball_reason
+  type: enum
+  values:
+  - period_start
+  - made_fg
+  - made_last_ft
+  - ft_followed_by_ft
+  - personal_foul
+  - technical_foul
+  - double_foul
+  - violation_out_of_bounds
+  - violation_travel
+  - violation_other
+  - shot_clock_violation
+  - held_ball
+  - ball_lodged
+  - timeout
+  - injury_blood
+  - review
+  - inadvertent_whistle
+  - period_end
+  - other
+  definition: Why the ball became dead (Rule 6-5.1).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: false
+- name: violation_code
+  type: string
+  definition: Rule 9 section of the violation when dead_ball_reason is a violation (e.g. '9-5' travel, '9-10' backcourt 10 s, '9-14' closely guarded).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: restart_type
+  type: enum
+  values:
+  - jump_ball
+  - throw_in_end_line_after_score
+  - throw_in_designated_spot
+  - throw_in_alternating_possession
+  - throw_in_point_of_interruption
+  - free_throw
+  - second_half_ap_division_line
+  definition: How play resumed (Rule 6-5.2).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  - R-IV-08
+  nullable: false
+- name: throw_in_spot
+  type: enum
+  values:
+  - end_line_runnable
+  - end_line_3ft_outside_lane
+  - sideline_28ft_mark
+  - sideline_spot
+  - end_line_spot
+  - backcourt_spot
+  - division_line_opposite_table
+  - none
+  definition: Spot class.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  - R-MD-03
+  nullable: false
+- name: spot_x_m
+  type: float
+  unit: m
+  range:
+  - -8.62
+  - 8.62
+  definition: Throw-in spot x (attacked-rim frame of the throw-in team).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: spot_y_m
+  type: float
+  unit: m
+  range:
+  - -2.6
+  - 28.05
+  definition: Throw-in spot y.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: court_half
+  type: enum
+  values:
+  - front
+  - back
+  - none
+  definition: Front or back court of the throw-in team.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-03
+  nullable: false
+- name: inbound_side
+  type: enum
+  values:
+  - sideline
+  - baseline
+  - none
+  definition: Global field.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-03
+  global_metadata: true
+  nullable: false
+- name: restart_team
+  type: enum
+  values: &id001
+  - msu
+  - opponent
+  - none
+  definition: Team putting the ball in play.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  - R-IV-08
+  nullable: false
+- name: thrower_player_id
+  type: string
+  definition: Thrower-in or free-thrower.
+  source: CV; PBP
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: arrow_before
+  type: enum
+  values: *id001
+  definition: Arrow before the restart.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-12
+  nullable: false
+- name: arrow_after
+  type: enum
+  values: *id001
+  definition: Arrow after (flips when an alternating-possession throw-in ends, Rule 6-3.2).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-12
+  - R-IV-08
+  nullable: false
+- name: shot_clock_before_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock at the dead ball.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-08
+  nullable: true
+- name: shot_clock_set_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock shown at the restart (30, 20, unexpired or off).
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SY-08
+  - R-IV-07
+  nullable: true
+- name: shot_clock_expected_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Value required by the rule for this reason (config/invariants.yaml shot_clock_reset_table).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SY-09
+  - R-IV-07
+  nullable: true
+- name: shot_clock_rule_ref
+  type: string
+  definition: Rule 2-11.6 clause applied (e.g. '2-11.6.c.1').
+  source: config
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SY-09
+  nullable: true
+- name: throw_in_count_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 10
+  definition: Disposal to release (<= 5 s, Rule 7-6.6).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SR-08
+  nullable: true
+- name: after_timeout
+  type: bool
+  definition: First live ball after a timeout (ATO).
+  source: derived
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-08
+  nullable: false
+- name: possession_id
+  type: int
+  range:
+  - 0
+  - null
+  definition: Possession the restart belongs to.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-04
+  nullable: true
+- name: restart_src
+  type: enum
+  values:
+  - OCR
+  - PBP
+  - CV
+  - manual
+  - derived
+  definition: Source of the restart value(s) in this row.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-08
+  nullable: false
+- name: restart_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of the restart value(s); PBP-sourced values carry 1.0 (R-MD-09).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-09
+  - R-SR-08
+  nullable: false
+- name: restart_dq
+  type: enum
+  values:
+  - observed
+  - inferred
+  - carried
+  - imputed
+  - quarantined
+  definition: Data-quality flag of the restart value(s).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-15
+  - R-MD-19
+  - R-SR-08
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

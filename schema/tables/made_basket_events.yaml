@@ -1,0 +1,641 @@
+# Proposed schema (2026-10-18) for table made_basket_events. Status: proposed; the requirements session approves.
+# Generated from one spec together with docs/data/dictionary_state.md so the two never drift.
+# Field names of schema/global_metadata.yaml are used unchanged (global_metadata: true);
+# proposed_global_addition: true marks fields proposed for global_metadata.yaml (see the dated note in the dictionary).
+table: made_basket_events
+status: proposed
+version: 0.1.0
+date: '2026-10-18'
+owner: prompt 003 W2 item 5 (state record and invariants)
+dictionary: docs/data/dictionary_state.md#made_basket_events
+grain: one row per candidate made basket (confirmed, vision-only, flagged or rejected) per pass, with every cue
+primary_key:
+- make_id
+foreign_keys:
+- columns:
+  - game_id
+  references: games.game_id
+- columns:
+  - shot_id
+  references: shots.shot_id
+- columns:
+  - score_event_id
+  references: score_events.score_event_id
+- columns:
+  - review_id
+  references: reviews.review_id
+requirements:
+- R-MB-01
+- R-MB-02
+- R-MB-03
+- R-MB-04
+- R-MB-05
+- R-MB-06
+- R-MB-07
+- R-SB-01
+- R-BL-05
+- R-IV-04
+- R-IV-12
+storage: Parquet, processed/<game_id>/<version>/made_basket_events.parquet (private Drive, never the repo; R-EN-07)
+notes:
+- 'Decision rule (R-MB-01): confirmed = (cue 3 or cue 4) and (cue 1 or cue 2); vision_only (blind pass) = cue 1 and cue 2; not_seen_confirmed = camera cut, confirmed by cues 3 and 4; anything else flagged.
+  Cue 5 is context, never decisive.'
+- 'Rim geometry: rim height 3.05 m, inner diameter 45.72 cm (18 in, Rule 1-14/1-15; check against config/court_ncaa_men.yaml).'
+legend:
+  licence:
+    computed_by_us: Computed by this project from privately held broadcast video (OCR, CV), audio, manual labels or our own pipeline. Private research use; model input allowed internally; never published
+      raw (video is private research use only).
+    model_input_allowed: 'Value taken from CollegeBasketballData (CBBD): research and commercial use allowed per docs/research/data_sources_catalog.md row 8.'
+    reference_only: 'Value taken from ESPN data already pulled, hoopR ESPN prebuilt files, or hoopR NCAA-engine files: ESPN terms bar automated collection and data-set compilation; NCAA terms unverified.
+      Reference and cross-check only until Aldemir decides otherwise.'
+    ROW: Licence depends on the row's pbp_provider and is stored in the row's licence_class column (cbbd -> model_input_allowed; espn_pulled, hoopr_espn, hoopr_ncaa -> reference_only).
+    REG: Inherits the games registry entry (dictionary_games.md).
+  as_of:
+    at_frame: Known at the video instant the row describes; usable as an in-game feature at that instant.
+    by_pass: 'Blind pass: at_frame. Anchored pass: post_game (it uses PBP, which is only complete after the game). Anchored values are for training and for describing past games, never in-game features
+      (Principle 6).'
+    post_game: Known only after the game (PBP published, full video processed).
+    post_review: Known at reviewed_utc of the review that set it.
+    pre_game: Known before tip (registry).
+    n/a: Key or processing metadata.
+  source:
+    OCR: Parsed scoreboard readings (scoreboard_ocr).
+    CV: Our detection, tracking, ball, rim and lane models (dictionary_games.md frames, tracks).
+    PBP: 'Anchored pass only: CBBD plays, or ESPN play-by-play already pulled / hoopR load_mbb_pbp; exact provider field names in docs/data/source_field_map.md.'
+    fused: Fusion of OCR, CV and, in the anchored pass, PBP; authority order official scorebook (PBP, box score) > arena scoreboard > broadcast scorebug (Rule 2-9.13).
+    derived: Computed from other columns of the same table by the rule in the definition.
+    pipeline: Written by the processing pipeline (keys, versions, lineage).
+    manual review: Human reviewer through the review queue (R-HR-02, R-HR-05).
+columns:
+- name: make_id
+  type: string
+  definition: game_id + pass + make_seq.
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-MB-01
+  nullable: false
+- name: game_id
+  type: string
+  definition: ESPN game ID; the one join key across sources (FK games.game_id).
+  source: registry/games.csv
+  licence: REG
+  as_of: pre_game
+  requirements:
+  - R-MD-01
+  global_metadata: true
+  nullable: false
+- name: pass
+  type: enum
+  values:
+  - blind
+  - anchored
+  definition: 'Processing pass: blind uses no PBP; anchored uses PBP. The per-game diff of the two is the CV error estimate (R-SR-13).'
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-SR-13
+  - R-SR-15
+  nullable: false
+  proposed_global_addition: true
+- name: period
+  type: int
+  range:
+  - 1
+  - 12
+  definition: 1 = first half, 2 = second half, 3+ = extra periods (each an extension of the second half, Rule 5-9.4).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-16
+  global_metadata: true
+  nullable: false
+- name: game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock remaining in the period. 0.1 s resolution (board shows tenths under 60 s, Rule 1-18.2; whole seconds above).
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-01
+  - R-IV-05
+  global_metadata: true
+  nullable: false
+- name: video_ts_ms_make
+  type: int
+  unit: ms
+  range:
+  - 0
+  - null
+  definition: Video time the ball passes down through the ring plane (the make frame).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-01
+  - R-MB-04
+  nullable: true
+- name: frame_index_make
+  type: int
+  range:
+  - 0
+  - null
+  definition: Make frame.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-04
+  nullable: true
+- name: team
+  type: enum
+  values:
+  - msu
+  - opponent
+  definition: Team credited.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-01
+  nullable: false
+- name: shooter_player_id
+  type: string
+  definition: Shooter.
+  source: CV; PBP
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-01
+  nullable: true
+- name: shot_id
+  type: string
+  definition: FK shots.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-EV-07
+  nullable: true
+- name: points_cv
+  type: int
+  unit: points
+  range:
+  - 2
+  - 3
+  definition: 2 or 3 from the shooter's last floor contact vs the arc (6.75 m; 6.60 m corners; Rule 1-7.1, 5-1.5).
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-IV-12
+  - R-MB-04
+  nullable: true
+- name: points_board
+  type: int
+  unit: points
+  range:
+  - 1
+  - 3
+  definition: Score change on the board.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-04
+  nullable: true
+- name: points_pbp
+  type: int
+  unit: points
+  range:
+  - 1
+  - 3
+  definition: PBP score value.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-MB-04
+  nullable: true
+- name: cue1_present
+  type: bool
+  definition: 'Cue 1: ball passes downward through the rim cylinder.'
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: &id001
+  - R-MB-01
+  nullable: false
+- name: cue1_frame
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame of cue 1.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id001
+  nullable: true
+- name: cue1_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of cue 1.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id001
+  nullable: true
+- name: cue2_present
+  type: bool
+  definition: 'Cue 2: net moves sharply and the ball is seen in or below the net.'
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: &id002
+  - R-MB-01
+  nullable: false
+- name: cue2_frame
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame of cue 2.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id002
+  nullable: true
+- name: cue2_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of cue 2.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id002
+  nullable: true
+- name: cue3_present
+  type: bool
+  definition: 'Cue 3: board score changes inside the lag window.'
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: &id003
+  - R-MB-01
+  - R-SB-03
+  nullable: false
+- name: cue3_frame
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame of cue 3.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id003
+  nullable: true
+- name: cue3_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of cue 3.
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id003
+  nullable: true
+- name: cue3_lag_s
+  type: float
+  unit: s
+  range:
+  - -5
+  - 120
+  definition: Board change minus make time.
+  source: derived
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-SB-03
+  nullable: true
+- name: cue4_present
+  type: bool
+  definition: 'Cue 4: PBP made shot at the matching game-clock second.'
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements: &id004
+  - R-MB-01
+  nullable: false
+- name: cue4_frame
+  type: int
+  range:
+  - 0
+  - null
+  definition: Frame of cue 4.
+  source: PBP
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id004
+  nullable: true
+- name: cue4_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: Confidence of cue 4.
+  source: PBP
+  licence: computed_by_us
+  as_of: at_frame
+  requirements: *id004
+  nullable: true
+- name: cue5_clock_stop
+  type: bool
+  definition: 'Context: clock stopped after the make with <= 59.9 s left in period >= 2 (Rule 2-10.12).'
+  source: OCR
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-01
+  - R-IV-06
+  nullable: true
+- name: cue5_baseline_inbound
+  type: bool
+  definition: 'Context: the other team inbounds from the end line.'
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-01
+  nullable: true
+- name: cue5_crowd_audio_conf
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Context: crowd-audio make cue (never decisive).'
+  source: audio
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-01
+  nullable: true
+- name: decision
+  type: enum
+  values:
+  - confirmed
+  - vision_only
+  - not_seen_confirmed
+  - flagged
+  - rejected
+  definition: Outcome of the decision rule.
+  source: decision rule
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-01
+  - R-MB-02
+  - R-MB-03
+  nullable: false
+- name: edge_case
+  type: enum
+  values:
+  - none
+  - goaltending_awarded
+  - basket_interference_awarded
+  - basket_interference_cancelled
+  - waved_off_foul_before_try
+  - waved_off_offensive_foul
+  - waved_off_shot_clock
+  - waved_off_period_horn
+  - ball_stuck_on_rim
+  - ball_up_through_net
+  - in_and_out
+  - tip_in
+  - putback
+  - dunk
+  - alley_oop
+  - and_one
+  - review_reversal
+  definition: R-MB-05 edge case, or none.
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-05
+  nullable: false
+- name: rim_visible
+  type: bool
+  definition: Rim in view at the make frame.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-03
+  nullable: false
+- name: net_sharp
+  type: bool
+  definition: Net region sharp enough (no motion blur) at the frame rate used.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-03
+  nullable: false
+- name: release_frame
+  type: int
+  range:
+  - 0
+  - null
+  definition: Shot release frame.
+  source: CV
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-06
+  nullable: true
+- name: release_game_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 1200
+  definition: Game clock at release.
+  source: fused
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-06
+  nullable: true
+- name: release_shot_clock_s
+  type: float
+  unit: s
+  range:
+  - 0
+  - 30
+  definition: Shot clock at release.
+  source: fused
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-06
+  nullable: true
+- name: release_vs_horn
+  type: enum
+  values:
+  - before
+  - after
+  - not_applicable
+  - clock_not_visible
+  definition: Release before the period or shot-clock horn (zeros; Rule 5-7.2.a, 11-1.2, 11-1.3).
+  source: fused
+  licence: computed_by_us
+  as_of: at_frame
+  requirements:
+  - R-MB-06
+  nullable: false
+- name: and_one_pending
+  type: bool
+  definition: 'Foul on the make: a free throw follows.'
+  source: fused
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-05
+  nullable: false
+- name: review_id
+  type: string
+  definition: Review that confirmed or changed the make.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-05
+  nullable: true
+- name: score_event_id
+  type: string
+  definition: FK score_events.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-SR-02
+  nullable: true
+- name: flag_ids
+  type: list[string]
+  definition: Flags raised.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MB-01
+  - R-SB-01
+  nullable: false
+- name: pbp_provider
+  type: enum
+  values:
+  - cbbd
+  - espn_pulled
+  - hoopr_espn
+  - hoopr_ncaa
+  - none
+  definition: Provider of the PBP row this record was matched to or built from; 'none' in the blind pass.
+  source: pipeline
+  licence: computed_by_us
+  as_of: post_game
+  requirements:
+  - R-DQ-01
+  - R-DQ-04
+  - R-SR-15
+  nullable: false
+- name: pbp_event_id
+  type: string
+  definition: Key of the matched row in the events table (dictionary_games.md), which keeps the provider's own play ID.
+  source: PBP
+  licence: ROW
+  as_of: post_game
+  requirements:
+  - R-SY-02
+  - R-SY-10
+  nullable: true
+- name: licence_class
+  type: enum
+  values:
+  - computed_by_us
+  - model_input_allowed
+  - reference_only
+  definition: Licence class of the PBP-derived values in this row (computed_by_us when no PBP value is used).
+  source: pipeline from pbp_provider
+  licence: computed_by_us
+  as_of: n/a
+  requirements:
+  - R-DQ-04
+  nullable: false
+- name: model_version
+  type: string
+  definition: Pipeline and model versions that produced the row (semver string per stage, joined).
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-EN-04
+  - R-DQ-04
+  global_metadata: true
+  nullable: false
+- name: source
+  type: string
+  definition: Row-level source summary, e.g. 'fused:OCR+CV' or 'PBP:cbbd'. Field-level sources are in the *_src columns.
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: confidence
+  type: float
+  unit: 0-1
+  range:
+  - 0
+  - 1
+  definition: 'Row-level confidence: minimum of the field confidences used in the row.'
+  source: pipeline
+  licence: computed_by_us
+  as_of: by_pass
+  requirements:
+  - R-MD-09
+  - R-SR-15
+  global_metadata: true
+  nullable: false
+- name: created_utc
+  type: timestamp
+  unit: UTC
+  definition: UTC time the row was written. Rows are never updated in place; a new version is a new pipeline version (R-EN-07).
+  source: pipeline
+  licence: computed_by_us
+  as_of: n/a (processing metadata)
+  requirements:
+  - R-DQ-04
+  - R-EN-07
+  nullable: false

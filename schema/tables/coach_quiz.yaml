@@ -1,0 +1,163 @@
+# Proposed schema for table 'coach_quiz' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+name: coach_quiz
+status: proposed
+proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session
+group: Profiles, quality and research
+grain: one row per quiz question at a paused moment
+primary_key:
+- game_id
+- quiz_id
+foreign_keys: []
+storage: 'private: MyDrive/MSU-Alpha-3/processed/<game_id>/<version>/<table>.parquet (R-EN-07)'
+as_of_default:
+  rule: LABEL
+  text: Human label; gold or training target, never an inference-time input (R-HR-07).
+requirements:
+- R-GU-03
+columns:
+  game_id:
+    type: string
+    unit: null
+    range: ESPN event ID (digits)
+    nullable: false
+    definition: ESPN game (event) ID, the one join key across video, play-by-play, markets and context.
+    sources:
+      CBBD: games.sourceId (ESPN event ID per collector_design.md 1.1; verify on first keyed call)
+      ESPN files already pulled: header.id / event.id
+      hoopR ESPN releases: game_id
+      hoopR NCAA engine: espn_game_id
+      Torvik: via hoopR mbb_schedule_crosswalk.bart_muid
+      KenPom: via mbb_schedule_crosswalk.kp_game_id
+      Kaggle archive: none
+      EvanMiya exports: none
+      markets collector: SnapshotRow.game_id
+      computed by us: registry/games.csv game_id
+    licence: 'ESPN files already pulled: reference only (ESPN direct; R-DS-02); hoopR ESPN releases: model input allowed (hoopR
+      release; R-DS-02 allowed channel); hoopR NCAA engine: model input allowed (hoopR release); CBBD: model input allowed;
+      Torvik: model input allowed, provisional (no Torvik terms page found; Aldemir to confirm); KenPom: blocked until the
+      KenPom API is bought (R-DS-14); then model input allowed; markets collector: per source, docs/markets/collector_design.md
+      section 6; computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-FD-02
+  quiz_id:
+    type: string
+    unit: null
+    range: '''<game_id>:q:<n>'''
+    nullable: false
+    definition: Key.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-GU-03
+  video_ts_ms:
+    type: int64
+    unit: ms
+    range: '[0, 3.6e7]'
+    nullable: false
+    definition: Milliseconds from the first frame's presentation time in the original file (original PTS kept for VFR, R-VI-12).
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: decoder PTS
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-MD-01
+    - R-VI-12
+  question:
+    type: enum[who_guards_x, which_set, which_defense, what_happens_next]
+    unit: null
+    range: enum
+    nullable: false
+    definition: Question.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-GU-03
+  system_answer:
+    type: string
+    unit: null
+    range: serialised
+    nullable: false
+    definition: System answer from belief_states.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-GU-03
+  aldemir_answer:
+    type: string
+    unit: null
+    range: serialised
+    nullable: true
+    definition: Aldemir's answer.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      manual (Aldemir): Aldemir
+    licence: 'manual (Aldemir): private (Aldemir''s input; R-RG-06)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-GU-03
+  correct:
+    type: bool
+    unit: null
+    range: true/false
+    nullable: true
+    definition: Agreement.
+    sources:
+      CBBD: none
+      ESPN files already pulled: none
+      hoopR ESPN releases: none
+      hoopR NCAA engine: none
+      Torvik: none
+      KenPom: none
+      Kaggle archive: none
+      EvanMiya exports: none
+      computed by us: computed by us
+    licence: 'computed by us: own (model input allowed; inherits the strictest class of its inputs)'
+    as_of: 'LABEL: Human label; gold or training target, never an inference-time input (R-HR-07).'
+    requirements:
+    - R-GU-03
