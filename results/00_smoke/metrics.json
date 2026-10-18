@@ -1,0 +1,22 @@
+{
+  "notebook": "00_smoke_test",
+  "ran_at_utc": "2026-10-18T01:32:29Z",
+  "gpu": "NVIDIA L4, 23034 MiB",
+  "tests_passed": true,
+  "clip": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "frames": 2999,
+    "mb": 80.9
+  },
+  "detector": "RF-DETR Base (COCO pretrained), threshold 0.4, 1 frame/s",
+  "people_per_frame": {
+    "median": 17.0,
+    "min": 13,
+    "max": 20
+  },
+  "share_frames_ge_8_people": 1.0,
+  "sec_per_frame_median": 0.026,
+  "est_gpu_hours_per_40min_game_at_full_fps": 0.43
+}
