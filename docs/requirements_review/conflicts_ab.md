@@ -48,7 +48,7 @@ A = the synthesis recommendation, B = the main alternative. Detail and every per
 | K06 | A | Plus a new close-game parameter (N-MD-13). |
 | K07 | A | |
 | K08 | A | |
-| K09 | Pending research | Aldemir: "research it, do it right, no shortcut". Research running (state storage: segments vs per-frame). |
+| K09 | Hybrid (A refined) | Approved after research (k09_state_storage_research.md): transitions + segments + clock map stored; per-frame state rebuilt deterministically. See "K09 decision" below. |
 | K10 | A, modified | Aldemir's timing: 2 fouls in the first 15 min of the first half (elapsed ≤ 900 s); 3 fouls early in the second half (> 600 s left); 4 fouls late in the second half (≤ 600 s left) and in overtime. |
 | K11 | A | |
 | K12 | A | |
@@ -78,3 +78,7 @@ A = the synthesis recommendation, B = the main alternative. Detail and every per
 | N-PL-06 | Shall | Store distance-over-time measures per player: metres covered in rolling 5 s windows, time to cross the division line from possession start (s), time from own baseline to the opposite free-throw line, sprint segments (speed ≥ 7.0 m/s for ≥ 1.0 s; initial value) with length (m), peak and mean speed (m/s, km/h shown). | Values reported only where position error ≤ 0.5 m over the window; distance error ≤ 5% against 50 hand-measured court-line crossings. |
 | N-CX-10 | Shall | Every parameter used by any model or index is registered once (name, definition, unit, source table/column, valid range, default weight, who may change it) in a parameter registry; every model output stores its per-parameter contributions per frame and per incident (event, possession), so each frame or incident can be dissected and re-weighted without re-running the pipeline. | 100% of model inputs resolve to a registry entry; for any incident, the stored contributions sum to the output within 1e-6; changing one weight and re-scoring reproduces the new output from stored contributions. |
 | N-SR-05 | Shall | Foul trouble per K10 (modified): flag a player with 2 fouls while first-half elapsed ≤ 900 s, 3 fouls with > 600 s left in the second half, 4 fouls with ≤ 600 s left in the second half or in overtime; thresholds read from config; the 2/4 rule kept as a named view. | Flags match the rule on 100% of a 200-row synthetic test; config change re-flags without code change. |
+
+## K09 decision (Aldemir, 2026-10-18, in chat)
+
+**Approved: hybrid** — `state_transitions` (typed, append-only) + `state_segments` (one row per dimension per interval, team-neutral, versioned) + `clock_map` (piecewise-linear game and shot clocks) are the stored truth; per-frame observations stay in `frames`, `ball_states`, `player_positions`; `state_frame` and `state_second` are rebuilt deterministically from segments after every change and never edited. This refines option A. Evidence and the approved requirement text: docs/requirements_review/k09_state_storage_research.md sections 4, 7 and 8 (R-MD-01, R-SR-06, N-MD-01, N-MD-02, N-SY-01, three segment-integrity invariants for N-IV-01, additions to N-SY-05 and N-CX-10). The texts there supersede the earlier proposed texts for those IDs in synthesis.md and proposals_consolidated.yaml.

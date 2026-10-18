@@ -14,3 +14,4 @@
 | 2026-10-18T19:51Z | runner | prompt-003 | done | W1, W2, W3 + ontology coverage; 2 games downloaded and audited; specs committed, data private |
 | 2026-10-18T20:50Z | runner | requirements-improvement | done | review of 518 IDs, rules vocab, gap closures, 3 perspective panels, synthesis; inbox 008; markets fixes (109 tests) |
 | 2026-10-18T21:12Z | runner | inbox-008-live-doc | done | new tab in live doc; conflicts A/B pending |
+| 2026-10-18T21:59Z | runner | k01-k29 | done | all conflicts decided; K09 hybrid; live doc updated |
