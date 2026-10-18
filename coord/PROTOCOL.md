@@ -1,5 +1,8 @@
 # Coordination protocol: planner (cloud) ↔ runner (Mac)
 
+> **BUILD FREEZE (17 Oct 2026, by Aldemir):** no new building. Requirements are not finished. The runner runs nothing; tasks with `status: paused` stay paused. Only Aldemir lifts this freeze, by editing this line.
+
+
 The repo is the message bus. It works whether or not the two sessions can message each other directly, and it keeps a permanent record.
 
 ## Roles

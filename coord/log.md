@@ -8,3 +8,4 @@
 | 2026-10-18T01:36Z | planner | - | registry built | 179 MSU games 2021-22..2025-26 from ESPN; rosters incomplete |
 | 2026-10-18T01:36Z | planner | 002 | queued | team clustering on test clip |
 | 2026-10-18T01:39Z | planner | 002 | paused | Aldemir: no building until requirements are finished |
+| 2026-10-18T01:39Z | planner | 002 | paused | build freeze: requirements first (Aldemir) |
