@@ -33,3 +33,48 @@ A = the synthesis recommendation, B = the main alternative. Detail and every per
 | K27 | "Shooting" foul | Context flag on the foul; class list follows the book | Keep "shooting" as a foul class |
 | K28 | Garbage time | Win-probability rule primary; CTG-adapted and source flags kept as views | CTG-adapted rule primary |
 | K29 | Numbering | One N-<FAMILY>-nn series with an old→new map | Keep the round-by-round IDs |
+
+## Decisions (Aldemir, 2026-10-18, in chat)
+
+"Delegated" = Aldemir left the choice to the Mac session; the session chose the recommended option, reason given.
+
+| K | Choice | Note |
+| --- | --- | --- |
+| K01 | A (delegated) | Aldemir's concern: fast-break sprints exceed 30 km/h. 30 km/h = 8.33 m/s; the hard limit 10 m/s = 36 km/h is above measured D-I peaks (6.2–7.0 m/s), so real sprints are never cut. A value above 10 m/s (over ≥ 0.3 s) is marked invalid and sent to identity/tracking review; the raw value is kept, never deleted. Add distance-over-time metrics (N-PL-06). |
+| K02 | A | |
+| K03 | A | |
+| K04 | A | Four coarse classes first, the 13 fine coverages after the gate. The coarse classes group the fine ones Aldemir named (drop, flat hedge, hard hedge, blitz/trap incl. sideline trap, ice/blue/down, switch). Note: pick-and-roll and down screen are offensive actions (the trigger), not coverages. |
+| K05 | A (delegated) | Primary run = net ≥ 8 points in 120 s; broadcast "a-b" shown at net ≥ 8. |
+| K06 | A | Plus a new close-game parameter (N-MD-13). |
+| K07 | A | |
+| K08 | A | |
+| K09 | Pending research | Aldemir: "research it, do it right, no shortcut". Research running (state storage: segments vs per-frame). |
+| K10 | A, modified | Aldemir's timing: 2 fouls in the first 15 min of the first half (elapsed ≤ 900 s); 3 fouls early in the second half (> 600 s left); 4 fouls late in the second half (≤ 600 s left) and in overtime. |
+| K11 | A | |
+| K12 | A | |
+| K13 | A (delegated) | 70%. Note: K13 is camera coverage of a player's time (share of seconds the player is in frame) for load statistics, not ball-screen coverage. |
+| K14 | A | |
+| K15 | A | |
+| K16 | A | |
+| K17 | A (delegated) | A baseline of fewer than 10 games is noise; record quantiles from game 1, give verdicts from game 11. |
+| K18 | A | |
+| K19 | A | |
+| K20 | A | |
+| K21 | A (delegated) | Substitutions happen only at dead balls (Rule 3-6), so 30 s misses legitimate hooks; first dead ball and 60 s, with matched baseline. |
+| K22 | A | |
+| K23 | A | |
+| K24 | A | |
+| K25 | A (delegated) | Exact rule-book edges are correct for rule tests; "verified: true" only after the diagram values are checked at full resolution. |
+| K26 | A (delegated) | The 2026-27 diagram and the 2025-26 change summary agree; the text is a typo. |
+| K27 | A | |
+| K28 | A | |
+| K29 | A | |
+
+## New proposals from Aldemir's answers (2026-10-18)
+
+| ID | Tier | Requirement | Acceptance |
+| --- | --- | --- | --- |
+| N-MD-13 | Shall | Store a game-closeness record per game and per possession: max absolute margin over the game, seconds spent with margin ≤ 3 / ≤ 5 / ≤ 6 points, lead changes, ties, and a close-game class (max absolute margin ≤ 6 points after the first 300 s, initial value to calibrate); every possession carries a leverage weight (change in win probability between a score and a stop) so each basket in a close game is weighted more. | All 4 fields present for 100% of games; leverage weights sum-check: mean leverage of possessions in close-class games > that of other games on the season set. |
+| N-PL-06 | Shall | Store distance-over-time measures per player: metres covered in rolling 5 s windows, time to cross the division line from possession start (s), time from own baseline to the opposite free-throw line, sprint segments (speed ≥ 7.0 m/s for ≥ 1.0 s; initial value) with length (m), peak and mean speed (m/s, km/h shown). | Values reported only where position error ≤ 0.5 m over the window; distance error ≤ 5% against 50 hand-measured court-line crossings. |
+| N-CX-10 | Shall | Every parameter used by any model or index is registered once (name, definition, unit, source table/column, valid range, default weight, who may change it) in a parameter registry; every model output stores its per-parameter contributions per frame and per incident (event, possession), so each frame or incident can be dissected and re-weighted without re-running the pipeline. | 100% of model inputs resolve to a registry entry; for any incident, the stored contributions sum to the output within 1e-6; changing one weight and re-scoring reproduces the new output from stored contributions. |
+| N-SR-05 | Shall | Foul trouble per K10 (modified): flag a player with 2 fouls while first-half elapsed ≤ 900 s, 3 fouls with > 600 s left in the second half, 4 fouls with ≤ 600 s left in the second half or in overtime; thresholds read from config; the 2/4 rule kept as a named view. | Flags match the rule on 100% of a 200-row synthetic test; config change re-flags without code change. |
