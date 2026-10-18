@@ -1,6 +1,6 @@
 ---
 id: 001
-status: queued
+status: running
 gpu: L4
 max_gpu_hours: 0.5
 ---
