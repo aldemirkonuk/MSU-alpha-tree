@@ -18,3 +18,4 @@
 | 2026-10-18T22:29Z | runner | fold-008 | done | main tab 748 IDs / 44 families; superseded tab created |
 | 2026-10-19T00:26Z | runner | stat-catalogue | done | 1,571 metrics; config/metrics.yaml; inbox 009 |
 | 2026-10-19T00:39Z | runner | inbox-009-answers | done | 11 open questions answered; stat catalogue artifact published |
+| 2026-10-19T22:21Z | runner | alpha-tree-update | done | tree v14; fps check: 29.97 on both games |
