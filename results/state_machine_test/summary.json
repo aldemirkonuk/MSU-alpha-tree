@@ -1,0 +1,274 @@
+{
+  "401856571": {
+    "game_id": "401856571",
+    "home": "UConn",
+    "away": "Michigan State",
+    "final": "67-63",
+    "pbp_rows": 470,
+    "transitions": 507,
+    "transitions_inferred": 91,
+    "transitions_by_type": {
+      "T00": 1,
+      "T01": 2,
+      "T02": 1,
+      "T03": 14,
+      "T04": 110,
+      "T05": 47,
+      "T06": 14,
+      "T08": 45,
+      "T09": 33,
+      "T10": 20,
+      "T11": 13,
+      "T12": 34,
+      "T13": 18,
+      "T15": 73,
+      "T16": 17,
+      "T17": 1,
+      "T20": 2,
+      "T21": 1,
+      "T22": 44,
+      "T24": 1,
+      "T26": 16
+    },
+    "segments": 1932,
+    "segments_by_dimension": {
+      "arrow": 3,
+      "ball_status": 165,
+      "challenge_available_away": 1,
+      "challenge_available_home": 1,
+      "chance_seq": 160,
+      "flow_state": 434,
+      "game_clock_running": 105,
+      "lineup_away": 35,
+      "lineup_home": 23,
+      "period": 3,
+      "period_phase": 5,
+      "player_fouls": 33,
+      "possession_seq": 127,
+      "possession_team": 129,
+      "restart_pending": 189,
+      "score_away": 37,
+      "score_home": 35,
+      "stoppage": 120,
+      "team_control": 281,
+      "team_fouls_away": 17,
+      "team_fouls_home": 20,
+      "timeouts_left_away": 5,
+      "timeouts_left_home": 4
+    },
+    "breaks": {
+      "TRN-03 T22 during live play (dead ball missing from PBP)": 2
+    },
+    "notes": {
+      "ORD-03 rows moved inside an instant": 165,
+      "annotation jump_ball_result": 1,
+      "T15 inferred": 73,
+      "annotation block": 9,
+      "K08 new chance after a defensive foul (inferred)": 12,
+      "annotation team_rebound_credit": 3,
+      "shooting foul on a missed try (no shot row, as scoring rules require)": 8,
+      "T26 inferred": 16,
+      "annotation turnover credited to a steal": 14,
+      "timeout directly after another stoppage": 2,
+      "challenge outcome: playType and playText disagree (text used)": 1
+    },
+    "view_vs_reference": {
+      "cells": 15641,
+      "differ": 0
+    },
+    "possessions_by_half": {
+      "1": {
+        "home": 30,
+        "away": 31,
+        "diff": 1
+      },
+      "2": {
+        "home": 33,
+        "away": 32,
+        "diff": 1
+      }
+    },
+    "final_state": {
+      "score_home": 67,
+      "score_away": 63,
+      "team_fouls_home": 10,
+      "team_fouls_away": 8,
+      "timeouts_left_home": 1,
+      "timeouts_left_away": 0,
+      "possession_seq": 126,
+      "chance_seq": 159
+    },
+    "clock_map_ocr": {
+      "running": 3,
+      "running video s": 180.0,
+      "unknown": 60,
+      "unknown video s": 4380.0,
+      "clock stopped, video s (estimated: video minus clock)": 2476.9,
+      "period boundary": 1,
+      "cut": 1,
+      "cut video s": 300.0,
+      "stopped": 3,
+      "stopped video s": 180.0,
+      "anchors": 68,
+      "samples": 87
+    },
+    "clock_map_pbp_utc": {
+      "wallclock_rows_earlier_than_a_time_already_seen": 96,
+      "max_backward_s": 227.0,
+      "instants": 233
+    },
+    "ocr_vs_fold": {
+      "score: compared": 68,
+      "score: agree strict": 55,
+      "score: agree within \u00b11 s": 68,
+      "team fouls: compared": 67,
+      "team fouls: agree strict": 60,
+      "team fouls: agree within \u00b11 s": 67,
+      "timeouts: compared": 67,
+      "timeouts: agree strict": 61,
+      "timeouts: agree within \u00b11 s": 66,
+      "timeouts: differ, nearest change > 3 s": 1
+    },
+    "state_version": "sv-9c17b01f47b2",
+    "private_output": "~/MSU-Alpha-3-private/processed/401856571/pbp_only/sv-9c17b01f47b2"
+  },
+  "401856531": {
+    "game_id": "401856531",
+    "home": "Michigan State",
+    "away": "Louisville",
+    "final": "77-69",
+    "pbp_rows": 492,
+    "transitions": 516,
+    "transitions_inferred": 99,
+    "transitions_by_type": {
+      "T00": 1,
+      "T01": 2,
+      "T02": 1,
+      "T03": 9,
+      "T04": 118,
+      "T05": 52,
+      "T06": 18,
+      "T08": 45,
+      "T09": 32,
+      "T10": 14,
+      "T11": 18,
+      "T12": 25,
+      "T13": 25,
+      "T15": 82,
+      "T16": 17,
+      "T17": 1,
+      "T20": 2,
+      "T21": 1,
+      "T22": 37,
+      "T24": 1,
+      "T26": 15
+    },
+    "segments": 2032,
+    "segments_by_dimension": {
+      "arrow": 3,
+      "ball_status": 175,
+      "challenge_available_away": 1,
+      "challenge_available_home": 1,
+      "chance_seq": 175,
+      "flow_state": 457,
+      "game_clock_running": 105,
+      "lineup_away": 32,
+      "lineup_home": 27,
+      "period": 3,
+      "period_phase": 5,
+      "player_fouls": 32,
+      "possession_seq": 138,
+      "possession_team": 138,
+      "restart_pending": 195,
+      "score_away": 31,
+      "score_home": 41,
+      "stoppage": 128,
+      "team_control": 300,
+      "team_fouls_away": 23,
+      "team_fouls_home": 13,
+      "timeouts_left_away": 5,
+      "timeouts_left_home": 4
+    },
+    "breaks": {
+      "TRN-03 T22 during live play (dead ball missing from PBP)": 2,
+      "IV shot by the team without the ball": 2,
+      "IV offensive rebound by the team without the ball": 1
+    },
+    "notes": {
+      "ORD-03 rows moved inside an instant": 169,
+      "annotation jump_ball_result": 1,
+      "T15 inferred": 82,
+      "annotation turnover credited to a steal": 9,
+      "annotation block": 7,
+      "T26 inferred": 15,
+      "shooting foul on a missed try (no shot row, as scoring rules require)": 4,
+      "K08 new chance after a defensive foul (inferred)": 15,
+      "and-one with the basket one second before the foul": 1,
+      "timeout directly after another stoppage": 3,
+      "challenge outcome: playType and playText disagree (text used)": 1,
+      "annotation team_rebound_credit": 2
+    },
+    "view_vs_reference": {
+      "cells": 14844,
+      "differ": 0
+    },
+    "possessions_by_half": {
+      "1": {
+        "home": 34,
+        "away": 35,
+        "diff": 1
+      },
+      "2": {
+        "home": 33,
+        "away": 33,
+        "diff": 0
+      }
+    },
+    "final_state": {
+      "score_home": 77,
+      "score_away": 69,
+      "team_fouls_home": 6,
+      "team_fouls_away": 15,
+      "timeouts_left_home": 1,
+      "timeouts_left_away": 0,
+      "possession_seq": 137,
+      "chance_seq": 174
+    },
+    "clock_map_ocr": {
+      "unknown": 57,
+      "unknown video s": 4140.0,
+      "clock stopped, video s (estimated: video minus clock)": 2475.7999999999997,
+      "running": 10,
+      "running video s": 600.0,
+      "period boundary": 1,
+      "cut": 1,
+      "cut video s": 240.0,
+      "stopped": 3,
+      "stopped video s": 180.0,
+      "clock went up (T18 correction or OCR error)": 1,
+      "anchors": 72,
+      "samples": 90
+    },
+    "clock_map_pbp_utc": {
+      "wallclock_rows_earlier_than_a_time_already_seen": 87,
+      "max_backward_s": 209.0,
+      "instants": 238
+    },
+    "ocr_vs_fold": {
+      "score: compared": 72,
+      "score: agree strict": 60,
+      "score: agree within \u00b11 s": 71,
+      "team fouls: compared": 70,
+      "team fouls: agree strict": 61,
+      "team fouls: agree within \u00b11 s": 66,
+      "timeouts: compared": 69,
+      "timeouts: agree strict": 66,
+      "timeouts: agree within \u00b11 s": 69,
+      "team fouls: differ, nearest change > 3 s": 3,
+      "score: differ, nearest change > 3 s": 1,
+      "team fouls: differ, nearest change <= 3 s (scorebug lag)": 1
+    },
+    "state_version": "sv-7a96264162bc",
+    "private_output": "~/MSU-Alpha-3-private/processed/401856531/pbp_only/sv-7a96264162bc"
+  }
+}

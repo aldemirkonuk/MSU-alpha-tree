@@ -1,0 +1,603 @@
+# Game-state machine: the dimensions of game state, the typed transitions that change them, and the
+# play-by-play mapping that types every CBBD row (K09 hybrid, approved 2026-10-18).
+# Status: PROPOSAL (2026-10-19). The requirements session approves; nothing here is final.
+#
+# Stored truth (K09): state_transitions (this file types every row), state_segments (one validity
+# interval per dimension), clock_map (game and shot clock, piecewise linear). state_frame and
+# state_second are rebuilt from them and never edited.
+#
+# Rule numbers: docs/rules/PRMBB_RulesBook.pdf, 2026-27 NCAA Men's Basketball Rules (August 2026);
+# page convention printed_page = pdf_page - 3. Sources for the design:
+#   docs/requirements_review/perspective_data_engineer.md sections 1.1-1.4 (T01-T24, dimensions)
+#   docs/requirements_review/perspective_espn_analyst.md section 1.1 (flow states S0-S11)
+#   docs/requirements_review/k09_state_storage_research.md sections 7-9
+# Constants (fouls, timeouts, clocks) are not repeated here: they live in config/invariants.yaml
+# `constants` and are referenced as invariants.<key> (R-EN-06).
+
+version: 0.1.0
+status: proposed
+date: '2026-10-19'
+owner: Mac session (msu-colab), Aldemir's request 19 Oct
+requirements: [N-SY-01, N-MD-01, N-MD-02, R-MD-01, R-MD-08, R-SR-06, N-IV-01, N-SY-05, R-IV-01..16]
+rulebook: docs/rules/PRMBB_RulesBook.pdf
+
+conventions:
+  team_neutral: >-
+    Every stored dimension is named by home/away (N-MD-02). MSU-relative names (score_msu,
+    team_in_possession = msu) exist only in views and exports, mapped through games.home_team_id.
+  time_keys: >-
+    Video passes key segments and transitions by (video_id, frame_index, order_index); the pbp_only
+    pass keys them by (period, game_clock_ds, order_index). game_clock_ds is the game clock in integer
+    deciseconds remaining in the period, so as-of joins are exact.
+  order_index: >-
+    Several transitions can share one instant (a foul, two free throws and a substitution at 7:41).
+    order_index orders them; for PBP it is the play's position in the source order inside that instant.
+  half_open: Segments are [from, to). A dimension never has a gap or an overlap inside its covered range.
+  values: Values are strings in state_segments with value_type giving the parse (int, enum, bool, list).
+  off_not_null: A dimension that cannot exist holds an explicit value ("off", "none"), never null.
+
+# --------------------------------------------------------------------------------------------
+# Dimensions (changed_by is a summary; each transition's `changes` list is authoritative). stored: segment = a dimension of state_segments; clock_map = value in clock_map,
+# status in state_segments; derived = computed in the view from other dimensions, never stored.
+# sources: which pass can write it (pbp = play-by-play fold; ocr = scorebug; cv = tracking).
+# --------------------------------------------------------------------------------------------
+dimensions:
+  period_phase:
+    stored: segment
+    value_type: enum
+    values: [pregame, period, intermission, final]
+    companion: period          # integer period number, 1-2 regulation, 3+ extra periods
+    rules: ['5-6', '5-7', '5-8', '5-9']
+    sources: [pbp, ocr, cv]
+    changed_by: [T01, T20, T21, T24]
+  period:
+    stored: segment
+    value_type: int
+    range: [0, 9]
+    rules: ['5-6', '5-9']
+    sources: [pbp, ocr]
+    changed_by: [T01, T21]
+  flow_state:
+    stored: segment
+    value_type: enum
+    values: [S0, S1, S2, S3, S4, S4a, S4b, S4c, S5, S6, S7, S8, S9, S10, S11]
+    note: >-
+      Analyst flow states (ESPN-analyst review 1.1). S4 splits into S4a primary transition, S4b early
+      offense and S4c half-court (R-TR-08); the split needs CV. S4 without a letter means frontcourt
+      control with the split unknown. The pbp_only pass writes the coarse states it can see (S0, S1,
+      S2, S3 after a defensive rebound, steal or throw-in, S4 after an offensive rebound or the opening
+      tip, S5 to S11) and leaves the backcourt/frontcourt and S4a/b/c split to the video pass.
+    rules: ['6-1', '6-5', '4-9']
+    sources: [pbp, cv]
+    changed_by: all
+  ball_status:
+    stored: segment
+    value_type: enum
+    values: [live, dead]
+    rules: ['6-1', '6-5', '6-6']
+    sources: [cv, pbp]
+    changed_by: [T01, T05, T09, T12, T13, T14, T15, T20, T23]
+  team_control:
+    stored: segment
+    value_type: enum
+    values: [home, away, none]
+    note: Team control per 4-9; none during a try, a jump ball, a loose ball and dead balls without a pending throw-in.
+    rules: ['4-9.1', '4-9.2', '4-9.4']
+    sources: [cv, pbp]
+    changed_by: [T02, T03, T04, T06, T07, T08, T15]
+  possession_team:
+    stored: segment
+    value_type: enum
+    values: [home, away, none]
+    note: >-
+      The team whose possession it is in the R-MD-04 sense (ends only when the other team gains control).
+      Unlike team_control it does not drop to none during a try or a dead ball. possession_seq and
+      chance_seq number them within the game.
+    sources: [pbp, cv]
+    changed_by: [T01, T03, T05, T08, T11, T12, T13, T14]
+  possession_seq:
+    stored: segment
+    value_type: int
+    range: [0, 250]
+    sources: [pbp, cv]
+  chance_seq:
+    stored: segment
+    value_type: int
+    range: [0, 400]
+    note: K08 - an offensive rebound or a shot-clock reset inside a possession (defensive foul, kicked ball) opens a new chance.
+    sources: [pbp, cv]
+  try_in_flight:
+    stored: segment
+    value_type: enum
+    values: [none, in_flight, ring_contact]
+    rules: ['6-6.1', '2-11.6.d.1']
+    sources: [cv]
+    changed_by: [T04, T05, T06, T07, T08]
+  restart_pending:
+    stored: segment
+    value_type: enum
+    values: [none, jump_ball, throw_in, free_throw]
+    companion_fields: {throw_in: [side, spot, team, cause], free_throw: [attempt_k, of_n, award_type]}
+    rules: ['6-5.2', '6-2', '7', '8']
+    sources: [pbp, cv]
+    changed_by: [T01, T10, T11, T12, T13, T14, T15]
+  stoppage:
+    stored: segment
+    value_type: enum
+    values: [none, foul, violation, held_ball, timeout_team, timeout_media, review, challenge, injury, period_end, intermission]
+    rules: ['5-11', '5-13', '5-14', '5-15', '5-16', '5-17', '11', '11-4']
+    sources: [pbp, ocr, cv]
+    changed_by: [T09, T13, T14, T15, T16, T17, T20, T21, T23]
+  game_clock:
+    stored: clock_map
+    status_dimension: game_clock_running
+    rules: ['5-10', '5-11', '5-12', '1-18.2']
+  game_clock_running:
+    stored: segment
+    value_type: enum
+    values: [running, stopped]
+    sources: [ocr, pbp, cv]
+  shot_clock:
+    stored: clock_map
+    status_dimension: shot_clock_status
+    rules: ['2-11', '5-10.3']
+  shot_clock_status:
+    stored: segment
+    value_type: enum
+    values: [running, stopped, off]
+    rules: ['2-11.2', '2-11.8']
+    sources: [ocr, cv]
+  score_home:
+    stored: segment
+    value_type: int
+    range: [0, 200]
+    rules: ['5-1', '5-2', '2-9.13']
+    sources: [pbp, ocr]
+    changed_by: [T05, T12, T17, T18]
+  score_away:
+    stored: segment
+    value_type: int
+    range: [0, 200]
+    rules: ['5-1', '5-2', '2-9.13']
+    sources: [pbp, ocr]
+    changed_by: [T05, T12, T17, T18]
+  team_fouls_home:
+    stored: segment
+    value_type: int
+    range: [0, 40]
+    note: Fouls committed by the home team in the current half; reset at the start of period 2 only; extra periods keep the second-half count (5-9.4).
+    rules: ['4-36', '8-2', '5-9.4']
+    sources: [pbp, ocr]
+    changed_by: [T09, T21]
+  team_fouls_away:
+    stored: segment
+    value_type: int
+    range: [0, 40]
+    rules: ['4-36', '8-2', '5-9.4']
+    sources: [pbp, ocr]
+    changed_by: [T09, T21]
+  bonus_home:
+    stored: derived
+    value_type: enum
+    values: [none, one_and_one, double_bonus]
+    derived_from: team_fouls_away
+    rule: none below invariants.bonus_team_foul fouls; one_and_one from the 7th; double_bonus from invariants.double_bonus_team_foul (8-2.1, 8-2.2)
+  bonus_away:
+    stored: derived
+    value_type: enum
+    values: [none, one_and_one, double_bonus]
+    derived_from: team_fouls_home
+    rule: as bonus_home with the teams swapped
+  player_fouls:
+    stored: segment
+    family: true
+    key: player_id
+    value_type: int
+    range: [0, 6]
+    rules: ['4-12.1']
+    sources: [pbp]
+    changed_by: [T09]
+  timeouts_left_home:
+    stored: segment
+    value_type: int
+    range: [0, 6]
+    note: Total team timeouts left under the game's timeout format (invariants.timeouts); timeouts_used_by_length lives in the transition's changes.
+    rules: ['5-14.8', '5-14.9', '5-14.10']
+    sources: [pbp, ocr]
+    changed_by: [T16, T17]
+  timeouts_left_away:
+    stored: segment
+    value_type: int
+    range: [0, 6]
+    rules: ['5-14.8', '5-14.9', '5-14.10']
+    sources: [pbp, ocr]
+    changed_by: [T16, T17]
+  challenge_available_home:
+    stored: segment
+    value_type: bool
+    rules: ['11-4.1']
+    sources: [pbp]
+    changed_by: [T17]
+  challenge_available_away:
+    stored: segment
+    value_type: bool
+    rules: ['11-4.1']
+    sources: [pbp]
+    changed_by: [T17]
+  arrow:
+    stored: segment
+    value_type: enum
+    values: [home, away, none]
+    note: none until the first jump ball's control is settled (6-3.2).
+    rules: ['6-3', '6-4']
+    sources: [ocr, pbp]
+    changed_by: [T02, T14]
+  lineup_home:
+    stored: segment
+    value_type: list
+    note: Sorted player_ids, joined by '|'; exactly invariants.players_per_team_on_court during live play.
+    rules: ['3-1', '3-6']
+    sources: [pbp, cv]
+    changed_by: [T22]
+  lineup_away:
+    stored: segment
+    value_type: list
+    rules: ['3-1', '3-6']
+    sources: [pbp, cv]
+    changed_by: [T22]
+  basket_attacked_home:
+    stored: segment
+    value_type: enum
+    values: [left, right]
+    note: Screen side in the broadcast's main camera; baskets change at half time only (5-9).
+    rules: ['5-9']
+    sources: [cv]
+    changed_by: [T21]
+  camera_shot_type:
+    stored: segment
+    value_type: enum
+    values: [main_wide, close_up, replay, slow_motion, crowd, bench, studio, commercial, graphic]
+    note: Observability, not game state. Replay frames never open a game-state transition (N-SY-01).
+    sources: [cv]
+    changed_by: [T25]
+  scorebug_visible:
+    stored: segment
+    value_type: bool
+    sources: [cv]
+    changed_by: [T25]
+
+# --------------------------------------------------------------------------------------------
+# Transitions. allowed_from / to are flow states; changes lists the dimensions a transition may
+# change (any other change in the same row is an invariant break). clocks: GC = game clock,
+# SC = shot clock. seen_by gives the first sensor and its latency.
+# --------------------------------------------------------------------------------------------
+transitions:
+  T00:
+    name: game record opened (pregame state)
+    allowed_from: [none]
+    to: [S0]
+    trigger: the pass starts a game; writes the initial value of every dimension the pass can see
+    rules: ['5-6', '5-14', '11-4.1']
+    clocks: GC at the period length, stopped; SC off
+    changes: all
+    seen_by: {registry: before tip}
+    note: Exactly one per (game, pass, state_version). Initial counts come from config/invariants.yaml constants (timeouts by format, challenges).
+  T01:
+    name: period start (jump ball or alternating-possession throw-in)
+    allowed_from: [S0]
+    to: [S1, S2]
+    trigger: toss leaves the official's hand (game, extra period) or ball at the thrower's disposal (2nd half)
+    rules: ['6-1.2.a', '6-2', '6-3', '5-10.2.b']
+    clocks: GC starts on the legal tap; SC starts on control (2-11.5.b)
+    changes: [period_phase, period, flow_state, ball_status, restart_pending, stoppage, possession_team, possession_seq, chance_seq, arrow, game_clock_running]
+    seen_by: {cv: frame, pbp: 1 s}
+    subtypes: [opening_tip, extra_period_tip, second_half_ap_throw_in]
+  T02:
+    name: no control to team control
+    allowed_from: [S1, S6]
+    to: [S3, S4]
+    trigger: a player gains control after a jump ball or a try
+    rules: ['4-9', '5-10.3.b', '6-3.2']
+    clocks: SC starts
+    changes: [flow_state, team_control, possession_team, possession_seq, chance_seq, arrow]
+    seen_by: {cv: frame}
+  T03:
+    name: live change of control
+    allowed_from: [S3, S4, S4a, S4b, S4c, S6]
+    to: [S3, S4]
+    trigger: steal or loose ball recovered by the other team
+    rules: ['2-11.6.b.1', '4-9']
+    clocks: SC reset to invariants.shot_clock_full_s
+    changes: [flow_state, team_control, possession_team, possession_seq, chance_seq]
+    seen_by: {cv: frame, pbp: 1 s}
+  T04:
+    name: try released
+    allowed_from: [S3, S4, S4a, S4b, S4c, S6]
+    to: [S5]
+    trigger: release of a try (the try starts with the shooting motion, 5-1.10)
+    rules: ['6-6.1', '4-9.4']
+    clocks: both keep running
+    changes: [flow_state, team_control, try_in_flight]
+    seen_by: {cv: '±1 frame'}
+  T05:
+    name: made field goal
+    allowed_from: [S5]
+    to: [S7, S2]
+    trigger: ball passes through the basket
+    rules: ['5-1', '6-5.1.a', '5-11.9', '2-10.12']
+    clocks: GC keeps running except at or below invariants.game_clock_stop_after_fg_at_or_below_s in period >= 2; SC to 30 for the opponent on its inbound touch
+    changes: [flow_state, ball_status, try_in_flight, score_home, score_away, possession_team, possession_seq, chance_seq, restart_pending, team_control, game_clock_running]
+    seen_by: {cv: frame, ocr: '+1.50 to +2.60 s (median 1.933 s, measured)', pbp: 1 s}
+    subtypes: [two, three, goaltending_awarded, basket_interference_awarded]
+  T06:
+    name: offensive rebound after ring contact
+    allowed_from: [S5, S6]
+    to: [S3, S4]
+    trigger: the shooting team gains control after the try touched the ring
+    rules: ['2-11.6.d.1']
+    clocks: SC flat invariants.shot_clock_offensive_reset_s; new chance, same possession (K08)
+    changes: [flow_state, try_in_flight, team_control, chance_seq, game_clock_running, ball_status]
+    seen_by: {cv: frame, pbp: 1 s}
+  T07:
+    name: offensive control after an airball
+    allowed_from: [S5, S6]
+    to: [S3, S4]
+    trigger: shooting team recovers a try that missed the ring
+    rules: ['2-11']
+    clocks: SC continues (no reset); a violation if it expires
+    changes: [flow_state, try_in_flight, team_control]
+    seen_by: {cv: frame}
+    note: Invisible in PBP, which records it as an offensive rebound (T06). The video pass splits T06/T07.
+  T08:
+    name: defensive rebound
+    allowed_from: [S5, S6]
+    to: [S3]
+    trigger: the defending team gains control after a missed try or missed last free throw
+    rules: ['2-11.6.b.4']
+    clocks: SC to invariants.shot_clock_full_s
+    changes: [flow_state, try_in_flight, team_control, possession_team, possession_seq, chance_seq, game_clock_running, ball_status]
+    seen_by: {cv: frame, pbp: 1 s}
+  T09:
+    name: foul whistle
+    allowed_from: [S1, S2, S3, S4, S4a, S4b, S4c, S5, S6, S7, S8]
+    to: [S7]
+    trigger: whistle for a personal, technical or flagrant foul
+    rules: ['5-11.1.a', '6-5.1.d', '6-6.1']
+    clocks: both stop (a try already in flight continues to its end, 6-6.1)
+    changes: [flow_state, ball_status, stoppage, team_fouls_home, team_fouls_away, player_fouls, team_control, game_clock_running]
+    seen_by: {audio: frame, pbp: 1 s, cv: officials' signal}
+    subtypes: [personal, technical_class_a, technical_class_b, flagrant_1, flagrant_2]
+    context_flags: [shooting]    # K27: shooting is a context flag on the foul, not a class
+  T10:
+    name: free throws awarded
+    allowed_from: [S7]
+    to: [S8]
+    trigger: foul with a free-throw award (shooting, bonus, double bonus, technical, flagrant)
+    rules: ['8-2.1', '8-2.2', '10-1 Penalty', '10-3', '10-4']
+    clocks: GC stopped through the attempts
+    changes: [flow_state, restart_pending]
+    seen_by: {pbp: 1 s, cv: lane formation}
+    subtypes: [shooting_2, shooting_3, and_one, one_and_one, double_bonus, technical, flagrant]
+  T11:
+    name: throw-in awarded after a foul
+    allowed_from: [S7]
+    to: [S2]
+    trigger: common foul before the bonus, player-control foul, team-control foul outside a loose ball
+    rules: ['10-1 Penalty a', '7-3.2.b', '2-11.6.b.5', '2-11.6.c.1']
+    clocks: SC 30 in the backcourt; max(20, left) in the frontcourt
+    changes: [flow_state, restart_pending, possession_team, possession_seq, chance_seq]
+    seen_by: {pbp: 1 s, cv: throw-in spot}
+    note: K08 - a defensive foul that resets the shot clock without changing possession opens a new chance.
+  T12:
+    name: free-throw attempt result
+    allowed_from: [S8]
+    to: [S8, S6, S2]
+    trigger: each attempt made or missed
+    rules: ['8-5', '8-6', '8-7', '5-10.2.c']
+    clocks: GC starts only when a missed last attempt is touched
+    changes: [flow_state, restart_pending, score_home, score_away, possession_team, possession_seq, chance_seq, ball_status]
+    seen_by: {cv: frame, pbp: 1 s, ocr: shots label}
+    subtypes: [made, missed]
+  T13:
+    name: violation or dead-ball turnover
+    allowed_from: [S2, S3, S4, S4a, S4b, S4c, S5, S6, S8]
+    to: [S7, S2]
+    trigger: travel, 3 s, 5 s closely guarded, 10 s backcourt, backcourt, kicked ball, out of bounds, shot-clock expiry
+    rules: ['6-5.1.g', '9-3', '9-9.2', '9-10', '9-12', '9-14.2', '2-11']
+    clocks: both stop; SC per the reset table (2-11.6)
+    changes: [flow_state, ball_status, stoppage, team_control, possession_team, possession_seq, chance_seq, restart_pending, game_clock_running]
+    seen_by: {pbp: '1 s (turnover type)', cv: counts}
+  T14:
+    name: held ball, alternating-possession throw-in
+    allowed_from: [S3, S4, S4a, S4b, S4c, S6]
+    to: [S2]
+    trigger: held ball
+    rules: ['6-5.1.c', '6-3', '6-4', '2-11.6.a.4', '2-11.6.b.3', '2-11.6.d.4']
+    clocks: SC per the arrow (no reset, 30 or 20); the arrow flips when the throw-in ends
+    changes: [flow_state, ball_status, stoppage, possession_team, possession_seq, chance_seq, arrow, restart_pending, team_control, game_clock_running]
+    seen_by: {pbp: 1 s, ocr: arrow}
+  T15:
+    name: throw-in completed, ball live
+    allowed_from: [S2]
+    to: [S3, S4]
+    trigger: legal touch inbounds after the ball was at the thrower's disposal
+    rules: ['6-1.2.b', '7-6.6', '5-10.2.a', '5-10.3.a', '5-10.2.d']
+    clocks: GC and SC start on the touch; at least invariants.min_clock_off_on_touch_s off in the last 59.9 s
+    changes: [flow_state, ball_status, restart_pending, stoppage, team_control, arrow, game_clock_running]
+    seen_by: {cv: frame, ocr: clock start}
+  T16:
+    name: timeout
+    allowed_from: [S2, S3, S4, S4a, S4b, S4c, S7, S8, S9, S10]
+    to: [S9]
+    trigger: team request granted (live ball only with team control, 5-11.3) or media slot; a timeout may directly follow another timeout or a review
+    rules: ['5-11.3', '5-11.4', '5-14', '5-14.10.c']
+    clocks: stopped; SC no reset (2-11.6.a.3)
+    changes: [flow_state, stoppage, timeouts_left_home, timeouts_left_away, game_clock_running]
+    seen_by: {pbp: 1 s, ocr: timeout bars}
+    subtypes: [to30, to60, to75, media, excessive]
+  T17:
+    name: review or coach's challenge
+    allowed_from: [S2, S3, S4, S4a, S4b, S4c, S5, S6, S7, S8, S9]
+    to: [S10]
+    trigger: official review or coach's challenge
+    rules: ['11', '11-4.1', '5-14.1.e', '5-15.1.e']
+    clocks: frozen; may correct score, clock or possession; an unsuccessful challenge costs the timeout
+    changes: [flow_state, stoppage, challenge_available_home, challenge_available_away, timeouts_left_home, timeouts_left_away, score_home, score_away, possession_team]
+    seen_by: {pbp: text, cv: replay segments, ocr: bar drop and restore}
+    subtypes: [review, challenge_stands, challenge_overturned]
+  T18:
+    name: correction of a state value
+    allowed_from: any
+    to: same
+    trigger: timing or scoring correction by the officials
+    rules: ['5-12.1', '5-12.5', '2-9.13']
+    clocks: GC may go up (Louisville 4:06 to 4:07, measured); never carried across halves
+    changes: [score_home, score_away, team_fouls_home, team_fouls_away, player_fouls]
+    seen_by: {ocr: non-monotone clock, pbp: revision}
+    note: An official correction (a game event) is T18. Our own data correction is a state_corrections row and a superseding transition, not a T18.
+  T19:
+    name: shot clock off or back on
+    allowed_from: any
+    to: same
+    trigger: game clock below a full shot-clock period; reactivated at 20 s per 2-11.6.d
+    rules: ['2-11.2', '2-11.8']
+    clocks: SC display blank or restarted
+    changes: [shot_clock_status]
+    seen_by: {ocr: blank slot}
+  T20:
+    name: period end
+    allowed_from: [S2, S3, S4, S4a, S4b, S4c, S5, S6, S7, S8]
+    to: [S11]
+    trigger: game clock reaches 0.0 (a try released before the horn counts)
+    rules: ['5-11.2.a', '5-7']
+    clocks: GC 0.0; SC off
+    changes: [flow_state, ball_status, stoppage, period_phase, team_control, restart_pending, possession_team, game_clock_running]
+    seen_by: {ocr: frame, audio: horn, pbp: 1 s}
+  T21:
+    name: intermission and next period
+    allowed_from: [S11]
+    to: [S0]
+    trigger: half time or extra-period intermission
+    rules: ['5-8', '5-9', '5-9.4']
+    clocks: team fouls reset at period 2 only; baskets change at half only
+    changes: [flow_state, period_phase, stoppage, team_fouls_home, team_fouls_away, basket_attacked_home, timeouts_left_home, timeouts_left_away]
+    seen_by: {pbp: 1 s, cv: cut (half time kept 3.2 of 21.4 min in the UConn replay)}
+  T22:
+    name: substitution
+    allowed_from: [S0, S2, S7, S8, S9, S10, S11]
+    to: same
+    trigger: substitute beckoned during a dead ball with the clock stopped
+    rules: ['3-6', '3-1']
+    clocks: none
+    changes: [lineup_home, lineup_away]
+    seen_by: {pbp: '1 s (timing errors known, R-DQ-09)', cv: identity}
+    note: Between free throws a substitution is legal only per 3-6 exceptions; the checker logs it as excepted, not a break.
+  T23:
+    name: injury or blood stoppage
+    allowed_from: [S1, S2, S3, S4, S4a, S4b, S4c, S5, S6]
+    to: [S7]
+    trigger: official suspends play
+    rules: ['5-11.2.b', '5-11.6', '5-11.7', '5-11.8', '2-11.6.a.2']
+    clocks: stopped; SC no reset
+    changes: [flow_state, ball_status, stoppage, game_clock_running]
+    seen_by: {pbp: sometimes, cv: video}
+  T24:
+    name: game final
+    allowed_from: [S11]
+    to: [final]
+    trigger: the last period ends with a winner
+    rules: ['5-6', '5-9']
+    clocks: none
+    changes: [period_phase, flow_state]
+    seen_by: {pbp: 1 s, registry: final score}
+  T25:
+    name: broadcast observability change
+    allowed_from: any
+    to: same
+    trigger: camera cut, replay start or end, graphics, scorebug hidden or shown
+    rules: []
+    clocks: none (video time may jump at a cut in a condensed replay)
+    changes: [camera_shot_type, scorebug_visible]
+    seen_by: {cv: frame}
+    note: Added to the engineer's T01-T24 (decision-point table, broadcast director row). Never changes game state.
+  T26:
+    name: timeout or review ends
+    allowed_from: [S9, S10]
+    to: [S2, S7, S8]
+    trigger: horn ends the timeout, or the review ruling is given
+    rules: ['5-14.5', '11-2', '11-4']
+    clocks: stay stopped until the restart (T15 or a free throw)
+    changes: [flow_state, stoppage, restart_pending]
+    seen_by: {ocr: timeout bars restored, cv: players return}
+    note: Added 19 Oct. Without it a timeout has no exit; the pbp_only pass writes it as inferred when the next event shows play resumed.
+
+# Annotation rows describe a transition (who blocked, who assisted) without changing state.
+annotations: [block, assist, steal_credit, jump_ball_result, team_rebound_credit]
+
+# --------------------------------------------------------------------------------------------
+# CBBD play-by-play mapping (pbp_only pass). Every playType seen must map; an unmapped type is an
+# invariant break (0 untyped transitions, N-SY-01). `then` resolves a type from the next rows at
+# the same instant. Seen in the two pilot games: 26 (playType, scoring) combinations, 962 rows.
+# --------------------------------------------------------------------------------------------
+pbp_mapping:
+  source: CBBD /plays/game (fields playType, scoringPlay, scoreValue, isHomeTeam, secondsRemaining, period, onFloor)
+  types:
+    Jumpball:
+      - {when: 'playText starts "Start game"', ttype: T01, subtype: opening_tip}
+      - {when: 'playText starts "Jump Ball"', ttype: annotation, subtype: jump_ball_result}
+    JumpShot:  {made: [T04, T05], missed: [T04]}
+    LayUpShot: {made: [T04, T05], missed: [T04]}
+    DunkShot:  {made: [T04, T05], missed: [T04]}
+    TipShot:   {made: [T04, T05], missed: [T04]}
+    HookShot:  {made: [T04, T05], missed: [T04]}
+    MadeFreeThrow: {made: [T12], missed: [T12], note: 'CBBD names both results MadeFreeThrow; scoringPlay tells them apart'}
+    Offensive Rebound: {ttype: T06, note: T06/T07 split needs video}
+    Defensive Rebound: {ttype: T08}
+    Dead Ball Rebound:
+      - {when: 'follows a missed free throw that is not the last', ttype: annotation, subtype: team_rebound_credit}
+      - {when: otherwise, ttype: T13, subtype: out_of_bounds_after_try}
+    Block Shot: {ttype: annotation, subtype: block}
+    Steal: {ttype: T03}
+    Lost Ball Turnover:
+      - {when: 'a Steal by the other team at the same instant', ttype: T03, note: 'the Steal row carries the transition; this row annotates'}
+      - {when: otherwise, ttype: T13}
+    PersonalFoul:
+      - {ttype: T09, then: {free throws at the same instant: T10, otherwise: T11}}
+    Technical Foul: {ttype: T09, subtype: technical_class_a}
+    OfficialTVTimeOut: {ttype: T16, subtype: media}
+    ShortTimeOut: {ttype: T16, subtype: to30}
+    RegularTimeOut: {ttype: T16, subtype: to60}
+    "Coach's Challenge (Stands)": {ttype: T17, subtype: 'from playText: "(Overturned)" -> challenge_overturned, else challenge_stands', note: 'CBBD playType says Stands for both challenges in the pilot games while playText says Overturned (measured 19 Oct); the text wins and the disagreement is logged'}
+    "Coach's Challenge (Overturned)": {ttype: T17, subtype: challenge_overturned}
+    Substitution: {ttype: T22}
+    End Period: {ttype: T20, then: {next period exists: 'T21, then T01 second_half_ap_throw_in (inferred)'}}
+    End Game: {ttype: T24}
+  ordering_fixes:
+    - {id: ORD-03, fix: 'inside one game-clock second, sort rows by score total (post-event scores never decrease), then event logic (jump ball, shot, block, rebound, steal/turnover, foul, timeout/challenge/substitution, free throws by number, rebound of a missed last free throw, End Period, End Game), then source order', why: 'CBBD order inside a second is unreliable: free throws listed 2 of 2 before 1 of 2 with matching scores, substitutions before the whistle, End Game before the last rebound (measured 19 Oct on both pilot games)'}
+  team_rebounds: 'A rebound row with no player is a team rebound: credit only during a free-throw trip or a dead ball, otherwise the ball went out of bounds after a try (T13 out_of_bounds_after_try)'
+  lineups: 'Built from the substitution rows (participant in/out); onFloor of the next row is a cross-check only'
+  shooting_fouls: 'A fouled missed try is not a field-goal attempt in the scoring rules, so a 2- or 3-shot trip with no shot row is a shooting foul, not a bonus'
+  inferred:
+    - {ttype: T15, when: 'a live-play event (shot, steal, turnover) follows S2'}
+    - {ttype: T26, when: 'any event follows S9 or S10'}
+    - {ttype: T21, when: 'End Period and a later period exists'}
+    - {ttype: T01, subtype: second_half_ap_throw_in, when: 'first row of period 2 (and of each extra period: opening tip, subtype extra_period_tip)'}
+
+# --------------------------------------------------------------------------------------------
+# Integrity rules on the stored tables (N-IV-01 a-c, N-SY-01). Severity per config/invariants.yaml.
+# --------------------------------------------------------------------------------------------
+integrity:
+  - {id: SEG-01, check: no two segments of one (game_id, pass, state_version, dimension) overlap, action: quarantine}
+  - {id: SEG-02, check: no gap between consecutive segments of a dimension inside its covered range, action: quarantine}
+  - {id: SEG-03, check: no zero-length segment is stored, action: quarantine}
+  - {id: SEG-04, check: every segment boundary references exactly one transition (opened_by_transition_id), action: quarantine}
+  - {id: TRN-01, check: every transition has a ttype from this file (0 untyped), action: quarantine}
+  - {id: TRN-02, check: a transition changes only the dimensions its ttype lists, action: human_review}
+  - {id: TRN-03, check: 'from flow state is in allowed_from (disallowed = 0 on gold-v1, or each explained)', action: human_review}
+  - {id: TRN-04, check: no transition has its effective frame inside a replay segment, action: quarantine}
+  - {id: TRN-05, check: a superseded transition stays readable (count superseded = count of corrections), action: quarantine}
+  - {id: CLK-01, check: 'game clock never increases inside a running clock_map segment; increases only through T18', action: human_review}
+  - {id: CLK-02, check: running clock_map segments advance 1.0 s of clock per 1.0 s of video (tolerance clock_rate_tolerance), action: flag}
+constants:
+  clock_rate_tolerance: 0.02         # proposal: 2% between scorebug anchors
+  running_min_anchor_gap_s: 5        # proposal: shorter anchor gaps are too noisy to classify

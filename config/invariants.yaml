@@ -1102,3 +1102,8 @@ verified_unchanged:
   - {id: "State record intro", rule: "2-9.13 (scorebook authority) confirmed, pdf 41 / printed 38"}
   - {id: R-SR-08, rule: "7-3.2.b as changed in 2025-26 confirmed (proposal 6 of the 2025-26 changes; text on pdf 84 / printed 81)"}
   - {id: R-MD-06 / R-SY-09, rule: "2-11.6.d.1 flat 20 s confirmed"}
+
+# Dated note 2026-10-19: segment and transition integrity (SEG-01..04, TRN-01..05, CLK-01..02) are defined in
+# config/state_machine.yaml `integrity` and evaluated on state_segments / state_transitions / clock_map (N-IV-01).
+# restricted_area_radius_m above (1.22) predates K25, which decided the edge-correct 1.270 m; left unchanged here
+# for the requirements session (coord/requirements_inbox/010-state-machine-and-clock-map.md).

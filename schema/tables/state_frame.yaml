@@ -1431,3 +1431,8 @@ columns:
   - R-DQ-04
   - R-EN-07
   nullable: false
+# Dated note 2026-10-19 (K09 hybrid, approved 18 Oct): this table is DERIVED. It is a materialised as-of view of
+# state_segments + clock_map (schema/tables/state_segments.yaml, clock_map.yaml) joined with the per-frame
+# observations (frames, ball_states, player_positions), regenerated under its state_version after any change of
+# the stored truth and never edited in place. Add state_version to the key when this spec is next regenerated.
+# Field names here are MSU-relative; stored state is home/away (N-MD-02) and is mapped in the view.

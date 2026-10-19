@@ -984,3 +984,5 @@ columns:
   - R-DQ-04
   - R-EN-07
   nullable: false
+# Dated note 2026-10-19 (K09 hybrid, approved 18 Oct): this table is DERIVED from state_segments and clock_map
+# (keyed by game clock for pbp_only games), regenerated under its state_version, never edited in place.
