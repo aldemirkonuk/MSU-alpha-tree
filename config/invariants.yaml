@@ -63,6 +63,7 @@ constants:
   three_point_arc_m: 6.75                      # 22 ft 1.75 in = 6.750 m, Rule 1-7.1
   three_point_corner_m: 6.60                   # 21 ft 7.875 in = 6.601 m, Rule 1-7.1
   restricted_area_radius_m: 1.22               # 4 ft, Rule 1-8, 4-31
+  restricted_area_radius_edge_m: 1.270         # 2026-10-19 (E2 / K25): edge-correct value is the one used; 1.22 above is the centre-line figure, kept for history
   lane_max_players: 6                          # Rule 8-4.4
   lane_max_defence: 4
   lane_max_offence: 2

@@ -20,3 +20,4 @@
 | 2026-10-19T00:39Z | runner | inbox-009-answers | done | 11 open questions answered; stat catalogue artifact published |
 | 2026-10-19T22:21Z | runner | alpha-tree-update | done | tree v14; fps check: 29.97 on both games |
 | 2026-10-19T22:40Z | runner | k09-state-machine | done | specs + fold + 17 tests; both pilot games pass; 7 PBP-gap breaks documented |
+| 2026-10-19T23:18Z | runner | decisions-d01-d45 | done | delegated picks recorded; live state page; inbox 011 |

@@ -106,3 +106,52 @@ D39 and D41 had no recommendation in the synthesis; A is this session's pick. D3
 
 | # | Choice | Note |
 | --- | --- | --- |
+| all | Delegated (19 Oct) | Aldemir: "do the most advanced selection and most real life applicable, meaning it actually works". The Mac session picked per row; where A was refined, the refinement is stated. |
+| D01 | A | Adopt the 13 corrections and 34 invariants. |
+| D02 | A | R-RL adopted; "intentional" dropped (not a 2026-27 class); old PBP text "intentional" maps to flagrant 1 on import. |
+| D03 | A | 2 or 3 allowed, 3 expected; a 2-person crew is flagged, not an error. |
+| D17 | A | |
+| D30 | A | 20 s; officials' manual 15 s flagged. |
+| D31 | A | |
+| D32 | A | Action for Aldemir: get the 2025-26 rules book. |
+| D35 | A | |
+| D36 | A | |
+| D37 | A | Answered once D32 arrives. |
+| E1 | A | T00, T26 and S4 approved. |
+| E2 | A | restricted_area_radius_m becomes 1.270 m (edge-correct, K25); centre-line 1.22 m kept as a comment. |
+| D04 | A | 43 + 4 tables first; the other specs stay proposed, built when a requirement needs them. |
+| D05 | A | |
+| D06 | A | Home/away storage, MSU views. |
+| D29 | A | |
+| D07 | A, refined | ESPN athlete ID as player_id, plus a crosswalk to CBBD, KenPom/Torvik and EvanMiya names (bitemporal, R-FD); local x- IDs for players with no ESPN ID. |
+| D13 | A | Rebuild registry CSVs from CBBD; drop headshot_url. |
+| D14 | A | Age at tip only. |
+| D15 | A | |
+| D16 | A | Filled at intake, verified by tracking (basket attacked and bench end must agree). |
+| D24 | A | Keep as public estimate, never a model input. |
+| D28 | A, refined | Listed C, or listed F ≥ 206 cm, flagged; replaced by the measured role cluster once tracking gives heights and positions. |
+| D44 | A | Record the current status (action for Aldemir: state it). |
+| D08 | A | Per source in data_sources_catalog.md. |
+| D09 | A | |
+| D10 | A | |
+| D11 | A | |
+| D12 | A | |
+| D43 | A | Drafts prepared for Aldemir to send; nothing is sent by a session. |
+| E3 | A | Log it; a report to CBBD is drafted for Aldemir to send. |
+| D20 | A | After G7; get the CCA manual first. |
+| D21 | A | |
+| D22 | A | |
+| D27 | A | Confirm with staff; until then the edges are parameters in R-CX-29. |
+| D33 | A | |
+| D34 | A | |
+| D23 | A | Should until pose error at broadcast distance is measured; then Shall if the error gate passes. |
+| D26 | A | |
+| D18 | A | Set after game 3 from the measured distribution. |
+| D19 | A, refined | Held out by game (≥ 20%, stratified), and every model also scored walk-forward in time. |
+| D38 | A | Ask staff; fallback Aldemir rates them. |
+| D25 | A | |
+| D39 | A | No ESPN in the collector. |
+| D40 | A | Disabled until terms are checked. |
+| D41 | A, refined | Always-on Mac now; move to a small cloud VM if collection uptime falls below 99% over any 2 weeks. |
+| D42 | A | |
+| D45 | action | Aldemir: start Google Drive for desktop; rotate the CBBD and Parse keys. |
