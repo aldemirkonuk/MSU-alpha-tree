@@ -17,3 +17,4 @@
 | 2026-10-18T21:59Z | runner | k01-k29 | done | all conflicts decided; K09 hybrid; live doc updated |
 | 2026-10-18T22:29Z | runner | fold-008 | done | main tab 748 IDs / 44 families; superseded tab created |
 | 2026-10-19T00:26Z | runner | stat-catalogue | done | 1,571 metrics; config/metrics.yaml; inbox 009 |
+| 2026-10-19T00:39Z | runner | inbox-009-answers | done | 11 open questions answered; stat catalogue artifact published |

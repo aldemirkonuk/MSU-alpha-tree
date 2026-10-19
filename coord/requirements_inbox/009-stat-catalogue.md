@@ -49,3 +49,21 @@ New family R-MR (metric registry) unless the session prefers to file them under 
 - The registry is 4.2 MB in one file: keep one file, or split into `config/metrics/<category>.yaml` with the same ids?
 
 > Note 2026-10-18 (Mac session review): verification status corrected in config/metrics.yaml (it had been flattened to true): true 1,071 · false 340 · partial 105 · internal 50 · harvest_only 5. Unit tests on a fixture game must confirm every false/partial formula before use.
+
+## Answers from Aldemir (2026-10-19)
+
+| Question | Decision |
+| --- | --- |
+| Single registry (new-MR-01) | Yes. `config/metrics.yaml` is the single metric registry; CI enforces the mapping. |
+| Family | New family R-MR, cross-referenced to R-CX-29. |
+| Parameter registry id | R-CX-29 (already confirmed by the fold map: N-CX-10 → R-CX-29). |
+| Unit-test fixtures (new-MR-02) | Games 401856571 (UConn, 27 Mar 2026) and 401856531 (Louisville, 21 Mar 2026). |
+| 109 external-only vendor stats | Keep as dated snapshots (as-of date; model use only where the licence allows). |
+| 15 tracking_pro_only stats | Keep, research-only, behind the calibration gate R-CG-11. |
+| 9 `no` stats | Keep as placeholders; ids reserved, never reused. |
+| Inline numbers (new-MR-04) | Every threshold, window, weight and constant becomes an R-CX-29 parameter before the stat is first computed; linter enforces it. |
+| Schema gaps | Send to the schema session as one change set. |
+| Number ranges | One universal convention: percent 0-100, probability 0-1. Any other bounded unit (ratings, z-scores, indexes) declares its range in the entry; unit tests reject values outside the declared range. Decided by the Mac session on Aldemir's "keep it universal and stick with certain num range". |
+| File layout | Keep one file, `config/metrics.yaml`. Decided by the Mac session on Aldemir's "you decide": one file keeps the loader and the id-uniqueness check simple; per-category views stay in `docs/stats/`. |
+
+Browsable view (private artifact): https://claude.ai/artifact/16Vgj5XFcqU7gDAJtJSotB
