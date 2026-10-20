@@ -278,3 +278,7 @@ Numbers (F01-F35) are for approving by number.
 - Proposed: adv_s = sum_t 1[advantage_t] * dt_t (dt_t = frame interval); the span variant t_adv_end - t_adv_start is stored separately
 - Why: The hard-coded 0.1 assumes 10 Hz. Use the actual frame dt.
 - Found in: 450-formula pass; status now: internal
+
+## Approval
+
+Aldemir, 19 Oct 2026: "approved all". All 35 fixes (F01-F35) applied in registry version 0.6.0; each old formula is kept in `formula_before_2026_10_19` with a `formula_change` record (date, approver, fix ID, reason).

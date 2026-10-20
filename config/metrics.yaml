@@ -1,4 +1,4 @@
-version: 0.5.0
+version: 0.6.0
 date: '2026-10-19'
 status: proposed
 title: MSU Alpha 3 metric registry
@@ -952,8 +952,8 @@ categories:
     - hoopR adj_tempo
     - R PACE
     definition: 'Opponent-adjusted possessions per 40 minutes: the tempo a team would play against an average-paced D-I opponent, adjusted for each opponent''s preferred pace (and, at KenPom, game date).'
-    formula: 'External (proprietary; no published formula). Replica (inferred from Torvik AdjOE structure via the author comment ''same basic process'', not published): iterate AdjT_g = RawT_g * (avgT /
-      OppAdjT); AdjT = recency-weighted mean of AdjT_g; recency weights w(d) and convergence tol 0.01 are our registry parameters.'
+    formula: 'Store the published AdjT. For the replica: Poss_g = mean(team, opp) of FGA-ORB+TOV+0.475*FTA; RawT_g = 40*Poss_g/(game_minutes); AdjT_g = RawT_g*(avgT/OppAdjT); AdjT = sum w_g*AdjT_g / sum
+      w_g, where w_g = 1 for age<=40 d, 1-0.01*(age-40) for 40<age<=80, and 0.6 after (Torvik''s published recency). Iterate to convergence.'
     inputs:
     - ratings_snapshots.value (metric_code = adj_t)
     - external:kenpom.AdjT
@@ -1038,6 +1038,7 @@ categories:
       only (Macfax: projected possessions per 40 minutes; Torvik: same process as AdjOE/DE). The multiplicative iteration is inferred, not published; the KenPom glossary (Wayback) could not be re-opened.'
     - '2026-10-19 verification: The multiplicative replica is inferred: Torvik only says ''same basic process''. The registry''s recency weights w(d) are listed as our parameters, but Torvik publishes his
       (40/80 days, 60% floor), so use those for a Torvik-style replica. KenPom''s form is unknown, and Torvik says he does not know exactly how KenPom calculates it.'
+    - 2026-10-19 formula replaced (F30, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       covers_groups:
       - g:adj_tempo
@@ -1052,6 +1053,15 @@ categories:
       constants differ (0.475 KenPom/SR vs 0.44/0.4 NBA forms).'
     formula_fix_2026_10_19: 'Store the published AdjT. For the replica: Poss_g = mean(team, opp) of FGA-ORB+TOV+0.475*FTA; RawT_g = 40*Poss_g/(game_minutes); AdjT_g = RawT_g*(avgT/OppAdjT); AdjT = sum w_g*AdjT_g
       / sum w_g, where w_g = 1 for age<=40 d, 1-0.01*(age-40) for 40<age<=80, and 0.6 after (Torvik''s published recency). Iterate to convergence.'
+    formula_before_2026_10_19: 'External (proprietary; no published formula). Replica (inferred from Torvik AdjOE structure via the author comment ''same basic process'', not published): iterate AdjT_g
+      = RawT_g * (avgT / OppAdjT); AdjT = recency-weighted mean of AdjT_g; recency weights w(d) and convergence tol 0.01 are our registry parameters.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F30
+      reason: 'The multiplicative replica is inferred: Torvik only says ''same basic process''. The registry''s recency weights w(d) are listed as our parameters, but Torvik publishes his (40/80 days, 60%
+        floor), so use those for a Torvik-style replica. KenPom''s form is unknown, and Torvik says he does not know exactly how KenPom calculates it.'
+      found_in: 450-formula pass
   - id: M-TEFF-012
     name: Time on offense and time on defense
     category: team_efficiency
@@ -1208,8 +1218,8 @@ categories:
     - offense control share
     - pace control
     definition: Share of the game-level outcome of a stat (tempo, eFG%, TOV%, ORB%, FT rate) attributable to the offense's season ability versus the defense's season ability.
-    formula: Fit stat_game(off team O vs def team D) = a + b_O * ability_off(O) + b_D * ability_def(D) over D-I games; control_O = b_O / (b_O + b_D); ability_off(O) = mean of the stat in O's offensive games
-      before this game (prior-games-only) or leave-one-game-out season mean; ability_def(D) likewise over D's defensive games; the fitted game never enters its own regressors.
+    formula: Fit stat_game = a + alpha*off_season(O, excluding g) + beta*def_season(D, excluding g) + gamma*site (use a logit link for percentage stats; KenPom fits shot level for FT%). Then control_O =
+      Var(alpha*off) / (Var(alpha*off) + Var(beta*def)), with variances taken across the fitted sample's offensive and defensive season values. Report HCA = gamma.
     inputs:
     - team_box.fga
     - team_box.oreb
@@ -1263,6 +1273,7 @@ categories:
       D-I box pull (>= 1,000 games) is loaded. Ability is prior-games-only or leave-one-game-out, never an in-sample season mean (leakage).
     - '2026-10-19 verification: The registry formula b_O/(b_O+b_D) is wrong. KenPom explicitly measures the share of predicted-value variance contributed by each term, which differs from the coefficient
       ratio whenever offensive and defensive season values have different spreads. The registry also omits the site term.'
+    - 2026-10-19 formula replaced (F31, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       covers_groups:
       - g:off_control_share_ovd_influence
@@ -1276,6 +1287,15 @@ categories:
       possession length) in KenPom, not possessions.
     formula_fix_2026_10_19: Fit stat_game = a + alpha*off_season(O, excluding g) + beta*def_season(D, excluding g) + gamma*site (use a logit link for percentage stats; KenPom fits shot level for FT%). Then
       control_O = Var(alpha*off) / (Var(alpha*off) + Var(beta*def)), with variances taken across the fitted sample's offensive and defensive season values. Report HCA = gamma.
+    formula_before_2026_10_19: Fit stat_game(off team O vs def team D) = a + b_O * ability_off(O) + b_D * ability_def(D) over D-I games; control_O = b_O / (b_O + b_D); ability_off(O) = mean of the stat
+      in O's offensive games before this game (prior-games-only) or leave-one-game-out season mean; ability_def(D) likewise over D's defensive games; the fitted game never enters its own regressors.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F31
+      reason: The registry formula b_O/(b_O+b_D) is wrong. KenPom explicitly measures the share of predicted-value variance contributed by each term, which differs from the coefficient ratio whenever offensive
+        and defensive season values have different spreads. The registry also omits the site term.
+      found_in: 450-formula pass
   - id: M-TEFF-015
     name: Expected game possessions (pre-game tempo projection)
     category: team_efficiency
@@ -2065,8 +2085,7 @@ categories:
     - mix-expected PPP
     - Projected_PPP
     definition: Team points per possession implied by its play-type frequencies times play-type PPP (own or D-I average), compared to actual PPP.
-    formula: '(a) Own projection: Projected_PPP = sum_pt Freq_pt * PPP_pt with Freq_pt and PPP_pt from chances.set_id and chances.points (after_tracking). (b) D-I-baseline (mix-only) variant: sum_pt Freq_pt
-      * PPP_pt(D-I) needs external:synergy (licensed; data_tier external_only, computable_now external, licence-blocked).'
+    formula: Projected_PPP = sum_pt Freq_pt * PPP_pt(baseline), where baseline is the D-I average or the team's own shrunk/prior-span PPP_pt, never the same-span raw PPP_pt.
     inputs:
     - chances.set_id
     - chances.points
@@ -2103,6 +2122,7 @@ categories:
     - Nylon Calculus describes the projection without printing the formula; the mix-weighted form is the natural reading (unverified).
     - '2026-10-19 verification: L5 identity check fails variant (a): with Freq_pt = n_pt/N and same-span PPP_pt = pts_pt/n_pt, sum_pt Freq_pt*PPP_pt = pts/N = actual PPP exactly, so comparing (a) with actual
       PPP is always zero. Only a baseline PPP (D-I average or prior/shrunk own) makes the comparison informative. The source gives no formula.'
+    - 2026-10-19 formula replaced (F32, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       covers_groups:
       - g:projected_ppp_from_play_type_mix
@@ -2113,6 +2133,15 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: Play types must partition all possessions (Freq sums to 1), or the unclassified remainder is lost. Small-sample play types need shrinkage.
     formula_fix_2026_10_19: Projected_PPP = sum_pt Freq_pt * PPP_pt(baseline), where baseline is the D-I average or the team's own shrunk/prior-span PPP_pt, never the same-span raw PPP_pt.
+    formula_before_2026_10_19: '(a) Own projection: Projected_PPP = sum_pt Freq_pt * PPP_pt with Freq_pt and PPP_pt from chances.set_id and chances.points (after_tracking). (b) D-I-baseline (mix-only) variant:
+      sum_pt Freq_pt * PPP_pt(D-I) needs external:synergy (licensed; data_tier external_only, computable_now external, licence-blocked).'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F32
+      reason: 'L5 identity check fails variant (a): with Freq_pt = n_pt/N and same-span PPP_pt = pts_pt/n_pt, sum_pt Freq_pt*PPP_pt = pts/N = actual PPP exactly, so comparing (a) with actual PPP is always
+        zero. Only a baseline PPP (D-I average or prior/shrunk own) makes the comparison informative. The source gives no formula.'
+      found_in: 450-formula pass
   - id: M-TEFF-027
     name: D-I baseline points per possession (value of a possession)
     category: team_efficiency
@@ -5752,9 +5781,8 @@ categories:
     - Rank Excluding Ineligible
     - key-player absence weight (BPI 2012)
     definition: Team rating recomputed for the players actually available (or eligible) for a game, and the difference from the full-roster rating in points of predicted margin.
-    formula: 'InjAdj = predicted_margin(healthy) - predicted_margin(available roster); EvanMiya: rating recomputed without injured players'' BPR x minutes. Our version: Delta_i = sum_{p unavailable} BPR_p
-      * min_share_p * 5 (per 100 possessions) with minutes redistributed to the next players by depth (registry rule); BPI 2012: w_game = 1 - k * (MPG_missing / minutes per slot) for games missing key players
-      (k unpublished).'
+    formula: Delta_i = 5 * [ sum_p share_p(full) * R_p - sum_p share_p(avail) * R_p ], where share(avail) gives the absent players 0 and redistributes their minutes by the depth rule (both share vectors
+      sum to 1). This equals 5 * sum_{p absent} share_p * R_p only when the replacements are rated 0, which the current formula assumes implicitly.
     inputs:
     - availability.status
     - availability.known_at_utc
@@ -5815,6 +5843,7 @@ categories:
     - '2026-10-19 verification: The stated ''our version'' subtracts only the absent players'' rating x share and ignores the rating of the players who take the redistributed minutes. It overstates the
       loss whenever the replacements have a nonzero rating. Use the full-minus-available form above. The BPI 2012 weighting concept is confirmed, but k and the linear form are not. EvanMiya''s method (rank_inj
       column in the export) is unpublished.'
+    - 2026-10-19 formula replaced (F33, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_members:
       - Injury Rank (EvanMiya; harvest evanmiya.jsonl:60; verified=True)
@@ -5835,6 +5864,17 @@ categories:
       BPI weight 1 - k*MPG/slot minutes must be clipped to [0,1].
     formula_fix_2026_10_19: Delta_i = 5 * [ sum_p share_p(full) * R_p - sum_p share_p(avail) * R_p ], where share(avail) gives the absent players 0 and redistributes their minutes by the depth rule (both
       share vectors sum to 1). This equals 5 * sum_{p absent} share_p * R_p only when the replacements are rated 0, which the current formula assumes implicitly.
+    formula_before_2026_10_19: 'InjAdj = predicted_margin(healthy) - predicted_margin(available roster); EvanMiya: rating recomputed without injured players'' BPR x minutes. Our version: Delta_i = sum_{p
+      unavailable} BPR_p * min_share_p * 5 (per 100 possessions) with minutes redistributed to the next players by depth (registry rule); BPI 2012: w_game = 1 - k * (MPG_missing / minutes per slot) for
+      games missing key players (k unpublished).'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F33
+      reason: The stated 'our version' subtracts only the absent players' rating x share and ignores the rating of the players who take the redistributed minutes. It overstates the loss whenever the replacements
+        have a nonzero rating. Use the full-minus-available form above. The BPI 2012 weighting concept is confirmed, but k and the linear form are not. EvanMiya's method (rank_inj column in the export)
+        is unpublished.
+      found_in: 450-formula pass
   - id: M-TRAT-014
     name: ESPN Basketball Power Index (BPI) and its offence/defence components
     category: team_ratings
@@ -7865,7 +7905,8 @@ categories:
     - QUALITY AVG
     - Teamsheet averages
     definition: 'Averages of the committee team-sheet ranks: results metrics (KPI, SOR, WAB) and predictive metrics (BPI, KenPom, T-Rank; SAG historically).'
-    formula: ResumeAvg = mean(KPI_rank, SOR_rank[, WAB_rank]); QualityAvg = mean(BPI_rank, KP_rank, TRK_rank[, SAG_rank]).
+    formula: 'ResumeAvg = mean over AVAILABLE of {KPI rank, SOR rank, WAB rank}; QualityAvg = mean over AVAILABLE of {BPI rank, KenPom rank, Sagarin rank, T-Rank rank}; rounded to 0.1. Availability by season
+      in the data: WAB and TRK from 2025, SAG through 2023, neither in 2024 (2024 QualityAvg = mean(BPI, KP)).'
     inputs:
     - external:kaggle.Teamsheet_Ranks.RESUME_AVG
     - external:kaggle.Teamsheet_Ranks.QUALITY_AVG
@@ -7909,6 +7950,7 @@ categories:
     - '2026-10-19 verification: Reproduced on 476 published rows: the nan-skipping mean of {KPI, SOR, WAB} matches RESUME AVG (max error 0.033 = rounding), and the nan-skipping mean of {BPI, KP, SAG, TRK}
       matches QUALITY AVG (max error 0.033). The registry''s bracketed optional members are right in spirit, but SAG belongs in the Quality list in the years it exists, not as an optional add-on. Write
       the rule as ''mean of the systems available that season''.'
+    - 2026-10-19 formula replaced (F34, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_members:
       - Teamsheet averages (Resume Avg, Quality Avg) (Bart Torvik; harvest kenpom_torvik.jsonl:118; verified=False)
@@ -7922,6 +7964,15 @@ categories:
     edge_cases: Systems absent in a season (nan-skipping mean); rounding to one decimal; ties.
     formula_fix_2026_10_19: 'ResumeAvg = mean over AVAILABLE of {KPI rank, SOR rank, WAB rank}; QualityAvg = mean over AVAILABLE of {BPI rank, KenPom rank, Sagarin rank, T-Rank rank}; rounded to 0.1. Availability
       by season in the data: WAB and TRK from 2025, SAG through 2023, neither in 2024 (2024 QualityAvg = mean(BPI, KP)).'
+    formula_before_2026_10_19: ResumeAvg = mean(KPI_rank, SOR_rank[, WAB_rank]); QualityAvg = mean(BPI_rank, KP_rank, TRK_rank[, SAG_rank]).
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F34
+      reason: 'Reproduced on 476 published rows: the nan-skipping mean of {KPI, SOR, WAB} matches RESUME AVG (max error 0.033 = rounding), and the nan-skipping mean of {BPI, KP, SAG, TRK} matches QUALITY
+        AVG (max error 0.033). The registry''s bracketed optional members are right in spirit, but SAG belongs in the Quality list in the years it exists, not as an optional add-on. Write the rule as ''mean
+        of the systems available that season''.'
+      found_in: 450-formula pass
   - id: M-TRAT-041
     name: Quality, elite and site-adjusted results (ESPN resume)
     category: team_ratings
@@ -13089,7 +13140,8 @@ categories:
     - T-Rank shooting splits
     - DUNKS / CLOSE TWOS / FARTHER TWOS / THREES FG% and SHARE
     definition: Team-season FG% and share of attempts in four classes (dunks, close twos, farther twos, threes) for offence and defence, as exported from Bart Torvik's site.
-    formula: 'external; share_z = FGA_z / FGA (source FAQ: ''share of attempts''); FG%_z = FGM_z / FGA_z'
+    formula: 'share_z = 100 * FGA_z / FGA and FG%_z = 100 * FGM_z / FGA_z, where the zones are {close twos (rim: layups + tips + dunks), farther twos, threes}, which sum to 100. Dunks are a SUBSET of close
+      twos (share_dunks = 100 * dunk FGA / FGA), not a fourth disjoint zone.'
     inputs:
     - external:torvik_splits.DUNKS FG%
     - external:torvik_splits.CLOSE TWOS FG%
@@ -13144,6 +13196,7 @@ categories:
     - '2026-10-19 verification: L5 check on local Shooting Splits.csv (1085 rows): close + farther + threes shares sum to 99.9-100.1, but adding dunks gives 100.5-119.0 (mean 107). Dunks are therefore nested
       inside close twos. L4: THREES SHARE equals KenPom-Barttorvik 3PTR and THREES FG% equals 3PT% on the rows checked (Akron 45.1/38.5, Alabama 53.7/35.8, Arizona, Arkansas, BYU). The registry must not
       treat the four as a partition.'
+    - 2026-10-19 formula replaced (F21, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       input_groups: []
     verified_before_2026_10_19: 'false'
@@ -13154,6 +13207,15 @@ categories:
     edge_cases: Zones depend on scorekeeper PBP descriptions (untagged twos fall into 'farther'). Defensive shares follow the same structure.
     formula_fix_2026_10_19: 'share_z = 100 * FGA_z / FGA and FG%_z = 100 * FGM_z / FGA_z, where the zones are {close twos (rim: layups + tips + dunks), farther twos, threes}, which sum to 100. Dunks are
       a SUBSET of close twos (share_dunks = 100 * dunk FGA / FGA), not a fourth disjoint zone.'
+    formula_before_2026_10_19: 'external; share_z = FGA_z / FGA (source FAQ: ''share of attempts''); FG%_z = FGM_z / FGA_z'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F21
+      reason: 'L5 check on local Shooting Splits.csv (1085 rows): close + farther + threes shares sum to 99.9-100.1, but adding dunks gives 100.5-119.0 (mean 107). Dunks are therefore nested inside close
+        twos. L4: THREES SHARE equals KenPom-Barttorvik 3PTR and THREES FG% equals 3PT% on the rows checked (Akron 45.1/38.5, Alabama 53.7/35.8, Arizona, Arkansas, BYU). The registry must not treat the
+        four as a partition.'
+      found_in: 450-formula pass
   - id: M-SHOOT-030
     name: Points distribution by source (share of points from 2P, 3P, FT, paint, mid-range)
     category: shooting
@@ -13337,8 +13399,7 @@ categories:
     - Catch Shoot Points
     - Catch-and-shoot FG% and points
     definition: FG% and points on catch-and-shoot attempts. Attempt counts, C&S 3P% and C&S eFG% are owned by shot_quality (g:catch_shoot_*) and only referenced here.
-    formula: C&S FG% = 100 * FGM_cs / FGA_cs; C&S points = sum of points on C&S shots; cs = dribbles_before <= cs_max_dribbles (default 0) AND touch_time_before_s <= cs_max_touch_s (default 2.0 s); touch_time_before_s
-      = catch to release, dribbles included
+    formula: cs = shot_type is jump shot AND release_r_m > 3.048 AND dribbles_before = 0 AND touch_time_before_s <= 2.0
     inputs:
     - shots.dribbles_before
     - shots.touch_time_before_s
@@ -13401,6 +13462,7 @@ categories:
       touch_time_before_s (catch to release, includes dribbles) drives the C&S rule; release_time_s (gather to release, shot motion only) is M-SHOOT-044. Schema note raised: reword the two shots.yaml definitions,
       which both read ''catch to release''.'
     - '2026-10-19 depth pass: The registry rule omits the NBA restrictions to jump shots and > 10 ft (3.048 m).'
+    - 2026-10-19 formula replaced (F23, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       input_groups:
       - g:catch_shoot_fg_pct
@@ -13413,6 +13475,14 @@ categories:
     l4_recipe: none.
     edge_cases: touch time resolution in broadcast video
     formula_fix_2026_10_19: cs = shot_type is jump shot AND release_r_m > 3.048 AND dribbles_before = 0 AND touch_time_before_s <= 2.0
+    formula_before_2026_10_19: C&S FG% = 100 * FGM_cs / FGA_cs; C&S points = sum of points on C&S shots; cs = dribbles_before <= cs_max_dribbles (default 0) AND touch_time_before_s <= cs_max_touch_s (default
+      2.0 s); touch_time_before_s = catch to release, dribbles included
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F23
+      reason: The registry rule omits the NBA restrictions to jump shots and > 10 ft (3.048 m).
+      found_in: 1,115 depth pass
   - id: M-SHOOT-033
     name: Pull-up shooting (FG%, points)
     category: shooting
@@ -13422,7 +13492,7 @@ categories:
     - Pull-up field-goal percentage
     - off-dribble shooting
     definition: 'FG% and points on pull-up attempts: dribbles_before >= 1 in the shooter''s touch (R-EV-07). Attempts, pull-up 3P% and eFG% are owned by shot_quality (g:pull_up_*).'
-    formula: PU FG% = 100 * FGM_pu / FGA_pu; PU points = sum of points on pull-up shots; pu = dribbles_before >= pu_min_dribbles (default 1)
+    formula: pu = shot_type is jump shot AND release_r_m > 3.048 AND dribbles_before >= 1
     inputs:
     - shots.dribbles_before
     - shots.shot_type_code
@@ -13477,6 +13547,7 @@ categories:
     - 'Canonical rule is R-EV-07: pull-up = dribbles_before >= 1; the jumper-only restriction is a variant. Threshold is an own default; NBA.com publishes no threshold (glossary opened). Schema proposal:
       add side_step (R-EV-07) to the shots.shot_type_code enum (relevant to M-SHOOT-034). Attempt counts, pull-up 3P% and eFG groups are owned by shot_quality (g:pull_up_*).'
     - '2026-10-19 depth pass: The jump-shot and > 10 ft restriction is missing.'
+    - 2026-10-19 formula replaced (F24, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       input_groups:
       - g:pull_up_fg_pct
@@ -13488,6 +13559,13 @@ categories:
     l4_recipe: none.
     edge_cases: drives finishing at the rim are excluded by the NBA definition
     formula_fix_2026_10_19: pu = shot_type is jump shot AND release_r_m > 3.048 AND dribbles_before >= 1
+    formula_before_2026_10_19: PU FG% = 100 * FGM_pu / FGA_pu; PU points = sum of points on pull-up shots; pu = dribbles_before >= pu_min_dribbles (default 1)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F24
+      reason: The jump-shot and > 10 ft restriction is missing.
+      found_in: 1,115 depth pass
   - id: M-SHOOT-034
     name: Field-goal percentage by shot type
     category: shooting
@@ -14487,7 +14565,8 @@ categories:
     - Three-point variance
     - 3P volatility
     definition: Game-to-game standard deviation of points from threes (and of margin minus closing spread) as a function of 3PA share.
-    formula: SD_g(3 * 3PM_g); and SD_g(margin_g - closing_spread_g) by 3PA-share quartile; closing_spread from market_snapshots where market = spread and snapshot_label IN (close, close_reported)
+    formula: SD_g(3 * 3PM_g); and SD_g(margin_g + closing_spread_g) when the spread is in bookmaker sign (favourite negative), equivalently SD_g(margin_g - expected_margin_g) with expected_margin = -closing_spread,
+      by 3PA-share quartile
     inputs:
     - team_box.fg3m
     - team_box.fg3a
@@ -14524,6 +14603,7 @@ categories:
     - Estimator not fixed in the beliefs register (hypotheses new-14, new-15); marked unverified until pre-registered.
     - '2026-10-19 verification: ''margin - closing_spread'' is only right if the spread is stored as an expected margin. In the usual quoted sign convention it must be margin + spread. Pin the sign convention
       in market_snapshots.'
+    - 2026-10-19 formula replaced (F22, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       input_groups:
       - g:3p_variance
@@ -14535,6 +14615,13 @@ categories:
     edge_cases: 'Needs at least 2 games per quartile. Pushes and missing closes: use close_reported. OT inflates the margin.'
     formula_fix_2026_10_19: SD_g(3 * 3PM_g); and SD_g(margin_g + closing_spread_g) when the spread is in bookmaker sign (favourite negative), equivalently SD_g(margin_g - expected_margin_g) with expected_margin
       = -closing_spread, by 3PA-share quartile
+    formula_before_2026_10_19: SD_g(3 * 3PM_g); and SD_g(margin_g - closing_spread_g) by 3PA-share quartile; closing_spread from market_snapshots where market = spread and snapshot_label IN (close, close_reported)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F22
+      reason: '''margin - closing_spread'' is only right if the spread is stored as an expected margin. In the usual quoted sign convention it must be margin + spread. Pin the sign convention in market_snapshots.'
+      found_in: 450-formula pass
   - id: M-SHOOT-051
     name: Three-point luck adjustment
     category: shooting
@@ -22837,9 +22924,8 @@ categories:
     - Points per possession including assists
     definition: Synergy counts a player's used possessions plus assists as one load; %Ast is the assist share of that load, %Poss the possession share; PP(P+A) is points per (possession + assist) including
       points from assists.
-    formula: PA = Poss + Ast (inferred); %Ast = 100 * Ast / PA; %Poss = 100 * Poss / PA (verified, Synergy glossary); PP(P+A) = (PTS + AST_PTS) / PA (inferred, unverified); Poss_ours = count of possessions
-      whose end_event_id has events.player_id_1 = player and events.event_type_code in (field-goal attempt, free-throw trip, turnover); AST_PTS = sum(shots.value_attempted where shots.made and assister_official_id
-      = player)
+    formula: PA = Poss + Ast; %Ast = 100*Ast/PA; %Poss = 100*Poss/PA; PP(P+A) = (PTS + AST_PTS)/PA (our reading). Poss_ours counts the player's PLAYS ending in an FGA, a non-technical FT trip, or a turnover.
+      Each offensive rebound starts a new play, so it is not a count of team possession end events.
     inputs:
     - possessions.possession_id
     - player_box.ast
@@ -22882,6 +22968,7 @@ categories:
       are our reading (unverified); %Ast and %Poss confirmed. Harvest groups: g:possession_plu_ast g:ast_share_possession_plu g:possession_share_plu_ast g:pts_perposs_including_ast.'
     - '2026-10-19 verification: %Ast and %Poss are confirmed by the publisher formula. PP(P+A) is defined only in words, so (PTS+AST_PTS)/PA is our reading. Poss_ours as written (possession end_event_id)
       undercounts Synergy Poss: a miss, offensive rebound and putback is 2 Synergy plays but 1 team possession.'
+    - 2026-10-19 formula replaced (F17, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verified_components:
       '%Ast = Ast/(Poss+Ast)': true
       '%Poss = Poss/(Poss+Ast)': true
@@ -22897,6 +22984,16 @@ categories:
     edge_cases: 'PA = 0 gives null. Technical-foul FTs are excluded per Synergy. An and-one FT after an assisted make: whether it counts in AST_PTS is not stated. Synergy shows fractions; we store x100.'
     formula_fix_2026_10_19: PA = Poss + Ast; %Ast = 100*Ast/PA; %Poss = 100*Poss/PA; PP(P+A) = (PTS + AST_PTS)/PA (our reading). Poss_ours counts the player's PLAYS ending in an FGA, a non-technical FT
       trip, or a turnover. Each offensive rebound starts a new play, so it is not a count of team possession end events.
+    formula_before_2026_10_19: PA = Poss + Ast (inferred); %Ast = 100 * Ast / PA; %Poss = 100 * Poss / PA (verified, Synergy glossary); PP(P+A) = (PTS + AST_PTS) / PA (inferred, unverified); Poss_ours =
+      count of possessions whose end_event_id has events.player_id_1 = player and events.event_type_code in (field-goal attempt, free-throw trip, turnover); AST_PTS = sum(shots.value_attempted where shots.made
+      and assister_official_id = player)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F17
+      reason: '%Ast and %Poss are confirmed by the publisher formula. PP(P+A) is defined only in words, so (PTS+AST_PTS)/PA is our reading. Poss_ours as written (possession end_event_id) undercounts Synergy
+        Poss: a miss, offensive rebound and putback is 2 Synergy plays but 1 team possession.'
+      found_in: 450-formula pass
   - id: M-PASS-014
     name: Pick-and-roll ball handler efficiency including passes
     category: playmaking
@@ -24736,8 +24833,8 @@ categories:
     - shot satisfaction (related)
     definition: 'Value of the option taken minus the expected value of the passing options at that moment (R-VL-05); computed only when >= 8 players are mapped. Variants: regret (best option value minus
       taken) and best-option rate.'
-    formula: DQ = V(option taken) - E[V(passing options)] (R-VL-05, ours); shot satisfaction (Cervone et al. 2014, Sec. 5.4) = mean over a player's shot attempts of (EPV at the shot - EPV conditioned on
-      a pass in the next instant), per shot; regret = max_o V(o) - V(chosen) (our extension); best_option_rate = 100 * count(chosen = argmax_o V(o)) / decisions (our extension)
+    formula: DQ = V(taken) - E[V | a pass happens], with E weighted by the model's pass-transition probabilities P(M_j | pass), not an unweighted mean of options. Regret = max_o V(o) - V(taken) and best_option_rate
+      stay as our extensions.
     inputs:
     - passes.decision_quality_xpts
     - possession_value.value_xpts
@@ -24788,6 +24885,7 @@ categories:
       "satisfaction" is the opposite of regret. regret and best_option_rate as written here are not in the paper.'
     - '2026-10-19 verification: The shot-satisfaction formula is confirmed from the paper and matches R-VL-05. The expectation must be the pass-conditional EPV, a probability-weighted mean. The schema column
       passes.decision_quality_xpts (minus the best option) carries regret semantics: a naming mismatch.'
+    - 2026-10-19 formula replaced (F18, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verified_components:
       shot satisfaction (Cervone et al. 2014, Sec. 5.4): true
       DQ = V(taken) - E[V(passing options)] (R-VL-05): false
@@ -24803,6 +24901,15 @@ categories:
     edge_cases: 'Fewer than 8 players mapped: skip. Zero passing options (all lanes unmapped) gives null. When the taken option is a pass, define V(taken) as that pass''s option value.'
     formula_fix_2026_10_19: DQ = V(taken) - E[V | a pass happens], with E weighted by the model's pass-transition probabilities P(M_j | pass), not an unweighted mean of options. Regret = max_o V(o) - V(taken)
       and best_option_rate stay as our extensions.
+    formula_before_2026_10_19: DQ = V(option taken) - E[V(passing options)] (R-VL-05, ours); shot satisfaction (Cervone et al. 2014, Sec. 5.4) = mean over a player's shot attempts of (EPV at the shot -
+      EPV conditioned on a pass in the next instant), per shot; regret = max_o V(o) - V(chosen) (our extension); best_option_rate = 100 * count(chosen = argmax_o V(o)) / decisions (our extension)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F18
+      reason: 'The shot-satisfaction formula is confirmed from the paper and matches R-VL-05. The expectation must be the pass-conditional EPV, a probability-weighted mean. The schema column passes.decision_quality_xpts
+        (minus the best option) carries regret semantics: a naming mismatch.'
+      found_in: 450-formula pass
   - id: M-PASS-045
     name: Decision latency (catch to first action)
     category: playmaking
@@ -33787,7 +33894,7 @@ categories:
     - long_short
     - Long rebound share
     definition: Share of rebounds whose first control is at r >= 6.0 m from the attacked rim (repo heuristic; Opta 'Long' starts at 3.048 m).
-    formula: LONG_SHARE = 100 * count(rebounds.loc_r_m >= long_rebound_r_m) / count(rebounds), long_rebound_r_m = 6.0 (registry)
+    formula: LONG_SHARE = 100 * count(loc_r_m >= 3.048) / count(rebounds) (Opta 10 ft); keep 6.0 m only as a named variant
     inputs:
     - rebounds.long_short
     - rebounds.loc_r_m
@@ -33824,6 +33931,7 @@ categories:
     notes:
     - 'Registry parameter long_rebound_r_m = 6.0 (proposal). Harvest rows merged: 1 (groups: long_reb_share; sources: MSU Alpha 3 game/stats data dictionary).'
     - '2026-10-19 depth pass: Registry threshold 6.0 m (19.7 ft) does not match the opened source (10 ft = 3.048 m).'
+    - 2026-10-19 formula replaced (F20, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verification_scope: formula
     value_range: 0-100
     range_basis: verifier 19 Oct (depth pass)
@@ -33833,6 +33941,13 @@ categories:
     l4_recipe: none
     edge_cases: rebounds = 0 gives null
     formula_fix_2026_10_19: LONG_SHARE = 100 * count(loc_r_m >= 3.048) / count(rebounds) (Opta 10 ft); keep 6.0 m only as a named variant
+    formula_before_2026_10_19: LONG_SHARE = 100 * count(rebounds.loc_r_m >= long_rebound_r_m) / count(rebounds), long_rebound_r_m = 6.0 (registry)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F20
+      reason: Registry threshold 6.0 m (19.7 ft) does not match the opened source (10 ft = 3.048 m).
+      found_in: 1,115 depth pass
   - id: M-REB-039
     name: Rebound landing point and side distribution
     category: rebounding
@@ -35252,8 +35367,8 @@ categories:
     - reb_value
     - Rebound value
     definition: 'Value of securing the rebound on the PBP tier: expected points of the chance (OREB) or possession (DREB) that the rebound starts, from chance-number values.'
-    formula: 'VAL_reb = rebounds.value_xpts = V_pbp(chance_number, start_cause) of the chance the rebound starts, where V_pbp = mean points of chances with that chance_number and start_cause over games
-      strictly before the target; DREB: + V_pbp of the new possession for the rebounding team (offence sign convention: value for the team now on offence)'
+    formula: 'VAL_reb = V_after - E[V | miss, chance_number, start_cause], where V_after = V_pbp(new chance) from the rebounding team''s view (ORB: V of second chance; DREB: V of new possession) and E[V
+      | miss] = P(ORB) * V_orb_chance - P(DREB) * V_new_poss, all in offence-team sign'
     inputs:
     - rebounds.value_xpts
     - chances.chance_number
@@ -35287,6 +35402,7 @@ categories:
     - 'PBP-only version; the tracking version (frame-level possession_value and value_credits) is M-REB-068. Harvest rows merged: 1 (groups: reb_value; sources: MSU Alpha 3 game/stats data dictionary).'
     - '2026-10-19 verification: As written, a DREB adds ''V_pbp of the chance the rebound starts'' plus ''V_pbp of the new possession'', and for a DREB these are the same chance, so it is double counted.
       Also, no baseline is subtracted, so the value is not marginal.'
+    - 2026-10-19 formula replaced (F19, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verification_scope: local_spec
     verified_before_2026_10_19: 'false'
     verification_depth: L3
@@ -35296,6 +35412,15 @@ categories:
     edge_cases: Walk-forward means need a minimum count per (chance_number, start_cause) cell. Team rebounds.
     formula_fix_2026_10_19: 'VAL_reb = V_after - E[V | miss, chance_number, start_cause], where V_after = V_pbp(new chance) from the rebounding team''s view (ORB: V of second chance; DREB: V of new possession)
       and E[V | miss] = P(ORB) * V_orb_chance - P(DREB) * V_new_poss, all in offence-team sign'
+    formula_before_2026_10_19: 'VAL_reb = rebounds.value_xpts = V_pbp(chance_number, start_cause) of the chance the rebound starts, where V_pbp = mean points of chances with that chance_number and start_cause
+      over games strictly before the target; DREB: + V_pbp of the new possession for the rebounding team (offence sign convention: value for the team now on offence)'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F19
+      reason: As written, a DREB adds 'V_pbp of the chance the rebound starts' plus 'V_pbp of the new possession', and for a DREB these are the same chance, so it is double counted. Also, no baseline is
+        subtracted, so the value is not marginal.
+      found_in: 450-formula pass
   - id: M-REB-066
     name: Miss reboundability (expected OREB probability of a miss)
     category: rebounding
@@ -38617,8 +38742,8 @@ categories:
     definition: 'For each block or charge call: defender''s feet relative to the restricted-area region (inside/on/outside; distance in m) and the secondary-defender flag and time set before contact; secondary-defender
       RA calls are challengeable. The RA region is a semicircle of radius 4 ft (1.2192 m) from the basket centre to the INNER edge of the 2-inch line, continued by straight segments to the front face of
       the backboard (rules book, Court section 8).'
-    formula: ra_dist_m = min distance from defender foot points to the RA polyline (semicircle r = 1.2192 m to the inner line edge + straight segments to the backboard face); call stats = count by (call,
-      inside/on/outside, secondary)
+    formula: ra_dist_m = signed min distance from defender foot points to the RA boundary = outer edge of the arc line (semicircle r = 1.2192 + 0.0508 = 1.2700 m from basket centre, straight segments to
+      the backboard face); inside if any foot point is within or on the boundary
     inputs:
     - fouls.foul_subtype
     - fouls.loc_r_m
@@ -38666,6 +38791,7 @@ categories:
     - Harvested row used 1.270 m; the rule geometry was confirmed in the repo rules book (Court section 8). Proposed columns fouls.defender_ra_dist_m, fouls.secondary_defender, fouls.defender_set_time_s
       per R-RF-08 lands_in.
     - '2026-10-19 depth pass: Using the inner edge (1.2192 m) misclassifies feet on the line unless ''on'' is treated as inside.'
+    - 2026-10-19 formula replaced (F06, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_groups:
       - g:blk_charge_restricted_area_statu
@@ -38679,6 +38805,14 @@ categories:
     edge_cases: Foot on the line counts as inside RA; airborne defender uses last floor contact; only secondary defenders.
     formula_fix_2026_10_19: ra_dist_m = signed min distance from defender foot points to the RA boundary = outer edge of the arc line (semicircle r = 1.2192 + 0.0508 = 1.2700 m from basket centre, straight
       segments to the backboard face); inside if any foot point is within or on the boundary
+    formula_before_2026_10_19: ra_dist_m = min distance from defender foot points to the RA polyline (semicircle r = 1.2192 m to the inner line edge + straight segments to the backboard face); call stats
+      = count by (call, inside/on/outside, secondary)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F06
+      reason: Using the inner edge (1.2192 m) misclassifies feet on the line unless 'on' is treated as inside.
+      found_in: 1,115 depth pass
   - id: M-FOUL-054
     name: Foul location distribution
     category: fouls_ft
@@ -41382,8 +41516,8 @@ categories:
     - trk_ft_arc_deg_sd
     - release_latency_s
     definition: Seconds with ball in hand from the official's bounce to release, dribble count, and SD of arc entry angle; shift with crowd and state.
-    formula: routine_s = video_ts_ms_release - video_ts_ms_disposal; entry_angle_deg = angle below horizontal of the fitted trajectory at rim-plane crossing (z = 3.048 m); arc_sd = SD(entry_angle_deg over
-      attempts)
+    formula: routine_s = (video_ts_ms_release - video_ts_ms_disposal) / 1000; entry_angle_deg = atan(|dz/dxy|) of the fitted parabola at z = 3.048 m (10 ft x 0.3048), descending branch; arc_sd = sample
+      SD of entry_angle_deg.
     inputs:
     - free_throws.release_latency_s
     - free_throws.video_ts_ms_release
@@ -41420,6 +41554,7 @@ categories:
       fit of the ball trajectory over ft_fit_frames_n frames (registry).
     - '2026-10-19 verification: Unit bug: as written, routine_s is a difference of millisecond timestamps, so it is in ms, not s. The rim height of 3.048 m is correct. The dribble count is not in the formula.'
     - '2026-10-19 unit fix: timestamps are in ms; divide by 1000 to give seconds'
+    - 2026-10-19 formula replaced (F04, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_groups:
       - g:ft_routine_time_arc_consistency
@@ -41433,6 +41568,14 @@ categories:
       = sample SD of entry_angle_deg. ; routine_s = (t_release_ms - t_start_ms) / 1000
     unit_before_2026_10_19: s; count; deg
     unit_fix_2026_10_19: timestamps are in ms; divide by 1000 to give seconds
+    formula_before_2026_10_19: routine_s = video_ts_ms_release - video_ts_ms_disposal; entry_angle_deg = angle below horizontal of the fitted trajectory at rim-plane crossing (z = 3.048 m); arc_sd = SD(entry_angle_deg
+      over attempts)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F04
+      reason: 'Unit bug: as written, routine_s is a difference of millisecond timestamps, so it is in ms, not s. The rim height of 3.048 m is correct. The dribble count is not in the formula.'
+      found_in: 450-formula pass
   - id: M-FOUL-102
     name: Free-throw command
     category: fouls_ft
@@ -41441,8 +41584,7 @@ categories:
     - C
     definition: Accuracy and precision of free throws around the bullseye point (2 in = 0.0508 m behind rim centre), bounded 0 to 1. Landing point = intersection of the fitted ball trajectory with the rim
       plane z = 3.048 m. Stored distances mu_m, sigma_m are in metres; C is computed on the source's inch scale so values stay comparable with the source.
-    formula: C = 1 / sqrt(1 + (mu_m / s)^2 + (sigma_m / s)^2), s = command_length_unit (registry constant, default 0.0254 m = 1 inch; unit used recorded with the value); mu_m = mean landing distance from
-      bullseye, sigma_m = SD of that distance
+    formula: C = 1 / (1 + sqrt((mu_m / s)^2 + (sigma_m / s)^2)), s = command_length_unit (registry, default 0.0254 m)
     inputs:
     - free_throws.ring_contact
     - free_throws.result
@@ -41487,6 +41629,7 @@ categories:
     - 'Eq. 1 confirmed. C is not scale-invariant: with mu in metres (~0.05) C would be ~1 for every shooter, hence the inch scale s. The source does not print the unit of mu explicitly (inches inferred
       from the 2-inch bullseye definition). Source population: NBA Hawk-Eye 2024-25. Needs 3D ball landing position; broadcast monocular video likely insufficient.'
     - '2026-10-19 depth pass: Registry formula puts the 1 inside the square root (1/sqrt(1+mu^2+sigma^2)); source has 1 + sqrt(mu^2+sigma^2). Contradicted, so downgraded.'
+    - 2026-10-19 formula replaced (F07, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_groups:
       - g:ft_command
@@ -41500,6 +41643,14 @@ categories:
     l4_recipe: none
     edge_cases: 'Not scale invariant: unit of mu (inches inferred) changes C; needs 3D landing point (Hawk-Eye class tracking).'
     formula_fix_2026_10_19: C = 1 / (1 + sqrt((mu_m / s)^2 + (sigma_m / s)^2)), s = command_length_unit (registry, default 0.0254 m)
+    formula_before_2026_10_19: C = 1 / sqrt(1 + (mu_m / s)^2 + (sigma_m / s)^2), s = command_length_unit (registry constant, default 0.0254 m = 1 inch; unit used recorded with the value); mu_m = mean landing
+      distance from bullseye, sigma_m = SD of that distance
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F07
+      reason: Registry formula puts the 1 inside the square root (1/sqrt(1+mu^2+sigma^2)); source has 1 + sqrt(mu^2+sigma^2). Contradicted, so downgraded.
+      found_in: 1,115 depth pass
   - id: M-FOUL-103
     name: Free-throw launch angle
     category: fouls_ft
@@ -42213,7 +42364,8 @@ categories:
     aliases:
     - foul_trouble_value_cost
     definition: Team value lost while a player sits or plays passively due to foul trouble.
-    formula: cost = (on-court value rate - replacement value rate) * minutes sat in foul trouble + passive-play delta (M-FOUL-119)
+    formula: cost = (on_rate - repl_rate) [points/min] * minutes_sat + sum_k beta_k * delta_k (M-FOUL-119) * passive_minutes, where beta_k converts each passivity delta (m, percent, fouls/100) into points
+      per minute via a fitted model.
     inputs:
     - foul_state.foul_trouble
     - lineup_stints.points_for
@@ -42248,6 +42400,7 @@ categories:
     - '2026-10-19 verification: Unit mismatch: M-FOUL-119 deltas are in m, percent and fouls per 100, so they cannot be added to points without a conversion model. The ESPN TrueHoop analogue was not opened
       in this pass.'
     - '2026-10-19 unit fix: deltas in m, percent and fouls per 100 cannot be added to points directly'
+    - 2026-10-19 formula replaced (F05, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_groups:
       - g:foul_trouble_value_cost
@@ -42261,6 +42414,13 @@ categories:
       into points per minute via a fitted model. ; convert each M-FOUL-119 delta to a z-score (or to points via a fitted model) before summing
     unit_before_2026_10_19: points
     unit_fix_2026_10_19: deltas in m, percent and fouls per 100 cannot be added to points directly
+    formula_before_2026_10_19: cost = (on-court value rate - replacement value rate) * minutes sat in foul trouble + passive-play delta (M-FOUL-119)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F05
+      reason: 'Unit mismatch: M-FOUL-119 deltas are in m, percent and fouls per 100, so they cannot be added to points without a conversion model. The ESPN TrueHoop analogue was not opened in this pass.'
+      found_in: 450-formula pass
   - id: M-FOUL-117
     name: Foul rate by current foul count (player-revealed restraint)
     category: fouls_ft
@@ -47143,7 +47303,7 @@ categories:
     - share within 1/3/5 ft
     - shots defended (proximity)
     definition: Opponent FG% on shots with the defender within 1.524 m of the shooter, and share of on-court opponent shots with the defender within 0.3048, 0.9144 or 1.524 m.
-    formula: PFG% = 100 * FGM_prox / FGA_prox; share_r = 100 * count(shots with dist(d, shooter) <= r) / opp shots on court, r in {0.3048, 0.9144, 1.524} m
+    formula: PFG% = 100 * FGM_prox / FGA_prox with prox = dist(d, shooter) <= 1.524 m at release (source); other radii flagged as project extensions
     sub_metrics:
     - id: M-DEF-037a
       name: Proximal FG% (shot proximity)
@@ -47191,6 +47351,7 @@ categories:
     notes:
     - 'Goldsberry & Weiss Case Study 2 (shot proximity): shots defended within 1, 3 or 5 ft and FG% within 5 ft. Top-level direction refers to M-DEF-037a; M-DEF-037b is higher_is_better.'
     - '2026-10-19 depth pass: The source uses one radius (5 ft = 1.524 m). The 1 ft and 3 ft radii are ours.'
+    - 2026-10-19 formula replaced (F02, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verification_basis: external_source
     provenance:
       merged_from:
@@ -47204,6 +47365,13 @@ categories:
     l4_recipe: none
     edge_cases: The paper restricts to qualifying interior defenders; FGA_prox = 0 gives null.
     formula_fix_2026_10_19: PFG% = 100 * FGM_prox / FGA_prox with prox = dist(d, shooter) <= 1.524 m at release (source); other radii flagged as project extensions
+    formula_before_2026_10_19: PFG% = 100 * FGM_prox / FGA_prox; share_r = 100 * count(shots with dist(d, shooter) <= r) / opp shots on court, r in {0.3048, 0.9144, 1.524} m
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F02
+      reason: The source uses one radius (5 ft = 1.524 m). The 1 ft and 3 ft radii are ours.
+      found_in: 1,115 depth pass
   - id: M-DEF-038
     name: Closeout distance and speed
     category: defense
@@ -49074,8 +49242,7 @@ categories:
     - positions guarded entropy
     - DVI
     definition: Entropy of a defender's matched time across attacker positions; higher = guards more positions.
-    formula: H = - sum_{pos in G,F,C} p_pos ln p_pos, p_pos = matched time on attackers of that listed position / total matched time; DVI = 100 * H / ln 3 (normalised 0-100) or raw 100 * H (max 100 * ln
-      3 = 109.9)
+    formula: DVI = 100 * H, H = -sum_{pos in PG,SG,SF,PF,C} p_pos ln p_pos (source); keep the 3-class normalised variant as a project extension
     inputs:
     - defensive_matchups.attacker_id
     - rosters.listed_position
@@ -49109,6 +49276,7 @@ categories:
     - 'ESPN rosters.listed_position is G/F/C (sometimes hyphenated, e.g. G-F); hyphenated listings map to the first letter (documented mapping, registry). Alternative: derived position from size and role
       in profile_snapshots (height bands). The original 5-position form (PG..C) cannot be computed from listed_position.'
     - '2026-10-19 depth pass: The source uses 5 positions; the registry uses 3 (G, F, C) and adds a normalised form (ours).'
+    - 2026-10-19 formula replaced (F03, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verification_basis: external_source
     provenance:
       merged_from: []
@@ -49120,6 +49288,14 @@ categories:
     l4_recipe: none
     edge_cases: Listed positions are coarse; p = 0 terms contribute 0.
     formula_fix_2026_10_19: DVI = 100 * H, H = -sum_{pos in PG,SG,SF,PF,C} p_pos ln p_pos (source); keep the 3-class normalised variant as a project extension
+    formula_before_2026_10_19: H = - sum_{pos in G,F,C} p_pos ln p_pos, p_pos = matched time on attackers of that listed position / total matched time; DVI = 100 * H / ln 3 (normalised 0-100) or raw 100
+      * H (max 100 * ln 3 = 109.9)
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F03
+      reason: The source uses 5 positions; the registry uses 3 (G, F, C) and adds a normalised form (ours).
+      found_in: 1,115 depth pass
   - id: M-DEF-070
     name: Mismatch hunting share (targeted defender)
     category: defense
@@ -55367,7 +55543,7 @@ categories:
     - advantage duration
     - t_adv_end - t_adv_start
     definition: Seconds the offense holds a numbers advantage within a possession (from t_adv_start until a_play <= d_back for >= 0.5 s).
-    formula: adv_s = sum_t 1[advantage_t] * 0.1 over the possession; or t_adv_end - t_adv_start
+    formula: adv_s = sum_t 1[advantage_t] * dt_t (dt_t = frame interval); the span variant t_adv_end - t_adv_start is stored separately
     inputs:
     - transition_numbers.advantage
     - transition_numbers.ts_ds
@@ -55403,6 +55579,7 @@ categories:
     notes:
     - 'Project definition (source: R-TR-08/09 and transition_full.md); no external formula confirmed.'
     - '2026-10-19 verification: The hard-coded 0.1 assumes 10 Hz. Use the actual frame dt.'
+    - 2026-10-19 formula replaced (F35, approved by Aldemir); old formula kept in formula_before_2026_10_19
     verification: project_definition
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and >= 8 players + ball mapped. Imputed frames (player_positions.imputation_strength
       above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and n_total.
@@ -55413,6 +55590,13 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: 'An intermittent advantage makes the two forms differ: the sum counts only advantaged frames, while t_end - t_start also counts gaps. Choose one.'
     formula_fix_2026_10_19: adv_s = sum_t 1[advantage_t] * dt_t (dt_t = frame interval); the span variant t_adv_end - t_adv_start is stored separately
+    formula_before_2026_10_19: adv_s = sum_t 1[advantage_t] * 0.1 over the possession; or t_adv_end - t_adv_start
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F35
+      reason: The hard-coded 0.1 assumes 10 Hz. Use the actual frame dt.
+      found_in: 450-formula pass
   - id: M-TRN-036
     name: Points per possession by numbers label
     category: transition
@@ -63627,9 +63811,8 @@ categories:
     - space occupation gain
     - space occupation loss (SOL)
     definition: Gain in the value of space a player owns over a time window, counted only when it exceeds a threshold (loss when negative).
-    formula: 'Our reading of Fernandez-Bornn Eq. 7 (window [t+1, t+w+1], divided by w; text: "mean difference of quality"): G_i(t) = (1/w) * sum_{t''=t+1..t+w+1} Q_i(t'') - Q_i(t). Q_i = value-weighted
-      owned space (dominant region x space value from model space_value_surface). Eq. 8: SOG_i(t) = G_i(t) if G_i(t) >= eps else 0. Eq. 9: SOL_i(t) = -G_i(t) if G_i(t) <= -eps else 0 (positive magnitude).
-      Active occupation if the player moves toward the space at speed > 1.5 m/s, else passive. Defaults: w = 1.0 s (ours; paper default w = 3.0 s), eps = 0.01 (ours; paper value not given).'
+    formula: 'Printed: G_i(t) = (1/w) * sum_{t''=t+1}^{t+w+1} Q_i(t''). Our ''- Q_i(t)'' is an interpretation of ''difference''. If we keep it, use the mean over the w+1 terms ((1/(w+1)) * sum) minus Q_i(t),
+      and label it ours.'
     inputs:
     - player_positions.x_m
     - player_positions.y_m
@@ -63689,6 +63872,7 @@ categories:
       w = 3 s after each possession event (soccer). Basketball port and the space-value surface are ours. Every threshold, window and weight named here is a parameter-registry entry (R-CX-29) with its default;
       per-frame/per-incident rows keep each term so the stat can be dissected and re-weighted.'
     - '2026-10-19 verification: The printed Eq.7 has no ''- Q_i(t)'' term, which our formula adds. Eq.8/9 and 1.5 m/s are verified.'
+    - 2026-10-19 formula replaced (F26, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_from: []
     verified_before_2026_10_19: partial
@@ -63699,6 +63883,15 @@ categories:
     edge_cases: 'The window has w+1 samples divided by w: a paper quirk that biases G upward by a factor (w+1)/w. In frames, w must be in samples, not seconds.'
     formula_fix_2026_10_19: 'Printed: G_i(t) = (1/w) * sum_{t''=t+1}^{t+w+1} Q_i(t''). Our ''- Q_i(t)'' is an interpretation of ''difference''. If we keep it, use the mean over the w+1 terms ((1/(w+1))
       * sum) minus Q_i(t), and label it ours.'
+    formula_before_2026_10_19: 'Our reading of Fernandez-Bornn Eq. 7 (window [t+1, t+w+1], divided by w; text: "mean difference of quality"): G_i(t) = (1/w) * sum_{t''=t+1..t+w+1} Q_i(t'') - Q_i(t). Q_i
+      = value-weighted owned space (dominant region x space value from model space_value_surface). Eq. 8: SOG_i(t) = G_i(t) if G_i(t) >= eps else 0. Eq. 9: SOL_i(t) = -G_i(t) if G_i(t) <= -eps else 0 (positive
+      magnitude). Active occupation if the player moves toward the space at speed > 1.5 m/s, else passive. Defaults: w = 1.0 s (ours; paper default w = 3.0 s), eps = 0.01 (ours; paper value not given).'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F26
+      reason: The printed Eq.7 has no '- Q_i(t)' term, which our formula adds. Eq.8/9 and 1.5 m/s are verified.
+      found_in: 450-formula pass
   - id: M-SPACE-027
     name: Space generation gain (SGG)
     category: spacing_offball
@@ -63798,8 +63991,7 @@ categories:
     - V_timing
     - cut timing effectiveness
     definition: How much better the actual start time of an off-ball run or cut exploited space than the best small shift of its start time.
-    formula: V_scenario(xi) = max_t (1/w) * sum_{k=1..w} V_frame(t + k), where the cutter's actual run path is time-shifted unchanged by xi frames while all other players' real tracks stay fixed; V_frame
-      = the M-SPACE-025 OBSO value from the registered space-value model; V_timing = V_scenario(0) - max_{xi != 0} V_scenario(xi); our default xi in [-0.5 s, +0.5 s] in 0.1 s steps, w = 1.0 s.
+    formula: V_frame = mean wUPPCF over the receiver's simultaneous-arrival region (or label OBSO variant as MSU); xi>0 inserts bridging segment at mean velocity of the preceding 1 s
     inputs:
     - movement_primitives.primitive_id
     - movement_primitives.start_ts_ms
@@ -63844,6 +64036,7 @@ categories:
       entry (R-CX-29) with its default; per-frame/per-incident rows keep each term so the stat can be dissected and re-weighted.
     - '2026-10-19 depth pass: Paper''s V_frame is wUPPCF over the simultaneous-arrival region (CRSV), explicitly not OBSO; delayed starts insert a bridging segment at mean pre-initiation velocity rather
       than shifting the path unchanged.'
+    - 2026-10-19 formula replaced (F29, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_from:
       - run_timing_value (arXiv 2603.06585)
@@ -63855,6 +64048,16 @@ categories:
     l4_recipe: none
     edge_cases: Delayed starts need a bridging segment; shifts near possession end.
     formula_fix_2026_10_19: V_frame = mean wUPPCF over the receiver's simultaneous-arrival region (or label OBSO variant as MSU); xi>0 inserts bridging segment at mean velocity of the preceding 1 s
+    formula_before_2026_10_19: V_scenario(xi) = max_t (1/w) * sum_{k=1..w} V_frame(t + k), where the cutter's actual run path is time-shifted unchanged by xi frames while all other players' real tracks
+      stay fixed; V_frame = the M-SPACE-025 OBSO value from the registered space-value model; V_timing = V_scenario(0) - max_{xi != 0} V_scenario(xi); our default xi in [-0.5 s, +0.5 s] in 0.1 s steps,
+      w = 1.0 s.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F29
+      reason: Paper's V_frame is wUPPCF over the simultaneous-arrival region (CRSV), explicitly not OBSO; delayed starts insert a bridging segment at mean pre-initiation velocity rather than shifting the
+        path unchanged.
+      found_in: 1,115 depth pass
   - id: M-SPACE-029
     name: NBA-style gravity (pressure above expected)
     category: spacing_offball
@@ -64187,9 +64390,7 @@ categories:
     - canonical gravity
     definition: 'Canonical gravity under live requirement R-VL-06 (Shall): displacement of defenders from their expected (ghost) positions given the offensive configuration, not raw distance, attributed
       to the attacker responsible. Comparators: M-SPACE-029 (NBA-style pressure above expected) and M-SPACE-037 (SportVU legacy closeness).'
-    formula: 'Per defender-second (R-DF-31): dev_d(s) = defensive_matchups.ghost_dev_m = ||p_d(s) - ghost_d(s)||, ghost_d = defensive_matchups.ghost_xy_m from the registered ghost-defender model given the
-      5 attackers and ball. Attribution: Grav_ghost_i(s) = sum_d w_di(s) * dev_d(s), w_di = share of the displacement vector pointing toward i (projection, clipped to [0,1]). Per-event aggregation output:
-      value_credits.defender_displacement_m (event x credited player).'
+    formula: w_di = c_di / sum_k c_di (c_di = clip(projection of the unit displacement onto the direction to i, 0, 1)); renormalise so that sum_i w_di = 1 when any c > 0, or 0 otherwise.
     inputs:
     - player_positions.x_m
     - player_positions.y_m
@@ -64239,6 +64440,7 @@ categories:
       the attribution weights are ours. Ghost model shared with defense (M-DEF-055 ghost defence value gap). Every threshold, window and weight named here is a parameter-registry entry (R-CX-29) with its
       default; per-frame/per-incident rows keep each term so the stat can be dissected and re-weighted.
     - '2026-10-19 verification: The clipped projections of one unit vector onto 5 directions can sum to more than 1, so the credits would exceed dev_d and break the R-VL-02 sum identity. Normalise the weights.'
+    - 2026-10-19 formula replaced (F27, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_from:
       - Gravity (defender displacement, R-VL-06)
@@ -64249,6 +64451,15 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: Zero displacement gives 0 credit. A ghost model failing its validation gives null (R-VL-06 acceptance).
     formula_fix_2026_10_19: w_di = c_di / sum_k c_di (c_di = clip(projection of the unit displacement onto the direction to i, 0, 1)); renormalise so that sum_i w_di = 1 when any c > 0, or 0 otherwise.
+    formula_before_2026_10_19: 'Per defender-second (R-DF-31): dev_d(s) = defensive_matchups.ghost_dev_m = ||p_d(s) - ghost_d(s)||, ghost_d = defensive_matchups.ghost_xy_m from the registered ghost-defender
+      model given the 5 attackers and ball. Attribution: Grav_ghost_i(s) = sum_d w_di(s) * dev_d(s), w_di = share of the displacement vector pointing toward i (projection, clipped to [0,1]). Per-event aggregation
+      output: value_credits.defender_displacement_m (event x credited player).'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F27
+      reason: The clipped projections of one unit vector onto 5 directions can sum to more than 1, so the credits would exceed dev_d and break the R-VL-02 sum identity. Normalise the weights.
+      found_in: 450-formula pass
   - id: M-SPACE-034
     name: Defensive attention drawn on-ball
     category: spacing_offball
@@ -65568,8 +65779,7 @@ categories:
     - lineup concerns
     definition: 'Our flag when a lineup''s positional, role or height mix falls outside bounds fit on completed earlier seasons; design reference: EvanMiya balance checks (e.g. three centers, no creator,
       all players 1.93 m (6 ft 4 in) or shorter). No efficiency penalty is produced (EvanMiya''s penalty is unpublished).'
-    formula: flag = 1[pos_sd < q05(pos_sd) OR role_mean > q95(role_mean) OR role_sd outside [q05, q95] OR height_max <= 1.93 m OR height_mean < q05(height_mean)], quantiles over prior-season lineups with
-      off_poss >= 50, fit only on completed earlier seasons and stored as registry bounds. color_adj_O (lineup adjusted offense) is used only as the outcome to validate the flag, not as a penalty.
+    formula: height_max <= 1.9304 m (6 ft 4 in = 76 in x 0.0254)
     inputs:
     - external:EvanMiya_Lineups.color_position_raw_sd
     - external:EvanMiya_Lineups.color_role_raw_sd
@@ -65629,6 +65839,7 @@ categories:
     - Blog verifies the idea and examples (positional/role balance, all players 6 ft 4 in or shorter = a max-height test) and that predicted efficiency drops; no formula or penalty size is published. Bounds
       are registry parameters fit on earlier completed seasons only (end-of-season exports are leaky).
     - '2026-10-19 verification: Use the exact conversion for the height threshold.'
+    - 2026-10-19 formula replaced (F28, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_from:
       - Lineup balance flag / penalty (EvanMiya)
@@ -65639,6 +65850,14 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: A listed 6 ft 4 in player stored as 1.9304 m fails a <= 1.93 m test.
     formula_fix_2026_10_19: height_max <= 1.9304 m (6 ft 4 in = 76 in x 0.0254)
+    formula_before_2026_10_19: flag = 1[pos_sd < q05(pos_sd) OR role_mean > q95(role_mean) OR role_sd outside [q05, q95] OR height_max <= 1.93 m OR height_mean < q05(height_mean)], quantiles over prior-season
+      lineups with off_poss >= 50, fit only on completed earlier seasons and stored as registry bounds. color_adj_O (lineup adjusted offense) is used only as the outcome to validate the flag, not as a penalty.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F28
+      reason: Use the exact conversion for the height threshold.
+      found_in: 450-formula pass
   - id: M-SPACE-057
     name: Off-ball movement and roll gravity grades (BBall Index)
     category: spacing_offball
@@ -71246,7 +71465,8 @@ categories:
     definition: 'Per dunk, the eight NBA base features: hang time; player vertical (rise in mid-hip height take-off to peak); take-off distance from the hoop (big toe, or big-toe midpoint for two-foot);
       ball speed through the rim; maximum ball height; reach-back distance (greatest head-to-ball distance); ball movement (ball path minus take-off distance); total ball acceleration. Defensive features
       (defensive contest level, alignment score, collision score) are a separate group (defensive_features).'
-    formula: 'hang = t_land - t_takeoff; vertical = z_hip(peak) - z_hip(takeoff); takeoff_dist = |p_toe - p_rim| (attacked-rim frame x_m/y_m is appropriate here: location relative to the rim)'
+    formula: hang = t_land - t_takeoff; vertical = z_midhip(peak) - z_midhip(takeoff); takeoff_dist = ||(x,y)_toe - (x,y)_rim|| using the jumping-foot big toe, or the midpoint of both big toes for a two-foot
+      takeoff
     inputs:
     - player_positions.airborne
     - player_positions.jump_height_m
@@ -71287,6 +71507,7 @@ categories:
     notes:
     - Release gated by R-CG-11. The defensive group needs shots.closest_defender_id and defender velocity.
     - '2026-10-19 verification: The two-foot case is missing from our formula, and the distance must be horizontal (2D).'
+    - 2026-10-19 formula replaced (F13, approved by Aldemir); old formula kept in formula_before_2026_10_19
     defensive_features:
       names:
       - defensive contest level
@@ -71323,6 +71544,14 @@ categories:
     edge_cases: One-foot vs two-foot takeoff.
     formula_fix_2026_10_19: hang = t_land - t_takeoff; vertical = z_midhip(peak) - z_midhip(takeoff); takeoff_dist = ||(x,y)_toe - (x,y)_rim|| using the jumping-foot big toe, or the midpoint of both big
       toes for a two-foot takeoff
+    formula_before_2026_10_19: 'hang = t_land - t_takeoff; vertical = z_hip(peak) - z_hip(takeoff); takeoff_dist = |p_toe - p_rim| (attacked-rim frame x_m/y_m is appropriate here: location relative to the
+      rim)'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F13
+      reason: The two-foot case is missing from our formula, and the distance must be horizontal (2D).
+      found_in: 450-formula pass
   - id: M-PHYS-071
     name: Dunk style flags
     category: physical
@@ -71758,7 +71987,7 @@ categories:
     definition: 'Accelerometer (IMU) load: square root of the sum of squared instantaneous rates of change of acceleration on the three axes, divided by 100, accumulated (PlayerLoad); per minute; per distance;
       single-axis (1D) and 2-D (no vertical) versions; vendor twins (WIMU, Kinexon accumulated acceleration load, jerk modulus with explicit dt, Accel Rate, PlayerData acceleration load = sum of 3-axis
       acceleration / 500).'
-    formula: PL = sum_t sqrt((da_x)^2 + (da_y)^2 + (da_z)^2) / 100; PL/min = PL / min; PL2D omits z; jerk modulus = |a_t - a_{t-1}| / dt
+    formula: PL = sum_t sqrt(((da_x)^2 + (da_y)^2 + (da_z)^2) / 100)
     inputs:
     - external:wearable_imu.accel_x
     - external:wearable_imu.accel_y
@@ -71823,6 +72052,7 @@ categories:
       used here); Freitas 2025 (opened) writes the published equation with 10^2 inside the square root, which equals dividing by 10, and calls it an arbitrary scaling factor. Magnitudes can therefore differ
       by 10x across implementations. External-only either way.'
     - '2026-10-19 depth pass: Published form puts /100 inside the square root (= /10 outside); registry /100 outside is 10x too small.'
+    - 2026-10-19 formula replaced (F14, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       harvest_rows:
       - accel_rate [line 135]
@@ -71846,6 +72076,13 @@ categories:
     l4_recipe: none
     edge_cases: Sampling rate changes scale.
     formula_fix_2026_10_19: PL = sum_t sqrt(((da_x)^2 + (da_y)^2 + (da_z)^2) / 100)
+    formula_before_2026_10_19: PL = sum_t sqrt((da_x)^2 + (da_y)^2 + (da_z)^2) / 100; PL/min = PL / min; PL2D omits z; jerk modulus = |a_t - a_{t-1}| / dt
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F14
+      reason: Published form puts /100 inside the square root (= /10 outside); registry /100 outside is 10x too small.
+      found_in: 1,115 depth pass
   - id: M-PHYS-079
     name: PlayerLoad intensity zones (absolute and relative)
     category: physical
@@ -74551,8 +74788,7 @@ categories:
     - Avg Opp BPR
     - avg_opp_bpr
     definition: Possession-weighted mean, over a lineup's (or pair's) possessions, of the summed BPR of the five opponent players on the floor; higher = tougher opposition.
-    formula: AvgOppBPR_g = sum_poss sum_{opp 5} BPR_j / n_poss, BPR_j = ratings_snapshots.value[system=evanmiya;metric_code=bpr] as of the day before each game. Registry switch scale = sum (default) | mean_per_player
-      (= sum/5), to be set to whichever matches the EvanMiya avg_opp_bpr scale once checked against the export values.
+    formula: AvgOppBPR_g = sum_poss (sum_{opp 5} BPR_j / 5) / n_poss, i.e. scale = mean_per_player
     inputs:
     - lineup_stints.opponent_lineup_key
     - lineup_stints.off_possessions
@@ -74597,6 +74833,7 @@ categories:
     - EvanMiya page shows the column as average BPR of opponents faced; exact averaging (per opponent player vs per lineup) unconfirmed.
     - '2026-10-19 verification: Scale check on the local exports: the possession-weighted mean of lineup avg_opp_bpr is 1.23. The D-I mean of possession-weighted per-player BPR is 1.15, and 5x that would
       be 5.77. The export is therefore on the per-player mean scale. Set the registry switch to mean_per_player (sum/5), not sum.'
+    - 2026-10-19 formula replaced (F08, approved by Aldemir); old formula kept in formula_before_2026_10_19
     origin: external
     definition_verified: true
     formula_verified: partial
@@ -74610,6 +74847,15 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: Unknown opponent lineup on a possession (drop it or use the opponent team mean); players with no rating get a prior.
     formula_fix_2026_10_19: AvgOppBPR_g = sum_poss (sum_{opp 5} BPR_j / 5) / n_poss, i.e. scale = mean_per_player
+    formula_before_2026_10_19: AvgOppBPR_g = sum_poss sum_{opp 5} BPR_j / n_poss, BPR_j = ratings_snapshots.value[system=evanmiya;metric_code=bpr] as of the day before each game. Registry switch scale =
+      sum (default) | mean_per_player (= sum/5), to be set to whichever matches the EvanMiya avg_opp_bpr scale once checked against the export values.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F08
+      reason: 'Scale check on the local exports: the possession-weighted mean of lineup avg_opp_bpr is 1.23. The D-I mean of possession-weighted per-player BPR is 1.15, and 5x that would be 5.77. The export
+        is therefore on the per-player mean scale. Set the registry switch to mean_per_player (sum/5), not sum.'
+      found_in: 450-formula pass
   - id: M-IMP-013
     name: Lineup predicted efficiency (prior plus observed)
     category: impact
@@ -75370,14 +75616,7 @@ categories:
     - Box +/-
     definition: Box-score estimate of a player's points per 100 possessions above a league-average player on an average team, with position- and offensive-role-dependent coefficients and a team adjustment
       so the possession-weighted sum matches the team's adjusted rating.
-    formula: 'RawBPM = sum_k c_k * stat_k_per100 + pos_const(pos) + role_const(role). Position-interpolated coefficients (c(pos) = c(1) + (pos-1)/4*(c(5)-c(1))): TO -0.964, ORB 0.613->0.181, DRB 0.116->0.181,
-      STL 1.369->1.008, BLK 1.327->0.703, AST 0.580->1.034 (values as printed); single-valued: PTS 0.860, 3PM 0.389, PF -0.367. Role-interpolated (creator 1 -> receiver 5): FGA -0.560 -> -0.780, FTA = 0.44
-      x FGA coefficient. pos_const: PG -0.818, linear to 0 at SF (pos 3), 0 at SF and C; role_const: creator -2.774, neutral 0, receiver +2.774. OBPM uses its own set: PTS 0.605, 3PM 0.477, AST 0.476, TO
-      -0.579 -> -0.882, ORB 0.606 -> 0.422, DRB -0.112 -> 0.103, STL 0.177 -> 0.294, BLK 0.725 -> 0.097, PF -0.439, FGA -0.330 -> -0.472 (role), FTA -0.145 -> -0.208 (role); OBPM pos_const PG -1.698, role_const
-      -0.860/0/+0.860. Team adjustment = (TeamAdjRating - sum_i RawBPM_i * share_i) / sum_i share_i, share = minutes share (default, BR calculation section) or possession share (registry option; BR''s zero-sum
-      passage); typically about -8. TeamAdjRating = adjusted net rating (ratings_snapshots[metric_code=adj_em], as of before tip) + lead term; lead term = k_lead * average lead with k_lead = 0.35/2 per
-      point (registry parameter, sign recorded as source-ambiguous: BR computes -0.35/2*1.4 = -0.24 yet moves the rating from +3.0 to +3.24, i.e. applies it with a + sign to the leading team). BPM = RawBPM
-      + team adj; DBPM = BPM - OBPM. Position (1 PG to 5 C) and role (1 creator to 5 receiver) estimated from box shares, capped 1-5, team minutes-weighted mean 3.0.'
+    formula: 'RawBPM = 0.860 * PTS_adj + ... where PTS_adj = PTS + c_team * TSA (team-context adjustment: add a constant points per adjusted shot attempt, per BR); all other terms as in the registry.'
     inputs:
     - player_box.minutes
     - player_box.points
@@ -75494,6 +75733,7 @@ categories:
     - '2026-10-19 verification: Coefficients match BR exactly. L4 publisher example reproduces: pos const at 2.3 = (3-2.3)(-0.818/2) = -0.29; role const at 1 = -2.774; raw 15.6 - 8.0 team adj = +7.6 BPM;
       VORP (7.6+2.0) x 0.70 = 6.7. Missing piece: BR''s PTS term uses team-context-adjusted points (LeBron 34.9 adjusted to 30.4 per 100), and the registry uses raw PTS. BR does not fully specify how c_team
       is derived. The coefficients are NBA-fitted.'
+    - 2026-10-19 formula replaced (F09, approved by Aldemir); old formula kept in formula_before_2026_10_19
     origin: external
     definition_verified: true
     formula_verified: partial
@@ -75519,6 +75759,22 @@ categories:
       adjustment uses adjusted team rating + lead term.
     formula_fix_2026_10_19: 'RawBPM = 0.860 * PTS_adj + ... where PTS_adj = PTS + c_team * TSA (team-context adjustment: add a constant points per adjusted shot attempt, per BR); all other terms as in the
       registry.'
+    formula_before_2026_10_19: 'RawBPM = sum_k c_k * stat_k_per100 + pos_const(pos) + role_const(role). Position-interpolated coefficients (c(pos) = c(1) + (pos-1)/4*(c(5)-c(1))): TO -0.964, ORB 0.613->0.181,
+      DRB 0.116->0.181, STL 1.369->1.008, BLK 1.327->0.703, AST 0.580->1.034 (values as printed); single-valued: PTS 0.860, 3PM 0.389, PF -0.367. Role-interpolated (creator 1 -> receiver 5): FGA -0.560
+      -> -0.780, FTA = 0.44 x FGA coefficient. pos_const: PG -0.818, linear to 0 at SF (pos 3), 0 at SF and C; role_const: creator -2.774, neutral 0, receiver +2.774. OBPM uses its own set: PTS 0.605, 3PM
+      0.477, AST 0.476, TO -0.579 -> -0.882, ORB 0.606 -> 0.422, DRB -0.112 -> 0.103, STL 0.177 -> 0.294, BLK 0.725 -> 0.097, PF -0.439, FGA -0.330 -> -0.472 (role), FTA -0.145 -> -0.208 (role); OBPM pos_const
+      PG -1.698, role_const -0.860/0/+0.860. Team adjustment = (TeamAdjRating - sum_i RawBPM_i * share_i) / sum_i share_i, share = minutes share (default, BR calculation section) or possession share (registry
+      option; BR''s zero-sum passage); typically about -8. TeamAdjRating = adjusted net rating (ratings_snapshots[metric_code=adj_em], as of before tip) + lead term; lead term = k_lead * average lead with
+      k_lead = 0.35/2 per point (registry parameter, sign recorded as source-ambiguous: BR computes -0.35/2*1.4 = -0.24 yet moves the rating from +3.0 to +3.24, i.e. applies it with a + sign to the leading
+      team). BPM = RawBPM + team adj; DBPM = BPM - OBPM. Position (1 PG to 5 C) and role (1 creator to 5 receiver) estimated from box shares, capped 1-5, team minutes-weighted mean 3.0.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F09
+      reason: 'Coefficients match BR exactly. L4 publisher example reproduces: pos const at 2.3 = (3-2.3)(-0.818/2) = -0.29; role const at 1 = -2.774; raw 15.6 - 8.0 team adj = +7.6 BPM; VORP (7.6+2.0)
+        x 0.70 = 6.7. Missing piece: BR''s PTS term uses team-context-adjusted points (LeBron 34.9 adjusted to 30.4 per 100), and the registry uses raw PTS. BR does not fully specify how c_team is derived.
+        The coefficients are NBA-fitted.'
+      found_in: 450-formula pass
   - id: M-IMP-023
     name: BPM low-minute prior (regressed BPM)
     category: impact
@@ -78507,11 +78763,7 @@ categories:
     - terminal action value
     - possession stock ticker
     definition: Expected points the offence scores by the end of the current possession given everything known at time t (tracking, events, clocks); base series for all value-added stats.
-    formula: 'nu_t = E[X | F_t] = sum_c E[X | C = c] * P(C = c | F_t), X in {0, 2, 3} (Cervone et al.: possessions with fouls are excluded); our layer extends X to {0, 1, 2, 3, 4} by modelling fouls and
-      free throws (our extension). Our implementation: possession_value.value_xpts = sum_a P(terminal action a | state_t) * E[pts | a, state_t] with p_shot_part, p_pass_part, p_turnover_part stored. DeepHoops
-      (verified wording, abstract): per-moment probabilities of terminal actions (field-goal attempt, turnover, foul, ...) each associated with an expected point value, combined into expected points; the
-      exact DeepHoops expression is unverified. Three layers (R-VL-01): PBP-state value every second for all D-I games; location value when ball/shooter mapped; full-tracking value at 10 Hz when >= 8 players
-      and ball mapped.'
+    formula: nu_t = sum_c E[X | C_{delta_t} = c] * P(C_{delta_t} = c | F_t), where C_{delta_t} is the coarsened state at the next macro-transition time delta_t (Theorem 2.1), not C at time t.
     inputs:
     - possession_value.value_xpts
     - possession_value.p_shot_part
@@ -78569,6 +78821,7 @@ categories:
     - Tier shown is the earliest computable layer (PBP-state); see layer_tiers. Cervone's EPV excludes fouled possessions; FT/foul outcomes are our extension.
     - '2026-10-19 verification: The core is confirmed by two sources. The registry''s decomposition omits that C is indexed at the next macro-transition time. The foul/FT extension is ours. L5 property
       to test once fitted: E[nu_t - nu_{t+}] = 0 (martingale) and nu at the end equals the realised points.'
+    - 2026-10-19 formula replaced (F10, approved by Aldemir); old formula kept in formula_before_2026_10_19
     layer_tiers:
       pbp_state:
         data_tier: pbp
@@ -78596,6 +78849,18 @@ categories:
     edge_cases: Fouled possessions (excluded by Cervone, modelled by us); offensive rebounds (continuing possession); end-of-clock possessions.
     formula_fix_2026_10_19: nu_t = sum_c E[X | C_{delta_t} = c] * P(C_{delta_t} = c | F_t), where C_{delta_t} is the coarsened state at the next macro-transition time delta_t (Theorem 2.1), not C at time
       t.
+    formula_before_2026_10_19: 'nu_t = E[X | F_t] = sum_c E[X | C = c] * P(C = c | F_t), X in {0, 2, 3} (Cervone et al.: possessions with fouls are excluded); our layer extends X to {0, 1, 2, 3, 4} by modelling
+      fouls and free throws (our extension). Our implementation: possession_value.value_xpts = sum_a P(terminal action a | state_t) * E[pts | a, state_t] with p_shot_part, p_pass_part, p_turnover_part stored.
+      DeepHoops (verified wording, abstract): per-moment probabilities of terminal actions (field-goal attempt, turnover, foul, ...) each associated with an expected point value, combined into expected
+      points; the exact DeepHoops expression is unverified. Three layers (R-VL-01): PBP-state value every second for all D-I games; location value when ball/shooter mapped; full-tracking value at 10 Hz
+      when >= 8 players and ball mapped.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F10
+      reason: 'The core is confirmed by two sources. The registry''s decomposition omits that C is indexed at the next macro-transition time. The foul/FT extension is ours. L5 property to test once fitted:
+        E[nu_t - nu_{t+}] = 0 (martingale) and nu at the end equals the realised points.'
+      found_in: 450-formula pass
   - id: M-IMP-064
     name: EPV-Added (EPVA)
     category: impact
@@ -82366,7 +82631,8 @@ categories:
     - PosPts
     - points distribution by position
     definition: Share of a team's points scored by players occupying each position slot (KenPom assigns minutes to positions by height ordering).
-    formula: Slot assignment from M-PROF-024 (ordering source registered; KenPom-style height ordering as a variant); PosPts_k = points scored by players in slot k / team points.
+    formula: 'KenPom variant: sort players by listed height ascending; cumulative minute shares cut at 20/40/60/80% of team minutes assign (split) each player''s minutes to PG..C; PosPts_k = sum_i pts_i
+      * frac_i,k / team points. Our primary (per-stint slot from M-PROF-024) can stay as a separate variant.'
     inputs:
     - shots.shooter_id
     - shots.made
@@ -82402,6 +82668,7 @@ categories:
     - 'KenPom help page: ''calculated using the same principles to determine position''; exact attribution unverified (harvest).'
     - '2026-10-19 verification: The registry describes the KenPom variant as height ordering per stint. KenPom actually uses season-level cumulative-minute quintiles by height, so the variant text needs
       correcting.'
+    - 2026-10-19 formula replaced (F15, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '94: Points by position (KenPom) (KenPom (kenpom.com, Ken Pomeroy))'
@@ -82413,6 +82680,13 @@ categories:
     edge_cases: Players straddling a 20% boundary must have their minutes and points split proportionally. Equal heights need a tie-break.
     formula_fix_2026_10_19: 'KenPom variant: sort players by listed height ascending; cumulative minute shares cut at 20/40/60/80% of team minutes assign (split) each player''s minutes to PG..C; PosPts_k
       = sum_i pts_i * frac_i,k / team points. Our primary (per-stint slot from M-PROF-024) can stay as a separate variant.'
+    formula_before_2026_10_19: Slot assignment from M-PROF-024 (ordering source registered; KenPom-style height ordering as a variant); PosPts_k = points scored by players in slot k / team points.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F15
+      reason: The registry describes the KenPom variant as height ordering per stint. KenPom actually uses season-level cumulative-minute quintiles by height, so the variant text needs correcting.
+      found_in: 450-formula pass
   - id: M-PROF-047
     name: Bench minutes share and bench production (team)
     category: player_profile
@@ -83136,8 +83410,7 @@ categories:
     aliases:
     - Team Age
     definition: Minutes-weighted mean age of a team's players at the target game's tip.
-    formula: age_i = (games.tip_scheduled_utc - players.birth_date) in years at the target game's tip (SR-style 1 January reference date as a variant); team_age = sum_i(age_i * MP_i) / sum_i MP_i over games
-      before the tip.
+    formula: 'SR variant: age_i = floor(years from birth_date to 31 January of the season), team_age = sum_i age_i*MP_i / sum_i MP_i. The primary (exact age at tip, MP-weighted over prior games) is fine.'
     inputs:
     - players.birth_date
     - player_box.minutes
@@ -83178,6 +83451,7 @@ categories:
     notes:
     - BR shows a team Age column; its weighting is not stated (harvest). Minutes weighting is ours.
     - '2026-10-19 verification: The MP-weighting is confirmed numerically. The registry''s variant reference date (1 January) is wrong: SR uses 31 January and integer ages.'
+    - 2026-10-19 formula replaced (F16, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '112: Team Age (Basketball-Reference)'
@@ -83189,6 +83463,14 @@ categories:
     edge_cases: Missing birth dates are dropped from both sums. The first game has no prior minutes, so use roster-mean age. Integer versus continuous age differs by up to about 0.5 years.
     formula_fix_2026_10_19: 'SR variant: age_i = floor(years from birth_date to 31 January of the season), team_age = sum_i age_i*MP_i / sum_i MP_i. The primary (exact age at tip, MP-weighted over prior
       games) is fine.'
+    formula_before_2026_10_19: age_i = (games.tip_scheduled_utc - players.birth_date) in years at the target game's tip (SR-style 1 January reference date as a variant); team_age = sum_i(age_i * MP_i) /
+      sum_i MP_i over games before the tip.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F16
+      reason: 'The MP-weighting is confirmed numerically. The registry''s variant reference date (1 January) is wrong: SR uses 31 January and integer ages.'
+      found_in: 450-formula pass
   - id: M-PROF-061
     name: Class year and eligibility
     category: player_profile
@@ -88239,9 +88521,8 @@ categories:
     definition: 'Three named flags per possession, never merged: (1) source NCAA-engine flag: |margin| >= 25 with <= 600 s left in regulation, >= 20 with <= 300 s, or >= 15 with <= 120 s, while <= 3 starters
       combined are on court; sticky once on. (2) CTG-adapted: second half last 720 s, |margin| >= 25 (720-540 s left), >= 20 (540-360 s), >= 10 (last 360 s), <= 2 starters combined on court; sticky once
       on (CTG: the game never returns to non-garbage time). (3) WP rule: pre-possession WP > 0.98 or < 0.02 with <= 300 s left. Share = flagged possessions / possessions.'
-    formula: GT_src = cummax_over_possessions_in_game(any_k(|m| >= M_k and t_elapsed >= T_reg - W_k) and starters_on_combined <= 3), (M,W) = {(25,600),(20,300),(15,120)}; GT_ctg = cummax_over_possessions_in_game(period
-      = 2 and (|m| >= 25 and 540 < clock <= 720 or |m| >= 20 and 360 < clock <= 540 or |m| >= 10 and clock <= 360) and starters_on_combined <= 2); GT_wp = (WP > 0.98 or WP < 0.02) and clock <= 300 (WP from
-      M-SIT-055); starters = players in the first lineup_stints row per team (start_period = 1, stint_num = 1); share_d = sum GT_d / possessions.
+    formula: GT_ctg = per-possession condition (period = 2 and (|m| >= 25 and 540 < clock <= 720 or |m| >= 20 and 360 < clock <= 540 or |m| >= 10 and clock <= 360) and starters_on_combined <= 2), without
+      cummax (CTG resets when the conditions fail)
     inputs:
     - possessions.is_garbage_time_source
     - possessions.margin_start
@@ -88295,6 +88576,7 @@ categories:
       Overtime: CTG does not define it; ours (registered gt_ctg_ot_mode = carry): a flag set in regulation stays on in overtime and no new CTG flag can start in an extra period. Starters come from the first
       lineup stint (known at tip), not player_box.starter (POST_GAME). Schema gap: possessions.garbage_time_flags map (ontology proposal).'
     - '2026-10-19 depth pass: The CTG variant wrongly uses cummax, but CTG un-flags when the margin drops below the threshold.'
+    - 2026-10-19 formula replaced (F25, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '48: NCAA engine garbage time flag (college_data.jsonl:133)'
@@ -88309,6 +88591,15 @@ categories:
     edge_cases: OT. Starters taken from the first stint.
     formula_fix_2026_10_19: GT_ctg = per-possession condition (period = 2 and (|m| >= 25 and 540 < clock <= 720 or |m| >= 20 and 360 < clock <= 540 or |m| >= 10 and clock <= 360) and starters_on_combined
       <= 2), without cummax (CTG resets when the conditions fail)
+    formula_before_2026_10_19: GT_src = cummax_over_possessions_in_game(any_k(|m| >= M_k and t_elapsed >= T_reg - W_k) and starters_on_combined <= 3), (M,W) = {(25,600),(20,300),(15,120)}; GT_ctg = cummax_over_possessions_in_game(period
+      = 2 and (|m| >= 25 and 540 < clock <= 720 or |m| >= 20 and 360 < clock <= 540 or |m| >= 10 and clock <= 360) and starters_on_combined <= 2); GT_wp = (WP > 0.98 or WP < 0.02) and clock <= 300 (WP from
+      M-SIT-055); starters = players in the first lineup_stints row per team (start_period = 1, stint_num = 1); share_d = sum GT_d / possessions.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F25
+      reason: The CTG variant wrongly uses cummax, but CTG un-flags when the margin drops below the threshold.
+      found_in: 1,115 depth pass
   - id: M-SIT-053
     name: Non-garbage-time efficiency
     category: situational
@@ -96991,7 +97282,8 @@ categories:
     - F4%
     - CHAMP%
     definition: Coach's NCAA tournament games, wins, losses, win %, counts of rounds reached (R64 ... champion) and Final Four and title rates per appearance.
-    formula: WIN% = W / GAMES; F4% = F4 / appearances; CHAMP% = CHAMP / appearances.
+    formula: WIN% = W / GAMES (confirmed). F4% and CHAMP% in the source are NOT F4/appearances or CHAMP/appearances. Store them as source values, and compute our own F4_rate = 100 * F4 / R64 and CHAMP_rate
+      = 100 * CHAMP / R64 under distinct names.
     inputs:
     - games.tournament_round
     - games.home_head_coach_id
@@ -97025,6 +97317,7 @@ categories:
     - '2026-10-19 verification: Checked against the local Coach Results.csv: WIN% = W/GAMES holds on all 332 rows. But Izzo has F4 = 4 over R64 = 16 appearances (25%) while the file shows F4% 88.60%, and
       CHAMP = 0 with CHAMP% 35.50%. Mark Few has 2 F4s and 97.6%. These columns look like model-based probabilities, not observed rates.'
     - '2026-10-19 unit fix: the local Coach Results file''s percentage columns do not match its own counts (Izzo F4 4 of 16 = 25% vs 88.6% in the file)'
+    - 2026-10-19 formula replaced (F01, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '35: Coach Tournament Record and Round Reach Rates'
@@ -97037,6 +97330,14 @@ categories:
     formula_fix_2026_10_19: WIN% = W / GAMES (confirmed). F4% and CHAMP% in the source are NOT F4/appearances or CHAMP/appearances. Store them as source values, and compute our own F4_rate = 100 * F4 /
       R64 and CHAMP_rate = 100 * CHAMP / R64 under distinct names. ; compute W%, F4% and CHAMP% from the counts (F4 / R64 appearances, titles / R64 appearances); do not read the file's percentage columns
     unit_fix_2026_10_19: the local Coach Results file's percentage columns do not match its own counts (Izzo F4 4 of 16 = 25% vs 88.6% in the file)
+    formula_before_2026_10_19: WIN% = W / GAMES; F4% = F4 / appearances; CHAMP% = CHAMP / appearances.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F01
+      reason: 'Checked against the local Coach Results.csv: WIN% = W/GAMES holds on all 332 rows. But Izzo has F4 = 4 over R64 = 16 appearances (25%) while the file shows F4% 88.60%, and CHAMP = 0 with
+        CHAMP% 35.50%. Mark Few has 2 F4s and 97.6%. These columns look like model-based probabilities, not observed rates.'
+      found_in: 450-formula pass
   - id: M-COACH-086
     name: Wins over win-probability expectation by game segment (in-game coaching proxy)
     category: coaching
@@ -98458,7 +98759,7 @@ categories:
     - specific_margin
     - outcome margin
     definition: Part of the overround assigned to one outcome by a de-vig method.
-    formula: m_i = r_i - p_i(method); sum_i m_i = pi - 1.
+    formula: m_i = r_i / p_i(method) - 1 (implied's specific margin); identity sum_i p_i m_i = sum_i r_i - 1. Keep r_i - p_i as a named absolute variant.
     inputs:
     - market_snapshots.implied_prob
     - market_snapshots.fair_prob_power
@@ -98491,6 +98792,7 @@ categories:
     - The implied vignette discusses margin allocation for wpo but does not name a specific_margin formula; the identity m_i = r_i - p_i is our definition.
     - '2026-10-19 verification: Reproduced the vignette: booksum 1.021186 and wpo p = 0.2310/0.2632/0.5058. The package''s specific_margins equal r_i/p_i - 1 (0.03057, 0.02683, 0.01396 exactly), not r_i
       - p_i. Our absolute form gives 0.00706 for every outcome (= M/n under wpo). The identity sum(r_i - p_i) = booksum - 1 holds but is not the published quantity.'
+    - 2026-10-19 formula replaced (F11, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '137: specific_margin'
@@ -98501,6 +98803,14 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: p_i = 0 makes the relative form undefined. Additive de-vig can give p_i < 0 for long odds.
     formula_fix_2026_10_19: m_i = r_i / p_i(method) - 1 (implied's specific margin); identity sum_i p_i m_i = sum_i r_i - 1. Keep r_i - p_i as a named absolute variant.
+    formula_before_2026_10_19: m_i = r_i - p_i(method); sum_i m_i = pi - 1.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F11
+      reason: 'Reproduced the vignette: booksum 1.021186 and wpo p = 0.2310/0.2632/0.5058. The package''s specific_margins equal r_i/p_i - 1 (0.03057, 0.02683, 0.01396 exactly), not r_i - p_i. Our absolute
+        form gives 0.00706 for every outcome (= M/n under wpo). The identity sum(r_i - p_i) = booksum - 1 holds but is not the published quantity.'
+      found_in: 450-formula pass
   - id: M-MKT-013
     name: Fair probability, multiplicative (basic normalisation)
     category: market
@@ -99661,7 +99971,7 @@ categories:
     aliases:
     - teaser
     definition: Line moved in the bettor's favour by a fixed number of points in exchange for a worse payout or multiple legs.
-    formula: 'dog: line + t; favourite: line - t (t fixed per teaser product).'
+    formula: 'teased line_team = line_team + t for both sides (signed line, negative = favourite): favourite -3.5 + 6 = +2.5, dog +3.5 + 6 = +9.5'
     inputs:
     - market_snapshots.line
     - market_snapshots.observed_post_event
@@ -99689,6 +99999,7 @@ categories:
     notes:
     - Wikipedia example uses 6 points (NFL); no NCAAB standard confirmed.
     - '2026-10-19 depth pass: ''favourite: line - t'' moves the favourite line the wrong way in our signed convention'
+    - 2026-10-19 formula replaced (F12, approved by Aldemir); old formula kept in formula_before_2026_10_19
     provenance:
       merged_inputs:
       - '148: teaser_adjusted_line'
@@ -99700,6 +100011,13 @@ categories:
     l4_recipe: none
     edge_cases: teaser through 0
     formula_fix_2026_10_19: 'teased line_team = line_team + t for both sides (signed line, negative = favourite): favourite -3.5 + 6 = +2.5, dog +3.5 + 6 = +9.5'
+    formula_before_2026_10_19: 'dog: line + t; favourite: line - t (t fixed per teaser product).'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: Aldemir
+      fix_id: F12
+      reason: '''favourite: line - t'' moves the favourite line the wrong way in our signed convention'
+      found_in: 1,115 depth pass
   - id: M-MKT-032
     name: Futures (outright) fair probability
     category: market
@@ -108556,3 +108874,7 @@ registry_change_log:
   date: '2026-10-19'
   by: Mac session (msu-colab)
   change: 'L4 round 4 on the 80 recipe metrics; 108 unit and range fixes. {''raised to L4'': 18, ''raised to L5'': 18, ''recipe run, not reached'': 5, ''unit/range fixes'': 108}'
+- version: 0.6.0
+  date: '2026-10-19'
+  by: Mac session (msu-colab)
+  change: 35 formula fixes F01-F35 approved by Aldemir and applied; old formulas kept in formula_before_2026_10_19. docs/stats/formula_fixes_proposed_2026-10-19.md
