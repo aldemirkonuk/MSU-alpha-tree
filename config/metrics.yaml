@@ -1,4 +1,4 @@
-version: 0.3.0
+version: 0.3.1
 date: '2026-10-19'
 status: proposed
 title: MSU Alpha 3 metric registry
@@ -131,11 +131,11 @@ counts:
     'false': 4
     partial: 155
   verification_depth:
-    not rechecked: 1121
-    L4: 42
+    not rechecked: 1115
+    L4: 46
     L1: 142
     L3: 232
-    L5: 10
+    L5: 12
     L0: 21
     L2: 23
   data_tier:
@@ -340,6 +340,7 @@ categories:
       The FT coefficient is a registry parameter (R-CX-29) so every downstream rating can be re-weighted.
     - '2026-10-19 CBBD ''possessions'' is not reproduced by FGA - ORB + TOV + c FTA (c = 0.475: 36/70 within 1; c = 0.44: 40/70) nor by the Basketball-Reference ORB-weighted form (best 24/70 exact). Treat
       CBBD possessions as a separate, undocumented source definition (M-TEFF-004).'
+    - 2026-10-19 Torvik's possessions are the c_FT = 0.475 estimator (two-team averaged, see M-TEFF-003); CBBD's possessions are a different, undocumented count.
     provenance:
       covers_groups:
       - g:box_score_possession_estimate
@@ -399,7 +400,10 @@ categories:
       url: https://web.archive.org/web/20250804005632/https://kenpom.com/blog/help-with-team-page/
     - name: Squared Statistics (Justin Jacobs), Analyzing NBA Possession Models
       url: https://squared2020.com/2017/07/10/analyzing-nba-possession-models/
-    notes: Sports-Reference formula and NCAA engine code (_eposs_expr, _r_round) opened in this pass.
+    notes:
+    - Sports-Reference formula and NCAA engine code (_eposs_expr, _r_round) opened in this pass.
+    - '2026-10-19 L4: Two-team averaged possessions with c_FT = 0.475 summed over MSU''s 20 regular-season Big Ten games reproduce Torvik ConPoss within 0.24 of about 1,323 (0.02%); c_FT = 0.44 is 13 off
+      and CBBD possessions are 15 off. Torvik uses the registry default.'
     provenance:
       covers_groups:
       - g:poss_sr_cbb
@@ -408,6 +412,13 @@ categories:
       - g:estimated_possession_e_poss
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: Two-team averaged possessions with c_FT = 0.475 summed over MSU's 20 regular-season Big Ten games reproduce Torvik ConPoss within 0.24 of about 1,323 (0.02%); c_FT = 0.44 is 13 off and CBBD
+        possessions are 15 off. Torvik uses the registry default.
   - id: M-TEFF-004
     name: Possession-count discrepancy by source definition
     category: team_efficiency
@@ -1382,6 +1393,7 @@ categories:
     - 'Per-frame dissection: each possession''s points are the incident-level contribution; registry keys (possession_id, chance_id) let any slice be re-weighted (R-CX-29). Box-estimate and counted values
       are stored side by side, never merged.'
     - '2026-10-19 L4: ORtg = 100 PTS / possessions reproduces CBBD ''rating'' 70/70 within 0.05 (CBBD per-game box (published values) recomputed from the same rows'' counting stats).'
+    - '2026-10-19 L4: Conference raw offensive efficiency = PF / possessions equals Torvik ConOE exactly with Torvik''s possessions; ConOE = ConPF / ConPoss holds for all 365 teams.'
     provenance:
       covers_groups:
       - g:off_rating
@@ -1402,6 +1414,9 @@ categories:
     - date: '2026-10-19'
       data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
       result: ORtg = 100 PTS / possessions reproduces CBBD 'rating' 70/70 within 0.05 (CBBD per-game box (published values) recomputed from the same rows' counting stats).
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: Conference raw offensive efficiency = PF / possessions equals Torvik ConOE exactly with Torvik's possessions; ConOE = ConPF / ConPoss holds for all 365 teams.
   - id: M-TEFF-019
     name: Defensive efficiency (points allowed per possession / defensive rating)
     category: team_efficiency
@@ -4260,9 +4275,11 @@ categories:
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/Barttorvik%20Home.csv
     - name: MSU Alpha 3 data sources catalog (Torvik CSV columns, licences)
       url: repo:docs/research/data_sources_catalog.md
-    notes: 'KenPom additive form and T-Rank constants verified via opened pages (harvester). CBBD stored values have no published method (verified false for that variant). NRtg/A, ORtg/A, DRtg/A appear
-      on the SR glossary but their formulas are not given there (unverified). Map: g:adj_off_efficiency -> M-TEFF-035, g:adj_def_efficiency -> M-TEFF-036 (components). Fix pass: the multiplicative +/-HCA
-      engine previously labelled "hoopR" is sportsdataverse mbb_ncaa_strength.py and adjusts shooting rates; it now sits under M-TRAT-026. sdv mbb_team_ratings is additive (code opened).'
+    notes:
+    - 'KenPom additive form and T-Rank constants verified via opened pages (harvester). CBBD stored values have no published method (verified false for that variant). NRtg/A, ORtg/A, DRtg/A appear on the
+      SR glossary but their formulas are not given there (unverified). Map: g:adj_off_efficiency -> M-TEFF-035, g:adj_def_efficiency -> M-TEFF-036 (components). Fix pass: the multiplicative +/-HCA engine
+      previously labelled "hoopR" is sportsdataverse mbb_ncaa_strength.py and adjusts shooting rates; it now sits under M-TRAT-026. sdv mbb_team_ratings is additive (code opened).'
+    - '2026-10-19 L4: AdjEM = AdjOE - AdjDE holds for all KenPom 2026 teams within display rounding (365/365).'
     provenance:
       harvest_members:
       - Adjusted efficiency margin (KenPom) (KenPom; harvest kenpom_torvik.jsonl:7; verified=True)
@@ -4281,6 +4298,12 @@ categories:
       - g:team_adj_stat
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L5
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: AdjEM = AdjOE - AdjDE holds for all KenPom 2026 teams within display rounding (365/365).
   - id: M-TRAT-002
     name: Rating rank, percentile and z-score (any system, any component)
     category: team_ratings
@@ -4423,8 +4446,11 @@ categories:
       url: https://web.archive.org/web/2024/https://kenpom.com/blog/ratings-explanation/
     - name: 'KenPom ratings methodology update, 4 Oct 2016 (Wayback; opened in fix pass: flat 3.75 HCA, site-specific values promised by next season)'
       url: https://web.archive.org/web/2024/https://kenpom.com/blog/ratings-methodology-update/
-    notes: trankpre.php shows the column without a formula (harvester, unverified there); the FAQ gives the formula. Computable now from our replica's AdjOE/AdjDE; KenPom pairs blocked until R-DS-14; published
+    notes:
+    - trankpre.php shows the column without a formula (harvester, unverified there); the FAQ gives the formula. Computable now from our replica's AdjOE/AdjDE; KenPom pairs blocked until R-DS-14; published
       Barthag values are an external variant (licence per R-DS-10).
+    - '2026-10-19 L4: Barthag = AdjOE^x / (AdjOE^x + AdjDE^x) reproduces Torvik 2026 barthag for all 365/365 teams to 1e-4 with x = 11.5 (solved exponent: median 11.5, 5th-95th percentile [11.5, 11.5]).
+      Use x = 11.5 for T-Rank 2025-26 in the exponent table.'
     provenance:
       harvest_members:
       - Barthag (Bart Torvik; harvest kenpom_torvik.jsonl:84; verified=True)
@@ -4437,6 +4463,13 @@ categories:
       - g:barthag_wab
     value_range: 0-1
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: 'Barthag = AdjOE^x / (AdjOE^x + AdjDE^x) reproduces Torvik 2026 barthag for all 365/365 teams to 1e-4 with x = 11.5 (solved exponent: median 11.5, 5th-95th percentile [11.5, 11.5]). Use x
+        = 11.5 for T-Rank 2025-26 in the exponent table.'
   - id: M-TRAT-004
     name: MSU Alpha opponent-adjusted team rating (our replica, dissectable)
     category: team_ratings
@@ -4859,8 +4892,11 @@ categories:
       url: https://www.goodreads.com/author_blog_posts/18095280-how-our-march-madness-predictions-work?tab=book
     - name: 'Local Kaggle archive header: Resumes.csv (headers only)'
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/Resumes.csv
-    notes: '538 travel and tournament details read on the goodreads mirror of the 538 article (this pass); K and home values not published there. Contribution method: elo_update (rating = R0 + sum over
-      the team''s games of K*M*(S - E); each term stored per game, additive).'
+    notes:
+    - '538 travel and tournament details read on the goodreads mirror of the 538 article (this pass); K and home values not published there. Contribution method: elo_update (rating = R0 + sum over the team''s
+      games of K*M*(S - E); each term stored per game, additive).'
+    - '2026-10-19 CBBD''s own Elo (homeTeamEloStart/End) is not this formula: the win/loss Elo with a ln(MOV+1) multiplier at the best K = 38 and H = 50 fits 4/70 updates within 2 points, and a linear margin
+      model fits 9/70. Treat CBBD Elo as an external, undocumented rating (reference only).'
     provenance:
       harvest_members:
       - T-Rank Elo (Bart Torvik; harvest kenpom_torvik.jsonl:106; verified=False)
@@ -6230,7 +6266,9 @@ categories:
       url: repo:docs/research/data_sources_catalog.md
     - name: 'Schema: ratings_snapshots'
       url: repo:schema/tables/ratings_snapshots.yaml
-    notes: Mean of opponent AdjEM is a poor measure of difficulty for good teams (nonlinear win probability) - see M-TRAT-029.
+    notes:
+    - Mean of opponent AdjEM is a poor measure of difficulty for good teams (nonlinear win probability) - see M-TRAT-029.
+    - '2026-10-19 L4: SOS AdjEM = SOS AdjOE - SOS AdjDE holds for all KenPom 2026 teams within rounding (365/365).'
     provenance:
       harvest_members:
       - SOS (Sports-Reference; harvest ctg_bref.jsonl:83; verified=True)
@@ -6245,6 +6283,12 @@ categories:
       - g:average_opp_rank
     value_range: 0-1
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L5
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: SOS AdjEM = SOS AdjOE - SOS AdjDE holds for all KenPom 2026 teams within rounding (365/365).
   - id: M-TRAT-029
     name: Benchmark-team strength of schedule (expected record of a reference team)
     category: team_ratings
@@ -9781,6 +9825,7 @@ categories:
     - EvanMiya Keys to Victory lists Field Goals Made as a selectable metric per the harvester; not visible in this pass's fetch (unverified).
     - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
       one team (source defect, reported).'
+    - '2026-10-19 L4 (player level): points and FGA per MSU player from play-by-play shot rows equal the player box on 386/386 player-games.'
     provenance:
       input_groups:
       - g:fg
@@ -9849,6 +9894,7 @@ categories:
       is one row per field-goal attempt as seen on video, which includes fouled missed tries.
     - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
       one team (source defect, reported).'
+    - '2026-10-19 L4 (player level): points and FGA per MSU player from play-by-play shot rows equal the player box on 386/386 player-games.'
     provenance:
       input_groups:
       - g:fga
@@ -16857,8 +16903,11 @@ categories:
     - name: MSU Alpha 3 dictionary_games.md (shots, team_box)
       url: repo:docs/data/dictionary_games.md
       opened: harvester
-    notes: 'Licence limit: ESPN points in the paint from files already pulled is reference-only (R-DS-02) and cannot be a model input; CBBD pointsInPaint (keyed API, not pulled) is needed for model input.
-      computable_now ''yes'' holds only as a reference value. Volume stat, so direction is neutral; the differential is the higher_is_better variant.'
+    notes:
+    - 'Licence limit: ESPN points in the paint from files already pulled is reference-only (R-DS-02) and cannot be a model input; CBBD pointsInPaint (keyed API, not pulled) is needed for model input. computable_now
+      ''yes'' holds only as a reference value. Volume stat, so direction is neutral; the differential is the higher_is_better variant.'
+    - '2026-10-19 The CBBD ''rim'' shot range is not the paint: 2 x made rim shots is within 4 points of the official inPaint on only 26/68 team-games. Points in the paint need shot coordinates (CBBD shotInfo.location)
+      or tracking.'
     verification_basis: external_source
     proposed_columns: []
     coded_variants: []
@@ -47043,7 +47092,10 @@ categories:
       url: repo:docs/requirements_review/fold_plan.yaml
     - name: NCAA 2025-26 Basketball Statisticians' Manual (Fast Break Points, Points Off of Turnovers)
       url: http://fs.ncaa.org.s3.amazonaws.com/Docs/stats/Stats_Manuals/Basketball.pdf
-    notes: 10-point threshold is an initial value to calibrate (R-TR-17).
+    notes:
+    - 10-point threshold is an initial value to calibrate (R-TR-17).
+    - '2026-10-19 Computed on 34 games (fast-break proxy = made FG within T s of a defensive rebound, steal or turnover): within 4 points of the official fastBreak on 40/68 team-games at T = 7 s and 38/68
+      at T = 10 s. The official scorer''s fast-break judgement is not a clock rule; the gap is the metric.'
     tier_map:
       pbp (after_pbp):
       - gap vs tr_ncaa_fbp, tr_hoopmath_10s
@@ -74831,12 +74883,20 @@ categories:
       url: repo:schema/tables/state_second.yaml
     - name: MSU Alpha 3 fold plan (live requirement text)
       url: repo:docs/requirements_review/fold_plan.yaml
-    notes: Media timeouts at the first dead ball at or after 16/12/8/4 (R-IV-28).
+    notes:
+    - Media timeouts at the first dead ball at or after 16/12/8/4 (R-IV-28).
+    - '2026-10-19 L4: First-half points from the play-by-play equal the box period points on 67/68 team-games.'
     provenance:
       merged_inputs:
       - '90: Media-timeout segment (project_internal.jsonl:241)'
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: First-half points from the play-by-play equal the box period points on 67/68 team-games.
   - id: M-SIT-005
     name: Segment margin vs random-walk baseline
     category: situational
@@ -75396,8 +75456,10 @@ categories:
       url: https://web.archive.org/web/2024/https://kenpom.com/blog/distribution-of-largest-lead-in-college-games/
     - name: CollegeBasketballData OpenAPI document
       url: https://api.collegebasketballdata.com/api-docs.json
-    notes: ESPN and CBBD supply it; ours is derived and cross-checked. Verified true on ESPN Largest Lead (re-opened) and CBBD largestLead; the KenPom distribution variant is harvest-only (KenPom not reachable
+    notes:
+    - ESPN and CBBD supply it; ours is derived and cross-checked. Verified true on ESPN Largest Lead (re-opened) and CBBD largestLead; the KenPom distribution variant is harvest-only (KenPom not reachable
       2026-10-18).
+    - '2026-10-19 L4: Largest lead from the play-by-play score track equals the CBBD box largestLead on 68/68 team-games (UNC game excluded, defective play-by-play).'
     provenance:
       merged_inputs:
       - '75: CBBD largest lead (college_data.jsonl:38)'
@@ -75405,6 +75467,12 @@ categories:
       - '77: Largest lead (game) (kenpom_torvik.jsonl:72)'
     value_range: unbounded (state per formula)
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26 (35 games), KenPom 2026 ratings (365 teams), Torvik 2026 team results (365 teams)
+      result: Largest lead from the play-by-play score track equals the CBBD box largestLead on 68/68 team-games (UNC game excluded, defective play-by-play).
   - id: M-SIT-016
     name: Max deficit overcome and largest blown lead
     category: situational
@@ -94590,3 +94658,7 @@ registry_change_log:
   date: '2026-10-19'
   by: Mac session (msu-colab)
   change: 'L4 numeric reproduction on CBBD MSU 2025-26 (35 games): box formulas, Oliver ratings, play-by-play counts; definition mismatches in CBBD fields recorded; 30 unit fixes (old units kept in unit_before_2026_10_19).'
+- version: 0.3.1
+  date: '2026-10-19'
+  by: Mac session (msu-colab)
+  change: 'L4 round 2: play-by-play and situational stats, KenPom and Torvik season numbers, CBBD Elo check.'

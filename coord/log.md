@@ -23,3 +23,4 @@
 | 2026-10-19T23:18Z | runner | decisions-d01-d45 | done | delegated picks recorded; live state page; inbox 011 |
 | 2026-10-20T00:52Z | runner | stats-verification | done | 450 checked; 20 tree stats; registry 0.2.0 |
 | 2026-10-20T01:00Z | runner | stats-l4-units | done | L4 on CBBD; 30 unit fixes; registry 0.3.0 |
+| 2026-10-20T01:21Z | runner | stats-l4-round2 | done | Torvik/KenPom/PBP checks; registry 0.3.1 |
