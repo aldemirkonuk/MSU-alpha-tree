@@ -118,7 +118,7 @@ Scenario tests after the 0.1.0 fixes: man-to-man 47/47 entries (322 cases), zone
 
 ## 7. Zone schemes and crosswalks
 
-A scheme is a family of labels that belong together, such as the five spots of a 2-3 zone or NBA.com's shot zones. "Partition yes" means every floor point gets exactly one label of that scheme. "Partition no" means some points get none (for example a zone slot only exists near its anchor).
+A scheme is a family of labels that belong together, such as the five spots of a 2-3 zone or NBA.com's shot zones. "Partition yes" means no point ever gets two labels of that scheme. The court-wide schemes (court_region and the shot-zone crosswalks NBA, CTG, pbpstats and Basketball-Reference) also give every floor point a label; the other partition schemes cover only their own area (for example three_offset covers the frontcourt, a zone slot only exists near its anchor). "Partition no" means labels of that scheme may overlap.
 
 The crosswalks to NBA.com (basic, range, area), Cleaning the Glass, pbpstats and Basketball-Reference distance bands each cover the floor with 0 overlaps. CBBD shot range (rim, jumper, three_pointer), Hoop-Math and Torvik buckets are shot types, stored as `shot_family`, not translated by location.
 
@@ -207,29 +207,11 @@ Loader contract (for the programmer):
 
 ## 13. Follow-up edits outside this page
 
-The loop-2 clarity review asked for these changes in other files. They are listed here so nothing is lost. None of them is made yet; each waits for the freeze to lift or for its owner.
+The loop-2 clarity review asked for these changes in other files. They are listed here so nothing is lost. Items already made in 0.3.0 and 0.3.1 have been removed; the rest wait for the freeze to lift or for their owner.
 
-**In `config/named_spots.yaml` (wording only; this page already uses the corrected wording):**
+**In `config/named_spots.yaml`:**
 
-1. `frame.origin`: replace "team in possession attacks it" with the team-control wording of section 2.
-2. `frame.t` and `frame.m`: use the definitions of section 2 (y = -0.0 set to +0.0; t = 90 at r = 0; m = degrees(atan2(y, |x|))).
-3. `frame.mirror`: use the left-and-right sentence of section 2 (centre labels have no side).
-4. `layers.zone_scheme:court_region`: "every floor point gets exactly one of 18 labels (6 mirrored cells x 2 sides + 6 centre cells), or 'unknown'". The YAML still says 16.
-5. `layer_counts`: the header counts are older than the entries. Section 2 of this page shows counts computed from the entries themselves. Add the layers `zone_scheme:ball_height`, `zone_scheme:shot_entry_angle`, `zone_scheme:arc_offset`, `zone_scheme:post_depth` with one line each, and add "conditional expressions (a if cond else b)" to `expression_language` (the evaluator already accepts them).
-6. `loader.evaluator.loader_rules`: replace "Monte Carlo P (64 samples) only for entries with |signed distance| < 3 sigma and only for rule-decision layers" with the membership-P sentence of section 8.5.
-7. `loader.missing_data` and `rule_occlusion_handling`: say that None, NaN, plus or minus infinity and |v| > 100 m all count as missing, for positions and for context.
-8. Entries `press_goalie`, `spot_of_exit`, `leak_out_runner`, `dead_ball_deny`, `offball_top_lock`, `offball_trail`, `offball_under_gap`: delete the sentences "Not expressible ...", "Needs all defenders, so not a point expression", "Velocity/track-based", "Needs the ball track ... so expr is null" and "the dribble state is not a grammar variable" from those that now have an expression; keep the role and timing gates as "role/timing gate (not in expr): ...".
-9. `low_man`: replace "Team-level argmin; not expressible per point" with: "Not expressible even with grammar 0.2.0: LMH is argmin r over the away-side candidate set (excluding the on-ball defender and the PnR screener's defender), and lowest_defender_y is min y over all five defenders, which differs, for example, for a deep corner defender or the on-ball defender in the post. It needs a dedicated aggregate low_man_r computed over the candidate set, and then expr = r <= low_man_r."
-10. Use one word per idea in every `bounds_text`: "angle m" (not theta, θ, t, "folded angle" or "mirrored theta" when m is meant), "restricted area" (not RA or R.A. in prose), "three-point area" (not beyond_arc, and not "three" as a noun), and metres (feet) for distances. This page prints `bounds_text` exactly as written, so it still shows the older words in the tables.
-11. Aliases for "elbow extended": see decision 13.
-
-**In `tools/specgen/named_spots/spotlib.py` and `tests/test_named_spots.py` (reference evaluator):**
-
-12. `env()`: compute m = degrees(atan2(y, |x|)) (90 at the origin) instead of folding t, so a left-side point on an exact boundary ray gets exactly one label. Add `y = y + 0.0` before atan2. Test: for angles 30, 36, 60, 64.024, 72, 80 and r 2, 5, 7, 9, exactly one court_region and one nba_area label at (-r cos a, r sin a).
-13. `Spot.inside`: treat NaN, plus or minus infinity and |v| > 100 m as missing, for x, y, z and every context value (add MAX_ABS_M = 100.0 and a helper `_ok`). Today a NaN ball x makes ball_side = -1 and ball-relative labels fire on garbage.
-14. `Spot.inside` for bench-side entries: if `table_side_x_sign` is not +1 or -1, return None (today it silently assumes +1). Add it to the context names.
-15. `Spot.labels`: return no labels (not `unknown`) for a missing position; add a module function `court_region(spots, x, y)` that returns `["unknown"]` once. Update `test_edge_rules` to match.
-16. Doc test: every entry shown in a table on this page must appear with its full `plain` or `bounds_text`. `gen_doc.py` already checks this every time it runs.
+1. Use one word per idea in every `bounds_text`: "angle m" (not theta, θ, t, "folded angle" or "mirrored theta" when m is meant), "restricted area" (not RA or R.A. in prose), "three-point area" (not beyond_arc, and not "three" as a noun), and metres (feet) for distances. This page prints `bounds_text` exactly as written, so it still shows the older words in the tables.
 
 **In other repo files (when the freeze lifts):**
 
@@ -295,5 +277,11 @@ New in 0.2.0:
 - Grammar 0.2.0: the exact rules may now use these extra context names: {{CTX_NEW}}. Each is empty when unknown, and the label is then left empty with reason no_context.
 - Division-line convention: the frontcourt is y <= 12.700 m (the line's near edge); the painted line itself is backcourt (rule 9-12.2).
 - CBBD left/right sign checked on video: four UConn made baskets (2026-10-20) show that CBBD's y axis points to the attacker's left, so the transform negates it.
+
+Result: 599 entries, 515 with an exact rule.
+
+**0.3.0 (2026-10-20, loop 3, convergence round 1).** Five lenses (regressions from loop 2, adversary on the new entries, compute budget, rules-book recheck, completeness) with skeptics. Main fixes: loop 2 had merged alias lists instead of replacing them, so 41 alias phrases had two owners; aliases now replace, and an alias_resolution table gives every ambiguous coaching word one owner (high_post renamed high_post_strip). The restart and full-court layers became multi-label (a player can be in several restart roles at once). The reference evaluator now treats NaN, infinity and positions beyond 100 m as missing. Shot entry depth was added (front of rim, swish band 7-11 in, back of rim, long). This page and the court picture are generated from the YAML.
+
+**0.3.1 (2026-10-20, loop 4, convergence round 2).** Four fresh lenses: regressions 0.2.0 to 0.3.0, property-based random testing (mirror symmetry, monotonicity, partitions, context and height rules), real-world labelling of CBBD shots and common alignments, and doc truth. No geometry or logic defect was found in the main partitions. Fixed: three rule texts still called restart and full court single-winner; a sliver of wide threes just above the corner break got neither corner nor above-the-break; twelve in-court zones owned the boundary lines; the 38-ft coaching-box line now follows the bench side; one alias phrase had two owners; the CBBD encoding entry now records the video-checked sign; stale doc lists removed.
 
 Result: {{N_ENTRIES}} entries, {{N_EXPR}} with an exact rule.

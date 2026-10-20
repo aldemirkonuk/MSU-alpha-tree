@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-8.8 -15.0 17.6 20.6" width="880" height="1030" role="img" aria-labelledby="t d">
 <title id="t">MSU Alpha named spots: court regions and coaching spots</title>
-<desc id="d">Half court in metres, rim centre at (0, 0). Shaded: the 12 court_region cells (region names on the left half). Dots: coaching-spot anchors (named on the right half). Generated from config/named_spots.yaml version 0.3.0 by tools/specgen/named_spots/gen_svg.py.</desc>
+<desc id="d">Half court in metres, rim centre at (0, 0). Shaded: the 12 court_region cells (region names on the left half). Dots: coaching-spot anchors (named on the right half). Generated from config/named_spots.yaml version 0.3.1 by tools/specgen/named_spots/gen_svg.py.</desc>
 <style>
 .bg{fill:#f7f5f0}.oob{fill:#e2ded6}
 .c-ra{fill:#e57373}.c-paint{fill:#f4b0a8}.c-smid{fill:#f7cc8f}.c-lmb{fill:#c9df94}.c-lmw{fill:#a3d6b3}
