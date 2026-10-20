@@ -174,3 +174,8 @@ Other counts: 9818 input references (9153 resolve to a proposed schema column, 3
 - Corrections made while assembling (52): the parameter registry was cited as R-CX-20 in the impact category and one market entry and is now R-CX-29; one dangling reference to the split id M-SIT-084 now points to M-SIT-084a; one null formula (vendor projection) now says the formula is unpublished; one `see_owner` computable-now value now inherits from its owner; bare repository paths and local export names in source URLs now use `repo:` and `local:`; absolute local paths were removed.
 
 > Note 2026-10-18 (Mac session review): the assembled registry had `verified: true` on every metric; the true status was restored from each entry's `verified_source_value`. Current counts: true 1,071, false 340, partial 105, internal 50, harvest_only 5.
+
+## Dated note 2026-10-19
+
+- Verification pass on the 450 unconfirmed formulas: [verification_2026-10-19.md](verification_2026-10-19.md). Registry version 0.2.0. Verified now: true 1,105 · partial 154 · internal 287 · reference_only 41 · false 4. Every metric now declares a `value_range` (percent 0-100, probability 0-1, other units by rule or by the verifier).
+- New category [decision_trees](decision_trees.md) (TREE, 20 stats): pre-registered condition → branch → leaf trees with shrinkage, false-discovery control and walk-forward checks, plus the Monte Carlo lineup duel and game-script what-if simulator. Total metrics: 1,591.
