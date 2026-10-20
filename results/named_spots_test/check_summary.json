@@ -20,32 +20,32 @@
   },
   "zone_scheme:br_distance": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:court_thirds": {
    "points": 231401,
-   "covered": 195505,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:ctg": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:nba_area": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:nba_basic": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:nba_range": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:out_of_bounds": {
@@ -55,7 +55,7 @@
   },
   "zone_scheme:pbpstats": {
    "points": 231401,
-   "covered": 231401,
+   "covered": 175070,
    "overlaps": 0
   },
   "zone_scheme:pickup_y": {

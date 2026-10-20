@@ -284,4 +284,8 @@ Result: 599 entries, 515 with an exact rule.
 
 **0.3.1 (2026-10-20, loop 4, convergence round 2).** Four fresh lenses: regressions 0.2.0 to 0.3.0, property-based random testing (mirror symmetry, monotonicity, partitions, context and height rules), real-world labelling of CBBD shots and common alignments, and doc truth. No geometry or logic defect was found in the main partitions. Fixed: three rule texts still called restart and full court single-winner; a sliver of wide threes just above the corner break got neither corner nor above-the-break; twelve in-court zones owned the boundary lines; the 38-ft coaching-box line now follows the bench side; one alias phrase had two owners; the CBBD encoding entry now records the video-checked sign; stale doc lists removed.
 
+Result of 0.3.1: 602 entries, 518 with an exact rule.
+
+**0.3.2 (2026-10-20, loop 5, final convergence).** Regression check of the loop-4 changes and seeded property tests: mirror symmetry on 30,000 random points, partitions on 40,000, 4,000 rays for the three-point line, boundary lines, context and height gating, corner vs above-break on 60,000 points. One real defect: in-court labels (the court thirds and dozens of others) could be true on or beyond a boundary line. Fixed once for all entries with an in-bounds gate: only entries marked oob_ok (63: out-of-bounds zones, throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose) can be true off the court. The only remaining property-test hits are by design (pbpstats corner three uses the literal NBA 8.7 ft cut). Converged: no high or medium defect left that code can show.
+
 Result: {{N_ENTRIES}} entries, {{N_EXPR}} with an exact rule.

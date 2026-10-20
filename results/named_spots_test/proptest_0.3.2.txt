@@ -1,0 +1,33 @@
+mirror done 23.883581161499023
+partitions done 29.94861102104187
+rays done 234.38413882255554
+lines done 236.68313789367676
+gating done 236.68391394615173
+corner done 236.8815279006958
+above:pbpstats_arc3 2304 [(6.761137696183996, 2.4175132684983116), (6.5619811631661085, 1.9404918593206206)]
+corner:pbpstats_corner3 2304 [(6.761137696183996, 2.4175132684983116), (6.5619811631661085, 1.9404918593206206)]
+nan_ctx:ball_line_depth 1 [1]
+nan_ctx:p1211_interceptor 1 [1]
+nan_ctx:p1211_wing 1 [1]
+nan_ctx:p122_wing 1 [1]
+nan_ctx:p122_x1 1 [1]
+nan_ctx:p122_x5 1 [1]
+nan_ctx:p131_full_centre 1 [1]
+nan_ctx:p131_full_chaser 1 [1]
+nan_ctx:p131_full_warrior 1 [1]
+nan_ctx:p131_full_wing 1 [1]
+nan_ctx:p131_half_centre 1 [1]
+nan_ctx:p131_half_chaser 1 [1]
+nan_ctx:p131_half_warrior 1 [1]
+nan_ctx:p131_half_wing 1 [1]
+nan_ctx:p221_34_guard 1 [1]
+nan_ctx:p221_full_guard 1 [1]
+nan_ctx:p221_full_mid 1 [1]
+nan_ctx:p221_full_prevent 1 [1]
+nan_ctx:p221_half_back 1 [1]
+nan_ctx:p221_half_front 1 [1]
+nan_ctx:p221_half_middle 1 [1]
+nan_ctx:slob_safety_back 1 [1]
+TOTAL issue kinds 24
+
+[exited with code 0]

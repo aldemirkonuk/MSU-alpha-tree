@@ -21,8 +21,12 @@ def test_anchors_probes_and_mirrors():
 
 def test_court_region_is_an_exact_partition():
     part = partition_checks(DOC, SPOTS, 0.25)
-    for name in ("zone_scheme:court_region", "zone_scheme:nba_basic", "zone_scheme:ctg", "zone_scheme:pbpstats"):
-        assert part[name]["covered"] == part[name]["points"], name
+    full = part["zone_scheme:court_region"]
+    assert full["covered"] == full["points"] and full["overlaps"] == 0
+    inb = part["zone_scheme:nba_basic"]["covered"]  # crosswalks cover exactly the in-bounds floor
+    assert 0 < inb < full["points"]
+    for name in ("zone_scheme:nba_basic", "zone_scheme:ctg", "zone_scheme:pbpstats", "zone_scheme:nba_range", "zone_scheme:br_distance"):
+        assert part[name]["covered"] == inb, name
         assert part[name]["overlaps"] == 0, name
 
 

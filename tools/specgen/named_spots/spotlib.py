@@ -111,6 +111,8 @@ class Spot:
             return None
         if not _ok(x) or not _ok(y):
             return None  # missing or non-finite position: label unknown, never out of bounds
+        if not self.d.get("oob_ok") and not (abs(x) < C["SIDE_X"] and C["END_Y"] < y < C["FAR_END_Y"]):
+            return False  # in-bounds gate (edge rule): only oob_ok entries can be true off the court
         if "z" in self.names and not _ok(z):
             return None  # height needed but not measured: label absent (reason no_height)
         need = {"bx", "by"} if "ball_side" in self.ctx else set()

@@ -1,6 +1,6 @@
 # Named-spot dictionary
 
-Date: 2026-10-20. Version 0.3.1. Status: proposal under the build freeze.
+Date: 2026-10-20. Version 0.3.2. Status: proposal under the build freeze.
 
 This page is generated from `config/named_spots.yaml` by `tools/specgen/named_spots/gen_doc.py` (prose from `tools/specgen/named_spots/doc_template.md`). Do not edit it by hand. The YAML holds 602 entries; 518 of them have an exact rule that a computer can check, and 84 are procedures or team-level rules written in words only.
 
@@ -97,6 +97,7 @@ Source: docs/rules/PRMBB_RulesBook.pdf (2026-27); docs/data/court_constants_chec
 - Lane and FT line: the lines are part of the lane (\|x\| <= 1.8288, y <= 4.191).
 - Exact ties between non-rule zones go to the zone nearer the rim.
 - In-court zones never own a boundary line; deliberate exceptions (traps and award zones that include the line) say so in their bounds_text.
+- In-bounds gate: an entry is evaluated as false for any point on or beyond a boundary line (\|x\| >= 7.62, y <= -1.6002, y >= 27.051) unless it carries oob_ok: true (out-of-bounds zones, throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose). out_of_bounds itself is oob_ok.
 
 **When two labels overlap** (precedence, from the YAML): Single-winner layers (spot and every zone_scheme with partition: true) pick the entry with the minimum rank = family_rank \* 1000 + priority; family_rank canonical 0, painted 0, interior 1, perimeter 2, defensive 3, restart 4, rule/review 5, shot_zone 6, empirical 7, repo 8. If no spot matches, the primary falls back to court_region. landmark, relative, restart, restart_alignment, fullcourt, rule and non-partition zone schemes are multi-label (rank only orders their output).
 
@@ -852,13 +853,13 @@ The crosswalks to NBA.com (basic, range, area), Cleaning the Glass, pbpstats and
 
 | Label | Meaning | Exact rule (expr) | Anchor |
 |---|---|---|---|
-| `middle_third`<br>Middle third of the court<br>confidence medium | \|x\| < 2.54 (15.24 / 6). | `ax < 2.54` | none (no single point) |
+| `middle_third`<br>Middle third of the court<br>confidence medium | \|x\| < 2.54 (15.24 / 6). | `ax < 2.54 and END_Y < y < FAR_END_Y` | none (no single point) |
 
 *Side labels (written for the right side; the left side is the mirror image, suffix `_right` / `_left`)*
 
 | Label | Meaning | Exact rule (expr) | Anchor |
 |---|---|---|---|
-| `outer_third_right`, `outer_third_left`<br>Outer third of the court<br>confidence medium | 2.54 <= \|x\| <= 7.62. No-middle compliance: the ball stays in the outer third and the on-ball defender is offset 0.3-0.8 m toward the middle. | `2.54 <= x < SIDE_X` | none (no single point) |
+| `outer_third_right`, `outer_third_left`<br>Outer third of the court<br>confidence medium | 2.54 <= \|x\| <= 7.62. No-middle compliance: the ball stays in the outer third and the on-ball defender is offset 0.3-0.8 m toward the middle. | `2.54 <= x < SIDE_X and END_Y < y < FAR_END_Y` | none (no single point) |
 
 **`transition_lanes_3`** (partition yes). Three running lanes in transition: middle and two wings.
 
@@ -1568,12 +1569,12 @@ Loader contract (for the programmer):
 7. Question: Perimeter terms: approve extended_corner (12-22 deg), keep "corner pocket" and "slot of the corner" as aliases, FT-extended wing anchor 6.0 or 6.5? Recommended: extended_corner as an optional tag only, keep the aliases, anchor 6.0.
 8. Question: What does "two-side" in docs/requirements.md mean? Recommended: alias of help_side_two_away, unless staff use it for ball reversal.
 9. Question: Should the expression language gain screener coordinates, a dribble flag and team aggregates, and should the PnR depth sign in defense_full be fixed? Recommended: yes to both; several of the 11 entries without an expression become computable.
-   Status in 0.3.1: adopted. The evaluator now accepts the context names `dribbling`, `game_clock_s`, `lowest_attacker_y`, `lowest_defender_y`, `n_off_in_paint`, `px`, `py`, `shot_clock_s`, `sx`, `sy`, `t_since_catch_s`, `table_side_x_sign`, `team_centroid_x`, `team_centroid_y`. Exact rules use these today: `dribbling` (1 entry), `game_clock_s` (1 entry), `lowest_attacker_y` (1 entry), `lowest_defender_y` (1 entry), `px` (1 entry), `py` (1 entry). Of the 7 entries loop 2 named, these now have an exact rule: `press_goalie`, `spot_of_exit`, `dead_ball_deny`; these stay in words: `leak_out_runner`, `offball_top_lock`, `offball_trail`, `offball_under_gap`. 84 entries in total have no exact rule (most are labelling procedures, provider encodings and team-level rules added in 0.2.0). The PnR depth sign in defense_full is a separate repo edit.
+   Status in 0.3.2: adopted. The evaluator now accepts the context names `dribbling`, `game_clock_s`, `lowest_attacker_y`, `lowest_defender_y`, `n_off_in_paint`, `px`, `py`, `shot_clock_s`, `sx`, `sy`, `t_since_catch_s`, `table_side_x_sign`, `team_centroid_x`, `team_centroid_y`. Exact rules use these today: `dribbling` (1 entry), `game_clock_s` (1 entry), `lowest_attacker_y` (1 entry), `lowest_defender_y` (1 entry), `px` (1 entry), `py` (1 entry). Of the 7 entries loop 2 named, these now have an exact rule: `press_goalie`, `spot_of_exit`, `dead_ball_deny`; these stay in words: `leak_out_runner`, `offball_top_lock`, `offball_trail`, `offball_under_gap`. 84 entries in total have no exact rule (most are labelling procedures, provider encodings and team-level rules added in 0.2.0). The PnR depth sign in defense_full is a separate repo edit.
 10. Question: May the repo follow the dictionary as one batch (is_three strict, restricted area 1.22 -> 1.27, corner_deep rename, post_zone switch, A0 lane-stack spots, storage y range -3.6 to 29.0)? Recommended: yes, as one change set when the freeze lifts; every edit is listed under supersedes on its entry.
 11. Question: Pay for or log into KenPom, ShotQuality, CBB Analytics, ShotTracker or Torvik to read their zone definitions? Recommended: no for v1; CBBD and the rules book cover the canonical zones.
 12. Question: Frame conventions: defenders labelled only in the offence's frame, relative entries unmirrored, transition safety in his own rim's frame, "passes away" from a learned model later? Recommended: offence frame only, no mirroring for side n/a, own-rim frame for the safety, learned model later.
 13. Question: What does MSU staff mean by 'elbow extended': the slot above the elbow out at the arc (slot_lane_line), the wing at FT-line height (ft_line_extended / wing_mid), or the strip just outside the elbow inside the arc (pinch_post)? Recommended: give it to slot_lane_line only (its current speech_alias) and confirm with staff.
-   Status in 0.3.1: open. The speech alias "elbow extended" sits on `slot_lane_line`.
+   Status in 0.3.2: open. The speech alias "elbow extended" sits on `slot_lane_line`.
 
 ## 12. Settled only on film or tracking
 
@@ -1663,5 +1664,9 @@ Result: 599 entries, 515 with an exact rule.
 **0.3.0 (2026-10-20, loop 3, convergence round 1).** Five lenses (regressions from loop 2, adversary on the new entries, compute budget, rules-book recheck, completeness) with skeptics. Main fixes: loop 2 had merged alias lists instead of replacing them, so 41 alias phrases had two owners; aliases now replace, and an alias_resolution table gives every ambiguous coaching word one owner (high_post renamed high_post_strip). The restart and full-court layers became multi-label (a player can be in several restart roles at once). The reference evaluator now treats NaN, infinity and positions beyond 100 m as missing. Shot entry depth was added (front of rim, swish band 7-11 in, back of rim, long). This page and the court picture are generated from the YAML.
 
 **0.3.1 (2026-10-20, loop 4, convergence round 2).** Four fresh lenses: regressions 0.2.0 to 0.3.0, property-based random testing (mirror symmetry, monotonicity, partitions, context and height rules), real-world labelling of CBBD shots and common alignments, and doc truth. No geometry or logic defect was found in the main partitions. Fixed: three rule texts still called restart and full court single-winner; a sliver of wide threes just above the corner break got neither corner nor above-the-break; twelve in-court zones owned the boundary lines; the 38-ft coaching-box line now follows the bench side; one alias phrase had two owners; the CBBD encoding entry now records the video-checked sign; stale doc lists removed.
+
+Result of 0.3.1: 602 entries, 518 with an exact rule.
+
+**0.3.2 (2026-10-20, loop 5, final convergence).** Regression check of the loop-4 changes and seeded property tests: mirror symmetry on 30,000 random points, partitions on 40,000, 4,000 rays for the three-point line, boundary lines, context and height gating, corner vs above-break on 60,000 points. One real defect: in-court labels (the court thirds and dozens of others) could be true on or beyond a boundary line. Fixed once for all entries with an in-bounds gate: only entries marked oob_ok (63: out-of-bounds zones, throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose) can be true off the court. The only remaining property-test hits are by design (pbpstats corner three uses the literal NBA 8.7 ft cut). Converged: no high or medium defect left that code can show.
 
 Result: 602 entries, 518 with an exact rule.

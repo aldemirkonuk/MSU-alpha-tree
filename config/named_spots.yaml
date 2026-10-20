@@ -1,4 +1,4 @@
-version: 0.3.1
+version: 0.3.2
 date: '2026-10-20'
 status: proposal under the build freeze; canonical source for every spot, zone and position label
 owner: Mac session (msu-colab) for Aldemir
@@ -50,6 +50,8 @@ edge_rules:
 - 'Lane and FT line: the lines are part of the lane (|x| <= 1.8288, y <= 4.191).'
 - Exact ties between non-rule zones go to the zone nearer the rim.
 - In-court zones never own a boundary line; deliberate exceptions (traps and award zones that include the line) say so in their bounds_text.
+- 'In-bounds gate: an entry is evaluated as false for any point on or beyond a boundary line (|x| >= 7.62, y <= -1.6002, y >= 27.051) unless it carries oob_ok: true (out-of-bounds zones,
+  throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose). out_of_bounds itself is oob_ok.'
 precedence: 'Single-winner layers (spot and every zone_scheme with partition: true) pick the entry with the minimum rank = family_rank * 1000 + priority; family_rank canonical 0, painted
   0, interior 1, perimeter 2, defensive 3, restart 4, rule/review 5, shot_zone 6, empirical 7, repo 8. If no spot matches, the primary falls back to court_region. landmark, relative,
   restart, restart_alignment, fullcourt, rule and non-partition zone schemes are multi-label (rank only orders their output).'
@@ -614,6 +616,7 @@ entries:
     expr: ax >= SIDE_X or y <= END_Y or y >= FAR_END_Y
     bounds_text: '|x| >= 7.62 or y <= -1.6002 or y >= 27.051. Boundary lines are out of bounds.'
   plain: 'On or outside a boundary line: |x| >= 7.62 m, y <= -1.6002 m or y >= 27.051 m.'
+  oob_ok: true
 - id: paint_non_ra
   layer: zone_scheme:court_region
   name: Paint outside the restricted area
@@ -2378,6 +2381,7 @@ entries:
     - 18.46
   - - 7.62
     - 18.57
+  oob_ok: true
 - id: block_zone
   layer: landmark
   name: Block neutral zone (12 x 36 in strip at the block), right
@@ -2517,6 +2521,7 @@ entries:
   - - 7.68
     - -1.63
   notes: 'Repo: offense_full uses baseline y = -1.60; offense_full section 0.1 (line 24) and transition_full line 68 use -1.575 (attribution corrected from set_taxonomy).'
+  oob_ok: true
 - id: free_throw_line
   layer: landmark
   name: Free-throw line (painted)
@@ -2900,6 +2905,7 @@ entries:
     - 6.88
   - - 7.62
     - 6.99
+  oob_ok: true
 - id: restraining_line
   layer: landmark
   name: Restraining line (behind the end line)
@@ -2939,6 +2945,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by rules_book: The line is placed 6 ft from the end line''s inside edge (-3.4290). On the court diagram the 6'' dimension runs from the end line''s outer edge to the
     restraining line. oob_endline_to_restraining_line an'
+  oob_ok: true
 - id: restricted_area_arc_line
   layer: landmark
   name: Restricted-area arc (painted, curved part)
@@ -3093,6 +3100,7 @@ entries:
     - 0
   - - 7.64
     - 27.11
+  oob_ok: true
 - id: three_point_arc
   layer: landmark
   name: Three-point line, arc (painted)
@@ -3287,6 +3295,7 @@ entries:
   - - 0
     - -1.81
   notes: Added from the skeptic's missing-spot list. Does not move the boundary.
+  oob_ok: true
 - id: free_throw_semicircle
   layer: landmark
   name: Free-throw semicircle (shooter's half circle)
@@ -3409,6 +3418,7 @@ entries:
   - - 7.2
     - -1.9
   notes: Added from the skeptic's missing-spot list.
+  oob_ok: true
 - id: elbow_landmark
   layer: landmark
   name: Elbow (lane line x FT line corner), right
@@ -4425,6 +4435,7 @@ entries:
   - - 7.63
     - -2
   notes: 'Rule 1-3.3: a 6-ft restraining area where non-playing personnel are not permitted while the ball is live; the line may be shorter where space is lacking.'
+  oob_ok: true
 - id: oob_far_endline_to_restraining_line
   layer: landmark
   name: Far end-line area out to the restraining line
@@ -4457,6 +4468,7 @@ entries:
     - 27.05
   - - 7.63
     - 28
+  oob_ok: true
 - id: sideline_clear_space
   layer: landmark
   name: Unobstructed space outside the sidelines
@@ -4484,6 +4496,7 @@ entries:
   - - 8.6
     - 5
   notes: The preferred 10-ft variant is SIDE_X + LINE_W + 3.048; bench and table areas overlap it.
+  oob_ok: true
 - id: half_court_centre
   layer: landmark
   name: Half-court centre point
@@ -4621,6 +4634,7 @@ entries:
     layer: restart
     expr: ax >= SIDE_X and 6.9342 <= y <= 9.9822
     bounds_text: Outside the sideline, 6.9342 <= y <= 9.9822 (the 28-ft to 38-ft lines). The side and end come from game metadata.
+  oob_ok: true
 - id: coaching_box_38ft_line
   layer: landmark
   name: 38-foot coaching-box line
@@ -4661,6 +4675,7 @@ entries:
     - 10.04
   supersedes:
   - named-spot entry coaching_box_38ft_line_landmark (duplicate, folded 2026-10-20 loop 4)
+  oob_ok: true
 - id: second_half_throw_in_division_line
   layer: landmark
   name: Division-line throw-in spot opposite the scorers' table (2nd-half start)
@@ -4700,6 +4715,7 @@ entries:
   review_fixes_2026_10_20:
   - 'loop2 EDGE-CASE ADVERSARY: All table_side entries share one multiplier, table_side_x_sign. This entry alone writes the NON-table side at +x, so after the multiplier it sits on the
     scorers'' side, the opposite of R6-3.6.'
+  oob_ok: true
 - id: division_line_extended
   layer: landmark
   name: Division line extended past the sidelines
@@ -4737,6 +4753,7 @@ entries:
   - - 8
     - 12.76
   notes: Added from the skeptic's missing-spot list.
+  oob_ok: true
 - id: scorers_x_mark
   layer: landmark
   name: Scorers' 'X' / NCAA logo at the division line
@@ -4771,6 +4788,7 @@ entries:
     - 12.7254
   - - 8.2
     - 12.3
+  oob_ok: true
 - id: team_bench_area
   layer: landmark
   name: Team bench area
@@ -4808,6 +4826,7 @@ entries:
     - 6.94
   - - 11.3
     - 2
+  oob_ok: true
 - id: scorers_table_area
   layer: landmark
   name: Scorers' and timers' table
@@ -4829,6 +4848,7 @@ entries:
     supports: 1-21.2 benches equidistant from the division line extended on each side of the table
   - url: docs/rules/PRMBB_RulesBook.pdf#page=31
     supports: 1-21.3 table courtside at midcourt
+  oob_ok: true
 - id: timeout_huddle_rectangle
   layer: landmark
   name: Timeout / replay / injury huddle rectangle
@@ -4867,6 +4887,7 @@ entries:
   - - 4.7
     - -1.61
   notes: 'Fix applied: rule number 5-14.2 (was ''5-?''). During a 30-second timeout players stand inside the boundary lines (5-14.3).'
+  oob_ok: true
 - id: commercial_logo_box
   layer: landmark
   name: Commercial logo box (10 x 10 ft), one per half
@@ -4909,6 +4930,7 @@ entries:
     - 7.05
   - - 4.7
     - 10.12
+  oob_ok: true
 - id: short_roll_pocket
   layer: relative
   name: Short-roll pocket (4-on-3 window)
@@ -7290,6 +7312,7 @@ entries:
   sources:
   - url: file:docs/rules/PRMBB_RulesBook.pdf
     supports: '7-4.6.b: in the 7-4.6.a.1-4 cases any player may pass along the end line to a teammate also out of bounds'
+  oob_ok: true
 - id: leak_out_runner
   layer: relative
   name: Leak-out / cherry-pick runner
@@ -7773,6 +7796,7 @@ entries:
   - - 5.4
     - 3
   notes: Applies to referees only.
+  oob_ok: true
 - id: official_lead
   layer: relative
   name: 'Official crew position: lead'
@@ -7800,6 +7824,7 @@ entries:
   - - 7
     - -2.2
   notes: Applies to referees only.
+  oob_ok: true
 - id: official_trail
   layer: relative
   name: 'Official crew position: trail'
@@ -7829,6 +7854,7 @@ entries:
   - - 5.4
     - 9
   notes: Applies to referees only.
+  oob_ok: true
 - id: rule_verticality_cylinder
   layer: relative
   name: Verticality cylinder (block/charge geometry)
@@ -7958,6 +7984,7 @@ entries:
   - - 2.7432
     - -1.59
   notes: Matches offense_full A0 BLOB inbounder (3.33, -34.7 deg).
+  oob_ok: true
 - id: slob_28ft_spot
   layer: restart
   name: Sideline designated throw-in spot at the 28-ft mark, right
@@ -7998,6 +8025,7 @@ entries:
   - - 7.92
     - 7.4
   notes: offense_full A0 SLOB (10.5, 41 deg) agrees within 2 cm.
+  oob_ok: true
 - id: spot_of_exit
   layer: restart
   name: Spot of exit (out-of-bounds throw-in)
@@ -8072,6 +8100,7 @@ entries:
       px: null
       py: null
     want: null
+  oob_ok: true
 - id: throw_in_zone_endline_rectangle
   layer: restart
   name: Throw-in imaginary rectangle (end line to FT line extended)
@@ -8460,6 +8489,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: y > FAR_END_Y is strict, so a thrower standing on the far end line at y = 27.051 is excluded. That point is out of bounds by Rule 7-1.1,
     and the near-end twin uses <=.'
+  oob_ok: true
 - id: blob_designated_spot_restart
   layer: restart
   name: BLOB inbounder designated spot (3 ft outside the lane on the end line)
@@ -8503,6 +8533,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: y < END_Y is a strict test, so a BLOB thrower standing on the end line at y = -1.6002 is not on the designated spot. Its painted and
     repo twins (blob_endline_spot, blob_designated_spot) both use y <= '
+  oob_ok: true
 - id: ft_lane_open_low
   layer: restart
   name: Lowest lane space (must remain open)
@@ -8730,6 +8761,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: After a made basket, a thrower on the end line at y = 27.051 is not labelled because y > FAR_END_Y is strict. A player on the line
     is out of bounds (Rule 7-1.1), and the thrower may be anywhere on tha'
+  oob_ok: true
 - id: jump_ball_jumper_attacking
   layer: restart
   name: Jumper of the team attacking the y = 0 rim
@@ -8852,6 +8884,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a SLOB thrower standing on the sideline at x = 7.62 is not labelled. Rule 7-1.1 says on the line is out of
     bounds. The painted twin slob_28ft_spot and the repo twin spot_8p53m'
+  oob_ok: true
 - id: slob_division_line_designated_spot
   layer: restart
   name: Division-line designated spot (second-half start, AP or throw-in violation)
@@ -8892,6 +8925,7 @@ entries:
     the frontcourt/backcourt half spots, which say which half the thrower stands in.'
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: jump_ring_back
   layer: restart
   name: Non-jumper ring space, own-basket side
@@ -9000,6 +9034,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1). The repo twin spot_8p53m_backcourt
     uses >=.'
+  oob_ok: true
 - id: slob_division_line_backcourt
   layer: restart
   name: SLOB at the division line, backcourt side (ATO backcourt inbound)
@@ -9034,6 +9069,7 @@ entries:
   notes: NCAA men's teams cannot advance the ball after a timeout, so late ATOs start here or deeper.
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: slob_division_line_frontcourt
   layer: restart
   name: SLOB at the division line, frontcourt side
@@ -9067,6 +9103,7 @@ entries:
     - 12.2
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: slob_ft_extended_backcourt
   layer: restart
   name: Backcourt sideline reference at the backcourt FT line extended
@@ -9100,6 +9137,7 @@ entries:
     - 21.2
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: blob_ballside_corner
   layer: restart
   name: BLOB ball-side corner receiver
@@ -9137,6 +9175,7 @@ entries:
   - - 7
     - -1.61
   notes: Needs bx (ball floor x) in the eval context; x·bx is invariant under the loader's joint x -> -x mirror. Probes assume the ball at the right BLOB spot (bx 2.74).
+  oob_ok: true
 - id: ft_leak_out
   layer: restart
   name: FT leak-out / safety-deep spot
@@ -9276,6 +9315,7 @@ entries:
   - - 7
     - -1.61
   notes: Needs bx in the eval context; probes assume the ball at the right 28-ft mark (bx 7.92). No external source opened (repo offense_full SLOB Cross + elevator / Zipper only).
+  oob_ok: true
 - id: blob_box_high
   layer: restart
   name: BLOB box high spot (elbow)
@@ -9495,6 +9535,7 @@ entries:
   notes: 7-3.2.c. The backcourt 28-ft and FT-extended entries are reference marks inside this strip and take priority.
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: slob_spot_of_exit_frontcourt
   layer: restart
   name: Frontcourt sideline throw-in at the spot of exit
@@ -9532,6 +9573,7 @@ entries:
   notes: '7-3.2.a exception: the defense caused the ball out of bounds (9-2). Generic strip; the specific marks take priority.'
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: rule_free_throw_lane_space_membership
   layer: restart
   name: Free-throw lane-space membership (players on the lane during free throws)
@@ -9681,6 +9723,7 @@ entries:
     - 6.9342
   notes: 'source_kind is mixed. The width, ''on or over'' and the spot locations are rule_book. Centring the 3-ft spot on the mark is an assumption: the book gives the spot''s location
     and width, not its alignment. The 28-ft mark''s edge is also unstated (court_constants_proposed.yaml).'
+  oob_ok: true
 - id: blob_designated_spot
   layer: restart
   name: BLOB designated spot
@@ -9722,6 +9765,7 @@ entries:
   - - 3.21
     - -2
   notes: The left angle uses the atan2 value (-149.74 for the mark).
+  oob_ok: true
 - id: spot_8p53m
   layer: restart
   name: SLOB 8.53 m designated spot (frontcourt)
@@ -9762,6 +9806,7 @@ entries:
     - 6.476
   - - 7.92
     - 7.392
+  oob_ok: true
 - id: spot_8p53m_backcourt
   layer: restart
   name: SLOB 8.53 m designated spot (backcourt)
@@ -9796,6 +9841,7 @@ entries:
     - 18.05
   - - 8
     - 18.98
+  oob_ok: true
 - id: slob_stack_region
   layer: restart
   name: SLOB stack region (A6.21)
@@ -9905,6 +9951,7 @@ entries:
     opened.
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded, although being on the line is out of bounds (Rule 7-1.1).'
+  oob_ok: true
 - id: far_restricted_area
   layer: fullcourt
   name: Far-end restricted area
@@ -10738,6 +10785,7 @@ entries:
   - - 6
     - 16.01
   notes: '80 / 4-up: O2/O4 near half court on the sidelines (offense_full 13.x).'
+  oob_ok: true
 - id: trailer_spot
   layer: fullcourt
   name: Trailer arrival spot (top/slot)
@@ -10833,6 +10881,7 @@ entries:
     - 23.49
   - - 7.63
     - 25
+  oob_ok: true
 - id: trap_coffin_corner
   layer: fullcourt
   name: Half-court trap corner (coffin corner), frontcourt side
@@ -10863,6 +10912,7 @@ entries:
     - 10
   - - 6
     - 8.49
+  oob_ok: true
 - id: trap_halfcourt_backcourt_corner
   layer: fullcourt
   name: Half-court trap corner, backcourt side of the division line
@@ -10896,6 +10946,7 @@ entries:
   - - 5
     - 12.7
   notes: Counterpart of trap_coffin_corner_right; the division line and sideline act as extra defenders before the ball crosses.
+  oob_ok: true
 - id: pb_deep_long
   layer: fullcourt
   name: Press-break deep / long receiver (fly)
@@ -14002,9 +14053,7 @@ entries:
   family: review
   source_kind: published
   confidence: medium
-  probes_inside:
-  - - 7.6288
-    - 4.3
+  probes_inside: []
   probes_outside:
   - - 7.1188
     - 4.3
@@ -14013,7 +14062,7 @@ entries:
   layer: zone_scheme:court_thirds
   name: Middle third of the court
   side: centre
-  expr: ax < 2.54
+  expr: ax < 2.54 and END_Y < y < FAR_END_Y
   bounds_text: '|x| < 2.54 (15.24 / 6).'
   edge_basis: Sideline inside edges |x| = 7.62; thirds of 15.24.
   reference_point: feet_midpoint
@@ -14037,11 +14086,15 @@ entries:
     - 1
   - - -2.6
     - 3
+  - - 1.0
+    - -1.6002
+  review_fixes_2026_10_20:
+  - 'loop5: end lines are out of bounds too (limit END_Y < y < FAR_END_Y)'
 - id: outer_third
   layer: zone_scheme:court_thirds
   name: Outer third of the court
   side: mirrored
-  expr: 2.54 <= x < SIDE_X
+  expr: 2.54 <= x < SIDE_X and END_Y < y < FAR_END_Y
   bounds_text: '2.54 <= |x| <= 7.62. No-middle compliance: the ball stays in the outer third and the on-ball defender is offset 0.3-0.8 m toward the middle.'
   reference_point: feet_midpoint
   priority: 1
@@ -14066,8 +14119,11 @@ entries:
     - 0
   - - 7.62
     - 5.0
+  - - 4.0
+    - -1.6002
   review_fixes_2026_10_20:
   - 'loop4 PBT-2: boundary lines are out of bounds'
+  - 'loop5: end lines are out of bounds too (limit END_Y < y < FAR_END_Y)'
 - id: ctg_rim
   layer: zone_scheme:ctg
   name: CTG Rim
@@ -15074,6 +15130,7 @@ entries:
     - 27.06
   - - 7.63
     - 12.7
+  oob_ok: true
 - id: oob_behind_attacked_endline
   layer: zone_scheme:out_of_bounds
   name: Out of bounds behind the attacked end line
@@ -15102,6 +15159,7 @@ entries:
     - -1.6
   - - 7.63
     - -2
+  oob_ok: true
 - id: oob_behind_far_endline
   layer: zone_scheme:out_of_bounds
   name: Out of bounds behind the far (own) end line
@@ -15127,6 +15185,7 @@ entries:
     - 27.05
   - - 7.63
     - 28
+  oob_ok: true
 - id: oob_corner
   layer: zone_scheme:out_of_bounds
   name: Out-of-bounds corner beyond the attacked end line and sideline
@@ -15154,6 +15213,7 @@ entries:
   probes_outside:
   - - 7.92
     - -1.6
+  oob_ok: true
 - id: oob_far_corner
   layer: zone_scheme:out_of_bounds
   name: Out-of-bounds corner beyond the far end line and sideline
@@ -15181,6 +15241,7 @@ entries:
   probes_outside:
   - - 7.92
     - 27.05
+  oob_ok: true
 - id: oob_frontcourt_sideline
   layer: zone_scheme:out_of_bounds
   name: Frontcourt sideline out-of-bounds strip
@@ -15213,6 +15274,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by data engineering: The out_of_bounds sub-layer uses strict inequalities at the inside edges (x > SIDE_X, y < END_Y, y > FAR_END_Y). Points on a boundary line are therefore
     OOB in court_region but get no oob_* label. Val'
+  oob_ok: true
 - id: pack_line_inside
   layer: zone_scheme:pack_line
   name: Inside the pack line
@@ -16995,6 +17057,7 @@ entries:
     - 4.2
   - - -1.85
     - 2
+  oob_ok: true
 - id: ft_non_lane_waiting_area
   layer: rule
   name: Free-throw waiting area (non-lane players)
@@ -17071,6 +17134,7 @@ entries:
   - - 1.8
     - 2
   notes: Added from the skeptic's missing-spot list. The bench-side copy is the one the timeout rule uses.
+  oob_ok: true
 - id: line_28ft_extended
   layer: rule
   name: 28-foot line extended (across the court)
@@ -17105,6 +17169,7 @@ entries:
   - - 0
     - 6.99
   notes: Added from the skeptic's missing-spot list.
+  oob_ok: true
 - id: post_area
   layer: rule
   name: Post area (rule definition)
@@ -17529,6 +17594,7 @@ entries:
   notes: Tested on the stoppage location (ball, or the foul location when the official uses it). 2025-26 proposal 6 and the 2026-27 Major Rules Differences (NCAA men column) use the
     straight FT-line-extended split; the 2026-27 rules-book text of 7-3.2.b is garbled and still mentions an imaginary line from the end line/sideline intersection (edition wording conflict
     kept as an open question).
+  oob_ok: true
 - id: ft_lane_occupancy_rule
   layer: rule
   name: FT lane occupancy and vacancy flags
@@ -17608,6 +17674,7 @@ entries:
     - 4.19
   - - 7.63
     - 8
+  oob_ok: true
 - id: slob_bench_side_flag
   layer: rule
   name: Sideline throw-in on the bench (scorers') side vs the opposite side
@@ -17712,6 +17779,7 @@ entries:
     - -0.381
     - 4.2
   notes: Probes with a third value are (x, y, z); two-value probes are floor contacts (z = 0).
+  oob_ok: true
 - id: rule_out_of_bounds
   layer: rule
   name: Player out-of-bounds membership
@@ -17755,6 +17823,7 @@ entries:
     - 27.04
   - - 0
     - 12.7
+  oob_ok: true
 - id: rule_ball_court_status
   layer: rule
   name: Ball frontcourt status and the 10-second count
@@ -17953,6 +18022,7 @@ entries:
   - - 2.5
     - 0.5
   notes: Anchor r = 1.2954, theta = 90. A foot on the end line is both in the three-second lane and out of bounds; out of bounds wins under rule_label_precedence.
+  oob_ok: true
 - id: ball_goaltend_zone
   layer: rule
   name: Ball above ring level, outside the cylinder (goaltending region)
