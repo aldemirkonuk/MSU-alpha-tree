@@ -1,3 +1,6 @@
+# Dated note 2026-10-20: superseded by config/named_spots.yaml (0.1.0), the canonical named-spot dictionary.
+# Kept unchanged for history. Changes: block becomes the painted block landmark plus low_post; short_corner is defined
+# (3.5 < |x| < 6.6008, y < 1.5); '45' is a speech alias (speech_45), not a region.
 # Common terms linked to measured definitions.
 # A term keeps its common meaning in context; this map records what a source
 # most likely means, it does not rewrite every use of the word.

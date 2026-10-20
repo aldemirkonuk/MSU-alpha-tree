@@ -1,0 +1,103 @@
+# Proposed schema changes for the named-spot dictionary (2026-10-20). PROPOSAL; do not treat as schema.
+# Source of every label: config/named_spots.yaml (0.1.0). Existing schema/tables/*.yaml are not edited beyond a dated note;
+# the requirements session approves and the schema owner merges. Licence of every column: computed by us (inherits the
+# strictest class of its inputs). as_of: IN_GAME for all columns.
+version: 0.1.0
+status: proposed
+date: '2026-10-20'
+owner: Mac session (msu-colab), Aldemir's request 19-20 Oct (named-spot dictionary, every player, every frame)
+design: >-
+  Two stores. (A) Dense: one row per object per frame (10 players + the ball) for the primary labels that every consumer
+  needs: court_region, three_depth, the single-winner spot, side and boundary/hysteresis state. These extend
+  player_positions (players) and ball_states (ball). (B) Intervals: one row per (object, layer, label) stretch for the
+  multi-label layers (landmark, relative, restart, fullcourt, rule, every zone_scheme). On a 10-player x 1000-frame
+  synthetic stream dense storage of all labels is 437,418 rows; intervals are 22,805 (19x fewer) before hysteresis.
+  Measured cost with one env per object-frame: 0.81 ms per frame for all 474 expressions (budget 33.37 ms at 29.97 fps).
+column_additions:
+  player_positions: &dense
+  - column: court_region
+    type: enum (16 side-qualified labels of zone_scheme:court_region + unknown)
+    nullable: false
+    definition: Canonical region of the reference point (feet midpoint) in the attacked-rim frame; unknown when x or y is missing or predicted past 0.5 s.
+  - column: court_region_p
+    type: uint8
+    unit: percent
+    range: '[0, 100]'
+    nullable: true
+    definition: Probability the label is right given sigma_m (Monte Carlo only within 3 sigma of a boundary; 100 elsewhere).
+  - column: three_depth
+    type: enum (corner, standard, deep, logo, heave)
+    nullable: true
+    definition: zone_scheme:three_depth, set only in three-point territory or the backcourt.
+  - column: named_spot
+    type: enum (spot layer ids, side-qualified)
+    nullable: true
+    definition: Single-winner coaching spot after precedence (minimum rank) and hysteresis; null when no spot matches (court_region is the fallback).
+  - column: named_spot_p
+    type: uint8
+    unit: percent
+    range: '[0, 100]'
+    nullable: true
+    definition: Probability for named_spot (as court_region_p).
+  - column: second_spot
+    type: enum (spot layer ids)
+    nullable: true
+    definition: Runner-up spot when the point is within h_min of a spot boundary.
+  - column: m_deg
+    type: float32
+    unit: deg
+    range: '[-180, 90]'
+    nullable: true
+    definition: Folded angle m (left side mapped onto the right) used by every angle rule.
+  - column: ref_point_used
+    type: enum (feet_midpoint, any_foot, last_floor_contact, pelvis, ball_floor_projection, ball_3d)
+    nullable: false
+    definition: Reference point the labels were computed from.
+  - column: sigma_m
+    type: float32
+    unit: m
+    range: '[0, 5]'
+    nullable: true
+    definition: Position standard error used for boundary probabilities.
+  - column: boundary_flag
+    type: bool
+    nullable: false
+    definition: True when the point is within h_min (0.10 m painted, 0.25 m convention) of the winning label's boundary.
+  - column: hysteresis_state
+    type: enum (stable, pending)
+    nullable: false
+    definition: pending while a label change waits for its dwell (133 ms painted / 233 ms convention).
+  - column: time_in_label_ms
+    type: int32
+    unit: ms
+    range: '[0, game length]'
+    nullable: false
+    definition: Elapsed time since named_spot (or court_region when no spot) last changed.
+  - column: attacked_basket
+    type: int8
+    range: '{-1, +1}'
+    nullable: false
+    definition: Which basket the frame is computed for (team in possession attacks it; switches at halftime).
+  ball_states: *dense
+new_tables:
+  spot_intervals:
+    status: proposed
+    grain: one row per object per label per continuous stretch (multi-label layers)
+    primary_key: [game_id, pass, object_id, layer, label_id, start_frame]
+    storage: Parquet, processed/<game_id>/<pass>/<version>/spot_intervals.parquet (private, never the repo; R-EN-07)
+    columns:
+    - {column: game_id, type: string, definition: ESPN event ID}
+    - {column: pass, type: string, definition: processing pass}
+    - {column: object_id, type: int16, definition: 0 = ball, else player_id mapped to int16 per game}
+    - {column: layer, type: 'enum (landmark, relative, restart, fullcourt, rule, zone_scheme:*)', definition: dictionary layer}
+    - {column: label_id, type: string, definition: config/named_spots.yaml id, side-qualified for mirrored entries}
+    - {column: start_frame, type: int32, definition: first frame in the label}
+    - {column: end_frame_excl, type: int32, definition: first frame after the label}
+    - {column: start_pts_ms, type: int64, unit: ms, definition: video time of start_frame}
+    - {column: end_pts_ms, type: int64, unit: ms, definition: video time of end_frame_excl}
+    - {column: p_min, type: uint8, unit: percent, definition: lowest membership probability inside the stretch}
+    - {column: close_reason, type: 'enum (exit, camera_cut, occlusion, landing, period_end, no_context)', definition: why the stretch ended}
+    - {column: dictionary_version, type: string, definition: config/named_spots.yaml version used}
+replaces:
+- 'player_positions.spot / post_zone / landmark (geometry.spot, post_zone, landmark labels) -> court_region, named_spot and landmark intervals. The old columns stay until the schema owner merges.'
+- '*_spot columns in docs/data/dictionary_games.md (actor_spot, release_spot, loc_spot, catch_spot, start_spot, end_spot ...) take court_region labels; event tables may add a named_spot column.'

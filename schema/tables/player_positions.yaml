@@ -1,4 +1,6 @@
 # Proposed schema for table 'player_positions' (status: proposed). Generated from docs/data/dictionary_games.md, 2026-10-18.
+# Dated note 2026-10-20: spot, post_zone and landmark are proposed to be replaced by the named-spot dictionary
+# (config/named_spots.yaml); column changes in schema/named_spots_changes.yaml. Values below are unchanged.
 name: player_positions
 status: proposed
 proposed_by: W2 core-tables agent, prompt 003 (2026-10-18); approval by the requirements session

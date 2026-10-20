@@ -1,3 +1,5 @@
+# Dated note 2026-10-20: exact constants used by config/named_spots.yaml are 1.6002 (rim), 6.7501 (arc), 6.6008 (corner),
+# 1.2700 (RA membership, outer edge), 12.700 (frontcourt edge), 7.62 (sideline inside edge). Values below unchanged.
 # NCAA men's court constants, metres.
 # Status: from memory of the rulebook; every value must be checked against the
 # current NCAA men's rulebook before the geometry module is trusted.

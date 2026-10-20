@@ -1,0 +1,82 @@
+{
+ "entries": 555,
+ "with_expr": 474,
+ "entry_failures": {},
+ "partitions": {
+  "zone_scheme:court_region": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:three_depth": {
+   "points": 231401,
+   "covered": 137934,
+   "overlaps": 0
+  },
+  "zone_scheme:ball_zone": {
+   "points": 231401,
+   "covered": 87230,
+   "overlaps": 0
+  },
+  "zone_scheme:br_distance": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:court_thirds": {
+   "points": 231401,
+   "covered": 195505,
+   "overlaps": 0
+  },
+  "zone_scheme:ctg": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:nba_area": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:nba_basic": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:nba_range": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:out_of_bounds": {
+   "points": 231401,
+   "covered": 56331,
+   "overlaps": 0
+  },
+  "zone_scheme:pbpstats": {
+   "points": 231401,
+   "covered": 231401,
+   "overlaps": 0
+  },
+  "zone_scheme:pickup_y": {
+   "points": 231401,
+   "covered": 175070,
+   "overlaps": 0
+  },
+  "zone_scheme:pnr_location": {
+   "points": 231401,
+   "covered": 52356,
+   "overlaps": 0
+  },
+  "zone_scheme:transition_lanes_3": {
+   "points": 231401,
+   "covered": 97905,
+   "overlaps": 0
+  },
+  "zone_scheme:transition_lanes_5": {
+   "points": 231401,
+   "covered": 97905,
+   "overlaps": 0
+  }
+ }
+}

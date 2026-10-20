@@ -1,0 +1,67 @@
+{
+ "files": 34,
+ "located_field_goal_attempts": 3675,
+ "label_count_problems": {},
+ "two_vs_three_agreement": "3672/3675",
+ "cbbd_range_x_court_region": {
+  "jumper -> long_mid_baseline": 69,
+  "jumper -> long_mid_top": 153,
+  "jumper -> long_mid_wing": 88,
+  "jumper -> paint_non_ra": 474,
+  "jumper -> restricted_area": 45,
+  "jumper -> short_mid": 214,
+  "jumper -> top_three": 1,
+  "jumper -> wing_three": 1,
+  "rim -> paint_non_ra": 347,
+  "rim -> restricted_area": 761,
+  "three_pointer -> corner_three": 305,
+  "three_pointer -> long_mid_baseline": 1,
+  "three_pointer -> slot_three": 338,
+  "three_pointer -> top_three": 155,
+  "three_pointer -> wing_three": 723
+ },
+ "labels": {
+  "court_region": {
+   "paint_non_ra": 821,
+   "restricted_area": 806,
+   "wing_three_right": 377,
+   "wing_three_left": 347,
+   "slot_three_right": 177,
+   "slot_three_left": 161,
+   "corner_three_right": 157,
+   "top_three": 156,
+   "long_mid_top": 153,
+   "corner_three_left": 148,
+   "short_mid_left": 115,
+   "short_mid_right": 99,
+   "long_mid_wing_left": 54,
+   "long_mid_baseline_left": 40,
+   "long_mid_wing_right": 34,
+   "long_mid_baseline_right": 30
+  },
+  "three_depth": {
+   "none": 2152,
+   "three_depth_standard": 1124,
+   "three_depth_corner": 305,
+   "three_depth_deep": 78,
+   "three_depth_logo": 16
+  },
+  "ctg": {
+   "ctg_non_corner_3": 1218,
+   "ctg_short_mid": 1058,
+   "ctg_rim": 764,
+   "ctg_long_mid": 330,
+   "ctg_corner_3_right": 157,
+   "ctg_corner_3_left": 148
+  },
+  "nba_basic": {
+   "nba_above_the_break_3": 1218,
+   "nba_in_the_paint_non_ra": 821,
+   "nba_restricted_area": 806,
+   "nba_mid_range_left": 289,
+   "nba_mid_range_right": 236,
+   "nba_corner_3_right": 157,
+   "nba_corner_3_left": 148
+  }
+ }
+}
