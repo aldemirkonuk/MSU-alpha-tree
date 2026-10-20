@@ -1,4 +1,4 @@
-version: 0.2.0
+version: 0.3.0
 date: '2026-10-19'
 status: proposed
 title: MSU Alpha 3 metric registry
@@ -126,16 +126,16 @@ counts:
   metrics_without_source: 5
   verified:
     internal: 287
-    'true': 1105
+    'true': 1104
     reference_only: 41
     'false': 4
-    partial: 154
+    partial: 155
   verification_depth:
-    not rechecked: 1141
+    not rechecked: 1121
+    L4: 42
     L1: 142
-    L4: 24
     L3: 232
-    L5: 8
+    L5: 10
     L0: 21
     L2: 23
   data_tier:
@@ -250,9 +250,11 @@ categories:
       url: https://raw.githubusercontent.com/sportsdataverse/sportsdataverse-py/main/sportsdataverse/mbb/mbb_ncaa_stats_agg.py
     - name: 'Hudl Instat basketball glossary: possessions'
       url: https://instatglossary.hudl.com/basketball/parameters/box-score/possessions/
-    notes: 'NBA.com glossary: an offensive rebound does not create a new possession (matches ours). CTG counts possessions from PBP (start when a team gains possession, end when it loses it). NCAA engine
-      o_poss = n_unique(game_id + poss_num) where poss_team = team (code opened); whether poss_num increments on offensive rebounds is unverified until first files. Contribution keys: (game_id, possession_id,
+    notes:
+    - 'NBA.com glossary: an offensive rebound does not create a new possession (matches ours). CTG counts possessions from PBP (start when a team gains possession, end when it loses it). NCAA engine o_poss
+      = n_unique(game_id + poss_num) where poss_team = team (code opened); whether poss_num increments on offensive rebounds is unverified until first files. Contribution keys: (game_id, possession_id,
       chance_id) plus video_id, frame range and state_version (N-CX-10 / R-CX-29). Our definition agrees with NBA.com and CTG; Hudl ends possessions on stoppages too, so it is a variant only.'
+    - '2026-10-19 Counted possessions from the play-by-play state fold vs CBBD possessions: 57/70 within 2, 18/70 exact (fold tuned on 2 games; 35-game breaks listed in docs/stats/l4_reproduction_2026-10-19.md).'
     provenance:
       covers_groups:
       - g:possession_our_definition
@@ -333,8 +335,11 @@ categories:
       url: https://github.com/swar/nba_api/blob/master/docs/nba_api/stats/endpoints/boxscoreadvancedv2.md
     - name: CollegeBasketballData API source, games/service.ts (reads stored possessions; no estimate formula)
       url: https://raw.githubusercontent.com/CFBD/cbb-api/main/src/app/games/service.ts
-    notes: 0.475 confirmed in pages opened in this pass (Sports-Reference CBB, Macfax, UM Hoops); KenPom glossary statement opened by harvester only. ESPN's own formula is unverified (field exists, formula
-      unpublished). The FT coefficient is a registry parameter (R-CX-29) so every downstream rating can be re-weighted.
+    notes:
+    - 0.475 confirmed in pages opened in this pass (Sports-Reference CBB, Macfax, UM Hoops); KenPom glossary statement opened by harvester only. ESPN's own formula is unverified (field exists, formula unpublished).
+      The FT coefficient is a registry parameter (R-CX-29) so every downstream rating can be re-weighted.
+    - '2026-10-19 CBBD ''possessions'' is not reproduced by FGA - ORB + TOV + c FTA (c = 0.475: 36/70 within 1; c = 0.44: 40/70) nor by the Basketball-Reference ORB-weighted form (best 24/70 exact). Treat
+      CBBD possessions as a separate, undocumented source definition (M-TEFF-004).'
     provenance:
       covers_groups:
       - g:box_score_possession_estimate
@@ -791,8 +796,10 @@ categories:
       url: https://web.archive.org/web/20240113022517/https://www.barttorvik.com/team-tables_each.php
     - name: 'Local Kaggle export header: KenPom Barttorvik.csv (headers only)'
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/KenPom Barttorvik.csv
-    notes: 'CBBD gameMinutes helper not visible in public code; harvester recorded gameMinutes = 40 + 5*(periods - 2). NBA.com glossary defines pace per 48 without a printed formula. T-Rank RawT label only
-      (formula unverified). Box route: possessions from M-TEFF-002/003 on team_box.fga, oreb, tov, fta.'
+    notes:
+    - 'CBBD gameMinutes helper not visible in public code; harvester recorded gameMinutes = 40 + 5*(periods - 2). NBA.com glossary defines pace per 48 without a printed formula. T-Rank RawT label only (formula
+      unverified). Box route: possessions from M-TEFF-002/003 on team_box.fga, oreb, tov, fta.'
+    - '2026-10-19 L4: Pace = 40 x mean(team, opponent possessions) / game minutes reproduces CBBD pace 70/70; from our own box estimate only 8/70 because CBBD possessions differ (see M-TEFF-002).'
     provenance:
       covers_groups:
       - g:pace
@@ -805,6 +812,12 @@ categories:
       - g:estimated_pace
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Pace = 40 x mean(team, opponent possessions) / game minutes reproduces CBBD pace 70/70; from our own box estimate only 8/70 because CBBD possessions differ (see M-TEFF-002).
   - id: M-TEFF-011
     name: Adjusted tempo
     category: team_efficiency
@@ -1365,8 +1378,10 @@ categories:
       url: repo:docs/data/dictionary_games.md
     - name: MSU Alpha 3 source field map
       url: repo:docs/data/source_field_map.md
-    notes: 'Per-frame dissection: each possession''s points are the incident-level contribution; registry keys (possession_id, chance_id) let any slice be re-weighted (R-CX-29). Box-estimate and counted
-      values are stored side by side, never merged.'
+    notes:
+    - 'Per-frame dissection: each possession''s points are the incident-level contribution; registry keys (possession_id, chance_id) let any slice be re-weighted (R-CX-29). Box-estimate and counted values
+      are stored side by side, never merged.'
+    - '2026-10-19 L4: ORtg = 100 PTS / possessions reproduces CBBD ''rating'' 70/70 within 0.05 (CBBD per-game box (published values) recomputed from the same rows'' counting stats).'
     provenance:
       covers_groups:
       - g:off_rating
@@ -1381,6 +1396,12 @@ categories:
       - g:pts_perposs_offense_defense
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: ORtg = 100 PTS / possessions reproduces CBBD 'rating' 70/70 within 0.05 (CBBD per-game box (published values) recomputed from the same rows' counting stats).
   - id: M-TEFF-019
     name: Defensive efficiency (points allowed per possession / defensive rating)
     category: team_efficiency
@@ -2140,7 +2161,9 @@ categories:
       url: https://raw.githubusercontent.com/sportsdataverse/hoopR/main/R/nba_metrics.R
     - name: CollegeBasketballData API source, games/service.ts
       url: https://raw.githubusercontent.com/CFBD/cbb-api/main/src/app/games/service.ts
-    notes: 'The two ratio forms are stored separately (never merged). hoopR nba_metrics.R (downloaded this pass) has both: nba_ft_rate() = FTA/FGA and the four-factors helper ft_rate = ftm/fga.'
+    notes:
+    - 'The two ratio forms are stored separately (never merged). hoopR nba_metrics.R (downloaded this pass) has both: nba_ft_rate() = FTA/FGA and the four-factors helper ft_rate = ftm/fga.'
+    - '2026-10-19 L4: FTA/FGA (FTA-rate variant) reproduces CBBD freeThrowRate team 70/70 and player 338/338. CBBD publishes the FTA variant, not Oliver''s FTM/FGA.'
     direction_by_variant:
       offense: higher_is_better
       defense: lower_is_better
@@ -2152,6 +2175,12 @@ categories:
       - g:defensive_free_throw_factor
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: FTA/FGA (FTA-rate variant) reproduces CBBD freeThrowRate team 70/70 and player 338/338. CBBD publishes the FTA variant, not Oliver's FTM/FGA.
   - id: M-TEFF-032
     name: Four-factor composite and factor weights
     category: team_efficiency
@@ -4943,7 +4972,7 @@ categories:
     - external:evanmiya.teams.opponent_adjust
     - external:kaggle.EvanMiya.OPPONENT_ADJUST
     - ratings_snapshots.value[system=evanmiya]
-    unit: points per 100 possessions per point of opponent rating (slope, dimensionless); game term in points
+    unit: index (EvanMiya, bounded +/-99.01)
     level: team-season; team-game (matchup)
     direction: neutral
     data_tier: external_only
@@ -5000,6 +5029,7 @@ categories:
     - '2026-10-19 verification: The registry unit (points per 100 per point of opponent rating) is contradicted by the export: values are capped at +/-99.0099, so EvanMiya publishes a scaled or percentile-like
       index, not a raw slope. Estimation and the game-term form (OSA) are ours and unverified. The ceiling/floor tier is an informal primer label, not an EvanMiya metric. Store the published value as reference_only;
       keep our gamma replica as a separate internal metric with its own unit.'
+    - '2026-10-19 unit fix: the export is a bounded index, not a slope in points per 100; stored as published'
     provenance:
       harvest_members:
       - Opponent Adjust (Opponent Strength Adjustment) (EvanMiya; harvest evanmiya.jsonl:55; verified=True)
@@ -5013,10 +5043,12 @@ categories:
     verification_depth: L1
     depth_possible: L1 only for the published value (EvanMiya estimation is unpublished). Our own gamma slope (residual on opponent strength) can reach L3 as an internal metric once team-game residuals
       exist (pbp/box tier, no licence).
-    value_range: 'Published export: bounded index about -99 to +99 (local EvanMiya_Teams.csv: min -99.01, max +99.01, mean 0.8, sd 34.8). Our gamma: unbounded slope'
-    range_basis: verifier 19 Oct
+    value_range: -99.01 to 99.01
+    range_basis: unit fix 19 Oct
     edge_cases: Teams with few games against strong or weak opponents give an unstable slope; the published value is a bounded scaled index, so it cannot be fed in as a points slope; the tier quadrant needs
       a median/zero split defined as of date C.
+    unit_before_2026_10_19: points per 100 possessions per point of opponent rating (slope, dimensionless); game term in points
+    unit_fix_2026_10_19: the export is a bounded index, not a slope in points per 100; stored as published
   - id: M-TRAT-012
     name: Pace sensitivity (EvanMiya Pace Adjust)
     category: team_ratings
@@ -5031,7 +5063,7 @@ categories:
     - external:evanmiya.teams.pace_adjust
     - external:kaggle.EvanMiya.PACE_ADJUST
     - ratings_snapshots.value[metric_code=adj_t]
-    unit: points per 100 possessions per possession of pace difference; game term in points
+    unit: index (EvanMiya, bounded +/-99.01)
     level: team-season; team-game
     direction: neutral
     data_tier: external_only
@@ -5083,6 +5115,7 @@ categories:
     - 'Adjusted tempo itself is canonical in M-TEFF-011. Fix pass: verified set to partial (definition on the EvanMiya page; game-term form unverified).'
     - '2026-10-19 verification: No source defines Pace Adjust; the residual-on-pace slope reading and the GPA game form are ours. The export is a bounded +/-99 index, so the registry''s slope unit is wrong
       for the stored value. Treat as reference_only.'
+    - '2026-10-19 unit fix: the export is a bounded index, not a slope in points per 100; stored as published'
     provenance:
       harvest_members:
       - Pace Adjust (Game Pace Adjustment) (EvanMiya; harvest evanmiya.jsonl:56; verified=True)
@@ -5093,9 +5126,11 @@ categories:
     verified_before_2026_10_19: partial
     verification_depth: L0
     depth_possible: L1 if EvanMiya publishes a definition; our delta slope can reach L3 as an internal metric from box/pbp residuals and expected pace.
-    value_range: 'Published export: bounded index -99.01 to +99.01 (local EvanMiya_Teams.csv). Our delta: unbounded slope'
-    range_basis: verifier 19 Oct
+    value_range: -99.01 to 99.01
+    range_basis: unit fix 19 Oct
     edge_cases: The expected pace of a game needs both teams' as-of tempo; teams with little pace variation give an unidentified slope.
+    unit_before_2026_10_19: points per 100 possessions per possession of pace difference; game term in points
+    unit_fix_2026_10_19: the export is a bounded index, not a slope in points per 100; stored as published
   - id: M-TRAT-013
     name: Availability-adjusted team rating (injury / ineligibility adjustment)
     category: team_ratings
@@ -9742,12 +9777,22 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: ESPN men's college basketball player stats page
       url: https://www.espn.com/mens-college-basketball/stats/player
-    notes: EvanMiya Keys to Victory lists Field Goals Made as a selectable metric per the harvester; not visible in this pass's fetch (unverified).
+    notes:
+    - EvanMiya Keys to Victory lists Field Goals Made as a selectable metric per the harvester; not visible in this pass's fetch (unverified).
+    - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
+      one team (source defect, reported).'
     provenance:
       input_groups:
       - g:fg
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to one team
+        (source defect, reported).
   - id: M-SHOOT-003
     name: Field goal attempts (FGA)
     category: shooting
@@ -9798,15 +9843,25 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: ESPN men's college basketball player stats page
       url: https://www.espn.com/mens-college-basketball/stats/player
-    notes: Shots fouled and missed appear in PBP as a foul plus FTs, not an FGA; video can see such tries, so a separate 'tries incl. fouled misses' count is kept as a variant for shot-quality work. If
-      shots.yaml is instead pinned to exclude fouled misses from its grain, add a shots.is_fga bool (proposed column) and use it as the predicate; until then the predicate above is required because the
-      shots grain is one row per field-goal attempt as seen on video, which includes fouled missed tries.
+    notes:
+    - Shots fouled and missed appear in PBP as a foul plus FTs, not an FGA; video can see such tries, so a separate 'tries incl. fouled misses' count is kept as a variant for shot-quality work. If shots.yaml
+      is instead pinned to exclude fouled misses from its grain, add a shots.is_fga bool (proposed column) and use it as the predicate; until then the predicate above is required because the shots grain
+      is one row per field-goal attempt as seen on video, which includes fouled missed tries.
+    - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
+      one team (source defect, reported).'
     provenance:
       input_groups:
       - g:fga
       - g:fg_attempted
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to one team
+        (source defect, reported).
   - id: M-SHOOT-004
     name: Field goal percentage (FG%)
     category: shooting
@@ -9874,15 +9929,23 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: ESPN men's college basketball player stats page
       url: https://www.espn.com/mens-college-basketball/stats/player
-    notes: 'NCAA.com team/individual FG% leaderboards were cited by the harvester; the pages returned no readable content in this pass (unverified). Dissection (R-CX-29): every rate here is a ratio of per-shot
+    notes:
+    - 'NCAA.com team/individual FG% leaderboards were cited by the harvester; the pages returned no readable content in this pass (unverified). Dissection (R-CX-29): every rate here is a ratio of per-shot
       (or per-trip) terms keyed by shot_id / free_throw_id, so each incident''s contribution c_i = (x_i - R*w_i)/sum(w) is stored and the aggregate is reproduced exactly from contributions; every named
       constant is a parameter-registry entry.'
+    - '2026-10-19 L4: FG% reproduces CBBD 70/70; CBBD prints some percentages as whole numbers (rounding, not a formula difference).'
     provenance:
       input_groups:
       - g:fg_pct
       - g:team_fg_pct
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: FG% reproduces CBBD 70/70; CBBD prints some percentages as whole numbers (rounding, not a formula difference).
   - id: M-SHOOT-005
     name: Two-point field goals made (2PM)
     category: shooting
@@ -9932,7 +9995,9 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: Synergy Sports support glossary
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
-    notes: player_box has no 2P column; derive as fgm - fg3m. 2P+ is in M-SHOOT-053.
+    notes:
+    - player_box has no 2P column; derive as fgm - fg3m. 2P+ is in M-SHOOT-053.
+    - '2026-10-19 L4: Identity 2P = FG - 3P holds on 70/70 team rows; points identity 2x2PM + 3x3PM + FTM = PTS holds 70/70.'
     provenance:
       input_groups:
       - g:2p
@@ -9940,6 +10005,12 @@ categories:
       - g:key_victory_two_made
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L5
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Identity 2P = FG - 3P holds on 70/70 team rows; points identity 2x2PM + 3x3PM + FTM = PTS holds 70/70.
   - id: M-SHOOT-006
     name: Two-point field goal attempts (2PA)
     category: shooting
@@ -9984,7 +10055,9 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: Synergy Sports support glossary
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
-    notes: Sports-Reference CBB lists 2PA (harvester); this pass's fetch of that glossary did not show 2P/2PA entries (they are on the Basketball-Reference glossary as 2P%).
+    notes:
+    - Sports-Reference CBB lists 2PA (harvester); this pass's fetch of that glossary did not show 2P/2PA entries (they are on the Basketball-Reference glossary as 2P%).
+    - '2026-10-19 L4: Identity 2P = FG - 3P holds on 70/70 team rows; points identity 2x2PM + 3x3PM + FTM = PTS holds 70/70.'
     provenance:
       input_groups:
       - g:2pa
@@ -9992,6 +10065,12 @@ categories:
       - g:key_victory_two_attempted
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L5
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Identity 2P = FG - 3P holds on 70/70 team rows; points identity 2x2PM + 3x3PM + FTM = PTS holds 70/70.
   - id: M-SHOOT-007
     name: Two-point field goal percentage (2P%)
     category: shooting
@@ -10056,7 +10135,9 @@ categories:
       url: https://evanmiya.com/keys-to-victory/table
     - name: Local Kaggle export KenPom Barttorvik.csv (headers only)
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/KenPom%20Barttorvik.csv
-    notes: Torvik 2PT%/2PT%D columns seen only in the local Kaggle export header. EvanMiya Keys page shows 'Opp Twos %' with a target threshold.
+    notes:
+    - Torvik 2PT%/2PT%D columns seen only in the local Kaggle export header. EvanMiya Keys page shows 'Opp Twos %' with a target threshold.
+    - '2026-10-19 L4: 2P% reproduces CBBD 70/70.'
     provenance:
       input_groups:
       - g:2p_pct
@@ -10064,6 +10145,12 @@ categories:
       - g:key_victory_two_pct_margin
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: 2P% reproduces CBBD 70/70.
   - id: M-SHOOT-008
     name: Three-point field goals made (3PM)
     category: shooting
@@ -10119,9 +10206,12 @@ categories:
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
     - name: Adam's WI Sports blog (T-Rank FAQ, Bart Torvik comments)
       url: http://adamcwisports.blogspot.com/p/every-possession-counts.html
-    notes: '3P+ in M-SHOOT-053. NCAA.com 3PM-per-game leaderboards cited by the harvester returned no readable content in this pass (unverified). Torvik 3P/100: on the opened FAQ page Bart Torvik first
-      replied (14 Dec 2022) that 3P/100 is attempts per 100 possessions, then corrected himself (16 Dec 2022): ''I believe'' it is three-pointers MADE per 100 possessions. The correction is itself hedged,
-      so check against values before relying on it.'
+    notes:
+    - '3P+ in M-SHOOT-053. NCAA.com 3PM-per-game leaderboards cited by the harvester returned no readable content in this pass (unverified). Torvik 3P/100: on the opened FAQ page Bart Torvik first replied
+      (14 Dec 2022) that 3P/100 is attempts per 100 possessions, then corrected himself (16 Dec 2022): ''I believe'' it is three-pointers MADE per 100 possessions. The correction is itself hedged, so check
+      against values before relying on it.'
+    - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
+      one team (source defect, reported).'
     provenance:
       input_groups:
       - g:3p
@@ -10129,6 +10219,13 @@ categories:
       - g:key_victory_three_made
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to one team
+        (source defect, reported).
   - id: M-SHOOT-009
     name: Three-point field goal attempts (3PA)
     category: shooting
@@ -10176,8 +10273,11 @@ categories:
       url: https://hoopR.sportsdataverse.org/reference/espn_mbb_team_stats.html
     - name: Synergy Sports support glossary
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
-    notes: The Torvik 3P/100 column counts made threes per Torvik's own correction on the FAQ page, so it is a variant of M-SHOOT-008, not of 3PA. The 3PA share of FGA is owned by shot_quality (g:3p_att_rate
+    notes:
+    - The Torvik 3P/100 column counts made threes per Torvik's own correction on the FAQ page, so it is a variant of M-SHOOT-008, not of 3PA. The 3PA share of FGA is owned by shot_quality (g:3p_att_rate
       / g:3par); M-SHOOT-020 is an alias stub.
+    - '2026-10-19 L4: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to
+      one team (source defect, reported).'
     provenance:
       input_groups:
       - g:3pa
@@ -10186,6 +10286,13 @@ categories:
       - g:key_victory_three_attempted
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Counted from CBBD play-by-play shot rows, equals the box on 68/70 team-games; the 2 misses are the UNC game (2025-11-27, CBBD game 210070), whose play-by-play credits every shot to one team
+        (source defect, reported).
   - id: M-SHOOT-010
     name: Three-point field goal percentage (3P%)
     category: shooting
@@ -10261,9 +10368,11 @@ categories:
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/KenPom%20Barttorvik.csv
     - name: MSU Alpha 3 docs/research/beliefs_register.md (A1 hot hand, A2, A3 three-point variance)
       url: repo:docs/research/beliefs_register.md
-    notes: 'Beliefs register A2 records Pomeroy''s estimate that offense controls about 83% of 3P% accuracy (KenPom page not re-opened here: 403). NCAA.com 3P% leaderboards not readable in this pass (unverified).
+    notes:
+    - 'Beliefs register A2 records Pomeroy''s estimate that offense controls about 83% of 3P% accuracy (KenPom page not re-opened here: 403). NCAA.com 3P% leaderboards not readable in this pass (unverified).
       Dissection (R-CX-29): every rate here is a ratio of per-shot (or per-trip) terms keyed by shot_id / free_throw_id, so each incident''s contribution c_i = (x_i - R*w_i)/sum(w) is stored and the aggregate
       is reproduced exactly from contributions; every named constant is a parameter-registry entry.'
+    - '2026-10-19 L4: 3P% reproduces CBBD 70/70 (some printed as whole numbers).'
     provenance:
       input_groups:
       - g:3p_pct
@@ -10272,6 +10381,12 @@ categories:
       - g:key_victory_three_pct_margin
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: 3P% reproduces CBBD 70/70 (some printed as whole numbers).
   - id: M-SHOOT-011
     name: Effective field goal percentage (eFG%)
     category: shooting
@@ -10342,10 +10457,12 @@ categories:
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
     - name: Local Kaggle export KenPom Barttorvik.csv (headers only)
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/KenPom%20Barttorvik.csv
-    notes: 'Synergy''s aFG% equals eFG% whenever all non-FT points come from field goals, so it is kept as an alias. KenPom four-factors pages returned HTTP 403 in this pass (unverified here; harvester
-      opened an archive copy). Dissection (R-CX-29): every rate here is a ratio of per-shot (or per-trip) terms keyed by shot_id / free_throw_id, so each incident''s contribution c_i = (x_i - R*w_i)/sum(w)
-      is stored and the aggregate is reproduced exactly from contributions; every named constant is a parameter-registry entry. Confirmed eFG% forms: Cleaning the Glass four factors (2PM + 1.5 * 3PM) /
-      FGA; Sports-Reference, Basketball-Reference, NBA.com and CBBD (FGM + 0.5 * 3PM) / FGA; Synergy aFG% = ((PTS - FTM) / FGA) / 2.'
+    notes:
+    - 'Synergy''s aFG% equals eFG% whenever all non-FT points come from field goals, so it is kept as an alias. KenPom four-factors pages returned HTTP 403 in this pass (unverified here; harvester opened
+      an archive copy). Dissection (R-CX-29): every rate here is a ratio of per-shot (or per-trip) terms keyed by shot_id / free_throw_id, so each incident''s contribution c_i = (x_i - R*w_i)/sum(w) is
+      stored and the aggregate is reproduced exactly from contributions; every named constant is a parameter-registry entry. Confirmed eFG% forms: Cleaning the Glass four factors (2PM + 1.5 * 3PM) / FGA;
+      Sports-Reference, Basketball-Reference, NBA.com and CBBD (FGM + 0.5 * 3PM) / FGA; Synergy aFG% = ((PTS - FTM) / FGA) / 2.'
+    - '2026-10-19 L4: eFG% reproduces CBBD team 70/70 and player 338/338 within 0.05.'
     provenance:
       input_groups:
       - g:effective_fg_pct
@@ -10354,6 +10471,12 @@ categories:
       - g:adj_fg_pct
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: eFG% reproduces CBBD team 70/70 and player 338/338 within 0.05.
   - id: M-SHOOT-012
     name: True shooting percentage (TS%)
     category: shooting
@@ -10423,11 +10546,14 @@ categories:
       url: https://raw.githubusercontent.com/sportsdataverse/sportsdataverse-py/main/sportsdataverse/mbb/mbb_ncaa_stats_agg.py
     - name: ESPN Hollinger statistics glossary
       url: https://www.espn.com/nba/hollinger/statistics
-    notes: 'Coefficient conflict confirmed: Sports-Reference CBB and the sportsdataverse NCAA engine use 0.475; Basketball-Reference, NBA.com, CBBD, Synergy and ESPN Hollinger use 0.44. KenPom k = 0.475
-      and the KenPom PPWS relation come from an archive read by the harvester (kenpom.com returned 403; unverified). The EvanMiya Keys to Victory page does not define TS% (source dropped; alias kept as
-      a name only). ESPN Hollinger prints the formula without the factor 2 and with unbalanced brackets. ts_fta_coefficient is declared ONLY here and referenced by M-SHOOT-013, M-SHOOT-054 and M-SHOOT-055,
-      so the coefficient cannot drift between entries; store k with every value and never compare across k. Dissection (R-CX-29): every rate here is a ratio of per-shot (or per-trip) terms keyed by shot_id
+    notes:
+    - 'Coefficient conflict confirmed: Sports-Reference CBB and the sportsdataverse NCAA engine use 0.475; Basketball-Reference, NBA.com, CBBD, Synergy and ESPN Hollinger use 0.44. KenPom k = 0.475 and
+      the KenPom PPWS relation come from an archive read by the harvester (kenpom.com returned 403; unverified). The EvanMiya Keys to Victory page does not define TS% (source dropped; alias kept as a name
+      only). ESPN Hollinger prints the formula without the factor 2 and with unbalanced brackets. ts_fta_coefficient is declared ONLY here and referenced by M-SHOOT-013, M-SHOOT-054 and M-SHOOT-055, so
+      the coefficient cannot drift between entries; store k with every value and never compare across k. Dissection (R-CX-29): every rate here is a ratio of per-shot (or per-trip) terms keyed by shot_id
       / free_throw_id, so each incident''s contribution c_i = (x_i - R*w_i)/sum(w) is stored and the aggregate is reproduced exactly from contributions; every named constant is a parameter-registry entry.'
+    - '2026-10-19 L4: TS% reproduces CBBD trueShooting with k = 0.44: team 70/70, player 340/340; with the registry default k = 0.475: 0/70. CBBD uses the NBA coefficient; keep 0.475 as our default and
+      0.44 as the CBBD variant.'
     provenance:
       input_groups:
       - g:ts_pct
@@ -10436,6 +10562,13 @@ categories:
       - g:pts_weighted_shot
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: 'TS% reproduces CBBD trueShooting with k = 0.44: team 70/70, player 340/340; with the registry default k = 0.475: 0/70. CBBD uses the NBA coefficient; keep 0.475 as our default and 0.44 as
+        the CBBD variant.'
   - id: M-SHOOT-013
     name: True shooting attempts (TSA)
     category: shooting
@@ -10724,7 +10857,7 @@ categories:
     inputs:
     - 'external:evanmiya.scoring_volume (unverified: web display only; no export column)'
     - external:evanmiya_lineups.color_scoring_mean
-    unit: points per possession (scale unverified; may be per 100)
+    unit: index (publisher scale)
     level: player|lineup
     direction: higher_is_better
     data_tier: external_only
@@ -10762,6 +10895,7 @@ categories:
       only. The opened blog says only per-possession scoring volume, with no scale; confirm the scale from values in the local EvanMiya_Lineups.csv before use. The local EvanMiya_Players.csv header has
       no scoring-volume column.
     - '2026-10-19 verification: Opened pages confirm ''per possession'' as wording only. The scale and the lineup mean are not confirmed. The unit stays unverified until values are inspected.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       input_groups:
       - g:scoring_volume_projected_pts_perposs
@@ -10769,9 +10903,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1. EvanMiya is proprietary, so the published value is stored. The scale can be pinned from values in the local EvanMiya export if a column ever appears.
-    value_range: unknown scale; displayed as percentile and letter grade
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: Lineups with fewer than 5 rated players. The scale may be per possession or per 100.
+    unit_before_2026_10_19: points per possession (scale unverified; may be per 100)
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-SHOOT-019
     name: EvanMiya projected shooting skill (2PT%, 3PT%, FT%)
     category: shooting
@@ -13550,7 +13686,7 @@ categories:
     inputs:
     - external:espn.offensive_shooting_efficiency
     - external:espn.offensive_scoring_efficiency
-    unit: unknown
+    unit: index (publisher scale)
     level: team
     direction: unknown
     data_tier: external_only
@@ -13575,6 +13711,7 @@ categories:
     notes:
     - The hoopR team-stats page lists offensive_shooting_efficiency and offensive_scoring_efficiency (team level only). Direction unknown until values are reverse-engineered. Brick Index split out to M-SHOOT-067.
     - '2026-10-19 verification: Unpublished; store the value as is and do not model on it.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       input_groups:
       - g:shooting_efficiency
@@ -13582,9 +13719,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1
-    value_range: unknown
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: none known
+    unit_before_2026_10_19: unknown
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-SHOOT-067
     name: ESPN Brick Index
     category: shooting
@@ -13599,7 +13738,7 @@ categories:
     level: player (unverified)
     direction: unknown
     data_tier: external_only
-    computable_now: external
+    computable_now: 'no'
     min_sample: Unknown.
     as_of_rule: 'External snapshot: take the latest snapshot dated on or before the day before tip (R-FD-06; is_point_in_time = true in ratings_snapshots); end-of-season values are never used in backtests
       (R-DS-04).'
@@ -13616,15 +13755,17 @@ categories:
       no direction is asserted until the page is re-opened and values are checked. Drop if it cannot be confirmed.
     - '2026-10-19 verification: A web search found no ESPN ''Brick Index''; it is not in the hoopR ESPN team-stats columns. The existence of the stat is unconfirmed. Drop it or mark it pending until it
       is observed in a payload.'
+    - '2026-10-19 unit fix: no ESPN ''Brick Index'' found in any payload; status pending until observed, not computed'
     provenance:
       input_groups:
       - g:brick_index
     verified_before_2026_10_19: 'false'
     verification_depth: L0
     depth_possible: L1 only if the field is seen in an ESPN API payload
-    value_range: unknown
-    range_basis: verifier 19 Oct
+    value_range: pending
+    range_basis: unit fix 19 Oct
     edge_cases: none
+    unit_fix_2026_10_19: no ESPN 'Brick Index' found in any payload; status pending until observed, not computed
   - id: M-SHOOT-065
     name: Situational shooting splits
     category: shooting
@@ -13829,6 +13970,7 @@ categories:
       and a web search on 2026-10-18 found no published basketball study of off-hand finishing rates. The split is therefore project-defined and computed only from our pose. shots.layup_hand already exists
       (enum left, right, both, unknown, not_applicable; R-EV-07, R-PC-11). Distinct from shooting hand (M-PROF-042, M-PHYS-095), which is a player attribute, not a per-shot label.'
     - '2026-10-19 verification: Shrinkage mixes scales: in 100*(FGM_h + a*p_rim)/(FGA_h + a), p_rim must be a 0-1 proportion, not the percent value of M-SHOOT shrunk rim FG%. State this explicitly.'
+    - '2026-10-19 unit fix: the prior must be a proportion, not the percent value of the rim FG% metric'
     verification_basis: project_spec
     provenance:
       input_groups:
@@ -13836,9 +13978,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L5 (sum_h FGA_h + unknown = rim FGA) on labelled tracking data
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Unknown and not-applicable hand rows are excluded but counted. FGA_h = 0 returns the shrunk prior. rim_radius_m is in metres.
+    formula_fix_2026_10_19: p_rim enters the shrinkage as a 0-1 proportion; the result is x100
+    unit_fix_2026_10_19: the prior must be a proportion, not the percent value of the rim FG% metric
   - id: M-SHOOT-070
     name: Dominant-hand vs off-hand finishing gap and off-hand avoidance
     category: shooting
@@ -19672,11 +19816,19 @@ categories:
       url: https://support.synergysports.com/support/solutions/articles/77000572558-glossary
     - name: EvanMiya Keys to Victory table (opened; rendered page showed only Threes %, Opp Twos %, Off Rebound %)
       url: https://evanmiya.com/keys-to-victory/table
-    notes: 'Turnover-side detail lives in the turnovers category; this ratio is housed here. Harvest groups: g:ast_tov_rate g:ast_tov g:team_ast_tov_rate g:key_victory_ast_rate.'
+    notes:
+    - 'Turnover-side detail lives in the turnovers category; this ratio is housed here. Harvest groups: g:ast_tov_rate g:ast_tov g:team_ast_tov_rate g:key_victory_ast_rate.'
+    - '2026-10-19 L4: AST/TO reproduces CBBD 210/210.'
     provenance:
       former_id: M-PLAY-005
     value_range: unbounded (state per formula)
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: AST/TO reproduces CBBD 210/210.
   - id: M-PASS-006
     name: Percent of team's assists
     category: playmaking
@@ -20306,7 +20458,7 @@ categories:
     formula: 'external: EvanMiya_Lineups.color_assist_rate_sum; aggregation of member projected assist rates assumed to be a sum (header-inferred, unverified)'
     inputs:
     - external:evanmiya.lineups.color_assist_rate_sum
-    unit: percent (sum)
+    unit: index (publisher scale)
     level: lineup
     direction: higher_is_better
     data_tier: external_only
@@ -20337,15 +20489,18 @@ categories:
     - 'The sum rule rests only on the local EvanMiya_Lineups.csv column name color_assist_rate_sum (which may be a display-colour field); the blog lists "Projected assist rate" as a lineup input but does
       not say how player values combine. Harvest groups: g:lineup_ast_rate.'
     - '2026-10-19 verification: The sum rule is inferred from a column name only. The unit ''percent (sum)'' is unconfirmed.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     formula_status: header-inferred
     provenance:
       former_id: M-PLAY-017
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1 max (proprietary); reading the CSV values could test the sum hypothesis against member assist rates (L4-like check) if player assist rates are also exported
-    value_range: 'unknown (if sum of 5 assist rates: 0-500 percent)'
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: The color_ prefix may be a display field, not a raw value.
+    unit_before_2026_10_19: percent (sum)
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-PASS-018
     name: Box Creation (Taylor)
     category: playmaking
@@ -20469,7 +20624,7 @@ categories:
     - shots.assister_official_id
     - shots.shot_type_code
     - shots.made
-    unit: index (0-11.3)
+    unit: index (publisher scale)
     level: player
     direction: higher_is_better
     data_tier: pbp
@@ -20506,6 +20661,7 @@ categories:
       coefficients are unvalidated for D-I. Height term uses listed height; listed vs measured kept separate (R-DQ-16). Harvest groups: g:passer_rating_taylor.'
     - '2026-10-19 verification: The transcription matches the source, including the parenthesis placement (-log(2.5)*(X - 5.6)). Unconfirmed: the LOG base (Excel LOG is base 10), the units of every term,
       and non-3 creation (ratio to load or to ast). The source gives no worked example.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     blocked_by: Non3CreationAst is undefined and Layup% is only described; blocked until a primary Taylor source (Thinking Basketball / "Beyond Assists" video) confirms them.
     verified_components:
       printed formula and coefficients (secondary Substack source): true
@@ -20521,9 +20677,11 @@ categories:
     verification_depth: L1
     depth_possible: L4 if Taylor's published Passer Rating for an NBA player and the player's inputs are found (Thinking Basketball / Backpicks tables). Requires settling the Layup%, TOV and non-3 creation
       definitions.
-    value_range: 0-11.3 (logistic, open interval)
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: Height in inches (1 in = 0.0254 m) is assumed. Load = 0 makes AstLoad undefined. Layup% may be 0-1 or 0-100. TOV basis is unknown. NBA-fitted coefficients are not validated for D-I.
+    unit_before_2026_10_19: index (0-11.3)
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-PASS-021
     name: Passes made
     category: playmaking
@@ -24829,11 +24987,19 @@ categories:
       url: repo:docs/data/dictionary_players.md
     - name: Basketball-Reference glossary (Poss, NBA Oliver form)
       url: https://www.basketball-reference.com/about/glossary.html
-    notes: 'KenPom: offence controls 49% of TO% (Offense vs. Defense summary) - a "battlefield" stat, so opponent adjustment matters. Our possession rule ends a possession only on change of control; external
+    notes:
+    - 'KenPom: offence controls 49% of TO% (Offense vs. Defense summary) - a "battlefield" stat, so opponent adjustment matters. Our possession rule ends a possession only on change of control; external
       estimators differ slightly. NBA.com publishes no possessions formula; the 0.44 single-side form is hoopR nba_possessions(), not NBA.com. KenPom "TO% = TO / Possessions" and CTG "turnovers divided
       by possessions, garbage time excluded by default" confirmed. Variant (c) formula taken from the reviewer''s reading of the BR glossary; not re-opened this pass.'
+    - '2026-10-19 L4: TOV / possessions reproduces CBBD turnoverRatio 70/70 when CBBD''s own possessions are used.'
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: TOV / possessions reproduces CBBD turnoverRatio 70/70 when CBBD's own possessions are used.
   - id: M-TOV-007
     name: Turnover percentage (plays estimate)
     category: turnovers_steals
@@ -27847,12 +28013,14 @@ categories:
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/KenPom Barttorvik.csv
     - name: Sengupta, Markov Chains and Statistical Analysis of Intentional Fouling in NCAA D1 MBB (PDF)
       url: https://wsb.wharton.upenn.edu/wp-content/uploads/2026/01/Anirudh-Sengupta-Markov-Chains-and-Stat.-Analysis-of-Intentional-Fouling-in-NCAA-D1-MBB-002.pdf
-    notes: 'Torvik/KenPom compute the same box formula (unverified wording; Kaggle Torvik export carries OREB% and OP OREB% headers). KenPom (kenpom.com blog: four factors, stats explained, individual stats
+    notes:
+    - 'Torvik/KenPom compute the same box formula (unverified wording; Kaggle Torvik export carries OREB% and OP OREB% headers). KenPom (kenpom.com blog: four factors, stats explained, individual stats
       primer) and Bart Torvik (trank.php) were cited by harvesters, but kenpom.com returned HTTP 403 and web.archive.org could not be fetched; their exact wording is unverified. NCAA.com stat pages are
       JS-rendered and returned empty; NCAA RPG/REB MAR conventions unverified. Harvest rows merged: 11 (groups: halfcourt_oreb_pct, oreb_pct, team_orb_pct; sources: Bart Torvik, Basketball-Reference, Cleaning
       the Glass, ESPN, EvanMiya, KenPom, MSU Alpha 3 player data dictionary, NBA.com Stats glossary, hoopR, hoopR NCAA engine). Lineup level is after_pbp via M-REB-018 (needs PBP lineup stints), not from
       box rows. Reconciliation rule: box ORB/DRB per team-game = PBP count of rebounds with is_dead_ball_rebound = false incl. team rebounds; mismatches flagged in dq (ESPN box treatment of dead-ball rebounds
       unverified, check per game).'
+    - '2026-10-19 CBBD ''offensiveReboundPct'' (team) is ORB / own total rebounds, not this metric: reproduced 70/70 by that ratio vs 2/70 by Oliver''s ORB%. Never map the CBBD field to this ID.'
     verification_scope: formula
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
@@ -28024,10 +28192,12 @@ categories:
       url: https://www.nba.com/stats/help/glossary
     - name: ESPN Hollinger statistics glossary
       url: https://www.espn.com/nba/hollinger/statistics
-    notes: 'Formula verified from the B-Ref glossary; Hollinger ORR has no published formula. KenPom (kenpom.com blog: four factors, stats explained, individual stats primer) and Bart Torvik (trank.php)
-      were cited by harvesters, but kenpom.com returned HTTP 403 and web.archive.org could not be fetched; their exact wording is unverified. NCAA.com stat pages are JS-rendered and returned empty; NCAA
-      RPG/REB MAR conventions unverified. Harvest rows merged: 3 (groups: oreb_pct; sources: Basketball-Reference, ESPN, KenPom). computable_now: yes only with the documented game_minutes fallback (team_box.game_minutes
+    notes:
+    - 'Formula verified from the B-Ref glossary; Hollinger ORR has no published formula. KenPom (kenpom.com blog: four factors, stats explained, individual stats primer) and Bart Torvik (trank.php) were
+      cited by harvesters, but kenpom.com returned HTTP 403 and web.archive.org could not be fetched; their exact wording is unverified. NCAA.com stat pages are JS-rendered and returned empty; NCAA RPG/REB
+      MAR conventions unverified. Harvest rows merged: 3 (groups: oreb_pct; sources: Basketball-Reference, ESPN, KenPom). computable_now: yes only with the documented game_minutes fallback (team_box.game_minutes
       source is CBBD, keyed, not yet pulled).'
+    - 2026-10-19 CBBD player 'offensiveReboundPct' is ORB / the player's own total rebounds (reproduced 307/307), not the player ORB% of this metric (121/307).
     verification_scope: formula
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
@@ -30490,7 +30660,7 @@ categories:
     - rebounds.frame_index
     - player_positions.airborne
     - player_positions.jump_height_m
-    unit: m
+    unit: percent
     level: event|player
     direction: higher_is_better
     data_tier: tracking_broadcast
@@ -30513,13 +30683,17 @@ categories:
     notes:
     - Needs 3D ball and jump height (R-CG-11); hand count (two-hand) would need pose and is not specified. Added by the category owner (no harvest row).
     - '2026-10-19 verification: AIR_SHARE is a 0-1 fraction but the unit is listed as m. Give it its own unit.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     verification_scope: local_spec
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L4 needs ball-height calibration
-    value_range: H_secure 0 to about 4 m; AIR_SHARE 0-1
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Ball-height error from broadcast. A team rebound has no frame.
+    unit_before_2026_10_19: m
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-REB-062
     name: Gang rebounding and defensive crash count
     category: rebounding
@@ -35695,7 +35869,7 @@ categories:
     - ball_states.ball_height_m
     - ball_states.video_ts_ms
     - ball_states.frame_index
-    unit: s; count; deg
+    unit: s
     level: player/season
     direction: neutral
     data_tier: tracking_broadcast
@@ -35721,17 +35895,20 @@ categories:
     - Own tracking field. Ball inputs are ball_states rows joined on free_throws.video_ts_ms_release and the frames after it (shots holds FGA only); release height, arc and entry angle come from a parabolic
       fit of the ball trajectory over ft_fit_frames_n frames (registry).
     - '2026-10-19 verification: Unit bug: as written, routine_s is a difference of millisecond timestamps, so it is in ms, not s. The rim height of 3.048 m is correct. The dribble count is not in the formula.'
+    - '2026-10-19 unit fix: timestamps are in ms; divide by 1000 to give seconds'
     provenance:
       harvest_groups:
       - g:ft_routine_time_arc_consistency
     verified_before_2026_10_19: 'false'
     verification_depth: L2
     depth_possible: L3 after tracking once the units are fixed.
-    value_range: routine 0-10 s (rule limit 10 s); entry angle about 35-55 deg; arc_sd >= 0
-    range_basis: verifier 19 Oct
+    value_range: '>= 0'
+    range_basis: unit fix 19 Oct
     edge_cases: Timestamps are in ms, so the result must be divided by 1000 to give s. Take the descending crossing of 3.048 m. Fewer than ft_fit_frames_n frames means no fit.
     formula_fix_2026_10_19: routine_s = (video_ts_ms_release - video_ts_ms_disposal) / 1000; entry_angle_deg = atan(|dz/dxy|) of the fitted parabola at z = 3.048 m (10 ft x 0.3048), descending branch; arc_sd
-      = sample SD of entry_angle_deg.
+      = sample SD of entry_angle_deg. ; routine_s = (t_release_ms - t_start_ms) / 1000
+    unit_before_2026_10_19: s; count; deg
+    unit_fix_2026_10_19: timestamps are in ms; divide by 1000 to give seconds
   - id: M-FOUL-102
     name: Free-throw command
     category: fouls_ft
@@ -36389,7 +36566,7 @@ categories:
     - lineup_stints.points_against
     - lineup_stints.off_possessions
     - possession_value.value_xpts
-    unit: points
+    unit: index (sum of standardised deltas)
     level: player/game/season
     direction: lower_is_better
     data_tier: pbp
@@ -36416,17 +36593,20 @@ categories:
     - Invented (harvester); TrueHoop's NBA finding (benching early foul trouble raised win probability ~5-10% in the first half) is the analogue.
     - '2026-10-19 verification: Unit mismatch: M-FOUL-119 deltas are in m, percent and fouls per 100, so they cannot be added to points without a conversion model. The ESPN TrueHoop analogue was not opened
       in this pass.'
+    - '2026-10-19 unit fix: deltas in m, percent and fouls per 100 cannot be added to points directly'
     provenance:
       harvest_groups:
       - g:foul_trouble_value_cost
     verified_before_2026_10_19: 'false'
     verification_depth: L2
     depth_possible: L3 after PBP and tracking, once the passive term is converted to points.
-    value_range: points, unbounded (about -2 to +10 per game)
-    range_basis: verifier 19 Oct
+    value_range: unbounded
+    range_basis: unit fix 19 Oct
     edge_cases: Value rates must be per minute (or per possession x possessions). The replacement rate comes from the actual substitute, not the average.
     formula_fix_2026_10_19: cost = (on_rate - repl_rate) [points/min] * minutes_sat + sum_k beta_k * delta_k (M-FOUL-119) * passive_minutes, where beta_k converts each passivity delta (m, percent, fouls/100)
-      into points per minute via a fitted model.
+      into points per minute via a fitted model. ; convert each M-FOUL-119 delta to a z-score (or to points via a fitted model) before summing
+    unit_before_2026_10_19: points
+    unit_fix_2026_10_19: deltas in m, percent and fouls per 100 cannot be added to points directly
   - id: M-FOUL-117
     name: Foul rate by current foul count (player-revealed restraint)
     category: fouls_ft
@@ -44824,14 +45004,22 @@ categories:
       url: https://raw.githubusercontent.com/CFBD/cbb-api/main/src/globals/calculations.ts
     - name: Basketball-Reference, Calculating individual offensive and defensive ratings
       url: https://www.basketball-reference.com/about/ratings.html
-    notes: Team DRtg owned by team_efficiency (crossref g:drtg); this is the individual version. team_box.possessions_source is the CBBD formula (unverified, not our count); it is used only as an alternative
+    notes:
+    - Team DRtg owned by team_efficiency (crossref g:drtg); this is the individual version. team_box.possessions_source is the CBBD formula (unverified, not our count); it is used only as an alternative
       basis, stored with the value.
+    - '2026-10-19 L4: Oliver individual DRtg (Basketball-Reference form) reproduces CBBD defensiveRating 305/305 within 0.15.'
     verification_basis: external_source
     provenance:
       merged_from:
       - '207: CBBD player defensive rating (Oliver DRtg) (CollegeBasketballData)'
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Oliver individual DRtg (Basketball-Reference form) reproduces CBBD defensiveRating 305/305 within 0.15.
   - id: M-DEF-121
     name: Adjusted individual defensive rating (T-Rank)
     category: defense
@@ -46920,8 +47108,10 @@ categories:
       url: https://api.collegebasketballdata.com/api-docs.json
     - name: MSU Alpha 3 games data dictionary
       url: repo:docs/data/dictionary_games.md
-    notes: Shared with the turnovers category; kept here for the transition start-type view. team_box.fast_break_points and team_box.points_off_turnovers already map CBBD (teamStats.points.fastBreak / teamStats.points.offTurnovers,
+    notes:
+    - Shared with the turnovers category; kept here for the transition start-type view. team_box.fast_break_points and team_box.points_off_turnovers already map CBBD (teamStats.points.fastBreak / teamStats.points.offTurnovers,
       per source_field_map.md and team_box.yaml) and ESPN. ESPN values are reference-only under its licence (R-DS-02); the model-input channel is CBBD/hoopR.
+    - '2026-10-19 Points off turnovers from the state fold vs the official box: 43/70 within 2 points (mean difference about 3). Official scorer rule (window after the turnover) to be confirmed.'
     verification: external_formula
     value_range: unbounded (state per formula)
     range_basis: unit rule (19 Oct decision)
@@ -47543,15 +47733,18 @@ categories:
     - 'Project definition (source: R-TR-08/09 and transition_full.md); no external formula confirmed. Same quantity as M-TRN-002 under the state-class definition; kept as an id-stable pointer to M-TRN-002''s
       state-class variant.'
     - '2026-10-19 verification: The formula yields a fraction 0-1 but the unit is percent: multiply by 100. The class boundaries are ours.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     verification: project_definition
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and all 10 players + ball mapped. Imputed frames (player_positions.imputation_strength
       above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and n_total.
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: 'L5 once class labels exist: the shares must sum to 100.'
-    value_range: 0-100 percent per class; the four classes sum to 100
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Zero possessions gives null. Keep 'uncertain' in the denominator so the shares sum to 100.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-TRN-028
     name: Push rate by start type
     category: transition
@@ -47621,15 +47814,18 @@ categories:
     - Push signature is heuristic (transition_full.md 2.2, 7.4); PBP proxy uses Hoop-Math's start/window table structure (verified headers).
     - '2026-10-19 verification: Applied to Hoop-Math MSU 2023-24 the proxy gives DREB 15.8/(15.8+21.5) = 42.4%, opp score 6.0/41.9 = 14.3%, steal 4.6/7.3 = 63.0%. All speed and time thresholds are ours
       (R-CX-29). The formula returns a ratio, so multiply by 100 for percent.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and ball mapped (ball_states.ball_y_m observed). Imputed frames (player_positions.imputation_strength
       above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and n_total.
     verification: unverified_or_heuristic
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L4 for the PBP proxy against our own computed shares. The tracking definition needs tracking data.
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Zero possessions for a start type gives null. The proxy uses initial attempts, not possessions, so possessions with no shot (turnovers) are excluded.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-TRN-029
     name: Inbound delay after a make
     category: transition
@@ -48330,6 +48526,7 @@ categories:
     - 'Derived; ''failed'' category from transition_full.md 8.4. PBP-tier default flag: transition_phases.tr_hoopmath_10s (alternative: possessions.is_transition_ncaa_engine). transition_class (R-TR-09
       state class), tr_synergy_like and tr_state_repo variants need a defense-set moment from tracking and are tracking_broadcast / after_tracking variants.'
     - '2026-10-19 verification: The turnover split is confirmed. The denominator (transition possessions) and the window cut are ours. The formula needs *100 for percent.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     tier_map:
       pbp (after_pbp):
       - tr_hoopmath_10s (default)
@@ -48348,9 +48545,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L3. L4 needs an open page that publishes transition TOV% (none found).
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Zero transition possessions gives null. A turnover after the window ends counts as half-court.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-TRN-041
     name: Breaks stopped by a foul and take-foul candidates
     category: transition
@@ -48799,7 +48998,7 @@ categories:
     - transition_phases.t0_ms
     - player_positions.imputation_strength
     - games.tip_actual_utc
-    unit: m/s; percent
+    unit: percent
     level: player-possession; player-season
     direction: higher_is_better
     data_tier: tracking_broadcast
@@ -48829,6 +49028,7 @@ categories:
     notes:
     - 'Signature from transition_full.md 2.3 (heuristic). Broadcast speed noise: use smoothed tracks.'
     - '2026-10-19 verification: peak_share is a ratio. Multiply by 100 if stored as percent and document that it can exceed 100.'
+    - '2026-10-19 unit fix: peak_share is a ratio that can exceed 1; stored x100 and documented as able to exceed 100'
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and the measured player mapped (observed, not imputed). Imputed frames
       (player_positions.imputation_strength above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and
       n_total.
@@ -48836,9 +49036,12 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L4 with tracking data.
-    value_range: v_mean10 0-10 m/s; peak_share 0 to about 1.1 (can exceed 1 because the reference is the 99th percentile)
-    range_basis: verifier 19 Oct
+    value_range: 0 and up (can exceed 100)
+    range_basis: unit fix 19 Oct
     edge_cases: A retreat shorter than 10 m gives null v_mean10. With few observed frames v_max_season is unstable, so set a minimum frame count.
+    unit_before_2026_10_19: m/s; percent
+    formula_fix_2026_10_19: multiply by 100
+    unit_fix_2026_10_19: peak_share is a ratio that can exceed 1; stored x100 and documented as able to exceed 100
   - id: M-TRN-049
     name: Back before the ball (defender, CTG)
     category: transition
@@ -49142,7 +49345,7 @@ categories:
     - defensive_matchups.mismatch_height_cm
     - defensive_matchups.switched_this_second
     - transition_phases.def_phase_times
-    unit: count; cm; s
+    unit: m
     level: possession; team aggregates
     direction: neutral
     data_tier: tracking_broadcast
@@ -49172,15 +49375,18 @@ categories:
     notes:
     - Output gap in metres; the schema column mismatch_height_cm (cm) is kept only as the raw input.
     - '2026-10-19 verification: The unit field lists cm but the formula outputs m (gap_m). Align the unit to m per the 19 Oct decision.'
+    - '2026-10-19 unit fix: the formula outputs gap_m in metres; unit was listed as cm'
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and all 10 players + ball mapped. Imputed frames (player_positions.imputation_strength
       above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and n_total.
     verification: unverified_or_heuristic
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L4 with tracking matchup data.
-    value_range: count; gap 0 to about 0.5 m; s
-    range_basis: verifier 19 Oct
+    value_range: '>= 0'
+    range_basis: unit fix 19 Oct
     edge_cases: A player with no modal assignment (low minutes) gives null. Divide cm by 100 to get m.
+    unit_before_2026_10_19: count; cm; s
+    unit_fix_2026_10_19: the formula outputs gap_m in metres; unit was listed as cm
   - id: M-TRN-055
     name: Transition role frequency and PPP by role
     category: transition
@@ -49906,15 +50112,18 @@ categories:
     notes:
     - 'Project definition (source: R-TR-08/09 and transition_full.md); no external formula confirmed.'
     - '2026-10-19 verification: The formula yields a fraction. Multiply by 100 for percent.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     verification: project_definition
     coverage_gate: A possession/chance counts only if state_frame.coverage_score >= trn.coverage_min (registry R-CX-29) over its window and >= 8 players + ball mapped. Imputed frames (player_positions.imputation_strength
       above trn.imputation_max) are excluded from speed and timing terms. Denominators use qualifying possessions only; every value is reported with n_qualified and n_total.
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L3. This is a sensitivity diagnostic.
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Restrict to transition-window frames. Otherwise half-court frames dilute the rate.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-TRN-068
     name: Transition opportunity count (CTG Pro eligible chances)
     category: transition
@@ -56831,7 +57040,7 @@ categories:
     - lineup_stints.lineup_key
     - id_crosswalk (EvanMiya p_id_string -> ESPN player_id)
     - external:EvanMiya_Lineups.p_id_string_1..5
-    unit: EvanMiya position index (scale unverified)
+    unit: index (publisher scale)
     level: lineup
     direction: neutral
     data_tier: external_only
@@ -56860,15 +57069,18 @@ categories:
       of the color_ prefix (raw value or display colour) is unverified. Joining to lineup_stints.lineup_key needs id_crosswalk; consider ingesting the export via raw_pulls into ratings_snapshots, as team_ratings
       does.
     - '2026-10-19 verification: The scale is unpublished.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       merged_from:
       - Lineup position SD / mean (EvanMiya)
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1
-    value_range: unknown
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: The meaning of the color_ prefix is unknown.
+    unit_before_2026_10_19: EvanMiya position index (scale unverified)
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-SPACE-055
     name: Lineup offensive-role balance (EvanMiya)
     category: spacing_offball
@@ -56884,7 +57096,7 @@ categories:
     - lineup_stints.lineup_key
     - id_crosswalk (EvanMiya p_id_string -> ESPN player_id)
     - external:EvanMiya_Lineups.p_id_string_1..5
-    unit: role index
+    unit: index (publisher scale)
     level: lineup
     direction: neutral
     data_tier: external_only
@@ -56912,15 +57124,18 @@ categories:
     - 'Header only. Role coded from creator vs secondary (blog: "does a player create offense, or is he a secondary player?"); the numeric scale of role_raw is unverified. The meaning of the color_ prefix
       (raw value or display colour) is unverified. Joining needs id_crosswalk.'
     - '2026-10-19 verification: The scale is unpublished.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       merged_from:
       - Lineup role SD / mean (EvanMiya)
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1
-    value_range: unknown
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: The meaning of the color_ prefix is unknown.
+    unit_before_2026_10_19: role index
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-SPACE-056
     name: Lineup balance flag (our rule; EvanMiya design reference)
     category: spacing_offball
@@ -60396,6 +60611,7 @@ categories:
       acc/dec only); until speed_efforts exists they are recomputed from player_positions, which blocks per-effort dissection and re-weighting (R-CX-29). Velocity must be in the full-court frame: the attacked-rim
       frame flips sign at the very possession change being measured.'
     - '2026-10-19 verification: The dot product with the unit vector to the own basket correctly gives closing speed. The 6.0 m/s threshold is ours. The formula gives a fraction, so multiply by 100.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     schema_pending:
     - proposed table speed_efforts (game_id, video_id, player_id, effort_id, start_ts_ms, end_ts_ms, threshold_mps, peak_mps, mean_mps, distance_m, scheme), or accel_efforts generalised to kinematic_efforts
       with a kind enum (speed/acc/dec)
@@ -60405,9 +60621,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L4 with tracking data.
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: A player already at their own basket has an undefined unit vector, so skip when the distance is under 0.5 m. Zero opponent transition starts gives null.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-PHYS-040
     name: Team average velocity
     category: physical
@@ -65247,7 +65465,7 @@ categories:
     - lineup_stints.off_possessions
     - lineup_stints.def_possessions
     - lineup_stints.duration_s
-    unit: 'points per possession (weighted: points)'
+    unit: points per 100 possessions
     level: pair
     direction: higher_is_better
     data_tier: pbp
@@ -65282,6 +65500,7 @@ categories:
     - EvanMiya page shows Chemistry/Weighted Chemistry values (e.g. 0.190) without a formula; the definition text came from the harvester; numeric baseline is our inference.
     - '2026-10-19 verification: Our formula is an interaction contrast and the math is sound. The unit text says ''points per possession'' while the margins elsewhere are per 100: pick per 100. WeightedChem
       = Chem x shared possessions then carries points-per-100 x poss, so divide by 100 to get points.'
+    - '2026-10-19 unit fix: margins elsewhere in impact are per 100; WeightedChem then carries points-per-100 x shared possessions'
     origin: adapted
     definition_verified: partial
     formula_verified: false
@@ -65292,9 +65511,12 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L3; EvanMiya chemistry stays reference_only.
-    value_range: Unbounded points per 100 possessions (Chem); points-per-100 x possessions (Weighted)
-    range_basis: verifier 19 Oct
+    value_range: unbounded
+    range_basis: unit fix 19 Oct
     edge_cases: A or B never on court without the other; small shared samples; not opponent-adjusted unless built on adjusted margins.
+    unit_before_2026_10_19: 'points per possession (weighted: points)'
+    formula_fix_2026_10_19: scale the interaction contrast to per 100 possessions
+    unit_fix_2026_10_19: margins elsewhere in impact are per 100; WeightedChem then carries points-per-100 x shared possessions
   - id: M-IMP-018
     name: Adjusted plus-minus (APM, unregularised)
     category: impact
@@ -67165,7 +67387,9 @@ categories:
     - name: MSU Alpha 3 games dictionary (lineup_stints, player_box)
       url: repo:docs/data/dictionary_games.md
       kind: repo_file
-    notes: CBBD player gameScore is stored (formula not visible); assumed Hollinger weights, checked by recomputation.
+    notes:
+    - CBBD player gameScore is stored (formula not visible); assumed Hollinger weights, checked by recomputation.
+    - '2026-10-19 L4: Hollinger Game Score reproduces CBBD gameScore exactly: team 70/70, player 396/396.'
     origin: external
     definition_verified: true
     formula_verified: true
@@ -67180,6 +67404,12 @@ categories:
       - '184: game_score_missed_ft_penalty'
     value_range: unbounded (state per formula)
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: 'Hollinger Game Score reproduces CBBD gameScore exactly: team 70/70, player 396/396.'
   - id: M-IMP-045
     name: Player Impact Estimate (PIE)
     category: impact
@@ -67574,7 +67804,7 @@ categories:
     - R-PC-10
     - R-CX-09
     why: Efficiency at a given usage; input to Win Shares, PORPAG and PRPG.
-    verified: 'true'
+    verified: partial
     verified_source_value: derived from definition_verified=True, formula_verified=True
     sources:
     - name: 'Basketball-Reference: Calculating individual offensive and defensive ratings'
@@ -67584,8 +67814,11 @@ categories:
     - name: MSU Alpha 3 player dictionary, section 10 impact metrics
       url: repo:docs/data/dictionary_players.md
       kind: repo_file
-    notes: Primary owner of ORtg/usage as profile stats may be player_profile/team_efficiency; kept here as impact inputs. Possession denominators use M-TEFF-002 (box estimate, c_FT registry parameter,
-      averaged with the opponent's estimate) or counted possessions when play-by-play exists; team_box.possessions_source (CBBD formula, unverified) is a cross-check only.
+    notes:
+    - Primary owner of ORtg/usage as profile stats may be player_profile/team_efficiency; kept here as impact inputs. Possession denominators use M-TEFF-002 (box estimate, c_FT registry parameter, averaged
+      with the opponent's estimate) or counted possessions when play-by-play exists; team_box.possessions_source (CBBD formula, unverified) is a cross-check only.
+    - '2026-10-19 L4: Oliver ORtg (BR form) is close but not exact against CBBD offensiveRating: 238/300 within 2 points, 44/300 within 0.15 (median difference 0.1). CBBD''s variant is not documented; variants
+      tried (FT weight 0.44, no ORB adjustment, qAST factor 1.0) fit worse.'
     component_directions:
       ORtg: higher_is_better
       DRtg: lower_is_better
@@ -67600,6 +67833,13 @@ categories:
       - '135: CBBD player net rating'
     value_range: '>= 0'
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: 'Oliver ORtg (BR form) is close but not exact against CBBD offensiveRating: 238/300 within 2 points, 44/300 within 0.15 (median difference 0.1). CBBD''s variant is not documented; variants
+        tried (FT weight 0.44, no ORB adjustment, qAST factor 1.0) fit worse.'
   - id: M-IMP-050
     name: Marginal points per win
     category: impact
@@ -70231,9 +70471,11 @@ categories:
       url: https://github.com/swar/nba_api/blob/master/docs/nba_api/stats/endpoints/boxscoreadvancedv3.md
     - name: MSU Alpha 3 player data dictionary
       url: repo:docs/data/dictionary_players.md
-    notes: 'CBBD code multiplies by 1000 and then rounds to one decimal by dividing by 10, i.e. the same percent. The 0.44 FT trip factor is a registered parameter; per possession the numerator credit is
-      a row so usage can be re-weighted per event. CBBD (calculations.ts, re-opened 2026-10-18): gameMinutes = game length = Tm_MP/5 (passed in, used in the numerator); returns null if player minutes <
-      8. The minutes guard is stored as the min_sample parameter of the CBBD variant (cbbd_usage_min_minutes = 8).'
+    notes:
+    - 'CBBD code multiplies by 1000 and then rounds to one decimal by dividing by 10, i.e. the same percent. The 0.44 FT trip factor is a registered parameter; per possession the numerator credit is a row
+      so usage can be re-weighted per event. CBBD (calculations.ts, re-opened 2026-10-18): gameMinutes = game length = Tm_MP/5 (passed in, used in the numerator); returns null if player minutes < 8. The
+      minutes guard is stored as the min_sample parameter of the CBBD variant (cbbd_usage_min_minutes = 8).'
+    - '2026-10-19 L4: Box usage (0.44) reproduces CBBD usage 305/305.'
     provenance:
       merged_inputs:
       - '125: hoopR usage rate (hoopR (sportsdataverse), nba_metrics.R)'
@@ -70247,6 +70489,12 @@ categories:
       - '122: Usage (T-Rank) (Bart Torvik (barttorvik.com / T-Rank; Adam''s WI Sports Blog))'
     value_range: 0-100
     range_basis: unit rule (19 Oct decision)
+    verification_depth_before_l4: L0
+    verification_depth: L4
+    l4_reproduction:
+    - date: '2026-10-19'
+      data: CBBD MSU 2025-26, 35 games (team rows 70, player rows ~300)
+      result: Box usage (0.44) reproduces CBBD usage 305/305.
   - id: M-PROF-014
     name: CTG usage (free-throw trips, assist-adjusted)
     category: player_profile
@@ -83364,7 +83612,7 @@ categories:
     - set_instances.situation
     - play_calls.mapped_set_code
     - play_calls.call_source
-    unit: percent; bits
+    unit: percent
     level: team-game; team-season
     direction: neutral
     data_tier: tracking_broadcast
@@ -83400,15 +83648,19 @@ categories:
     - Entropy of set mix is a project definition; Miller's Possession Sketches clusters possessions by offensive structure and finds repeated within-team structure (abstract). PPP per set is in the play-types
       category.
     - '2026-10-19 verification: share_f and matched_share are computed as 0-1 fractions while the unit says percent. Multiply by 100 or change the unit.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     provenance:
       merged_inputs:
       - (added) play-call mix and diversity
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L3
-    value_range: share 0-1 (or 0-100); H 0 to log2(F) bits
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: 0*log 0 = 0. Unmatched instances are excluded from the shares or kept as their own family; state which.
+    unit_before_2026_10_19: percent; bits
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-COACH-070
     name: Counter usage rate
     category: coaching
@@ -84313,6 +84565,7 @@ categories:
       games/coaches do not yet hold that and coach_id is unverified, so the metric is external (CoachResults.csv cross-check) until coverage is confirmed.
     - '2026-10-19 verification: Checked against the local Coach Results.csv: WIN% = W/GAMES holds on all 332 rows. But Izzo has F4 = 4 over R64 = 16 appearances (25%) while the file shows F4% 88.60%, and
       CHAMP = 0 with CHAMP% 35.50%. Mark Few has 2 F4s and 97.6%. These columns look like model-based probabilities, not observed rates.'
+    - '2026-10-19 unit fix: the local Coach Results file''s percentage columns do not match its own counts (Izzo F4 4 of 16 = 25% vs 88.6% in the file)'
     provenance:
       merged_inputs:
       - '35: Coach Tournament Record and Round Reach Rates'
@@ -84323,7 +84576,8 @@ categories:
     range_basis: verifier 19 Oct
     edge_cases: Coaches with 1 appearance. TOP2 is not explained (Izzo TOP2 = 5 while F2 = 1).
     formula_fix_2026_10_19: WIN% = W / GAMES (confirmed). F4% and CHAMP% in the source are NOT F4/appearances or CHAMP/appearances. Store them as source values, and compute our own F4_rate = 100 * F4 /
-      R64 and CHAMP_rate = 100 * CHAMP / R64 under distinct names.
+      R64 and CHAMP_rate = 100 * CHAMP / R64 under distinct names. ; compute W%, F4% and CHAMP% from the counts (F4 / R64 appearances, titles / R64 appearances); do not read the file's percentage columns
+    unit_fix_2026_10_19: the local Coach Results file's percentage columns do not match its own counts (Izzo F4 4 of 16 = 25% vs 88.6% in the file)
   - id: M-COACH-086
     name: Wins over win-probability expectation by game segment (in-game coaching proxy)
     category: coaching
@@ -86632,7 +86886,7 @@ categories:
     - market_snapshots.market
     - market_snapshots.price_american
     - market_snapshots.snapshot_time_utc
-    unit: boolean
+    unit: probability points (de-vigged)
     level: game x market
     direction: neutral
     data_tier: market
@@ -86680,16 +86934,20 @@ categories:
     - Action Network gives examples only, no numeric threshold. SharpAPI threshold is from an illustrative code sample on market.key == h2h; units of price_change_24h not stated.
     - '2026-10-19 verification: Definition confirmed; thresholds ours. rlm_delta for moneylines should be in probability points (de-vigged), not American cents, to obey the units rule. The SharpAPI page
       was not opened this session.'
+    - '2026-10-19 unit fix: probability points per the units rule'
     provenance:
       merged_inputs:
       - '135: reverse_line_movement_flag'
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: 'L1: no outside numeric threshold exists; ticket-share data needs a licensed source.'
-    value_range: boolean
-    range_basis: verifier 19 Oct
+    value_range: -1 to 1
+    range_basis: unit fix 19 Oct
     edge_cases: Moneyline 'price change' in American odds is non-linear across the +100/-100 boundary, so measure in implied probability. Spread moves can be juice-only. Snapshot window boundaries need
       definition.
+    unit_before_2026_10_19: boolean
+    formula_fix_2026_10_19: rlm_delta on moneylines in de-vigged probability points, not American cents
+    unit_fix_2026_10_19: probability points per the units rule
   - id: M-MKT-037
     name: Move-on-air flag
     category: market
@@ -86910,15 +87168,18 @@ categories:
     notes:
     - 'N-MK-01 (live R-MK-34): lands in proposed market_snapshots.public_ticket_share, only from a registered source with terms checked. Action Network glossary 404; definition wording unverified.'
     - '2026-10-19 verification: The formula gives 0-1; multiply by 100 to meet the percent rule. The outside definition is unconfirmed.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     provenance:
       merged_inputs:
       - '130: public_bet_percentage'
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L1 if a licensed provider's definition is opened.
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Zero tickets gives null. Three-way markets need a sum over all sides.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-MKT-042
     name: Public money (handle) share and ticket-money divergence
     category: market
@@ -89826,7 +90087,7 @@ categories:
     - external:espn.bpi.game_win_prob
     - external:evanmiya.game_predictions.win_prob
     - external:espn.pickcenter.home_team_odds_win_percentage
-    unit: probability
+    unit: index (publisher scale)
     level: game
     direction: neutral
     data_tier: external_only
@@ -89859,6 +90120,7 @@ categories:
     notes:
     - BPI single-game method and distribution not stated (10,000 simulations are for season outcomes). ESPN odds win percentage has no published definition. ESPN direct is reference_only (R-DS-02).
     - '2026-10-19 verification: All three are proprietary; store published values only.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       merged_inputs:
       - '22: bpi_game_win_probability'
@@ -89867,9 +90129,11 @@ categories:
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1
-    value_range: 0-1 probability (ESPN fields may be 0-100; convert)
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: Scale check needed (percent vs probability). Snapshot time matters.
+    unit_before_2026_10_19: probability
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-MKT-107
     name: ncaahoopR pregame spread (home favoured by)
     category: market
@@ -89917,7 +90181,7 @@ categories:
     inputs:
     - external:espn.pickcenter.home_team_odds_average_score
     - external:espn.pickcenter.away_team_odds_average_score
-    unit: points (assumed)
+    unit: index (publisher scale)
     level: game x team
     direction: neutral
     data_tier: external_only
@@ -89940,15 +90204,18 @@ categories:
     notes:
     - Field name confirmed in hoopR; definition unverified.
     - '2026-10-19 verification: The field exists but is undefined; the unit is an assumption. Store raw.'
+    - '2026-10-19 unit fix: publisher index, scale unpublished; stored exactly as published, never modelled on its scale'
     provenance:
       merged_inputs:
       - '106: Odds Average Score'
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1
-    value_range: unknown (points assumed)
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: Field may be empty for many providers.
+    unit_before_2026_10_19: points (assumed)
+    unit_fix_2026_10_19: publisher index, scale unpublished; stored exactly as published, never modelled on its scale
   - id: M-MKT-109
     name: Cleaning the Glass Spread Diff
     category: market
@@ -89959,7 +90226,7 @@ categories:
     formula: Not defined on the page (possibly point differential vs spread).
     inputs:
     - external:ctg.league_summary.spread_diff
-    unit: points (assumed)
+    unit: index (publisher scale)
     level: team x window
     direction: neutral
     data_tier: external_only
@@ -89984,15 +90251,18 @@ categories:
     - 'Column exists (twice: last 2 weeks and season); CTG excludes garbage time; definition unverified. NBA only. Out of scope (NBA only, definition unverified): reference appendix, not counted as a canonical
       NCAA metric.'
     - '2026-10-19 verification: Out of NCAA scope; undefined.'
+    - '2026-10-19 unit fix: out of NCAA scope and undefined; kept only as a placeholder, not collected'
     provenance:
       merged_inputs:
       - '138: Spread Diff (CTG)'
     verified_before_2026_10_19: 'false'
     verification_depth: L1
     depth_possible: L1 if CTG's /stats/guide/league_summary page (linked, not opened) defines it.
-    value_range: unknown (points assumed)
-    range_basis: verifier 19 Oct
+    value_range: as published
+    range_basis: unit fix 19 Oct
     edge_cases: NBA only.
+    unit_before_2026_10_19: points (assumed)
+    unit_fix_2026_10_19: out of NCAA scope and undefined; kept only as a placeholder, not collected
   - id: M-MKT-110
     name: Public bracket pick share
     category: market
@@ -90024,15 +90294,18 @@ categories:
     notes:
     - 'Header seen locally: YEAR, TEAM NO, TEAM, R64..FINALS. Original source of the archive not identified (unverified).'
     - '2026-10-19 verification: Formula gives 0-1, so multiply by 100. The source is unidentified.'
+    - '2026-10-19 unit fix: x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
     provenance:
       merged_inputs:
       - '131: public_pick_share'
     verified_before_2026_10_19: 'false'
     verification_depth: L2
     depth_possible: L1 once the archive's original publisher is identified.
-    value_range: 0-100 percent
-    range_basis: verifier 19 Oct
+    value_range: 0-100
+    range_basis: unit fix 19 Oct
     edge_cases: Per round, shares over teams should sum to the number of slots in that round (e.g. 2 x 100% in the final, 1 x 100% for champion); check this. First Four handling.
+    formula_fix_2026_10_19: multiply the result by 100
+    unit_fix_2026_10_19: 'x100: the formula gives a 0-1 fraction; stored as percent 0-100 (19 Oct units rule)'
   - id: M-MKT-111
     name: Bracket pool value (leverage vs public)
     category: market
@@ -90584,7 +90857,7 @@ categories:
     - player_game_context.is_starter
     - player_box.pf
     - games.overtime_periods
-    unit: minutes (60 s); probability
+    unit: s
     level: player x game
     direction: neutral
     data_tier: box
@@ -90616,14 +90889,18 @@ categories:
     notes:
     - 'Model form is our choice (unverified); prop participation rule: a prop is void if the player does not enter the box score (collector_design A1), so DNP is a void, not an under.'
     - '2026-10-19 verification: The unit ''minutes (60 s)'' breaks the seconds rule: store seconds (0 to 2400 + 300 x OT). Unconditional mean P_play x mu_min is correct.'
+    - '2026-10-19 unit fix: seconds, not minutes (units rule)'
     provenance:
       merged_inputs: []
     verified_before_2026_10_19: 'false'
     verification_depth: L3
     depth_possible: L3
-    value_range: minutes 0 to 40 + 5 x OT; P_play 0-1
-    range_basis: verifier 19 Oct
+    value_range: 0 to 2400 + 300 x overtime periods
+    range_basis: unit fix 19 Oct
     edge_cases: DNP is a void for props (not an under). Truncation bound depends on OT count, which is unknown before the game, so use 40 (or 45) and model OT separately.
+    unit_before_2026_10_19: minutes (60 s); probability
+    formula_fix_2026_10_19: express the clock term in seconds (minutes x 60)
+    unit_fix_2026_10_19: seconds, not minutes (units rule)
   - id: M-MKT-121
     name: Player stat projected distribution (overdispersed count model)
     category: market
@@ -94309,3 +94586,7 @@ registry_change_log:
     reference_only'': 11, ''false -> false'': 4, ''partial -> partial'': 65, ''partial -> true'': 18, ''false -> partial'': 84, ''partial -> internal'': 11, ''unit problems'': 30, ''false -> reference_only'':
     30, ''false -> internal'': 206, ''false -> true'': 16, ''harvest_only -> partial'': 5, ''promotion refuted -> partial'': 1}'
   by: Mac session (msu-colab)
+- version: 0.3.0
+  date: '2026-10-19'
+  by: Mac session (msu-colab)
+  change: 'L4 numeric reproduction on CBBD MSU 2025-26 (35 games): box formulas, Oliver ratings, play-by-play counts; definition mismatches in CBBD fields recorded; 30 unit fixes (old units kept in unit_before_2026_10_19).'

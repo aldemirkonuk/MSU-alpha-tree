@@ -179,3 +179,4 @@ Other counts: 9818 input references (9153 resolve to a proposed schema column, 3
 
 - Verification pass on the 450 unconfirmed formulas: [verification_2026-10-19.md](verification_2026-10-19.md). Registry version 0.2.0. Verified now: true 1,105 · partial 154 · internal 287 · reference_only 41 · false 4. Every metric now declares a `value_range` (percent 0-100, probability 0-1, other units by rule or by the verifier).
 - New category [decision_trees](decision_trees.md) (TREE, 20 stats): pre-registered condition → branch → leaf trees with shrinkage, false-discovery control and walk-forward checks, plus the Monte Carlo lineup duel and game-script what-if simulator. Total metrics: 1,591.
+- L4 reproduction on CBBD data for MSU 2025-26 and the 30 unit fixes: [l4_reproduction_2026-10-19.md](l4_reproduction_2026-10-19.md). Registry version 0.3.0; 42 metrics now at L4, 10 at L5.
