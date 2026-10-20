@@ -1,4 +1,4 @@
-version: 0.1.0
+version: 0.2.0
 date: '2026-10-20'
 status: proposal under the build freeze; canonical source for every spot, zone and position label
 owner: Mac session (msu-colab) for Aldemir
@@ -32,7 +32,14 @@ constants:
   source: docs/rules/PRMBB_RulesBook.pdf (2026-27); docs/data/court_constants_check.md
 expression_language: 'Each expr is one Python boolean expression checked against an AST whitelist (arithmetic, comparisons, and/or/not, calls to abs min max hypot atan2 degrees sqrt
   floor is_three dist seg_dist). Names: x y z ax r t m, the constants, and context bx by hx hy ax_ ay_ ball_side, table_side_x_sign. is_three(x, y): corner (y <= BREAK_Y) needs |x| >
-  CORNER_X; above the break r > ARC_R; a foot on the line is a two.'
+  CORNER_X; above the break r > ARC_R; a foot on the line is a two. Grammar extension 0.2.0 (context names; each is None when unknown, and Spot.inside then returns None with reason no_context):
+  - dribbling: handler dribble state. 0 = holding with a live dribble (has not dribbled since this catch), 1 = dribbling, 2 = dribble used (DRIBBLE_END since the catch, until the ball
+  leaves his hands); None while nobody holds the ball. - lowest_defender_y: min y over the 5 defenders'' stance centres; None unless all five are known. - px, py: the same object''s
+  reference point at the previous frame (PTS - 1001/30000 s), taken from the smoothed track (rule_trajectory_smoothing). None if that frame is missing or the step crosses a camera cut,
+  landing or airborne freeze. Implementation: spotlib.CTX_NAMES |= {dribbling, lowest_defender_y, px, py}; the mirrored-entry negation tuple in Spot.inside becomes (bx, hx, ax_, px);
+  the check.py CTX regex becomes \b(bx|by|hx|hy|ax_|ay_|ball_side|dribbling|lowest_defender_y|px|py)\b; entries may carry probes_ctx: a list of {"p": [x, y], "ctx": {...}, "want": true|false|null},
+  and check.py asserts s.inside(x, y, **ctx) == want. Role gating and multi-frame clauses stay in bounds_text. Screener coordinates (sx, sy) are deferred until an off-ball expr that
+  holds up exists.'
 edge_rules:
 - Boundary lines are out of bounds (|x| >= 7.62, y <= -1.6002, y >= 27.051).
 - The division line is backcourt except its mathematical edge nearest the attacked basket (frontcourt is y <= 12.700).
@@ -113,11 +120,19 @@ loader:
     ctx values is missing. Null is stored as label absent with reason=no_context, never as an exception or as OOB.'
   temporal:
     schema_field: temporal
+    mode:
+      single_winner: exit
+      multi_label: enter_leave
     on_every_entry:
       hysteresis: painted|convention|none
       h_min_m: 0.1
       h_k_sigma: 0.5
+      h_k_sigma_slow: 1.0
       dwell_ms: 133
+      dwell_ms_slow: 467
+      slow_speed_mps: 1.0
+      slow_speed_window_s: 1.0
+      output: label|probability
       exempt:
       - landing
       - camera_cut
@@ -128,15 +143,70 @@ loader:
         hysteresis: painted
         h_min_m: 0.1
         h_k_sigma: 0.5
+        h_k_sigma_slow: 1.0
         dwell_ms: 133
+        dwell_ms_slow: 467
+        output: label
       other spatial:
         hysteresis: convention
         h_min_m: 0.25
         h_k_sigma: 0.75
+        h_k_sigma_slow: 1.0
         dwell_ms: 233
+        dwell_ms_slow: 467
+        output: label
+      relative:
+        hysteresis: convention
+        sigma: hypot(sigma_self, sigma_other)
+        h_min_m: 0.25
+        h_k_sigma: 0.75
+        h_k_sigma_slow: 1.0
+        dwell_ms: 233
+        dwell_ms_slow: 467
+        output: label
       rule decisions at events:
         hysteresis: none
         dwell_ms: 0
+    probability_only:
+    - lane_mark_2_zone
+    - division_line
+    - end_line
+    - free_throw_line
+    - lane_line_landmark
+    - lane_mark_1
+    - lane_mark_1_zone
+    - lane_mark_2
+    - lane_mark_3
+    - lane_mark_3_zone
+    - restraining_line
+    - restricted_area_straight_leg
+    - sideline
+    - endline_throw_in_mark
+    - halfcourt_crossing_line
+    - division_line_extended
+    - opp_ft_line
+    - restricted_area_arc_line
+    - legacy_restricted_area_arc_3ft
+    - charge_circle
+    - backcourt_28ft_mark
+    - mark_28ft
+    - three_point_arc
+    - three_point_corner_straight
+    - coaching_box_38ft_line
+    - far_three_point_line
+    - lane_block
+    - painted_block
+    - ft_lane_block
+    - out_of_bounds_colour_belt
+    - toe_on_line
+    - pack_line_band
+    - block_zone
+    - rim
+    - rim_centre
+    probability_only_rule: 'An entry goes on this list when the inscribed radius of its own region is below the h of its class at sigma 0.30 (painted: max(0.10, 0.5 x 0.30) = 0.15 m;
+      convention: max(0.25, 0.75 x 0.30) = 0.25 m), or when its measured recall for moving players under exit-based hysteresis is <= 0.01 (block_zone, inscribed radius 0.16 m). Output
+      for these: P_in = Phi(d / sigma) and the signed distance d, stored every frame, never a boolean. A probability_only entry in a single-winner layer (opp_ft_line in fullcourt) does
+      not take part in winner selection.'
   evaluator:
     loader_rules:
     - 'AST whitelist at load: Expression, BoolOp, BinOp, UnaryOp, Compare, IfExp, Call (func Name in BASE only), Name (BASE, x, y, z, ax, r, t, m, ball_side, bx, by, hx, hy, ax_, ay_),
@@ -276,7 +346,8 @@ entries:
     y: 20
     z: 0
   expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y > HALF_Y
-  bounds_text: in bounds, y >= 12.700 (the division line is backcourt, 9-12)
+  bounds_text: In bounds and y > 12.700 m (past the near edge of the division line). The painted division line itself is backcourt except its near edge, which is frontcourt (Rule 9-12.2;
+    edge rule 2).
   aliases:
   - back court
   reference_point: feet_midpoint
@@ -311,6 +382,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by rules_book: y >= 12.700 puts the division line''s mathematical edge nearest the attacked basket in the backcourt. Rule 9-12.2 says the backcourt includes the division
     line ''excluding the mathematical edge nearest '
+  plain: In bounds and past the division line (y > 12.700 m); the line's near edge belongs to the frontcourt (rule 9-12).
 - id: corner_three
   layer: zone_scheme:court_region
   name: Corner three
@@ -367,6 +439,7 @@ entries:
     expr: CORNER_X < x < SIDE_X and END_Y < y <= BREAK_Y
     bounds_text: 6.6008 < x < 7.62 and -1.6002 < y <= 1.4118. Uses the y-break test. The geometric break is 3.0120 m from the end line; the diagram's straight length is 3.0067 m, a 0.005
       m difference.
+  plain: Behind the corner line (|x| > 6.6008 m, the line's outside edge; the line itself is a two) and y <= 1.4118 m (below the break).
 - id: long_mid_baseline
   layer: zone_scheme:court_region
   name: Long mid-range, baseline
@@ -380,6 +453,7 @@ entries:
   aliases:
   - baseline two
   - short corner jumper
+  - long baseline two
   reference_point: feet_midpoint
   reference_point_events:
     shot: last_floor_contact
@@ -401,6 +475,7 @@ entries:
     - 3.5
   - - 6.7
     - 0
+  plain: Two-point area more than 4.2672 m (14 ft) from the rim, angle m 30 deg or less (includes behind the backboard line).
 - id: long_mid_top
   layer: zone_scheme:court_region
   name: Long mid-range, elbow and top
@@ -414,6 +489,8 @@ entries:
   aliases:
   - elbow jumper
   - top-of-key two
+  - long top two
+  - long elbow two
   reference_point: feet_midpoint
   reference_point_events:
     shot: last_floor_contact
@@ -438,6 +515,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by data engineering: Mirrored, but the region spans x = 0 (m > 60 includes the top of the key), so a player at the top of the key flips between long_mid_top_right and
     long_mid_top_left under centimetre noise. top_three, t'
+  plain: Two-point area outside the paint, more than 4.2672 m (14 ft) from the rim, angle m above 60 deg on either side. One centre label, not split left/right.
 - id: long_mid_wing
   layer: zone_scheme:court_region
   name: Long mid-range, wing
@@ -451,6 +529,7 @@ entries:
   aliases:
   - wing two
   - elbow-extended two
+  - long wing two
   reference_point: feet_midpoint
   reference_point_events:
     shot: last_floor_contact
@@ -470,6 +549,7 @@ entries:
   probes_outside:
   - - 5
     - 5
+  plain: Two-point area more than 4.2672 m (14 ft) from the rim, angle m above 30 and up to 60 deg.
 - id: out_of_bounds
   layer: zone_scheme:court_region
   name: Out of bounds
@@ -522,6 +602,7 @@ entries:
     layer: landmark
     expr: ax >= SIDE_X or y <= END_Y or y >= FAR_END_Y
     bounds_text: '|x| >= 7.62 or y <= -1.6002 or y >= 27.051. Boundary lines are out of bounds.'
+  plain: 'On or outside a boundary line: |x| >= 7.62 m, y <= -1.6002 m or y >= 27.051 m.'
 - id: paint_non_ra
   layer: zone_scheme:court_region
   name: Paint outside the restricted area
@@ -558,6 +639,7 @@ entries:
     - 2
   - - 0
     - 4.2
+  plain: Inside the lane (|x| <= 1.8288 m = 6 ft, to the outer edge of the lane lines; y up to 4.191 m, the FT line far edge) but not in the restricted area. Lane lines count as paint.
 - id: restricted_area
   layer: zone_scheme:court_region
   name: Restricted area
@@ -644,6 +726,8 @@ entries:
     expr: ((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R))
     bounds_text: (y >= 0 and r <= 1.2700) or (-0.381 <= y < 0 and |x| <= 1.2700). 1.2700 is the outer edge of the 2-in arc line (inner edge 1.2192); the straight legs run to the backboard
       face at y = -0.381. One test serves both the rule and the spot label (K25 A).
+  plain: Within 1.27 m (4 ft 2 in, outside of the painted arc) of the rim centre for y >= 0; behind the rim centre, between the straight legs |x| <= 1.27 back to the backboard face (y
+    >= -0.381). The painted line counts as inside.
 - id: short_mid
   layer: zone_scheme:court_region
   name: Short mid-range
@@ -679,6 +763,7 @@ entries:
     - 3
   - - 1.8
     - 1
+  plain: Two-point area outside the paint, within 4.2672 m (14 ft) of the rim centre. Includes a thin cap just above the FT line (|x| < 0.80 m, y 4.191-4.267).
 - id: slot_three
   layer: zone_scheme:court_region
   name: Slot three
@@ -728,6 +813,7 @@ entries:
     layer: spot
     expr: x >= 0 and is_three(x, y) and y > BREAK_Y and 60 < t <= 80 and (END_Y < y < HALF_Y and ax < SIDE_X)
     bounds_text: Three-point area, 60 < theta <= 80, in the frontcourt.
+  plain: Three-point area, angle m above 60 and up to 80 deg.
 - id: top_three
   layer: zone_scheme:court_region
   name: Top three
@@ -775,6 +861,7 @@ entries:
     layer: spot
     expr: is_three(x, y) and y > BREAK_Y and m > 80 and (END_Y < y < HALF_Y and ax < SIDE_X)
     bounds_text: Three-point area, 80 < theta < 100, in the frontcourt.
+  plain: Three-point area, angle m above 80 deg (a 20-deg wedge straight up the middle).
 - id: wing_three
   layer: zone_scheme:court_region
   name: Wing three
@@ -790,6 +877,7 @@ entries:
   - wing
   - free-throw line extended three
   - side
+  - wing three
   reference_point: feet_midpoint
   reference_point_events:
     shot: last_floor_contact
@@ -825,6 +913,7 @@ entries:
     layer: spot
     expr: x >= 0 and is_three(x, y) and y > BREAK_Y and t <= 60 and (END_Y < y < HALF_Y and ax < SIDE_X)
     bounds_text: Three-point area, y > 1.4118, theta <= 60, in the frontcourt. The left side is the x -> -x mirror of this rule.
+  plain: Three-point area above the break, angle m 60 deg or less (45 deg is its middle).
 - id: three_depth_corner
   layer: zone_scheme:three_depth
   name: Corner (any depth)
@@ -845,6 +934,7 @@ entries:
   probes_inside:
   - - 6.95
     - 0
+  plain: Corner three (behind the corner line, y <= 1.4118 m), at any distance.
 - id: three_depth_deep
   layer: zone_scheme:three_depth
   name: Deep, 27 to 30 ft
@@ -865,6 +955,7 @@ entries:
   probes_inside:
   - - 0
     - 8.6
+  plain: Above-the-break three, more than 8.2296 m (27 ft) and up to 9.144 m (30 ft) from the rim.
 - id: three_depth_heave
   layer: zone_scheme:three_depth
   name: Beyond half court
@@ -885,6 +976,7 @@ entries:
   probes_inside:
   - - 0
     - 18
+  plain: 'Backcourt (y > 12.700 m): beyond the division line.'
 - id: three_depth_logo
   layer: zone_scheme:three_depth
   name: Logo range, 30 ft to the division line
@@ -905,6 +997,7 @@ entries:
   probes_inside:
   - - 0
     - 10
+  plain: Frontcourt, above the break, more than 9.144 m (30 ft) from the rim, up to the division line.
 - id: three_depth_standard
   layer: zone_scheme:three_depth
   name: Standard, under 27 ft
@@ -928,8 +1021,9 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by data engineering: The tie direction at the 27 ft and 30 ft cuts goes to the farther zone (r < 8.2296 is standard, so 8.2296 is deep), which contradicts rule_line_edge_ownership
     (''exact ties go to the zone nearer the ri'
+  plain: Above-the-break three, up to 8.2296 m (27 ft) from the rim.
 - id: lane_mark_2_zone
-  layer: spot
+  layer: landmark
   name: Lane-space mark 2 neutral zone (2 x 36 in), right
   side: mirrored
   anchor:
@@ -978,7 +1072,7 @@ entries:
     x: 0.9144
     y: -0.6
     z: 0
-  expr: ax <= LANE_X and END_Y <= y < 0.5334 and not ((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R))
+  expr: ax <= LANE_X and END_Y < y < 0.5334 and not ((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R))
   bounds_text: '|x| <= 1.8288 (lane line outer edge) and -1.6002 <= y < 0.5334 (bottom edge of the painted block), minus restricted_area. Sub-tag baseline_under_board covers |x| <= 0.9144
     behind the board plane.'
   edge_basis: Lane line outer edge 1.8288; end line inner edge -1.6002; painted-block bottom edge 0.5334 (diagram reading, verify); R.A. carved out by priority and in the expr.
@@ -1016,6 +1110,8 @@ entries:
     - 0.54
   - - 0.2
     - -1.61
+  - - 0.2
+    - -1.6002
   notes: 'motion_starts UNDER (0.90, 0.30) falls in restricted_area (r 0.95); read it as an R.A. position. Anchor (0.9144, -0.6): r 1.094, theta -33.3 (left 213.3 = -146.7).'
   variants_not_adopted:
   - family: repo
@@ -1023,6 +1119,8 @@ entries:
     expr: x >= 0 and hypot(x - 0.9, y - 0.3) <= 0.9 and END_Y < y < FAR_END_Y and ax < SIDE_X and not (hypot(x - 2.1, y - 0.6) <= 0.9 and hypot(x - 2.1, y - 0.6) < hypot(x - 0.9, y -
       0.3)) and not (hypot(x - 1.8475, y - 0.0968) <= 0.9 and hypot(x - 1.8475, y - 0.0968) < hypot(x - 0.9, y - 0.3)) and not (hypot
     bounds_text: Point (0.90, 0.30), r 0.949, theta 18.43. Captured within 0.9 m.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same end-line inclusion as dunker_spot.'
 - id: dunker_spot
   layer: spot
   name: Dunker spot
@@ -1031,10 +1129,9 @@ entries:
     x: 2.7432
     y: 0
     z: 0
-  expr: LANE_X < x <= 3.5 and END_Y <= y < 0.5334
-  bounds_text: '1.8288 < x <= 3.5 and -1.6002 <= y < 0.5334 (right; left by x -> -x). Polar corners (right): (1.905, 16.3) top-inner, (3.540, 8.7) top-outer, (3.848, -24.6) end-line
-    outer, (2.430, -41.19) end-line inner; the zone spans theta -41.2..16.3 deg. (1.868, -11.8) = (1.8288, -0.381) is only the upper_dunker corner. Sub-tags baseline_dunker (y < -0.381)
-    and upper_dunker (-0.381 <= y < 0.5334).'
+  expr: LANE_X < x <= 3.5 and END_Y < y < 0.5334
+  bounds_text: 'Just outside the lane line, below the block: 1.8288 < x <= 3.5 m and -1.6002 <= y < 0.5334 m (end line up to the bottom of the painted block). Split into two sub-tags
+    at the backboard face y = -0.381: baseline_dunker below it, upper_dunker above it.'
   edge_basis: Inner = lane line OUTER edge (feet off the 3-second lane, which includes its lines, Rule 9-9 / 1-6.1). Top = painted-block bottom edge 0.5334. Bottom = end line. Outer
     3.5 kept from vocabulary_map. Anchor x 2.7432 = end-line throw-in mark (Rule 7-3.2.a) = lane-space outer edge (Rule 1-6.4).
   aliases:
@@ -1088,6 +1185,8 @@ entries:
     - 0.54
   - - 2.7
     - -1.61
+  - - 2.7
+    - -1.6002
   notes: 'Skeptic fixes applied: polar corners corrected (end-line inner corner -41.19 deg added); hooperuniversity supports text no longer claims ''non-shooters''. Speech: ''dunker''
     alone = whole zone; some coaches say ''dunker'' for the short corner - resolve by |x| (> 3.5 = short_corner).'
   variants_not_adopted:
@@ -1099,6 +1198,8 @@ entries:
     layer: spot
     expr: 2.0 <= x <= 3.5 and END_Y < y <= 0.6
     bounds_text: 2.0 <= x <= 3.5 and -1.6002 < y <= 0.6
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: END_Y <= y includes the end line''s inside edge, which the edge rules call out of bounds, so a player on the line gets a primary spot.'
 - id: short_corner
   layer: spot
   name: Short corner
@@ -1107,7 +1208,7 @@ entries:
     x: 4.7244
     y: 0
     z: 0
-  expr: 3.5 < x < CORNER_X and END_Y <= y < 1.5 and not is_three(x, y)
+  expr: 3.5 < x < CORNER_X and END_Y < y < 1.5 and not is_three(x, y)
   bounds_text: '3.5 < x < 6.6008 (corner-three line OUTSIDE edge; the line is a two) and -1.6002 <= y < 1.5, two-point area only. Edge convention shared with high_short_corner: y = 1.5
     belongs to high_short_corner. Polar corners (right): (3.808, 23.2), (6.769, 12.8), (6.792, -13.6), (3.848, -24.6).'
   edge_basis: 'Only the x placement is sourced: anchor x = halfway between lane outer edge 1.8288 and sideline 7.62 = 4.7244. Inner bound 3.5 = dunker outer bound; outer = corner-three
@@ -1162,6 +1263,8 @@ entries:
     - 1.51
   - - 4.7
     - -1.61
+  - - 4.7
+    - -1.6002
   notes: 'hoopstudent dunker page dropped as a short_corner citation (skeptic: does not support the y extent). Film acceptance: >= 80% of zone short-corner posts within 3.5-6.6 and mode
     within 0.6 m of 4.72. Repo values (4.5, 0.6), offense (4.5, 8 deg), defense (4.02, 5.7 deg) all fall inside.'
   variants_not_adopted:
@@ -1169,6 +1272,8 @@ entries:
     layer: spot
     expr: 3.5 < x <= 6.0 and END_Y < y <= 1.50
     bounds_text: 3.5 < x <= 6.0 and -1.6002 < y <= 1.50 (K19 A). Max r is 6.21 at (6.0, -1.6002), so the r < 6.60 clause is redundant.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same end-line inclusion as dunker_spot.'
 - id: high_short_corner
   layer: spot
   name: High short corner
@@ -1407,7 +1512,7 @@ entries:
     bounds_text: Point (1.8288, 4.191), r 4.573, theta 66.43. Captured within 0.9 m, in bounds, with a nearest-anchor split.
 - id: high_post
   layer: spot
-  name: High post, above the FT line (strip; the coaching 'high post' is high_post_area)
+  name: Strip just above the free-throw line (one part of the high-post area)
   side: centre
   anchor:
     x: 0
@@ -1422,6 +1527,7 @@ entries:
   - FT line (as a position)
   - flash spot
   - HIGH POST
+  - above the FT line
   reference_point: feet_midpoint
   priority: 90
   rank: 1090
@@ -1461,13 +1567,13 @@ entries:
     bounds_text: 3.8 <= r <= 5.2 and 70 <= theta <= 110 (the A9 band).
 - id: pinch_post
   layer: spot
-  name: Wide elbow / elbow-extended strip (inside the arc); 'pinch post' speech resolves to elbow
+  name: Pinch post (strip just outside the elbow, inside the arc)
   side: mirrored
   anchor:
     x: 3.2004
     y: 4.191
     z: 0
-  expr: 2.7432 < x <= 3.6576 and 3.683 <= y <= 4.699
+  expr: 2.7432 < x <= 4.0 and 3.683 <= y <= 4.699
   bounds_text: 'Primary strip 2.7432 < x <= 3.6576 and 3.683 <= y <= 4.699. Anchor moved into the strip: (3.2004, 4.191), r 5.273, theta 52.63. The role tag pinch_post_role (player in
     elbow or this strip, catch from the same-side wing/slot, holds >= 1.0 s facing up) needs ball and time and is applied by the event layer, not this expr.'
   edge_basis: Sources only place the pinch post at the elbow; the strip (one lane half-width beyond the lane-space edge) holds 'elbow extended inside the arc' catches. Inside the elbow
@@ -1477,6 +1583,7 @@ entries:
   - elbow extended (inside arc)
   - FT-line extended inside
   - elbow post
+  - wide elbow
   reference_point: feet_midpoint
   priority: 100
   rank: 1100
@@ -1504,7 +1611,7 @@ entries:
   probes_outside:
   - - 2.74
     - 4.191
-  - - 3.67
+  - - 4.01
     - 4.191
   - - 3.2
     - 3.67
@@ -1516,6 +1623,8 @@ entries:
     layer: spot
     expr: x >= 0 and 4.0 <= r <= 5.0 and 55 <= t <= 75
     bounds_text: 4.0 <= r <= 5.0 and 55 <= theta <= 75. The action also needs the ball held >= 1.5 s. high_post wins in 70-75.
+  review_fixes_2026_10_20:
+  - 'loop2 NOISE ROBUSTNESS (si: The strip 0.914 m wide (inscribed radius 0.457 m) is below the elbow''s width standard, and stationary recall collapsed.'
 - id: lane_middle
   layer: spot
   name: Lane middle (paint, non-R.A., between the posts)
@@ -1569,7 +1678,7 @@ entries:
     x: 5.5
     y: 2.6
     z: 0
-  expr: x >= 0 and (not is_three(x, y) and y >= END_Y) and (ax > LANE_X or y > FT_Y) and m <= 30
+  expr: x >= 0 and (not is_three(x, y) and y > END_Y) and (ax > LANE_X or y > FT_Y) and m <= 30
   bounds_text: 'Two-point area, outside the lane, mirrored theta <= 30 (incl. negative theta below the rim line). Fallback primary: wins only where no higher spot matches. Evaluated
     alone (with last_floor_contact of the shooter) the same expr is the 2PT shot-zone label.'
   edge_basis: 30/60/80 cuts reuse the perimeter sector cuts (wing 12-60, slot 60-80, top 80-100) so 2s and 3s line up by angle. Anchor moved to (5.5, 2.6), r 6.084, theta 25.30 (old
@@ -1607,7 +1716,11 @@ entries:
     - 0.5
   - - 2
     - -1.61
+  - - 2
+    - -1.6002
   notes: Wide-pin spot (5.516, 1.792) gets this primary label; see wide_pin_spot tag.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: These are the fallback primary spots and 2PT shot zones, yet they include the out-of-bounds end line.'
 - id: mr_elbow
   layer: spot
   name: 'Mid-range: elbow / slot two'
@@ -1616,7 +1729,7 @@ entries:
     x: 2.3
     y: 5.6
     z: 0
-  expr: x >= 0 and (not is_three(x, y) and y >= END_Y) and (ax > LANE_X or y > FT_Y) and 60 < m <= 80
+  expr: x >= 0 and (not is_three(x, y) and y > END_Y) and (ax > LANE_X or y > FT_Y) and 60 < m <= 80
   bounds_text: Two-point area, outside the lane, 60 < mirrored theta <= 80. Fallback primary and 2PT shot zone; a shot from the elbow spot gets spot elbow + shot zone mr_elbow.
   edge_basis: Same sector cuts; the elbow anchor (66.4 deg) sits in this sector.
   aliases:
@@ -1657,9 +1770,9 @@ entries:
     x: 0
     y: 5.8
     z: 0
-  expr: (not is_three(x, y) and y >= END_Y) and (ax > LANE_X or y > FT_Y) and m > 80
-  bounds_text: Two-point area, outside the lane, 80 < theta < 100. As a primary spot it effectively holds only y > 5.2 near the centre (high_post, elbow, nail claim y <= 5.2 for |x|
-    <= 2.7432), i.e. the cap of the FT semicircle (5.2-6.02) up to the arc; as a shot zone it covers the full sector above the FT line.
+  expr: (not is_three(x, y) and y > END_Y) and (ax > LANE_X or y > FT_Y) and m > 80
+  bounds_text: Two-point area outside the lane, angle m above 80 deg (a 20-deg wedge straight up the middle). As a coaching spot it only wins above y = 5.2 m, because elbow, nail_area
+    and high_post take |x| <= 2.7432, y <= 5.2. As a shot zone it covers the whole wedge.
   edge_basis: Sector cut 80/100 = perimeter 'top'.
   aliases:
   - top of the key two
@@ -1697,7 +1810,7 @@ entries:
     x: 4.6
     y: 4.6
     z: 0
-  expr: x >= 0 and (not is_three(x, y) and y >= END_Y) and (ax > LANE_X or y > FT_Y) and 30 < m <= 60
+  expr: x >= 0 and (not is_three(x, y) and y > END_Y) and (ax > LANE_X or y > FT_Y) and 30 < m <= 60
   bounds_text: Two-point area, outside the lane, 30 < mirrored theta <= 60. Fallback primary and 2PT shot zone.
   edge_basis: Same sector cuts as mr_baseline.
   aliases:
@@ -1732,7 +1845,7 @@ entries:
   - - 1.82
     - 2.5
 - id: break_point
-  layer: spot
+  layer: landmark
   name: The break (arc meets corner line)
   side: mirrored
   anchor:
@@ -1782,7 +1895,7 @@ entries:
     x: 0
     y: 11.8
     z: 0
-  expr: hypot(x, y - (HALF_Y + LINE_W / 2)) <= 1.8288 and y < HALF_Y
+  expr: hypot(x, y - (HALF_Y + LINE_W / 2)) <= 1.8288 and y <= HALF_Y
   bounds_text: 'A circle segment: within 1.8288 m (outside edge) of the centre (0, 12.7254), with y < 12.700. r runs from 10.8966 to 12.700. It is a subset of logo_range.'
   edge_basis: Centre-circle outside edge; frontcourt edge of the division line.
   aliases:
@@ -1815,7 +1928,7 @@ entries:
   notes: The shape is a circle segment, not a polygon. The rule-book commercial logo box (3.048 m square, 2.5908 m from the division line, 1.3716 m from the sideline, Rule 1-17.5) is
     left out because the constants file does not fix where it goes (which side, and whether there are one or two per half).
 - id: ft_line_extended
-  layer: spot
+  layer: landmark
   name: Free-throw line extended (three-point side)
   side: mirrored
   anchor:
@@ -2054,8 +2167,9 @@ entries:
     x: 6.6
     y: 2.4
     z: 0
-  expr: x > 0 and is_three(x, y) and BREAK_T < m <= 30.0 and r <= 9.144 and x < SIDE_X
-  bounds_text: beyond_arc, 12.073 < m <= 30, r <= 9.144. Below 26.30 deg the sideline is reached before r 9.144. (Caps and corner rule aligned 2026-10-20.)
+  expr: x > 0 and is_three(x, y) and y > BREAK_Y and m <= 30.0 and r <= 9.144 and x < SIDE_X
+  bounds_text: 'Three-point area above the break (y > 1.4118 m, the height where the arc meets the corner line) and angle m up to 30 deg. The 9.144 m (30 ft) cap never applies here:
+    the 30-ft arc meets the sideline at 33.56 deg, so the outer edge of the whole band is the sideline (farthest point r 8.80 m).'
   edge_basis: Arc outside edge, break ray, 30 deg ray (proposal) and sideline inside edge.
   aliases:
   - low wing
@@ -2093,7 +2207,7 @@ entries:
     x: 5.3
     y: 5.3
     z: 0
-  expr: x > 0 and is_three(x, y) and 30.0 < m <= 52.5 and r <= 9.144
+  expr: x > 0 and is_three(x, y) and 30.0 < m <= 52.5 and r <= 9.144 and x < SIDE_X
   bounds_text: beyond_arc, 30 < m <= 52.5, r <= 9.144. It contains the point where the FT line extended crosses the arc (38.38) and the 45 deg ray. (Caps and corner rule aligned 2026-10-20.)
   edge_basis: Arc outside edge; the 30 and 52.5 deg rays (proposal).
   aliases:
@@ -2120,6 +2234,8 @@ entries:
     - 5.4
   - - 5.3
     - 5.3
+  - - 7.61
+    - 4.5
   probes_outside:
   - - 5.95
     - 3.4
@@ -2130,8 +2246,10 @@ entries:
   notes: A spoken '45' with a catch beyond the arc resolves here. Coach's Clipboard uses 'the 45' and '45 degree angles on the arc'.
   review_fixes_2026_10_20:
   - 'consistency pass 2026-10-20: r caps aligned to three_depth (27/30 ft)'
+  - 'loop2 EDGE-CASE ADVERSARY: There is no sideline bound. Below m = 34.4 deg the r <= 9.144 cap reaches past x = 7.62, so a player on or beyond the sideline gets the single-winner
+    spot wing_mid while court_region says out_of_bounds. Its siblings wing_low, corner_* and break_point all have x < SIDE_X.'
 - id: lob_catch_above_rim
-  layer: spot
+  layer: shot_zone_alt
   name: Lob / alley-oop catch above the rim
   side: centre
   anchor:
@@ -2165,7 +2283,7 @@ entries:
     - 3.3
   notes: Probes are (x, y, z). Ring height 3.048 from Rule 1-15.2 (pdf p27).
 - id: long_rebound_zone
-  layer: spot
+  layer: shot_zone_alt
   name: Long rebound zone
   side: centre
   anchor:
@@ -2173,7 +2291,8 @@ entries:
     y: 5.5
     z: 0
   expr: 4.2672 < r <= 7.62 and ax < SIDE_X and y > END_Y
-  bounds_text: Rebound secured between 14 ft and 25 ft from the rim (outside short_mid, up to just beyond the arc). Band edges are proposals.
+  bounds_text: 'Coaching spot: rebound secured between 14 ft and 25 ft from the rim (outside short_mid, up to just beyond the arc). Band edges are proposals. NOT the metric long rebound:
+    M-REB-038 uses reb_long (r >= 3.048, Opta) with a 6.0 m variant.'
   reference_point: feet_midpoint
   priority: 60
   rank: 5060
@@ -2335,6 +2454,7 @@ entries:
   - midcourt line
   - half court
   - time line
+  - halfcourt_crossing_line
   reference_point: feet_midpoint
   priority: 1
   rank: 1
@@ -2355,6 +2475,7 @@ entries:
   - config/court_ncaa_men.yaml:14 (12.73)
   - docs/stats/defense.md:92 M-DEF-080 (12.725)
   - docs/taxonomy/offense_full.md section 0.1 (12.75)
+  - named-spot entry halfcourt_crossing_line (folded 2026-10-20 loop 2)
   probes_inside:
   - - 0
     - 12.72
@@ -2468,6 +2589,12 @@ entries:
   edge_basis: Outside the lane line's outer edge; position along the lane from the diagram.
   aliases:
   - lane_block_right
+  - neutral-zone block
+  - the box (painted)
+  - painted_block
+  - lane block
+  - ft_lane_block
+  - ft_lane_block_right
   speech_alias: Coaches' 'block' means the low-post spot (other family), not this paint.
   reference_point: feet_midpoint
   priority: 1
@@ -2499,7 +2626,11 @@ entries:
   notes: 'Renamed from the researcher''s id block_right so it does not collide with geometry.landmark ''block_right'' (coaching low-post point (1.83, 0.9)) or vocabulary_map ''block''
     (x ±1.83, y 0.3-1.5), which mean the low-post standing spot and are NOT superseded. Other unreconciled repo variants: offense_full A11.20(d) block_outside_lane (2.18, 15.9 deg; in
     the low open space x-band) and mid_post_lane_line (3.02, 52.7 deg; in lane space 2 / mark 2), used by A6 box-BLOB templates; offense_full A0 lane-stack spots (2.58/35.5, 3.19/48.8,
-    3.91/57.5) vs exact space centres (2.63/29.5, 3.22/44.7, 3.95/54.7).'
+    3.91/57.5) vs exact space centres (2.63/29.5, 3.22/44.7, 3.95/54.7). [from painted_block] Anchor r 2.0486, theta 19.56 (left 160.44). [from ft_lane_block] The painted block, distinct
+    from the coaching ''block'' landmark (geometry.py block_right (LANE_X, 0.9); vocabulary_map block y 0.3-1.5), which keeps its own meaning.'
+  supersedes:
+  - named-spot entry painted_block (folded 2026-10-20 loop 2)
+  - named-spot entry ft_lane_block (folded 2026-10-20 loop 2)
 - id: lane_line_landmark
   layer: landmark
   name: Lane line (right, painted)
@@ -3181,7 +3312,7 @@ entries:
     x: 0
     y: 4.967
     z: 0
-  expr: y >= FT_Y and hypot(x, y - FT_Y) <= LANE_X
+  expr: y > FT_Y and hypot(x, y - FT_Y) <= LANE_X
   bounds_text: y >= 4.191 and hypot(x, y - 4.191) <= 1.8288 (6-ft outside radius). Painted arc 1.7780..1.8288. Top point (0, 6.0198).
   edge_basis: Outer edge, radius 6 ft, centred on the FT line's far edge (proposed; the line centre 4.1656 would move it 2.5 cm).
   reference_point: any_foot
@@ -3211,6 +3342,15 @@ entries:
     - 4.3
   - - 0
     - 4.18
+  aliases:
+  - ft_semicircle
+  - top_of_key_circle
+  - circle
+  supersedes:
+  - named-spot entry ft_semicircle (folded 2026-10-20 loop 2)
+  notes: ' [from ft_semicircle] Renamed from top_of_key_circle because ''top of the key'' is ambiguous with top_three.'
+  review_fixes_2026_10_20:
+  - 'loop2 Clarity for the owne: Edge rule 5 says the FT line (y <= 4.191) belongs to the lane, so the semicircle should start strictly above it. This also absorbs ft_semicircle''s convention.'
 - id: legacy_restricted_area_arc_3ft
   layer: landmark
   name: Legacy 3-ft restricted-area arc (old painted line, ignore)
@@ -3423,49 +3563,6 @@ entries:
     layer: zone_scheme:anchor_capture
     expr: hypot(x - 0.0, y - 4.191) <= 0.9 and END_Y < y < FAR_END_Y and ax < SIDE_X
     bounds_text: Point (0, 4.191), captured within 0.9 m.
-- id: rim_centre
-  layer: landmark
-  name: Rim centre (frame origin), floor area under the ring
-  side: centre
-  anchor:
-    x: 0
-    y: 0
-    z: 0
-  expr: r <= 0.2286
-  bounds_text: Origin x=0, y=0, 1.6002 m from the end line's inside edge. The label covers the floor projection of the ring's inside (r <= 0.2286). Ring upper edge z = 3.048.
-  edge_basis: Centre of the 18-in ring = 4 ft (board) + 6 in + 9 in from the end line's inside edge.
-  reference_point: ball_floor_projection
-  priority: 5
-  rank: 5
-  family: painted
-  source_kind: rule_book
-  confidence: high
-  sources:
-  - url: docs/rules/PRMBB_RulesBook.pdf#page=19
-    supports: 'Court diagram: 63 in from the end line to the ring centre, 15 in from the board'
-  - url: docs/rules/PRMBB_RulesBook.pdf#page=27
-    supports: 1-14.1 ring 18-in inside diameter; 1-15.2 ring 10 ft high, 6 in from the board
-  - url: docs/rules/PRMBB_RulesBook.pdf#page=26
-    supports: 1-13.1 backboard face 4 ft from the end line
-  supersedes:
-  - docs/taxonomy/offense_full.md:24 section 0.1 rim 1.575 m from the baseline (already superseded by A11.20(a), line 3463)
-  - docs/research/transition_full.md:68 offense_full 1.575 m note
-  probes_inside:
-  - - 0
-    - 0
-  - - 0.2
-    - 0.05
-  - - -0.1
-    - -0.15
-  probes_outside:
-  - - 0.24
-    - 0
-  - - 0
-    - 0.25
-  - - -0.2
-    - 0.15
-  notes: 'Repo conflicts: docs/requirements.md and config/court_ncaa_men.yaml use 1.60 m (2 mm off). docs/taxonomy/offense_full.md section 0.1 (line 24) and docs/research/transition_full.md
-    line 68 use 1.575 m; offense_full A11.20(a) (line 3463) already marks 1.575 as superseded. Corrected attribution: the value is not in set_taxonomy.md.'
 - id: three_point_area
   layer: landmark
   name: Three-point field-goal area
@@ -3558,6 +3655,7 @@ entries:
   aliases:
   - rim
   - at the rim
+  - rim_centre
   reference_point: ball_floor_projection
   priority: 1
   rank: 1001
@@ -3579,7 +3677,11 @@ entries:
     - 0
   - - 0
     - 0.24
-  notes: theta undefined at the origin.
+  notes: 'theta undefined at the origin. [from rim_centre] Repo conflicts: docs/requirements.md and config/court_ncaa_men.yaml use 1.60 m (2 mm off). docs/taxonomy/offense_full.md section
+    0.1 (line 24) and docs/research/transition_full.md line 68 use 1.575 m; offense_full A11.20(a) (line 3463) already marks 1.575 as superseded. Corrected attribution: the value is
+    not in set_taxonomy.md.'
+  supersedes:
+  - named-spot entry rim_centre (folded 2026-10-20 loop 2)
 - id: charge_circle
   layer: landmark
   name: Charge circle (restricted-area arc line)
@@ -3622,57 +3724,6 @@ entries:
     - 1.28
   - - 1.24
     - -0.39
-- id: painted_block
-  layer: landmark
-  name: Painted lane block (rule mark)
-  side: mirrored
-  anchor:
-    x: 1.9304
-    y: 0.6858
-    z: 0
-  expr: LANE_X < x <= 2.032 and 0.5334 <= y <= 0.8382
-  bounds_text: 1.8288 < x <= 2.0320 and 0.5334 <= y <= 0.8382 (12 in along the lane x 8 in outward from the lane line outer edge). The block is NOT part of the lane (Rule 1-6.1), hence
-    x > 1.8288. Non-exclusive tag; primary label there is low_post.
-  edge_basis: Rule 1-6.2 block 12 x 8 in; y position from a 400-dpi diagram reading (court_constants_proposed.yaml flags verify).
-  aliases:
-  - neutral-zone block
-  - the box (painted)
-  - lane block
-  reference_point: any_foot
-  priority: 3
-  rank: 1003
-  family: interior
-  source_kind: rule_book
-  confidence: medium
-  sources:
-  - url: file:docs/rules/PRMBB_RulesBook.pdf
-    supports: Rule 1-6 Art. 1 (marks and blocks are not part of the lane), Art. 2 (block 12 x 8 in)
-  - url: https://en.wikipedia.org/wiki/Key_(basketball)
-    supports: The block is the wider mark on each lane line nearest the basket
-  - url: repo:config/vocab/court_constants_proposed.yaml:62,72
-    supports: block size and y range
-  probes_inside:
-  - - 1.84
-    - 0.6
-  - - 2.03
-    - 0.83
-  - - 1.93
-    - 0.54
-  probes_outside:
-  - - 1.82
-    - 0.6
-  - - 2.04
-    - 0.7
-  - - 1.93
-    - 0.85
-  - - 1.93
-    - 0.52
-  notes: Anchor r 2.0486, theta 19.56 (left 160.44).
-  variants_not_adopted:
-  - family: repo
-    layer: landmark
-    expr: LANE_X <= x <= 2.0320 and 0.5334 <= y <= 0.8382
-    bounds_text: 1.8288 <= x <= 2.0320 and 0.5334 <= y <= 0.8382 (12 in along the lane by 8 in outward). The y range comes from a diagram reading and needs a full-resolution check.
 - id: lane_line
   layer: landmark
   name: Lane line (on-the-line band)
@@ -4130,6 +4181,7 @@ entries:
   aliases:
   - FT line extended
   - elbow extended (inside)
+  - FT line extended (inside the arc)
   reference_point: feet_midpoint
   priority: 30
   rank: 1030
@@ -4351,80 +4403,6 @@ entries:
     - 6.44
   - - 0
     - 6.76
-- id: ft_lane_block
-  layer: landmark
-  name: Painted lane block (neutral, not a lane space)
-  side: mirrored
-  anchor:
-    x: 1.9304
-    y: 0.6858
-    z: 0
-  expr: LANE_X <= x <= 2.032 and 0.5334 <= y <= 0.8382
-  bounds_text: LANE_X <= x <= 2.0320 (8 in out from the lane line) and 0.5334 <= y <= 0.8382 (12 in along the lane)
-  edge_basis: block 12 x 8 in (1-6.2), 12 in along the lane and 8 in out; y position from a diagram reading
-  aliases:
-  - ft_lane_block_right
-  reference_point: feet_midpoint
-  priority: 10
-  rank: 4010
-  family: restart
-  source_kind: rule_book
-  confidence: medium
-  sources:
-  - url: file:docs/rules/PRMBB_RulesBook.pdf
-    supports: '1-6.2: blocks 12 in by 8 in; 1-6.4: marks and blocks identify the 36-in lane spaces'
-  probes_inside:
-  - - 1.83
-    - 0.54
-  - - 2.03
-    - 0.83
-  probes_outside:
-  - - 2.04
-    - 0.7
-  - - 1.82
-    - 0.7
-  - - 1.9
-    - 0.53
-  - - 1.9
-    - 0.84
-  notes: The painted block, distinct from the coaching 'block' landmark (geometry.py block_right (LANE_X, 0.9); vocabulary_map block y 0.3-1.5), which keeps its own meaning.
-- id: halfcourt_crossing_line
-  layer: landmark
-  name: Half-court (division) line
-  side: centre
-  anchor:
-    x: 0
-    y: 12.7
-    z: 0
-  expr: HALF_Y <= y <= HALF_Y + LINE_W and ax <= SIDE_X
-  bounds_text: the painted division line HALF_Y <= y <= 12.7508 (backcourt); the crossing event is a ball/player transition from y >= HALF_Y to y < HALF_Y
-  edge_basis: the division line is backcourt; the frontcourt runs to the nearer edge of the division line
-  reference_point: ball_floor_projection
-  priority: 10
-  rank: 4010
-  family: restart
-  source_kind: rule_book
-  confidence: high
-  sources:
-  - url: file:docs/rules/PRMBB_RulesBook.pdf
-    supports: '1-5.1: 2-in division line; 9-12.1: frontcourt runs from the end line to the nearer edge of the division line'
-  supersedes:
-  - docs/research/transition_full.md:70 half-court line y = 12.73 (line centre)
-  - docs/research/transition_full.md:86 t_cross_half at y = 12.73
-  - docs/taxonomy/offense_full.md:24 half-court y ≈ 12.73 and rim centre 1.575 m from the baseline (use 1.6002)
-  - docs/taxonomy/offense_full.md:1049 half-court centre (12.73, 90)
-  probes_inside:
-  - - 0
-    - 12.7
-  - - 7.62
-    - 12.75
-  probes_outside:
-  - - 0
-    - 12.69
-  - - 0
-    - 12.76
-  - - 7.63
-    - 12.72
 - id: coaching_box_38ft_line_landmark
   layer: landmark
   name: Coaching-box 38-ft line (bench side; not a throw-in spot)
@@ -4645,47 +4623,8 @@ entries:
   - - 0.5
     - -1.61
   notes: The three-second rule tests any_foot; that test lives in the rule family.
-- id: ft_semicircle
-  layer: landmark
-  name: Free-throw semicircle
-  side: centre
-  anchor:
-    x: 0
-    y: 5.1
-    z: 0
-  expr: y > FT_Y and hypot(x, y - FT_Y) <= LANE_X
-  bounds_text: 'y > 4.191 and hypot(x, y - 4.191) <= 1.8288 (outside radius 6 ft); top point (0, 6.0198). The centre convention is unverified: if the centre is the middle of the FT line
-    (y 4.1656), the top point is (0, 5.9944).'
-  edge_basis: outside radius of the FT semicircle (Rule 1-6.5); centre assumed at the FT line far edge
-  aliases:
-  - top_of_key_circle
-  - circle
-  reference_point: feet_midpoint
-  priority: 25
-  rank: 8025
-  family: repo
-  source_kind: rule_book
-  confidence: low
-  sources:
-  - url: repo:config/vocab/court_constants_proposed.yaml:46
-    supports: radius 1.8288 outer
-  probes_inside:
-  - - 0
-    - 6.01
-  - - 1.82
-    - 4.2
-  - - 1
-    - 5.6
-  probes_outside:
-  - - 0
-    - 6.03
-  - - 0
-    - 4.19
-  - - 1.3
-    - 5.5
-  notes: Renamed from top_of_key_circle because 'top of the key' is ambiguous with top_three.
 - id: coaching_box
-  layer: relative
+  layer: landmark
   name: Coaching box (bench side)
   side: table_side
   anchor:
@@ -4735,7 +4674,7 @@ entries:
     expr: ax >= SIDE_X and 6.9342 <= y <= 9.9822
     bounds_text: Outside the sideline, 6.9342 <= y <= 9.9822 (the 28-ft to 38-ft lines). The side and end come from game metadata.
 - id: coaching_box_38ft_line
-  layer: relative
+  layer: landmark
   name: 38-foot coaching-box line
   side: n/a
   anchor:
@@ -4773,14 +4712,14 @@ entries:
   - - 7.97
     - 10.04
 - id: second_half_throw_in_division_line
-  layer: relative
+  layer: landmark
   name: Division-line throw-in spot opposite the scorers' table (2nd-half start)
   side: table_side
   anchor:
-    x: 7.92
+    x: -7.92
     y: 12.7254
     z: 0
-  expr: x >= SIDE_X and abs(y - 12.7254) <= 0.4572
+  expr: x <= -SIDE_X and abs(y - 12.7254) <= 0.4572
   bounds_text: 'Out of bounds at the division line on the sideline OPPOSITE the scorers'' table: x >= 7.62 (non-table side written at +x), 3-ft spot centred on the line centre (12.2682..13.1826,
     proposed). The loader must place it with the per-game table side (table_side_x_sign per half), not mirror both sides.'
   reference_point: any_foot
@@ -4793,21 +4732,26 @@ entries:
   - url: docs/rules/PRMBB_RulesBook.pdf#page=80
     supports: 6-3.6 second half starts with the arrow team's throw-in at the division line opposite the scorers' table
   probes_inside:
-  - - 7.92
+  - - -7.92
     - 12.7254
-  - - 7.62
+  - - -7.62
     - 12.27
-  - - 9
+  - - -9
     - 13.18
   probes_outside:
-  - - 7.6
+  - - -7.6
     - 12.7254
-  - - 7.92
+  - - -7.92
     - 12.26
-  - - 7.92
+  - - -7.92
     - 13.19
+  - - 7.92
+    - 12.7254
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: All table_side entries share one multiplier, table_side_x_sign. This entry alone writes the NON-table side at +x, so after the multiplier it sits on the
+    scorers'' side, the opposite of R6-3.6.'
 - id: division_line_extended
-  layer: relative
+  layer: landmark
   name: Division line extended past the sidelines
   side: centre
   anchor:
@@ -4844,7 +4788,7 @@ entries:
     - 12.76
   notes: Added from the skeptic's missing-spot list.
 - id: scorers_x_mark
-  layer: relative
+  layer: landmark
   name: Scorers' 'X' / NCAA logo at the division line
   side: table_side
   anchor:
@@ -4878,7 +4822,7 @@ entries:
   - - 8.2
     - 12.3
 - id: team_bench_area
-  layer: relative
+  layer: landmark
   name: Team bench area
   side: table_side
   anchor:
@@ -4915,7 +4859,7 @@ entries:
   - - 11.3
     - 2
 - id: scorers_table_area
-  layer: relative
+  layer: landmark
   name: Scorers' and timers' table
   side: n/a
   anchor:
@@ -4936,7 +4880,7 @@ entries:
   - url: docs/rules/PRMBB_RulesBook.pdf#page=31
     supports: 1-21.3 table courtside at midcourt
 - id: timeout_huddle_rectangle
-  layer: relative
+  layer: landmark
   name: Timeout / replay / injury huddle rectangle
   side: table_side
   anchor:
@@ -4974,7 +4918,7 @@ entries:
     - -1.61
   notes: 'Fix applied: rule number 5-14.2 (was ''5-?''). During a 30-second timeout players stand inside the boundary lines (5-14.3).'
 - id: commercial_logo_box
-  layer: relative
+  layer: landmark
   name: Commercial logo box (10 x 10 ft), one per half
   side: table_side
   anchor:
@@ -5340,7 +5284,7 @@ entries:
     x: 0
     y: 7.6
     z: 0
-  expr: is_three(x, y) and r <= 8.50 and ax < SIDE_X and y > END_Y and y < HALF_Y
+  expr: is_three(x, y) and r <= 8.50 and ax < SIDE_X and y > END_Y and y <= HALF_Y
   bounds_text: 'Movement (not in expr; motion_starts POP): after the screen, the screener moves >= 1.5 m away from the handler with delta r >= 0, never comes within r 5.5 m, and ends
     inside this region within 1.5 s. Region: beyond_arc (strict r > 6.7501 / |x| > 6.6008), r <= 8.50, in bounds.'
   edge_basis: Arc outside edge; replaces the mixed 6.5 / 6.6 / 6.75 thresholds.
@@ -5838,7 +5782,8 @@ entries:
   name: 'Off-ball screen: top-lock position'
   side: n/a
   bounds_text: 'The cutter''s defender is on the screen side of the cutter, beyond him along the cutter''s planned path and within 1.0 m, before the cutter reaches the screen (repo F5).
-    Not expressible: needs the screener position and the cutter''s path, which the grammar does not provide.'
+    Not expressible: needs the screener position and the cutter''s path, which the grammar does not provide. (Loop 2, 2026-10-20: a proposed expression was rejected by the skeptic with
+    a counterexample; this label stays with the event layer, which sees the screen type and timing.)'
   reference_point: feet_midpoint
   priority: 1
   rank: 3001
@@ -5854,7 +5799,8 @@ entries:
   name: 'Off-ball screen: trail (lock-and-trail) position'
   side: n/a
   bounds_text: 'The cutter''s defender stays within 1.0 m of the cutter''s path with a lag <= 0.6 s, crossing the screen on the ball side of the screener (repo F5). Not expressible:
-    needs the screener position and the cutter''s path.'
+    needs the screener position and the cutter''s path. (Loop 2, 2026-10-20: a proposed expression was rejected by the skeptic with a counterexample; this label stays with the event
+    layer, which sees the screen type and timing.)'
   reference_point: feet_midpoint
   priority: 1
   rank: 3001
@@ -5870,7 +5816,8 @@ entries:
   name: 'Off-ball screen: under / shoot-the-gap position'
   side: n/a
   bounds_text: 'The cutter''s defender passes on the rim side of the screener (r_D < r_screener at the crossing) and reaches the catch spot within 0.4 s of the cutter (repo F5). Not
-    expressible: needs the screener position and the cutter''s path.'
+    expressible: needs the screener position and the cutter''s path. (Loop 2, 2026-10-20: a proposed expression was rejected by the skeptic with a counterexample; this label stays with
+    the event layer, which sees the screen type and timing.)'
   reference_point: feet_midpoint
   priority: 1
   rank: 3001
@@ -6976,6 +6923,9 @@ entries:
   aliases:
   - two away
   - weak-side help
+  - two-side
+  - two side
+  - two passes away
   speech_alias: help side
   reference_point: feet_midpoint
   priority: 4
@@ -7228,6 +7178,10 @@ entries:
     - 0.45
   notes: 'Gap bump keeps the MSU row definition (contact <= 0.8 m within 1 s of the roll start, F1.6) and does not inherit the tag threshold. The researcher''s alias ''gap bump = tag''
     is dropped. Probe context: ball = handler at (5.3, 4.3); assigned attacker (ax_, ay_) = (-6.9, 0.3).'
+  aliases:
+  - tag
+  - tagger
+  - tag spot
 - id: ball_line_depth
   layer: relative
   name: At or below the ball line
@@ -7393,7 +7347,8 @@ entries:
     x: 0
     y: 12.7
     z: 0
-  bounds_text: attacker with v_y <= −3.0 m/s, onset <= t0 + 0.5 s, first attacker across y = HALF_Y; early leak if onset < t0. Velocity/track-based.
+  bounds_text: 'attacker with v_y <= −3.0 m/s, onset <= t0 + 0.5 s, first attacker across y = HALF_Y; early leak if onset < t0. Velocity/track-based. (Loop 2, 2026-10-20: a proposed
+    expression was rejected by the skeptic with a counterexample; this label stays with the event layer, which sees the screen type and timing.)'
   reference_point: pelvis
   priority: 20
   rank: 4020
@@ -7451,6 +7406,53 @@ entries:
   family: restart
   source_kind: proposal
   confidence: low
+  expr: by > HALF_Y and y <= lowest_defender_y
+  review_fixes_2026_10_20:
+  - 'loop2 NULL EXPRESSIONS: Null, although it is exactly ''the defender with minimum y while the ball is in the backcourt''. The bounds_text ''>= HALF_Y'' also contradicts the edge
+    rule: y = 12.700 is frontcourt.'
+  probes_ctx:
+  - p:
+    - 0.0
+    - 6.0
+    ctx:
+      by: 20.0
+      lowest_defender_y: 6.0
+    want: true
+  - p:
+    - 0.0
+    - 6.5
+    ctx:
+      by: 20.0
+      lowest_defender_y: 6.0
+    want: false
+  - p:
+    - 0.0
+    - 6.0
+    ctx:
+      by: 10.0
+      lowest_defender_y: 6.0
+    want: false
+  - p:
+    - 0.0
+    - 6.0
+    ctx:
+      by: 12.7
+      lowest_defender_y: 6.0
+    want: false
+  - p:
+    - 0.0
+    - 6.0
+    ctx:
+      by: 12.71
+      lowest_defender_y: 6.0
+    want: true
+  - p:
+    - 0.0
+    - 6.0
+    ctx:
+      by: 20.0
+      lowest_defender_y: null
+    want: null
 - id: press_on_inbounder
   layer: relative
   name: Press defender on the inbounder
@@ -7511,7 +7513,7 @@ entries:
     x: -3
     y: 25
     z: 0
-  expr: by >= HALF_Y and y > by + 0.5 and abs(x - bx) >= 3.0 and y <= FAR_END_Y
+  expr: by >= HALF_Y and y > by + 0.5 and abs(x - bx) >= 3.0 and y < FAR_END_Y
   bounds_text: attacker with y > y_ball + 0.5, |x − x_ball| >= 3.0 and y <= FAR_END_Y while y_ball >= HALF_Y
   reference_point: feet_midpoint
   priority: 25
@@ -7535,6 +7537,8 @@ entries:
   - - -3
     - 27.06
   notes: 'Repo offense_full: at least one attacker with y > y_ball while the ball is in the backcourt. Needs bx, by in the eval context; probes assume the ball at (5.0, 22.0).'
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: y <= FAR_END_Y counts a player standing on the far end line (out of bounds) as the press-break safety.'
 - id: slob_safety_back
   layer: relative
   name: SLOB safety / pass-back receiver
@@ -7579,7 +7583,7 @@ entries:
     x: null
     y: null
     z: null
-  expr: hypot(x - hx, y - hy) <= 1.8288 and hy < HALF_Y
+  expr: hypot(x - hx, y - hy) <= 1.8288 and hy <= HALF_Y
   bounds_text: 'expr is evaluated on the defender''s forward foot point (x, y), with (hx, hy) = the ball holder''s forward foot point: the distance must be <= 1.8288 m, with both players
     in the frontcourt (y < 12.7000). It applies only while the player in control is holding (not dribbling) the ball in the frontcourt and the opponent is in a guarding stance. Count:
     5 s of holding while closely guarded continuously by the same opponent (R9-14.2-3), measured as elapsed PTS time. No closely guarded situation exists when another player is between
@@ -8002,42 +8006,6 @@ entries:
   - - 2.7432
     - -1.59
   notes: Matches offense_full A0 BLOB inbounder (3.33, -34.7 deg).
-- id: jump_ball_jumper_half_attacking_team
-  layer: restart
-  name: Jump-ball half circle for the jumper of the team attacking this rim
-  side: centre
-  anchor:
-    x: 0
-    y: 13.5
-    z: 0
-  expr: hypot(x, y - 12.7254) <= LANE_X and y >= 12.7254
-  bounds_text: rho <= 1.8288 and y >= 12.7254 (the half farther from that jumper's own basket). The opponent's jumper uses rho <= 1.8288, y <= 12.7254.
-  edge_basis: Split at the centre of the division line; the circle's outer edge proposed as inside.
-  reference_point: any_foot
-  priority: 1
-  rank: 1
-  family: painted
-  source_kind: rule_book
-  confidence: medium
-  sources:
-  - url: docs/rules/PRMBB_RulesBook.pdf#page=79
-    supports: 6-2.4 both feet inside the half of the centre circle farther from the jumper's team basket
-  - url: docs/rules/PRMBB_RulesBook.pdf#page=98
-    supports: 9-8.1.b jumper leaving the circle is a violation
-  probes_inside:
-  - - 0
-    - 13
-  - - 1.8
-    - 12.73
-  - - 0
-    - 14.55
-  probes_outside:
-  - - 0
-    - 12.7
-  - - 0
-    - 14.56
-  - - 1.84
-    - 13
 - id: slob_28ft_spot
   layer: restart
   name: Sideline designated throw-in spot at the 28-ft mark, right
@@ -8098,6 +8066,60 @@ entries:
   - url: docs/rules/PRMBB_RulesBook.pdf#page=84
     supports: '7-3.2.a exception: throw-in from the spot where the ball went out of bounds when the defence caused it'
   notes: Added from the skeptic's missing-spot list.
+  expr: not (ax < SIDE_X and END_Y < y < FAR_END_Y) and abs(px) < SIDE_X and END_Y < py < FAR_END_Y
+  review_fixes_2026_10_20:
+  - 'loop2 NULL EXPRESSIONS: Null, although the crossing frame (out of bounds now, in bounds on the previous frame, using the out_of_bounds expr) can be tested from the ball''s px, py.
+    Projecting onto the nearest boundary stays a downstream step.'
+  probes_ctx:
+  - p:
+    - 7.65
+    - 5.0
+    ctx:
+      px: 7.55
+      py: 5.0
+    want: true
+  - p:
+    - 7.62
+    - 5.0
+    ctx:
+      px: 7.6
+      py: 5.0
+    want: true
+  - p:
+    - 7.7
+    - 5.0
+    ctx:
+      px: 7.65
+      py: 5.0
+    want: false
+  - p:
+    - 7.55
+    - 5.0
+    ctx:
+      px: 7.5
+      py: 5.0
+    want: false
+  - p:
+    - 0.0
+    - -1.6002
+    ctx:
+      px: 0.0
+      py: -1.55
+    want: true
+  - p:
+    - 0.0
+    - 27.06
+    ctx:
+      px: 0.0
+      py: 27.0
+    want: true
+  - p:
+    - 7.65
+    - 5.0
+    ctx:
+      px: null
+      py: null
+    want: null
 - id: throw_in_zone_endline_rectangle
   layer: restart
   name: Throw-in imaginary rectangle (end line to FT line extended)
@@ -8414,7 +8436,7 @@ entries:
   layer: restart
   name: Defender on the inbounder
   side: n/a
-  expr: (hy < END_Y or hy > FAR_END_Y or abs(hx) > SIDE_X) and hypot(x-hx,y-hy) <= 1.5
+  expr: (hy <= END_Y or hy >= FAR_END_Y or abs(hx) >= SIDE_X) and hypot(x-hx,y-hy) <= 1.5
   bounds_text: Ball handler out of bounds (behind either end line or beyond a sideline) and the defender within 1.5 m of him.
   aliases:
   - disruptor
@@ -8441,6 +8463,9 @@ entries:
     - 26.6
   notes: 'BLOB/SLOB defensive alignments reuse this family''s zone and man spots; the offensive inbound spots live in the restart family. Probe context: ball = inbounder at (0.5, 27.6),
     behind the far end line.'
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Out of bounds is ''on or beyond the inside edge'' (edge rules, rule_out_of_bounds), but this uses strict inequalities, so an inbounder standing on the
+    line is not out of bounds and his defender gets no label.'
 - id: blob_backcourt_designated_spot
   layer: restart
   name: Backcourt end-line designated spot (throw-in not after a made goal)
@@ -8724,7 +8749,7 @@ entries:
     y: 27.4
     z: 0
   expr: ax <= SIDE_X + LINE_W and y >= FAR_END_Y
-  bounds_text: y > FAR_END_Y and |x| <= SIDE_X + LINE_W (any point out of bounds on the own end line)
+  bounds_text: y >= FAR_END_Y (27.0510, inner edge; the end line itself is out of bounds) and |x| <= SIDE_X + LINE_W (any point out of bounds on the own end line)
   edge_basis: inner edge of the far end line; the end line spans to the sideline outer edges
   reference_point: any_foot
   priority: 10
@@ -8761,7 +8786,7 @@ entries:
     x: 0
     y: 13.2
     z: 0
-  expr: hypot(x, y - 12.7254) <= 1.8288 and y >= 12.7254
+  expr: hypot(x, y - 12.7254) <= 1.8288 and y >= HALF_Y
   bounds_text: hypot(x, y − 12.7254) <= 1.8288 and y >= 12.7254 (half of the circle farther from his team's basket); the rule applies to both feet
   edge_basis: circle outside radius 6 ft; split on the division-line centre
   reference_point: feet_midpoint
@@ -8780,13 +8805,21 @@ entries:
     - 14.55
   - - 1
     - 13.5
-  probes_outside:
   - - 0
     - 12.72
+  probes_outside:
+  - - 0
+    - 12.69
   - - 0
     - 14.56
   - - 1.83
     - 12.8
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same 12.7254 vs 12.700 mismatch as rule_jump_ball_jumper_half.'
+  aliases:
+  - jump_ball_jumper_half_attacking_team
+  supersedes:
+  - named-spot entry jump_ball_jumper_half_attacking_team (folded 2026-10-20 loop 2)
 - id: jump_ball_jumper_defending
   layer: restart
   name: Opposing jumper (team attacking the far rim)
@@ -8795,7 +8828,7 @@ entries:
     x: 0
     y: 12.25
     z: 0
-  expr: hypot(x, y - 12.7254) <= 1.8288 and y < 12.7254
+  expr: hypot(x, y - 12.7254) <= 1.8288 and y <= HALF_Y + LINE_W
   bounds_text: hypot(x, y − 12.7254) <= 1.8288 and y < 12.7254
   reference_point: feet_midpoint
   priority: 10
@@ -8811,13 +8844,20 @@ entries:
     - 12.72
   - - 0
     - 10.9
-  probes_outside:
   - - 0
     - 12.7254
+  - - 0
+    - 12.7508
+  probes_outside:
+  - - 0
+    - 12.76
   - - 0
     - 10.89
   - - 1.83
     - 12.6
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: In the attacking team''s frame the opponent jumper''s half also owns the whole line, up to 12.7508. y < 12.7254 makes the line centre illegal for both
+    jumpers.'
 - id: slob_28ft_frontcourt
   layer: restart
   name: Frontcourt SLOB at the 28-ft mark
@@ -8827,7 +8867,7 @@ entries:
     y: 6.9342
     z: 0
   expr: x >= SIDE_X and 6.477 <= y <= 7.3914
-  bounds_text: x > SIDE_X and 6.4770 <= y <= 7.3914 (3-ft spot centred on the mark at y = END_Y + 8.5344 = 6.9342)
+  bounds_text: x >= SIDE_X and 6.4770 <= y <= 7.3914 (3-ft spot centred on the mark at y = END_Y + 8.5344 = 6.9342; the sideline is out of bounds)
   edge_basis: 28 ft from the end-line inner edge to the mark centre (which edge of the 2-in mark is unstated); spot centred on the mark (proposal)
   aliases:
   - slob_28ft_frontcourt_right
@@ -9014,7 +9054,7 @@ entries:
     x: 7.92
     y: 13.1826
     z: 0
-  expr: x >= SIDE_X and HALF_Y <= y <= HALF_Y + 0.9144
+  expr: x >= SIDE_X and HALF_Y < y <= HALF_Y + 0.9144
   bounds_text: x > SIDE_X and HALF_Y <= y <= 13.6144
   edge_basis: the division line itself is backcourt
   aliases:
@@ -9026,8 +9066,6 @@ entries:
   source_kind: proposal
   confidence: medium
   probes_inside:
-  - - 7.63
-    - 12.7
   - - 7.92
     - 13.61
   probes_outside:
@@ -9037,6 +9075,8 @@ entries:
     - 13.62
   - - 7.6
     - 13
+  - - 7.63
+    - 12.7
   notes: NCAA men's teams cannot advance the ball after a timeout, so late ATOs start here or deeper.
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
@@ -9048,7 +9088,7 @@ entries:
     x: 7.92
     y: 12.2428
     z: 0
-  expr: x >= SIDE_X and HALF_Y - 0.9144 <= y < HALF_Y
+  expr: x >= SIDE_X and HALF_Y - 0.9144 <= y <= HALF_Y
   bounds_text: x > SIDE_X and 11.7856 <= y < HALF_Y
   edge_basis: division-line frontcourt edge HALF_Y; the line itself is backcourt
   aliases:
@@ -9064,11 +9104,11 @@ entries:
     - 11.79
   - - 7.92
     - 12.69
+  - - 7.92
+    - 12.7
   probes_outside:
   - - 7.92
     - 11.78
-  - - 7.92
-    - 12.7
   - - 7.6
     - 12.2
   review_fixes_2026_10_20:
@@ -9215,7 +9255,7 @@ entries:
     x: 6.3
     y: 5
     z: 0
-  expr: is_three(x, y) and FT_Y <= y < 9.0 and x <= SIDE_X and t < 70
+  expr: is_three(x, y) and FT_Y <= y < 9.0 and x < SIDE_X and t < 70
   bounds_text: 'three-point territory, FT_Y <= y < 9.0, x <= SIDE_X and theta < 70 (no lower theta bound: the real minimum is atan2(FT_Y, SIDE_X) = 28.81 deg)'
   edge_basis: arc outside edge; FT far edge; theta 70 split and y 9.0 cap are proposals
   aliases:
@@ -9232,7 +9272,7 @@ entries:
   probes_inside:
   - - 7.2
     - 4.3
-  - - 7.62
+  - - 7.61
     - 4.191
   - - 5
     - 4.6
@@ -9241,10 +9281,14 @@ entries:
     - 4.18
   - - 7.63
     - 5
+  - - 7.62
+    - 4.191
   - - 5
     - 4.4
   - - 2.9
     - 8
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: x <= SIDE_X labels a player standing on the sideline (out of bounds), and the probe (7.62, 4.191) encodes that error.'
 - id: slob_receiver_ballside_corner
   layer: restart
   name: SLOB ball-side corner
@@ -9357,7 +9401,7 @@ entries:
     x: 0
     y: 8
     z: 0
-  expr: ax <= 2.5 and ARC_R < y < HALF_Y
+  expr: ax <= 2.5 and ARC_R < y <= HALF_Y
   bounds_text: '|x| <= 2.5 and ARC_R < y < HALF_Y; the role goes to the deepest in-bounds attacker at the handover (role selection is not part of the point expression)'
   reference_point: feet_midpoint
   priority: 20
@@ -9370,13 +9414,13 @@ entries:
     - 6.76
   - - 2.5
     - 12.69
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 6.75
   - - 2.51
     - 8
-  - - 0
-    - 12.7
 - id: ft_rebound_lane_zone
   layer: restart
   name: FT rebound landing / box-out zone (after release)
@@ -9469,7 +9513,7 @@ entries:
     x: 7.92
     y: 19
     z: 0
-  expr: x >= SIDE_X and HALF_Y <= y <= FAR_END_Y
+  expr: x >= SIDE_X and HALF_Y < y <= FAR_END_Y
   bounds_text: x > SIDE_X and HALF_Y <= y <= FAR_END_Y; store the actual y
   aliases:
   - slob_backcourt_point_of_interruption_right
@@ -9483,8 +9527,6 @@ entries:
   - url: file:docs/rules/PRMBB_RulesBook.pdf
     supports: '7-3.2.c: backcourt throw-in at the point of interruption or the nearest designated spot'
   probes_inside:
-  - - 7.63
-    - 12.7
   - - 7.92
     - 27.05
   - - 8.5
@@ -9494,6 +9536,8 @@ entries:
     - 12.69
   - - 7.92
     - 27.06
+  - - 7.63
+    - 12.7
   notes: 7-3.2.c. The backcourt 28-ft and FT-extended entries are reference marks inside this strip and take priority.
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
@@ -9505,7 +9549,7 @@ entries:
     x: 7.92
     y: 6
     z: 0
-  expr: x >= SIDE_X and END_Y <= y < HALF_Y
+  expr: x >= SIDE_X and END_Y <= y <= HALF_Y
   bounds_text: x > SIDE_X and END_Y <= y < HALF_Y; store the actual exit y
   edge_basis: sideline inner edge; division-line frontcourt edge (the division line is backcourt)
   aliases:
@@ -9526,11 +9570,11 @@ entries:
     - 12.69
   - - 7.92
     - 6
+  - - 7.92
+    - 12.7
   probes_outside:
   - - 7.92
     - -1.61
-  - - 7.92
-    - 12.7
   notes: '7-3.2.a exception: the defense caused the ball out of bounds (9-2). Generic strip; the specific marks take priority.'
   review_fixes_2026_10_20:
   - 'expr fixed by scenario tester: restart / rel: x > SIDE_X is strict, so a thrower on the sideline is excluded. Being on the line is out of bounds (Rule 7-1.1).'
@@ -9588,7 +9632,7 @@ entries:
     x: 0
     y: 13.6398
     z: 0
-  expr: hypot(x, y - 12.7254) <= 1.8288 and y >= 12.7254
+  expr: hypot(x, y - 12.7254) <= 1.8288 and y >= HALF_Y
   bounds_text: 'Evaluated in the jumper''s own_frame (his team attacks the y = 0 basket). Both grounded foot points must satisfy expr until the ball is legally tapped: inside the centre
     circle (outer edge radius 1.8288 about (0, 12.7254)) and in the half farther from his team''s basket (y >= 12.7000, with the division line counted in that half). Non-jumpers: after
     the ball leaves the referee''s hand they may move around the circle, but no foot may break the cylinder over it (hypot(x, y - 12.7254) < 1.8288) until the jump-ball restrictions
@@ -9613,6 +9657,10 @@ entries:
     - 13.5
   - - 0
     - 14.554
+  - - 0
+    - 12.7
+  - - 0
+    - 12.72
   probes_outside:
   - - 0
     - 12.69
@@ -9625,6 +9673,8 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by rules_book: The jumper''s half is split at y >= 12.700 (the division line''s frontcourt edge). jump_ball_jumper_half_attacking_team and jump_ball_jumper_attacking
     split at the circle''s diameter, y = 12.7254. Rule 6'
+  - 'loop2 EDGE-CASE ADVERSARY: The text says ''y >= 12.7000, with the division line counted in that half'', but the expr uses y >= 12.7254 (line centre). A jumper with a foot on his
+    own half of the line is flagged as a violation.'
 - id: rule_throw_in_designated_spot
   layer: restart
   name: 'Throw-in: thrower on or over the designated spot'
@@ -10104,7 +10154,7 @@ entries:
     x: 0
     y: 14
     z: 0
-  expr: y >= HALF_Y and y < FAR_END_Y and ax < SIDE_X
+  expr: y > HALF_Y and y < FAR_END_Y and ax < SIDE_X
   bounds_text: On or beyond the frontcourt edge of the division line (y >= 12.700; the line itself is backcourt), inside the sidelines and inside the far end line's inside edge (y <
     27.051).
   edge_basis: The division line belongs to the backcourt; sideline and far end line use inside edges.
@@ -10118,12 +10168,14 @@ entries:
   confidence: high
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 7.6
     - 20
   - - 0
     - 27.04
   probes_outside:
+  - - 0
+    - 12.7
   - - 0
     - 12.69
   - - 7.63
@@ -10131,6 +10183,8 @@ entries:
   - - 0
     - 27.06
   notes: Not an offensive spot. It is included so every in-bounds point gets a label.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Inconsistent with three_depth_heave (HALF_Y < y) and with R9-12.2 at the division edge.'
 - id: transition_wing_lane
   layer: fullcourt
   name: Transition wing (outside running lane)
@@ -10219,7 +10273,7 @@ entries:
     x: 6
     y: 14.3
     z: null
-  expr: 5.0 < x <= SIDE_X and HALF_Y <= y < 16.0
+  expr: 5.0 < x <= SIDE_X and HALF_Y < y < 16.0
   bounds_text: 5.0 < |x| <= SIDE_X and HALF_Y <= y < 16.0 (ball floor projection at the TRAP).
   reference_point: ball_floor_projection
   priority: 1
@@ -10239,8 +10293,6 @@ entries:
   probes_inside:
   - - 6
     - 14.3
-  - - 5.1
-    - 12.7
   probes_outside:
   - - 4.95
     - 14
@@ -10248,6 +10300,8 @@ entries:
     - 16
   - - 6
     - 12.69
+  - - 5.1
+    - 12.7
 - id: baseline_corner_trap
   layer: fullcourt
   name: Baseline corner trap area
@@ -10294,7 +10348,7 @@ entries:
     x: 6.2
     y: 10.3
     z: null
-  expr: 5.0 < x <= SIDE_X and 7.0 <= y < HALF_Y
+  expr: 5.0 < x <= SIDE_X and 7.0 <= y <= HALF_Y
   bounds_text: 5.0 < |x| <= SIDE_X and 7.0 <= y < HALF_Y (ball floor projection at the TRAP).
   reference_point: ball_floor_projection
   priority: 1
@@ -10318,11 +10372,11 @@ entries:
     - 10.3
   - - 5.1
     - 7
+  - - 6.2
+    - 12.7
   probes_outside:
   - - 5
     - 10
-  - - 6.2
-    - 12.7
   - - 6.2
     - 6.95
   notes: One definition replaces three. Used by the 1-2-2 '76', the 2-2-1 half-court trap and the 1-3-1 trapping zone.
@@ -10330,7 +10384,7 @@ entries:
   layer: fullcourt
   name: Offense's backcourt (press zone)
   side: centre
-  expr: HALF_Y <= y < FAR_END_Y and ax < SIDE_X
+  expr: HALF_Y < y < FAR_END_Y and ax < SIDE_X
   bounds_text: '12.700 <= y <= 27.051 and |x| <= 7.62; the division line belongs to the backcourt. Press active: >= 3 defenders here while the ball is here, and the handler''s nearest
     defender is <= 2.0 m. Fall-back: >= 4 defenders at y < 9.0.'
   reference_point: feet_midpoint
@@ -10348,12 +10402,12 @@ entries:
   - docs/taxonomy/defense_full.md:547 F9.0 press active y > 12.7 -> y >= 12.700
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 7.6
     - 27
   probes_outside:
   - - 0
-    - 12.69
+    - 12.7
   - - 7.7
     - 20
   - - 0
@@ -10361,6 +10415,7 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by press_* schemes and fullcourt : The <= bounds include the far end line (y = 27.051) and the sidelines (|x| = 7.62), which are out of bounds. This differs from rule_backcourt_labels
     and backcourt_heave (y < FAR_END_Y, ax < SIDE_X), s'
+  - 'loop2 EDGE-CASE ADVERSARY: Same division-edge inconsistency.'
 - id: press_depth_full
   layer: fullcourt
   name: 'Press depth: full court'
@@ -10395,7 +10450,7 @@ entries:
   layer: fullcourt
   name: 'Press depth: three-quarter court'
   side: centre
-  expr: HALF_Y <= y < 21.2598
+  expr: HALF_Y < y < 21.2598
   bounds_text: HALF_Y <= y < 21.2598 at the first engagement or TRAP.
   reference_point: ball_floor_projection
   priority: 2
@@ -10409,19 +10464,21 @@ entries:
     supports: 3/4 depth class.
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 0
     - 21.25
   probes_outside:
   - - 0
-    - 12.69
+    - 12.7
   - - 0
     - 21.26
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same division-edge inconsistency in the press-depth pair.'
 - id: press_depth_half_court
   layer: fullcourt
   name: 'Press depth: half court'
   side: centre
-  expr: y < HALF_Y
+  expr: y <= HALF_Y
   bounds_text: y < HALF_Y at the first engagement or TRAP.
   reference_point: ball_floor_projection
   priority: 3
@@ -10435,12 +10492,12 @@ entries:
     supports: Half-court trap depth.
   probes_inside:
   - - 0
-    - 12.69
+    - 12.7
   - - 5
     - 8
   probes_outside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 0
     - 20
 - id: pb_backcourt_elbow
@@ -10830,7 +10887,7 @@ entries:
     x: 6.6
     y: 10.5
     z: 0
-  expr: 5.0 <= x <= SIDE_X and 8.5 <= y < HALF_Y
+  expr: 5.0 <= x <= SIDE_X and 8.5 <= y <= HALF_Y
   bounds_text: 5.0 <= x <= SIDE_X and 8.5 <= y < HALF_Y
   aliases:
   - trap_coffin_corner_right
@@ -10845,13 +10902,13 @@ entries:
     - 8.5
   - - 7.62
     - 12.69
+  - - 6
+    - 12.7
   probes_outside:
   - - 4.99
     - 10
   - - 6
     - 8.49
-  - - 6
-    - 12.7
 - id: trap_halfcourt_backcourt_corner
   layer: fullcourt
   name: Half-court trap corner, backcourt side of the division line
@@ -10860,7 +10917,7 @@ entries:
     x: 6.6
     y: 13.8
     z: 0
-  expr: 5.0 <= x <= SIDE_X and HALF_Y <= y <= 15.0
+  expr: 5.0 <= x <= SIDE_X and HALF_Y < y <= 15.0
   bounds_text: 5.0 <= x <= SIDE_X and HALF_Y <= y <= 15.0
   aliases:
   - trap_halfcourt_backcourt_corner_right
@@ -10871,8 +10928,6 @@ entries:
   source_kind: proposal
   confidence: medium
   probes_inside:
-  - - 5
-    - 12.7
   - - 7.62
     - 15
   probes_outside:
@@ -10884,6 +10939,8 @@ entries:
     - 15.01
   - - 7.63
     - 14
+  - - 5
+    - 12.7
   notes: Counterpart of trap_coffin_corner_right; the division line and sideline act as extra defenders before the ball crosses.
 - id: pb_deep_long
   layer: fullcourt
@@ -10925,10 +10982,8 @@ entries:
     x: 0
     y: 19.8755
     z: 0
-  expr: HALF_Y <= y < FAR_END_Y and ax < SIDE_X
-  bounds_text: 'expr: in bounds and y >= 12.7000 in the possession frame (the division line is backcourt). The half-court spot becomes ''backcourt'' and the full-court bins apply: rule_backcourt_third_near,
-    _mid and _deep (equal thirds of 4.7837 m between 12.7000 and 27.0510). Side bands are as in rule_side_and_mirror. Defenders in the backcourt during a half_court phase are labelled
-    pressing_backcourt. Full-court polar coordinates keep using the attacked rim (r up to about 28.6).'
+  expr: HALF_Y < y < FAR_END_Y and ax < SIDE_X
+  bounds_text: in bounds and y > 12.7000 (the division line is backcourt except its frontcourt edge, R9-12.2)
   edge_basis: Division-line frontcourt edge y = 12.7000; far end line inner edge y = 27.0510; sideline inner edges |x| = 7.62
   reference_point: feet_midpoint
   priority: 2
@@ -10938,18 +10993,22 @@ entries:
   confidence: medium
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 7.6
     - 20
   - - 0
     - 27.05
   probes_outside:
   - - 0
+    - 12.7
+  - - 0
     - 12.69
   - - 0
     - 27.051
   - - 7.62
     - 20
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: The point (0, 12.70) gets both ''backcourt'' and court_region frontcourt (top_three).'
 - id: rule_backcourt_third_deep
   layer: fullcourt
   name: 'Backcourt bin: deep third (nearest the far end line)'
@@ -11020,7 +11079,7 @@ entries:
     x: 0
     y: 15.0918
     z: 0
-  expr: HALF_Y <= y < 17.4837 and ax < SIDE_X
+  expr: HALF_Y < y < 17.4837 and ax < SIDE_X
   bounds_text: 12.7000 <= y < 17.4837 and |x| < 7.62 in the possession frame (backcourt thirds of 4.7837 m).
   edge_basis: Equal thirds between y = 12.7000 and 27.0510
   reference_point: feet_midpoint
@@ -11031,18 +11090,20 @@ entries:
   confidence: medium
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 5
     - 17.4737
   - - 7.6
     - 15.09185
   probes_outside:
   - - 0
-    - 12.69
+    - 12.7
   - - 0
     - 17.4837
   - - 7.62
     - 15.09185
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same division-edge inconsistency.'
 - id: drag_screen_spot
   layer: fullcourt
   name: Drag screen (transition ball screen) location
@@ -11051,7 +11112,7 @@ entries:
     x: 0
     y: 10
     z: 0
-  expr: r > 7.5 and ax < SIDE_X and END_Y < y < HALF_Y + 2.0
+  expr: r > 7.5 and ax < SIDE_X and END_Y < y <= HALF_Y + 2.0
   bounds_text: 'Handler''s position at screen contact during the transition phase (rule_transition_window): more than 7.5 m from the rim, in bounds, up to 2 m into the backcourt. Role/timing
     gating (screener is a trailing big, phase = transition) is outside the expression; in half-court phase the same contact is pnr_location_*.'
   reference_point: feet_midpoint
@@ -11622,7 +11683,7 @@ entries:
     x: 0
     y: 7.41
     z: 0
-  expr: is_three(x, y) and m > BREAK_T and ax < SIDE_X and y < HALF_Y
+  expr: is_three(x, y) and m > BREAK_T and ax < SIDE_X and y <= HALF_Y
   bounds_text: Frontcourt three-point territory with m > 12.073 deg. Among threes, this is the complement of corner_three (wing + slot + top).
   edge_basis: Arc outside edge; arc break angle.
   aliases:
@@ -11643,11 +11704,11 @@ entries:
     - 6.8
   - - -3.5
     - 6
+  - - 0
+    - 12.7
   probes_outside:
   - - 7.3
     - 1.5
-  - - 0
-    - 12.7
   - - 0
     - 6.74
   notes: 'Aggregate zone. CBBD: 79.8% of 3PA (1215), FG 33.9%.'
@@ -11659,7 +11720,7 @@ entries:
     x: 0
     y: 9.5
     z: 0
-  expr: r > 8.2296 and (END_Y < y < HALF_Y and ax < SIDE_X)
+  expr: r > 8.2296 and (END_Y < y <= HALF_Y and ax < SIDE_X)
   bounds_text: r > 8.2296 (27 ft), in the frontcourt. Takes priority over the arc spots. (Caps and corner rule aligned 2026-10-20.)
   edge_basis: distance band
   aliases:
@@ -11682,11 +11743,11 @@ entries:
     - 6.03
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 8.2
-  - - 0
-    - 12.7
   - - 5
     - 5
   review_fixes_2026_10_20:
@@ -11699,7 +11760,7 @@ entries:
     x: 0
     y: 8
     z: 0
-  expr: END_Y < y < HALF_Y - 2.4384 and ax < SIDE_X
+  expr: END_Y < y <= HALF_Y - 2.4384 and ax < SIDE_X
   bounds_text: y < 10.2616 (12.700 - 2.4384). The old value 10.29 was based on 12.73.
   edge_basis: 8 ft inside half court
   aliases:
@@ -11780,7 +11841,7 @@ entries:
     x: 0
     y: 0.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 0.8)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 0.8)) <= 1.2
   bounds_text: Defender within 1.2 m of (0, 0.8), ball zone top.
   aliases:
   - z113_center
@@ -11814,7 +11875,7 @@ entries:
     x: 0
     y: 4.4
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 4.4)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 4.4)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 4.4), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -11846,7 +11907,7 @@ entries:
     x: 3
     y: 0.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (3.0, 0.8)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (3.0, 0.8)) <= 1.5
   bounds_text: Defender within 1.5 m of (3.0, 0.8) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -11878,7 +11939,7 @@ entries:
     x: 0
     y: 8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 8.0)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 8.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 8.0), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -11910,7 +11971,7 @@ entries:
     x: 3.8
     y: 5
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (3.8, 5.0)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (3.8, 5.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (3.8, 5.0) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -11943,7 +12004,7 @@ entries:
     x: 2.8
     y: 1.2
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (2.8, 1.2)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (2.8, 1.2)) <= 1.5
   bounds_text: Defender within 1.5 m of (2.8, 1.2) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -11975,7 +12036,7 @@ entries:
     x: 0
     y: 7.3
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 7.3)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 7.3)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 7.3), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12103,7 +12164,7 @@ entries:
     x: 0
     y: 0.3
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and ax <= LANE_X and BOARD_Y <= y <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and ax <= LANE_X and BOARD_Y <= y <= 1.5
   bounds_text: Ball zone top; |x| <= 1.8288 and BOARD_Y <= y <= 1.5 (at or below the block).
   speech_alias: warrior
   reference_point: feet_midpoint
@@ -12139,7 +12200,7 @@ entries:
     x: 0
     y: 3.6
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 3.6)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 3.6)) <= 1.2
   bounds_text: Defender within 1.2 m of (0, 3.6), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12171,7 +12232,7 @@ entries:
     x: 0
     y: 7.5
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 7.5)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 7.5)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 7.5), ball zone top.
   speech_alias: chaser
   reference_point: feet_midpoint
@@ -12207,7 +12268,7 @@ entries:
     x: 5
     y: 4.2
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (5.0, 4.2)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (5.0, 4.2)) <= 1.5
   bounds_text: Defender within 1.5 m of (5.0, 4.2) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12239,7 +12300,7 @@ entries:
     x: 4
     y: 0
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*4.0, 0.0)) <= 1.5
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*4.0, 0.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*4.0, 0.0), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12271,7 +12332,7 @@ entries:
     x: 1.9
     y: 2
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*1.9, 2.0)) <= 1.2
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*1.9, 2.0)) <= 1.2
   bounds_text: Defender within 1.2 m of (ball_side*1.9, 2.0), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12303,7 +12364,7 @@ entries:
     x: 0.6
     y: 4.4
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*0.6, 4.4)) <= 1.5
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*0.6, 4.4)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*0.6, 4.4), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12335,7 +12396,7 @@ entries:
     x: -1.8
     y: 1
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*-1.8, 1.0)) <= 1.5
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*-1.8, 1.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*-1.8, 1.0), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12367,7 +12428,7 @@ entries:
     x: 2.2
     y: 5.6
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (2.2, 5.6)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (2.2, 5.6)) <= 1.5
   bounds_text: Defender within 1.5 m of (2.2, 5.6) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12399,7 +12460,7 @@ entries:
     x: 2.6
     y: 0.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (2.6, 0.8)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (2.6, 0.8)) <= 1.5
   bounds_text: Defender within 1.5 m of (2.6, 0.8) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12431,7 +12492,7 @@ entries:
     x: 0
     y: 3.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 3.8)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 3.8)) <= 1.2
   bounds_text: Defender within 1.2 m of (0, 3.8), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12755,7 +12816,7 @@ entries:
     x: 0
     y: 1.2
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 1.2)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 1.2)) <= 1.2
   bounds_text: Defender within 1.2 m of (0, 1.2), ball zone top.
   aliases:
   - z23_top_center
@@ -12789,7 +12850,7 @@ entries:
     x: 3.4
     y: 1
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (3.4, 1.0)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (3.4, 1.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (3.4, 1.0) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12821,7 +12882,7 @@ entries:
     x: 2.4
     y: 5.6
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (2.4, 5.6)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (2.4, 5.6)) <= 1.5
   bounds_text: Defender within 1.5 m of (2.4, 5.6) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -12853,7 +12914,7 @@ entries:
     x: 4
     y: 0.4
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*4.0, 0.4)) <= 1.2
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*4.0, 0.4)) <= 1.2
   bounds_text: Defender within 1.2 m of (ball_side*4.0, 0.4), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12886,7 +12947,7 @@ entries:
     x: 1.6
     y: 0.8
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*1.6, 0.8)) <= 1.2
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*1.6, 0.8)) <= 1.2
   bounds_text: Defender within 1.2 m of (ball_side*1.6, 0.8), ball zone wing.
   aliases:
   - z23_wing_center
@@ -12920,7 +12981,7 @@ entries:
     x: -1.2
     y: 1.2
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*-1.2, 1.2)) <= 1.5
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*-1.2, 1.2)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*-1.2, 1.2), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12952,7 +13013,7 @@ entries:
     x: 0.3
     y: 4.4
     z: null
-  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by < HALF_Y) and dist((x, y), (ball_side*0.3, 4.4)) <= 1.5
+  expr: (abs(bx) >= 0.9 and not (abs(bx) <= 2.6 and by <= 5.2) and BREAK_Y < by <= HALF_Y) and dist((x, y), (ball_side*0.3, 4.4)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*0.3, 4.4), ball zone wing.
   reference_point: feet_midpoint
   priority: 1
@@ -12984,7 +13045,7 @@ entries:
     x: 1.9
     y: 0.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (1.9, 0.8)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (1.9, 0.8)) <= 1.5
   bounds_text: Defender within 1.5 m of (1.9, 0.8) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -13016,7 +13077,7 @@ entries:
     x: 0
     y: 7.2
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 7.2)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 7.2)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 7.2), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -13048,7 +13109,7 @@ entries:
     x: 4.6
     y: 4.8
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (4.6, 4.8)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (4.6, 4.8)) <= 1.5
   bounds_text: Defender within 1.5 m of (4.6, 4.8) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -13239,6 +13300,7 @@ entries:
   bounds_text: Point (2.40, 4.191), r 4.830, theta 60.20. Captured within 0.9 m, with a nearest-anchor split.
   aliases:
   - elbow extended
+  - FT line extended inside (capture)
   reference_point: feet_midpoint
   priority: 10
   rank: 8010
@@ -13279,6 +13341,7 @@ entries:
   aliases:
   - FTX
   - free throw line extended
+  - FT line extended, wide (capture)
   reference_point: feet_midpoint
   priority: 10
   rank: 8010
@@ -13457,7 +13520,7 @@ entries:
   layer: zone_scheme:ball_zone
   name: 'Ball zone: low post'
   side: centre
-  expr: ax <= 2.6 and END_Y <= y < 3.0
+  expr: ax <= 2.6 and END_Y < y < 3.0
   bounds_text: '|x| <= 2.6 and END_Y <= y < 3.0.'
   reference_point: ball_floor_projection
   priority: 2
@@ -13489,7 +13552,7 @@ entries:
   layer: zone_scheme:ball_zone
   name: 'Ball zone: short corner'
   side: mirrored
-  expr: 2.6 < x <= 5.0 and END_Y <= y <= BREAK_Y
+  expr: 2.6 < x <= 5.0 and END_Y < y <= BREAK_Y
   bounds_text: 2.6 < |x| <= 5.0 and END_Y <= y <= BREAK_Y.
   reference_point: ball_floor_projection
   priority: 3
@@ -13521,7 +13584,7 @@ entries:
   layer: zone_scheme:ball_zone
   name: 'Ball zone: corner'
   side: mirrored
-  expr: 5.0 < x <= SIDE_X and END_Y <= y <= BREAK_Y
+  expr: 5.0 < x < SIDE_X and END_Y < y <= BREAK_Y
   bounds_text: 5.0 < |x| <= 7.62 and END_Y <= y <= BREAK_Y.
   reference_point: ball_floor_projection
   priority: 4
@@ -13552,7 +13615,7 @@ entries:
   layer: zone_scheme:ball_zone
   name: 'Ball zone: top'
   side: centre
-  expr: ax < 0.9 and 5.2 < y < HALF_Y
+  expr: ax < 0.9 and 5.2 < y <= HALF_Y
   bounds_text: '|x| < 0.9 (ball_side == 0) and 5.2 < y < HALF_Y.'
   reference_point: ball_floor_projection
   priority: 5
@@ -13570,19 +13633,19 @@ entries:
     - 7.6
   - - 0.85
     - 5.3
+  - - 0
+    - 12.7
   probes_outside:
   - - 0.9
     - 7.6
   - - 0
     - 5.2
-  - - 0
-    - 12.7
   notes: Top is defined from ball_side == 0 only, above the high post, so it cannot disagree with ball_side. Probes are ball floor projections.
 - id: ball_zone_wing
   layer: zone_scheme:ball_zone
   name: 'Ball zone: wing'
   side: mirrored
-  expr: 0.9 <= x <= SIDE_X and not (x <= 2.6 and y <= 5.2) and BREAK_Y < y < HALF_Y
+  expr: 0.9 <= x < SIDE_X and not (x <= 2.6 and y <= 5.2) and BREAK_Y < y <= HALF_Y
   bounds_text: Ball side known (|x| >= 0.9), not in the post box (|x| <= 2.6 and y <= 5.2), and BREAK_Y < y < HALF_Y.
   reference_point: ball_floor_projection
   priority: 6
@@ -13610,6 +13673,9 @@ entries:
   - - 5.3
     - 1.4
   notes: Probes are ball floor projections.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: The ball-zone partition labels a ball on a boundary line (dead, out of bounds) as live, but gives no zone to a ball on the frontcourt edge y = 12.700,
+    which is legally frontcourt.'
 - id: box_high
   layer: zone_scheme:box_and_1
   name: 'Box-and-1: high box slot (FT line extended)'
@@ -13618,7 +13684,7 @@ entries:
     x: 3
     y: 4.6
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (3.0, 4.6)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (3.0, 4.6)) <= 1.5
   bounds_text: Defender within 1.2 m of (3.0, 4.6) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -13654,7 +13720,7 @@ entries:
     x: 1.9
     y: 0.75
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (1.9, 0.75)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (1.9, 0.75)) <= 1.2
   bounds_text: Defender within 1.2 m of (1.9, 0.75) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -14072,6 +14138,9 @@ entries:
     - 1.23
   - - 0.9
     - 0.9
+  aliases:
+  - at the rim
+  - rim attempt
 - id: ctg_short_mid
   layer: zone_scheme:ctg
   name: CTG Short Midrange
@@ -14191,7 +14260,7 @@ entries:
     x: 0
     y: 14
     z: 0
-  expr: r >= 12.0 and (END_Y < y < FAR_END_Y and ax < SIDE_X)
+  expr: r > 12.0 and (END_Y < y < FAR_END_Y and ax < SIDE_X)
   bounds_text: r >= 12.0 and in bounds. A shot is a heave only if it is also taken with <= 3 s on the clock; that time condition is not expressible here.
   edge_basis: distance band
   reference_point: last_floor_contact
@@ -14206,18 +14275,21 @@ entries:
     supports: heave_min_r_m 12.0
   probes_inside:
   - - 0
-    - 12
+    - 12.01
   - - 7
     - 9.8
   - - 0
     - 25
   probes_outside:
   - - 0
-    - 11.99
+    - 12.0
   - - 7
     - 9.7
   - - 8
     - 12
+  review_fixes_2026_10_20:
+  - 'loop2 METRIC COVERAGE: The canonical heave (M-SQ-007 is_heave, M-SHOOT-062, canon_heave) is release_r > 12.0 (strict); heave_zone uses r >= 12.0. The dictionary''s own ''heave''
+    rule text says r >= 10.0 with clock <= 2.0 s, and M-SIT-048 uses 12.192 m and < 2.0 s. That is three distance cuts and two cl'
 - id: rim_zone
   layer: zone_scheme:ctg_shot
   name: Rim shot zone
@@ -14410,7 +14482,7 @@ entries:
     x: 0
     y: 1
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 1.0)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 1.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 1.0), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -14442,7 +14514,7 @@ entries:
     x: 0
     y: 6.5
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 6.5)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 6.5)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 6.5), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -14474,7 +14546,7 @@ entries:
     x: 3.5
     y: 3.5
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (3.5, 3.5)) <= 1.5
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (3.5, 3.5)) <= 1.5
   bounds_text: Defender within 1.5 m of (3.5, 3.5) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -14502,7 +14574,7 @@ entries:
   layer: zone_scheme:nba_area
   name: SHOT_ZONE_AREA 'Back Court(BC)'
   side: centre
-  expr: y >= HALF_Y
+  expr: y > HALF_Y
   bounds_text: y >= 12.700.
   reference_point: last_floor_contact
   priority: 5
@@ -14515,8 +14587,6 @@ entries:
   - url: https://github.com/swar/nba_api/blob/master/docs/nba_api/stats/endpoints/shotchartdetail.md
     supports: SHOT_ZONE_AREA field
   probes_inside:
-  - - 0
-    - 12.7
   - - 3
     - 15
   probes_outside:
@@ -14524,11 +14594,13 @@ entries:
     - 12.69
   - - 7
     - 12.6
+  - - 0
+    - 12.7
 - id: nba_area_center
   layer: zone_scheme:nba_area
   name: SHOT_ZONE_AREA 'Center(C)'
   side: centre
-  expr: y < HALF_Y and (((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R)) or (is_three(x, y) and y > BREAK_Y and m >= 64.024) or (not is_three(x, y) and m >= 72))
+  expr: y <= HALF_Y and (((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R)) or (is_three(x, y) and y > BREAK_Y and m >= 64.024) or (not is_three(x, y) and m >= 72))
   bounds_text: 'PROPOSAL: the RA is always C. Also above-break threes with m >= 64.024 (64.02-115.98 deg) and 2PA with m >= 72 (72-108 deg).'
   aliases:
   - nba_center_C
@@ -14551,18 +14623,18 @@ entries:
     - 6.2969
   - - 1.2028
     - 3.8149
+  - - 0
+    - 12.7
   probes_outside:
   - - 3.0796
     - 6.2862
   - - 1.2692
     - 3.7933
-  - - 0
-    - 12.7
 - id: nba_area_side
   layer: zone_scheme:nba_area
   name: SHOT_ZONE_AREA side, our right = NBA.com 'Left Side(L)'
   side: mirrored
-  expr: x >= 0 and y < HALF_Y and not ((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R)) and ((is_three(x, y) and y <= BREAK_Y) or (not is_three(x, y) and (m < 36 or (m <
+  expr: x >= 0 and y <= HALF_Y and not ((y >= 0 and r <= RA_R) or (BOARD_Y <= y < 0 and ax <= RA_R)) and ((is_three(x, y) and y <= BREAK_Y) or (not is_three(x, y) and (m < 36 or (m <
     72 and r < 4.8768))))
   bounds_text: PROPOSAL; fit on shotchartdetail rows before use. Right half, frontcourt, outside the RA. Covers corner threes, and 2PA with folded m < 36 deg, or m < 72 deg when r <
     4.8768. Under 16 ft only L/C/R exist, so the LC band folds into L.
@@ -14603,7 +14675,7 @@ entries:
   layer: zone_scheme:nba_area
   name: SHOT_ZONE_AREA side-centre, our right = NBA.com 'Left Side Center(LC)'
   side: mirrored
-  expr: x >= 0 and y < HALF_Y and ((is_three(x, y) and y > BREAK_Y and m < 64.024) or (not is_three(x, y) and r >= 4.8768 and 36 <= m < 72))
+  expr: x >= 0 and y <= HALF_Y and ((is_three(x, y) and y > BREAK_Y and m < 64.024) or (not is_three(x, y) and r >= 4.8768 and 36 <= m < 72))
   bounds_text: 'PROPOSAL: above-break threes with m < 64.024 (equal thirds of the above-break arc), plus 2PA with r >= 4.8768 and 36 <= m < 72.'
   aliases:
   - nba_area_side_center_left
@@ -14642,7 +14714,7 @@ entries:
   layer: zone_scheme:nba_basic
   name: NBA SHOT_ZONE_BASIC 'Backcourt'
   side: centre
-  expr: y >= HALF_Y
+  expr: y > HALF_Y
   bounds_text: y >= 12.700, the NCAA frontcourt edge (the NBA line is 12.7254 m from the rim). Only meaningful in a rim-relative frame before any half-court fold; CBBD folds the far
     half.
   reference_point: last_floor_contact
@@ -14656,8 +14728,6 @@ entries:
   - url: https://jr.nba.com/how-to-read-a-shot-chart/
     supports: backcourt = shots beyond half court
   probes_inside:
-  - - 0
-    - 12.7
   - - 5
     - 20
   probes_outside:
@@ -14665,6 +14735,8 @@ entries:
     - 12.69
   - - 7
     - 12.6
+  - - 0
+    - 12.7
 - id: nba_restricted_area
   layer: zone_scheme:nba_basic
   name: NBA SHOT_ZONE_BASIC 'Restricted Area'
@@ -14817,7 +14889,7 @@ entries:
   layer: zone_scheme:nba_basic
   name: NBA SHOT_ZONE_BASIC 'Above the Break 3'
   side: centre
-  expr: is_three(x, y) and BREAK_Y < y < HALF_Y
+  expr: is_three(x, y) and BREAK_Y < y <= HALF_Y
   bounds_text: is_three with 1.4118 < y < 12.700.
   reference_point: last_floor_contact
   priority: 50
@@ -14838,11 +14910,11 @@ entries:
     - 4.8
   - - 6.9
     - 1.43
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 6.75
-  - - 0
-    - 12.7
   - - 6.7
     - 1.4
 - id: nba_corner_3_literal_break
@@ -14940,7 +15012,7 @@ entries:
   layer: zone_scheme:nba_range
   name: NBA SHOT_ZONE_RANGE '16-24 ft.'
   side: centre
-  expr: 4.8768 <= r < 7.3152 and y < HALF_Y
+  expr: 4.8768 <= r < 7.3152 and y <= HALF_Y
   bounds_text: 4.8768 <= r < 7.3152 in the frontcourt. On an NCAA court this ring contains the whole 3pt arc, so it mixes long twos and threes.
   reference_point: last_floor_contact
   priority: 30
@@ -14968,7 +15040,7 @@ entries:
   layer: zone_scheme:nba_range
   name: NBA SHOT_ZONE_RANGE '24+ ft.'
   side: centre
-  expr: r >= 7.3152 and y < HALF_Y
+  expr: r >= 7.3152 and y <= HALF_Y
   bounds_text: r >= 7.3152 and y < 12.700. Do not read this bucket as 'all threes' on an NCAA court.
   reference_point: last_floor_contact
   priority: 40
@@ -14985,16 +15057,16 @@ entries:
     - 7.32
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 7.31
-  - - 0
-    - 12.7
 - id: nba_range_back_court
   layer: zone_scheme:nba_range
   name: NBA SHOT_ZONE_RANGE 'Back Court Shot'
   side: centre
-  expr: y >= HALF_Y
+  expr: y > HALF_Y
   bounds_text: y >= 12.700.
   reference_point: last_floor_contact
   priority: 50
@@ -15007,8 +15079,6 @@ entries:
   - url: https://github.com/swar/nba_api/blob/master/docs/nba_api/stats/endpoints/shotchartdetail.md
     supports: SHOT_ZONE_RANGE field
   probes_inside:
-  - - 0
-    - 12.7
   - - 3
     - 15
   probes_outside:
@@ -15016,6 +15086,8 @@ entries:
     - 12.69
   - - 7
     - 12.6
+  - - 0
+    - 12.7
 - id: oob_backcourt_sideline
   layer: zone_scheme:out_of_bounds
   name: Backcourt sideline out-of-bounds strip
@@ -15024,7 +15096,7 @@ entries:
     x: 7.92
     y: 19
     z: 0
-  expr: x >= SIDE_X and HALF_Y <= y < FAR_END_Y
+  expr: x >= SIDE_X and HALF_Y < y < FAR_END_Y
   bounds_text: x > SIDE_X and HALF_Y <= y <= FAR_END_Y
   edge_basis: sideline inner edge; division-line frontcourt edge
   aliases:
@@ -15037,8 +15109,6 @@ entries:
   source_kind: rule_book
   confidence: high
   probes_inside:
-  - - 7.63
-    - 12.7
   - - 7.92
     - 27.05
   probes_outside:
@@ -15046,6 +15116,8 @@ entries:
     - 12.69
   - - 7.92
     - 27.06
+  - - 7.63
+    - 12.7
 - id: oob_behind_attacked_endline
   layer: zone_scheme:out_of_bounds
   name: Out of bounds behind the attacked end line
@@ -15161,7 +15233,7 @@ entries:
     x: 7.92
     y: 6
     z: 0
-  expr: x >= SIDE_X and END_Y < y < HALF_Y
+  expr: x >= SIDE_X and END_Y < y <= HALF_Y
   bounds_text: x > SIDE_X and END_Y <= y < HALF_Y
   aliases:
   - oob_frontcourt_sideline_right
@@ -15177,9 +15249,9 @@ entries:
     - -1.6
   - - 7.92
     - 12.69
-  probes_outside:
   - - 7.92
     - 12.7
+  probes_outside:
   - - 7.92
     - -1.61
   review_fixes_2026_10_20:
@@ -15428,7 +15500,7 @@ entries:
     x: 0
     y: 10
     z: 0
-  expr: 7.75 < y < HALF_Y and ax < SIDE_X
+  expr: 7.75 < y <= HALF_Y and ax < SIDE_X
   bounds_text: 7.75 < y < 12.700
   edge_basis: division line near edge
   reference_point: feet_midpoint
@@ -15448,11 +15520,11 @@ entries:
     - 7.76
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 7.75
-  - - 0
-    - 12.7
 - id: pickup_three_quarter
   layer: zone_scheme:pickup_y
   name: 'Pick-up zone: three-quarter'
@@ -15461,7 +15533,7 @@ entries:
     x: 0
     y: 17
     z: 0
-  expr: HALF_Y <= y <= 21.2598 and ax < SIDE_X
+  expr: HALF_Y < y <= 21.2598 and ax < SIDE_X
   bounds_text: 12.700 <= y <= 21.2598
   edge_basis: division line near edge; opponent FT line far edge
   reference_point: feet_midpoint
@@ -15478,14 +15550,14 @@ entries:
   - docs/stats/defense.md:92 M-DEF-080 (edge 12.725)
   probes_inside:
   - - 0
-    - 12.7
-  - - 0
     - 21.2598
   probes_outside:
   - - 0
     - 12.699
   - - 0
     - 21.26
+  - - 0
+    - 12.7
 - id: pickup_top_of_key
   layer: zone_scheme:pickup_y
   name: 'Pick-up zone: top of key'
@@ -15600,7 +15672,7 @@ entries:
     x: 0
     y: 10
     z: 0
-  expr: r > 9.144 and ax < SIDE_X and y > END_Y and y < HALF_Y
+  expr: r > 9.144 and ax < SIDE_X and y > END_Y and y <= HALF_Y
   bounds_text: r > 9.144, frontcourt, in bounds (the same region as logo_range). Measured at the handler's position at screen contact.
   edge_basis: 30 ft, aligned with logo_range.
   aliases:
@@ -15622,11 +15694,11 @@ entries:
     - 7.6
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 9.14
-  - - 0
-    - 12.7
   - - 7.63
     - 9
 - id: pnr_location_side
@@ -15713,7 +15785,7 @@ entries:
     x: 0
     y: 26
     z: null
-  expr: (hy < END_Y or hy > FAR_END_Y or abs(hx) > SIDE_X) and hypot(x-hx,y-hy) <= 1.5
+  expr: (hy <= END_Y or hy >= FAR_END_Y or abs(hx) >= SIDE_X) and hypot(x-hx,y-hy) <= 1.5
   bounds_text: 'Same geometry as inbounder_defender: handler out of bounds and the defender within 1.5 m.'
   reference_point: feet_midpoint
   priority: 1
@@ -15737,6 +15809,8 @@ entries:
   - - 2
     - 26.6
   notes: 'Probe context: ball = inbounder at (0.5, 27.6).'
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same strict-inequality bug as inbounder_defender (identical geometry).'
 - id: p1211_interceptor
   layer: zone_scheme:press_1-2-1-1
   name: '1-2-1-1 press: interceptor'
@@ -15745,7 +15819,7 @@ entries:
     x: 0
     y: 15.7
     z: null
-  expr: by >= HALF_Y and abs(x - hx) <= 1.5 and 14.2 <= y <= 17.2
+  expr: by > HALF_Y and abs(x - hx) <= 1.5 and 14.2 <= y <= 17.2
   bounds_text: In line with the inbounder (|x - x_inbounder| <= 1.5), at y 14.2-17.2. The band is centred on 15.7, halfway between the far arc top (18.70) and the division line (12.70).
   reference_point: feet_midpoint
   priority: 1
@@ -15785,6 +15859,10 @@ entries:
   - url: https://www.basketballforcoaches.com/1-2-1-1-diamond-press/
     title: Basketball for Coaches, 1-2-1-1 Diamond Press
     supports: The safety plays as deep as the deepest attacker.
+  expr: abs(y - min(max(lowest_attacker_y, 5.0), HALF_Y)) <= 1.5
+  review_fixes_2026_10_20:
+  - 'loop2 NULL EXPRESSIONS: This needs the min y of the five attackers, which lowest_defender_y does not supply. Optional: add lowest_attacker_y (min y over the 5 attackers) to the
+    extension; the bounds_text rule is then exact. Otherwise keep it null.'
 - id: p1211_wing
   layer: zone_scheme:press_1-2-1-1
   name: '1-2-1-1 press: wing behind the nearest receiver'
@@ -15793,7 +15871,7 @@ entries:
     x: 4.5
     y: 22.5
     z: null
-  expr: by >= HALF_Y and dist((x, y), (4.5, 22.5)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (4.5, 22.5)) <= 2.0
   bounds_text: Defender within 2.0 m of (4.5, 22.5) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15825,7 +15903,7 @@ entries:
     x: 4.5
     y: 17
     z: null
-  expr: by >= HALF_Y and dist((x, y), (4.5, 17.0)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (4.5, 17.0)) <= 2.0
   bounds_text: Defender within 2.0 m of (4.5, 17.0) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15857,7 +15935,7 @@ entries:
     x: 0
     y: 19.3
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 19.3)) <= 1.5
+  expr: by > HALF_Y and dist((x, y), (0, 19.3)) <= 1.5
   bounds_text: Defender within 1.5 m of (0, 19.3), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15889,7 +15967,7 @@ entries:
     x: 4.5
     y: 12.9
     z: null
-  expr: by >= HALF_Y and dist((x, y), (ball_side*4.5, 12.9)) <= 1.5
+  expr: by > HALF_Y and dist((x, y), (ball_side*4.5, 12.9)) <= 1.5
   bounds_text: Defender within 1.5 m of (ball_side*4.5, 12.9), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15921,7 +15999,7 @@ entries:
     x: 0
     y: 9
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 9.0)) <= 2.5
+  expr: by > HALF_Y and dist((x, y), (0, 9.0)) <= 2.5
   bounds_text: Defender within 2.5 m of (0, 9.0), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15954,7 +16032,7 @@ entries:
     x: 0
     y: 16.5
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 16.5)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (0, 16.5)) <= 2.0
   bounds_text: Defender within 2.0 m of (0, 16.5), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -15986,7 +16064,7 @@ entries:
     x: 0
     y: 21.6
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 21.6)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (0, 21.6)) <= 2.0
   bounds_text: Defender within 2.0 m of (0, 21.6), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16018,7 +16096,7 @@ entries:
     x: 0
     y: 11
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 11.0)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (0, 11.0)) <= 2.0
   bounds_text: Defender within 2.0 m of (0, 11.0), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16050,7 +16128,7 @@ entries:
     x: 5
     y: 16.5
     z: null
-  expr: by >= HALF_Y and dist((x, y), (5.0, 16.5)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (5.0, 16.5)) <= 2.0
   bounds_text: Defender within 2.0 m of (5.0, 16.5) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16210,7 +16288,7 @@ entries:
     x: 2.5
     y: 18
     z: null
-  expr: by >= HALF_Y and dist((x, y), (2.5, 18.0)) <= 1.5
+  expr: by > HALF_Y and dist((x, y), (2.5, 18.0)) <= 1.5
   bounds_text: Defender within 1.5 m of (2.5, 18.0) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16242,7 +16320,7 @@ entries:
     x: 1.8288
     y: 21.2598
     z: null
-  expr: by >= HALF_Y and dist((x, y), (1.8288, 21.2598)) <= 1.5
+  expr: by > HALF_Y and dist((x, y), (1.8288, 21.2598)) <= 1.5
   bounds_text: Defender within 1.5 m of (1.8288, 21.2598) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16275,7 +16353,7 @@ entries:
     x: 4
     y: 13.7
     z: null
-  expr: by >= HALF_Y and dist((x, y), (4.0, 13.7)) <= 2.0
+  expr: by > HALF_Y and dist((x, y), (4.0, 13.7)) <= 2.0
   bounds_text: Defender within 2.0 m of (4.0, 13.7) (right anchor, mirrored), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16307,7 +16385,7 @@ entries:
     x: 0
     y: 7.5
     z: null
-  expr: by >= HALF_Y and dist((x, y), (0, 7.5)) <= 2.5
+  expr: by > HALF_Y and dist((x, y), (0, 7.5)) <= 2.5
   bounds_text: Defender within 2.5 m of (0, 7.5), ball in the backcourt (by >= HALF_Y).
   reference_point: feet_midpoint
   priority: 1
@@ -16512,7 +16590,7 @@ entries:
     x: 0
     y: 7.2
     z: 0
-  expr: r >= 6.6 and (END_Y < y < HALF_Y and ax < SIDE_X)
+  expr: r >= 6.6 and (END_Y < y <= HALF_Y and ax < SIDE_X)
   bounds_text: r >= 6.6 in the frontcourt. The strip 6.6-6.7501 above the break is still two-point floor.
   edge_basis: band
   aliases:
@@ -16534,13 +16612,13 @@ entries:
     - 0
   - - 5
     - 5
+  - - 0
+    - 12.7
   probes_outside:
   - - 0
     - 6.59
   - - 6.59
     - 0
-  - - 0
-    - 12.7
 - id: pop_mid_zone
   layer: zone_scheme:screener_catch
   name: POP_MID stop band
@@ -16586,7 +16664,7 @@ entries:
     x: 0
     y: 7.6
     z: 0
-  expr: 6.6 <= r <= 8.5 and (END_Y < y < HALF_Y and ax < SIDE_X)
+  expr: 6.6 <= r <= 8.5 and (END_Y < y <= HALF_Y and ax < SIDE_X)
   bounds_text: 6.6 <= r <= 8.5 in the frontcourt. It includes the two-point strip above the break.
   edge_basis: distance band
   reference_point: feet_midpoint
@@ -16775,7 +16853,7 @@ entries:
     x: 2
     y: 0.75
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (2.0, 0.75)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (2.0, 0.75)) <= 1.2
   bounds_text: Defender within 1.2 m of (2.0, 0.75) (right anchor, mirrored), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -16807,7 +16885,7 @@ entries:
     x: 0
     y: 4.75
     z: null
-  expr: (abs(bx) < 0.9 and 5.2 < by < HALF_Y) and dist((x, y), (0, 4.75)) <= 1.2
+  expr: (abs(bx) < 0.9 and 5.2 < by <= HALF_Y) and dist((x, y), (0, 4.75)) <= 1.2
   bounds_text: Defender within 1.2 m of (0, 4.75), ball zone top.
   reference_point: feet_midpoint
   priority: 1
@@ -17143,6 +17221,7 @@ entries:
   - foot on the line
   - long two
   - toe on the line
+  - on the three-point line
   reference_point: last_floor_contact
   priority: 10
   rank: 2010
@@ -17186,7 +17265,7 @@ entries:
     x: null
     y: null
     z: null
-  expr: is_three(x, y) and r <= 8.50 and ax < SIDE_X and y > END_Y and y < HALF_Y
+  expr: is_three(x, y) and r <= 8.50 and ax < SIDE_X and y > END_Y and y <= HALF_Y
   bounds_text: beyond_arc and r <= 8.50. A point beyond the arc with 8.50 < r <= 9.144 is deep_three; r > 9.144 is logo_range. Below m = 26.30 deg the sideline is closer than 8.50, so
     no deep label is possible there.
   edge_basis: 'Inner edge: outside edge of the line. The 8.50 outer edge is a repo convention (offense_full section 0.1).'
@@ -17224,7 +17303,7 @@ entries:
     x: null
     y: null
     z: null
-  expr: is_three(x, y) and ax < SIDE_X and y > END_Y and y < HALF_Y
+  expr: is_three(x, y) and ax < SIDE_X and y > END_Y and y <= HALF_Y
   bounds_text: 'Strictly outside the outside edge of the three-point line. For y <= 1.4118 that means |x| > 6.6008; above it, r > 6.7501. The 0.0508 m line is two-point area. In bounds
     means |x| < 7.62 (sideline inside edge), y > -1.6002 (end line inside edge) and y < 12.700 (division line frontcourt edge). Every perimeter spot in this family is beyond_arc AND
     its own band. Stated exceptions: on_the_line, pnr_location_* (these start at r 6.5), transition_wing_lane, backcourt_heave, strong_side and weak_side.'
@@ -17311,6 +17390,85 @@ entries:
   - url: docs/taxonomy/defense_full.md#F2
     title: repo defense_full.md#F2
     supports: 'Inch up on a picked-up dribble; pack line: all may deny on a dead ball (deny index -> 1).'
+  expr: dribbling == 2 and hypot(ax_-hx, ay_-hy) > 0.3 and not ((ball_side != 0 and ((ax_*ball_side < -0.3048 and dist((ax_,ay_),(bx,by)) > 7.0) or dist((ax_,ay_),(bx,by)) > 9.144))
+    or (ball_side == 0 and degrees(atan2(ay_, abs(ax_))) <= 30 and hypot(ax_,ay_) >= 4.0 and dist((ax_,ay_),(bx,by)) > 7.0)) and seg_dist((x,y),(ax_,ay_),(bx,by)) <= 0.6 and 0.05 <=
+    (((x-ax_)*(bx-ax_)+(y-ay_)*(by-ay_))/max(1e-9,(bx-ax_)**2+(by-ay_)**2)) <= 0.35 and hypot(x-ax_,y-ay_) <= 2.0
+  review_fixes_2026_10_20:
+  - 'loop2 NULL EXPRESSIONS: Null only because the dribble state was missing. It needs the ''dribble used'' state (dribbling == 2), not just ''not dribbling'', because a handler holding
+    a live dribble (0) is not a dead-ball deny situation. The rest is the current deny_on_the_line expr, verbatim.'
+  probes_ctx:
+  - p:
+    - 6.58
+    - 1.1
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: 2
+    want: true
+  - p:
+    - 5.956
+    - 1.314
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: 2
+    want: true
+  - p:
+    - 6.58
+    - 1.1
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: 1
+    want: false
+  - p:
+    - 6.58
+    - 1.1
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: 0
+    want: false
+  - p:
+    - 5.93
+    - 0.84
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: 2
+    want: false
+  - p:
+    - 6.58
+    - 1.1
+    ctx:
+      bx: 5.3
+      by: 4.3
+      hx: 5.3
+      hy: 4.3
+      ax_: 6.9
+      ay_: 0.3
+      dribbling: null
+    want: null
 - id: matchup_zone_slots
   layer: rule
   name: Match-up zone positions
@@ -17374,8 +17532,7 @@ entries:
     y: 1.5
     z: 0
   expr: 0 <= x <= SIDE_X and END_Y <= y <= FT_Y
-  bounds_text: stoppage (foul or violation, offense in team control in its frontcourt) at 0 <= x <= SIDE_X and END_Y <= y <= FT_Y -> blob_designated_spot_right; does not apply when the
-    defense caused the ball out of bounds (spot of exit). A stoppage exactly at x = 0 is a tie between sides.
+  bounds_text: 'Replace ''A stoppage exactly at x = 0 is a tie between sides.'' with ''A stoppage exactly at x = 0 goes to the right side (frame.mirror: right owns x = 0).'''
   edge_basis: FT line extended; using the far edge FT_Y (a stoppage on the painted line goes to the baseline spot) is a proposal
   aliases:
   - blob_award_zone_right
@@ -17457,7 +17614,7 @@ entries:
     x: 4
     y: 8
     z: 0
-  expr: 0 <= x <= SIDE_X and FT_Y < y < HALF_Y
+  expr: 0 <= x <= SIDE_X and FT_Y < y <= HALF_Y
   bounds_text: stoppage with the offense in control in its frontcourt at 0 <= x <= SIDE_X and FT_Y < y < HALF_Y -> slob_28ft_frontcourt_right (spot-of-exit exception as above)
   edge_basis: FT_Y far-edge split (proposal) and the division-line frontcourt edge
   aliases:
@@ -17482,11 +17639,11 @@ entries:
     - 12.69
   - - 5
     - 8
+  - - 5
+    - 12.7
   probes_outside:
   - - 0
     - 4.19
-  - - 5
-    - 12.7
   - - 7.63
     - 8
 - id: slob_bench_side_flag
@@ -17540,18 +17697,9 @@ entries:
     y: null
     z: null
   expr: (z <= 0.13 and (ax >= SIDE_X or y <= END_Y or y >= FAR_END_Y)) or (z - 0.1213 > 3.9624 and ax <= 0.9144 + 0.1213 and abs(y - BOARD_Y) <= 0.1213)
-  bounds_text: 'The ball is out of bounds (R7-1.2/3) when:
-
-    (1) its floor contact point is on or beyond a boundary line''s inside edge (expr first clause, tested only on contact frames, with ball centre z <= 0.13 m for a ball radius of 0.1213
-    m);
-
-    (2) it touches a player who is out of bounds (rule_out_of_bounds on the toucher''s foot points), any other person, an object on or outside a boundary, the supports or back of the
-    backboard, or overhead equipment (event detection, not geometry);
-
-    (3) any part of the ball passes over the backboard from any direction (expr second clause: the ball''s bottom is above the board top at 3.9624 m while the ball overlaps the board
-    footprint |x| <= 0.9144 + 0.1213 and |y + 0.381| <= 0.1213, neglecting board thickness).
-
-    A ball in the air over out-of-bounds floor is NOT out until it touches something.'
+  bounds_text: 'Append to clause (3): ''Also evaluate it on the segment between the ball centres of frames n-1 and n: it is true when that segment crosses the plane y = BOARD_Y (or the
+    planes |x| = 0.9144 + 0.1213 with |y - BOARD_Y| <= 0.1213) at an interpolated point with z - 0.1213 > 3.9624 and |x| <= 0.9144 + 0.1213. The single-frame slab |y - BOARD_Y| <= 0.1213
+    alone misses a ball moving faster than 7.27 m/s along y at 29.97 fps.'''
   edge_basis: Inside edges of the boundary lines; backboard top edge 3.9624 m, width 1.8288 m
   reference_point: ball_3d
   priority: 1
@@ -17638,7 +17786,7 @@ entries:
     x: null
     y: null
     z: null
-  expr: END_Y < y < HALF_Y and ax < SIDE_X
+  expr: END_Y < y <= HALF_Y and ax < SIDE_X
   bounds_text: 'expr is tested on the ball''s floor contact point (bounce) and on the foot points of every player touching the ball. For the backcourt violation (R9-12), the ball is
     in the frontcourt when every tested point satisfies expr, and in the backcourt when any tested point is in the backcourt (R9-12.3a). A ball touching neither a player nor the floor
     keeps its last-contact status (R9-12.3b). On a dribble from backcourt to frontcourt, the ball is in the frontcourt only once both of the dribbler''s feet and the ball touch the floor
@@ -17665,19 +17813,23 @@ entries:
   probes_inside:
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   - - 3
     - 5
   - - 7.6
     - 0
   probes_outside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 0
     - 20
   - - 7.62
     - 5
   notes: offense_full.md R7 says that from 2026-27 the violation is called at shot clock 19 instead of 20. Neither the rules book nor the 2026-27 change documents in docs/rules say so,
     so it is kept as an open question, not a rule.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: Same edge error for the ball''s backcourt status (R9-12.3): a bounce on the frontcourt edge counts as backcourt.'
 - id: rule_frontcourt_backcourt_player
   layer: rule
   name: Player frontcourt status (backcourt is the in-bounds complement)
@@ -17686,11 +17838,9 @@ entries:
     x: 0
     y: 6.35
     z: 0
-  expr: END_Y < y < HALF_Y and ax < SIDE_X
-  bounds_text: 'expr: a foot point is in the frontcourt when it is in bounds and y < 12.7000 (the nearer edge of the division line). In-bounds points with y >= 12.7000 are backcourt,
-    because the division line is backcourt (R9-12.2). A player is in the backcourt if any grounded foot point is in the backcourt, and in the frontcourt only when every grounded foot
-    point satisfies expr. Airborne: status at last contact, except in the R9-12.9/10 landing cases (a defender securing control in the air; an initial touch in the air after a jump ball
-    or during a throw-in). Every player is judged in the offence''s frame.'
+  expr: END_Y < y <= HALF_Y and ax < SIDE_X
+  bounds_text: 'a foot point is in the frontcourt when it is in bounds and y <= 12.7000 (R9-12.1/12.2: the backcourt includes the division line excluding the mathematical edge nearest
+    the team''s basket); y > 12.7000 is backcourt.'
   edge_basis: Frontcourt-side edge of the division line y = 12.7000 (line centre 12.7254)
   reference_point: any_foot
   priority: 2
@@ -17709,6 +17859,8 @@ entries:
   probes_inside:
   - - 0
     - 12.69
+  - - 0
+    - 12.7
   - - 7.6
     - 0
   - - 0
@@ -17717,7 +17869,7 @@ entries:
     - 6.35
   probes_outside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 0
     - 12.73
   - - 7.62
@@ -17725,6 +17877,9 @@ entries:
   - - 0
     - -1.6002
   notes: The anchor (0, 6.35), with r = 6.35 and theta = 90, is an interior point. The draft's anchor sat on the boundary, in the backcourt.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: The rule-decision entry calls y = 12.700 backcourt. Rule 9-12.2 (rules book line 3964) excludes that edge from the backcourt, and court_region, the edge
+    rules and the fullcourt ''frontcourt'' entry all call it frontcourt. A foot on the edge therefore gets contradictory statu'
 - id: rule_restricted_area_membership
   layer: rule
   name: Restricted-area membership (secondary defender and display)
@@ -17829,7 +17984,7 @@ entries:
     x: 0
     y: 0.6
     z: 3.4
-  expr: z > 3.048 and r >= 0.2286 + 0.1213
+  expr: z > 3.048 and r >= 0.2286 + 0.1213 and y >= BOARD_Y + 0.1213
   bounds_text: 'Ball centre above the ring''s upper edge (z > 3.048) and no part of the ball touching the cylinder (horizontal distance >= ring inner radius 0.2286 + ball radius 0.1213).
     Rule 9-15.3a(2): above the level of the ring and not touching the cylinder; downward flight and possibility of entering are event conditions (vz < 0), not part of the region.'
   reference_point: ball_3d
@@ -17845,6 +18000,9 @@ entries:
   - - 0.36
     - 0
     - 3.1
+  - - 0.4
+    - -0.25
+    - 3.2
   probes_outside:
   - - 0
     - 0.3
@@ -17855,7 +18013,15 @@ entries:
   - - 0.34
     - 0
     - 3.2
+  - - 0
+    - -0.4
+    - 4.2
+  - - 0
+    - -0.6
+    - 3.3
   notes: Probes are (x, y, z). 'Above the level of the ring' is read at the ball centre; a stricter reading (whole ball above, z - 0.1213 > 3.048) is a variant.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: A ball above ring height that is over or behind the backboard (no chance to score; out of bounds when it passes over the board) is labelled goaltend zone.'
 - id: ball_within_basket
   layer: rule
   name: Ball within the basket
@@ -18035,7 +18201,9 @@ entries:
   expr: ax < 0.30
   bounds_text: 'expr is the middle band. side = middle if |x| < 0.30; right if x >= 0.30; left if x <= -0.30. Display hysteresis: enter middle when |x| < 0.20, leave it when |x| > 0.40
     (0.10 m each way). Mirror: x -> -x. Every mirrored spot is defined on the right and looked up with the folded angle m (rule_theta_behind_backboard). Strong side and weak side for
-    players use the loader''s ball_side: the sign of the ball''s x with a 0.9 m dead band (|bx| < 0.9 -> 0), so a ball near the middle gives no strong side.'
+    players use ball_side: the sign of the ball''s x with a 0.9 m dead band. The loader holds ball_side with hysteresis: switch to +1/-1 when |bx| >= 0.9 + h and to 0 when |bx| < 0.9
+    - h, otherwise keep the held value, h = max(0.25 m, 0.75 x sigma_ball), confirmed over 8 frames (233 ms) and back-dated offline. The held value is passed as the ctx name ball_side,
+    which overrides the instantaneous value the evaluator computes from bx.'
   edge_basis: x = 0 is the line through the rim centre perpendicular to the end line
   aliases:
   - middle
@@ -18183,10 +18351,12 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'Absolute frame: origin at centre court, X along the court length, Y +90 deg counter-clockwise from X (to the left of someone facing +X). Attacking the +X basket: x =
-    -Y, y = 12.7254 - X. Attacking the -X basket: x = +Y, y = 12.7254 + X. Then r = hypot(x, y) and t = degrees(atan2(y, x)) in (-180, 180]. Resulting landmarks: near end line inner
-    edge y = -1.6002; division line frontcourt edge y = 12.7000, centre 12.7254, backcourt edge 12.7508; far end line inner edge y = 27.0510; sideline inner edges |x| = 7.6200. expr
-    null: coordinate transform, not a region.'
+  bounds_text: 'Absolute frame: origin at centre court, X along the court length toward the north basket (= player_positions.x_fc_m), Y = +90 deg counter-clockwise from X (to the left
+    of someone facing +X). Attacking the +X basket: x = -Y, y = 12.7254 - X. Attacking the -X basket: x = +Y, y = 12.7254 + X. Then r = hypot(x, y) and t = degrees(atan2(y, x)) in (-180,
+    180]. Scorer''s-table side: table_side_x_sign = -s_table when attacking +X and +s_table when attacking -X, where s_table = sign(Y of the table) per venue. Resulting landmarks: near
+    end line inner edge y = -1.6002; division line frontcourt edge y = 12.7000, centre 12.7254, backcourt edge 12.7508; far end line inner edge y = 27.0510; sideline inner edges |x|
+    = 7.6200. Repo edit: player_positions.y_fc_m and official_positions.y_fc_m must be redefined as ''+90 deg CCW from +x_fc_m'', with the table side stored as venues.table_side_y_sign;
+    the current ''+ toward the scorer''s table side'' flips handedness in arenas whose table is on the right facing north. expr null: coordinate transform, not a region.'
   edge_basis: Rim centre 1.6002 m from the end line inner edge; half length 14.3256 m (inside edges)
   reference_point: n/a
   priority: 100
@@ -18299,9 +18469,8 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'A new label replaces the old one only after it holds past the hysteresis threshold for an elapsed PTS time between the first and last frame of >= 133 ms (5 frames at
-    29.97 fps) for painted-line labels, or >= 233 ms (8 frames) for tactical spots. Offline, the change is back-dated to the first of those frames; live, it is reported with that delay.
-    Exempt: landing frames (rule_airborne_freeze), camera cuts (relabel at once) and event frames. expr null: temporal rule, not a floor region.'
+  bounds_text: 'Replace the ''Exempt:'' clause with ''Exempt: landing frames (rule_airborne_freeze), camera cuts (relabel at once), possession-frame switches (rule_rim_frame_selection:
+    relabel every object at once in the new frame and reset its hysteresis state), and event frames.'''
   edge_basis: n/a
   reference_point: n/a
   priority: 100
@@ -18338,9 +18507,12 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'h = max(0.25 m, 0.75 x sigma). Radial boundary at R: change the label only when r moves h past R. Angular boundary at Theta: dtheta_deg = (h / r) x 57.296, which is 2.12
-    deg at r = 6.75, 3.13 deg at r = 4.57 and 5.97 deg at r = 2.4. A point inside the band keeps its previous label, so it is never in two zones. Below r = 2.0 m, disable angle-based
-    zones in favour of x/y boxes (block, dunker). expr null: temporal rule, not a floor region.'
+  bounds_text: 'h = max(0.25 m, 0.75 x sigma) while the stance centre moves (centred 1.0 s speed >= 1.0 m/s) and h = max(0.25 m, 1.0 x sigma) while slow (< 1.0 m/s). Single-winner layers
+    (spot, restart, fullcourt, partition schemes) are EXIT-based: the held label L changes only when the observed point is at least h outside L (signed distance d_in(L) <= -h) for the
+    dwell of rule_dwell_confirm. The new label is then the instantaneous label at that frame, and offline the change is back-dated to the first qualifying frame. Never require the point
+    to be h deep inside the new region, because a region thinner than 2h could then never be entered. For a relative entry, sigma = hypot(sigma_self, sigma_other), since the boundary
+    quantity mixes two tracked objects. Radial boundary at R: |r - R| must exceed h. Angular boundary at Theta: dtheta_deg = (h / r) x 57.296 (2.12 deg at r = 6.75, 3.13 deg at r = 4.57).
+    Below r = 2.0 m, disable angle-based zones in favour of x/y boxes (block, dunker). expr null: temporal rule, not a floor region.'
   edge_basis: Mathematical boundary (no line)
   reference_point: n/a
   priority: 100
@@ -18360,9 +18532,11 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'h = max(0.10 m, 0.5 x sigma). Enter region R when d_in >= +h, leave it when d_in <= -h, and otherwise hold the previous label. This applies to the arc, corner, RA, lane,
-    free-throw line, division line and sidelines, for per-frame display labels only. Rule decisions at events (shot release, foul contact, out of bounds) use the instantaneous floor
-    contact and P_in, with no hysteresis. expr null: temporal rule, not a floor region.'
+  bounds_text: 'h = max(0.10 m, 0.5 x sigma) while moving and h = max(0.10 m, 1.0 x sigma) while slow (centred 1.0 s stance speed < 1.0 m/s). Single-winner layers: leave the held label
+    only when d_in(held) <= -h for the dwell; the new label is the instantaneous one, back-dated offline (exit-based, as in rule_hysteresis_convention). Multi-label tags: enter when
+    d_in >= +h, leave when d_in <= -h, otherwise hold. A tag listed in loader.temporal.probability_only emits P_in and the signed distance d every frame and never a boolean. This applies
+    to the arc, corner, RA, lane, free-throw line, division line and sidelines, for per-frame display labels only. Rule decisions at events (shot release, foul contact, out of bounds)
+    use the instantaneous floor contact and P_in, with no hysteresis. expr null: temporal rule, not a floor region.'
   edge_basis: Edges as in rule_line_edge_ownership
   reference_point: n/a
   priority: 100
@@ -18510,21 +18684,13 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'sigma_floor(p, t) = sqrt(sigma_cal^2 + sigma_kp^2 + sigma_ref^2 + sigma_pred^2), with these terms:
-
-    - sigma_cal comes from the homography covariance at p, or by tier: A 0.15 m (6+ court keypoints within 5 m, residual < 3 px); B 0.30 m (default); C 0.50 m (far sideline or baseline,
-    or < 6 keypoints); D 1.0 m (< 4 keypoints, or a homography carried across a cut).
-
-    - sigma_kp = keypoint pixel error x metres per pixel at p.
-
-    - sigma_ref = 0 for foot points, 0.05 m for ankles, 0.30 m for the box bottom.
-
-    - sigma_pred = 0.5 m/s x t_since_obs.
-
-    sigma_cal is shared by every point in a frame (one offset); the other terms are per point. Gate: the half-court median of sigma_cal must be <= 0.30 m (the repo target); games that
-    fail are flagged. Report every error in metres.
-
-    expr null: procedural rule, not a floor region.'
+  bounds_text: 'Sigma_floor(p, t) = J_H(u) diag(e_px^2, e_px^2) J_H(u)^T + Sigma_cal + (sigma_ref^2 + sigma_pred^2) I, a 2x2 covariance in m^2. J_H(u) = d(x, y)/d(u, v) is the Jacobian
+    of the image-to-floor homography at the foot pixel u, and e_px is the keypoint pixel error (default 3 px). Sigma_cal comes from the homography covariance at p when available, else
+    (tier value)^2 times I, with tier values (standard deviations): A 0.15 m (6+ court keypoints within 5 m, residual < 3 px); B 0.30 m (default); C 0.50 m (far sideline or baseline,
+    or < 6 keypoints); D 1.0 m (< 4 keypoints, or a homography carried across a cut). sigma_ref = 0 for foot points, 0.05 m for ankles, 0.30 m for the box bottom. sigma_pred = 0.5 m/s
+    x t_since_obs. Store sigma_major, sigma_minor (0.01 m) and the major-axis angle in the rim frame (0.1 deg); the scalar sigma used by the hysteresis rules is sqrt(trace(Sigma)/2).
+    Sigma_cal is shared by every point in a frame (one offset); the other terms are per point. Gate: the half-court median of sqrt(trace(Sigma_cal)/2) must be <= 0.30 m; games that fail
+    are flagged. Report every error in metres. expr null: procedural rule, not a floor region.'
   edge_basis: n/a
   reference_point: n/a
   priority: 100
@@ -18559,11 +18725,17 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'Single boundary: P_in = Phi(d / sigma), with d = the signed distance to the boundary edge (positive inside). Several boundaries or several foot points: Monte Carlo with
-    64 samples. Each sample is one shared calibration offset drawn from N(0, sigma_cal^2 I) and applied to all points, plus independent per-point noise from N(0, (sigma_kp^2 + sigma_ref^2)
-    I); the region''s expr is evaluated on each sample. Emit the label when P_in >= 0.80; otherwise emit the best label plus second_label and boundary_flag. Rule decisions (three-point,
-    out of bounds, restricted area) are final at P >= 0.90 or P <= 0.10, and boundary_uncertain in between. Store P for every label in every frame. expr null: procedural rule, not a
-    floor region.'
+  bounds_text: 'Position uncertainty is a full 2x2 covariance Sigma(p) = J Sigma_px J^T + Sigma_cal + (sigma_ref^2 + sigma_pred^2) I (see rule_position_sigma_model). sigma_n = sqrt(n^T
+    Sigma n) is the standard deviation along the boundary normal n. (a) The only boundary within 4 sigma_n of p is one straight line (half-plane): P_in = Phi(sd / sigma_n). (b) The only
+    boundary within 4 s of p is one circle of radius R (the goaltending cylinder r = 0.2286; the r = 4.2672 and r = 6.7501 arcs only away from the lane, the rays and the break), with
+    near-isotropic Sigma (eigenvalue ratio <= 1.5): P_in = F_ncx2((R/s)^2; k = 2, lambda = (r0/s)^2), where s = sqrt(trace(Sigma)/2) and r0 = distance from the circle centre (use 1 -
+    F for the outside of the circle). At r0 = 0 this is 1 - exp(-R^2 / (2 s^2)). Do not use Phi(d/sigma) for circles with R < 5 s. The restricted area is never case (b): it is a half-disc
+    r <= RA_R (y >= 0) plus the rectangle |x| <= RA_R, BOARD_Y <= y < 0, so it always uses (c). (c) Anything else (corners, several boundaries, several foot points, anisotropic circles,
+    the restricted area): 1024 scrambled-Sobol samples with a fixed per-game seed. Each sample is one shared calibration offset from N(0, Sigma_cal) applied to all points, plus independent
+    per-point noise from N(0, Sigma - Sigma_cal); the expr is evaluated on each sample. The court_region distribution is always taken from these samples, even when P_in comes from (a)
+    or (b): store the full distribution P(L) over all labels (summing to 1), the top 3 labels with P >= 0.01, and entropy H = -sum P log2 P (bits, 0.01). Emit the label when P_in >=
+    0.80; otherwise emit the best label plus second_label and boundary_flag. Rule decisions (three-point, out of bounds, restricted area, goaltending cylinder) are final at P >= 0.90
+    or P <= 0.10, and boundary_uncertain in between. Store P for every label in every frame. expr null: procedural rule, not a floor region.'
   edge_basis: n/a
   reference_point: n/a
   priority: 100
@@ -18717,11 +18889,11 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'For every frame t, frame_basket(t) = the basket attacked by the team in team control at t (R4-9). All 10 players, the ball and the referees are expressed in that offence''s
-    frame, so defenders are in the frame of the basket they defend. With no team control (jump ball, try in flight, rebound tap, loose ball, dead ball; R4-9.4), keep the frame of the
-    last team in control, and switch on the first frame of the new player control. Before the first control of a period (the opening jump ball) there is no last team: use the absolute
-    frame for every label, and judge each jumper in his own_frame (rule_jump_ball_jumper_half). Also store every player''s position in own_frame (the frame of his own team''s attacked
-    basket) and in absolute court coordinates. expr null: procedural rule, not a floor region.'
+  bounds_text: 'Append: ''Frame state never carries across a period boundary. Period 1 and every extra period begin with a jump ball (R6-2.1): until the first player control, judge each
+    player in his own_frame (direction from rule_direction_of_play_by_period); emit court_region and every point layer for the ball and referees as unknown (reason no_frame), and relative
+    entries as absent (reason no_context). The second half begins with the alternating-possession throw-in at the division line (R6-3.6): frame_basket = the basket the arrow team attacks
+    in the second half, from the frame in which the ball is placed at its disposal. On every frame_basket switch, transform all held positions (x -> -x, y -> 25.4508 - y) before applying
+    hysteresis or dwell.'''
   edge_basis: n/a
   reference_point: n/a
   priority: 100
@@ -18810,8 +18982,11 @@ entries:
     x: null
     y: null
     z: null
-  bounds_text: 'Store x, y and r to 0.01 m and t to 0.1 deg (docs/requirements.md); sigma to 0.01 m and P to 0.01. Report positions to 0.1 m. Every labelled frame stores: possession_frame_basket,
-    ref_point_used, sigma, label, P, second_label, hysteresis_state, time_in_label, airborne flag, occluded/predicted flag and phase. expr null: procedural rule, not a floor region.'
+  bounds_text: 'Store x, y and r to 0.01 m and t to 0.1 deg (docs/requirements.md); sigma_major, sigma_minor to 0.01 m and the major-axis angle to 0.1 deg; P to 0.01. Report positions
+    to 0.1 m. Every labelled frame stores: possession_frame_basket, ref_point_used, Sigma, label, P, second_label, the top-3 court_region distribution and entropy_bits (0.01), sd (0.01
+    m, rule_signed_distance_field), nearest_boundary_label, label_eta_s (0.01 s or null), the continuous coordinates of rule_continuous_coordinates, hysteresis_state, time_in_label,
+    airborne flag, occluded/predicted flag and phase. When rule_space_control and rule_offense_formation_slots are evaluated, also store dom_area_m2, spot_control_<id> for the spots
+    within 3 m, formation, slot and slot offset. expr null: procedural rule, not a floor region.'
   edge_basis: n/a
   reference_point: n/a
   priority: 100
@@ -18890,7 +19065,8 @@ entries:
 
     (3) two/three agreement with play-by-play on >= 98% of field-goal attempts;
 
-    (4) label flicker (changes per player-minute in a stationary set) <= 2;
+    (4) label flicker (court_region and spot primary changes per player-minute in a stationary set, with the temporal rules applied) <= 2. Simulated reference with exit-based adaptive
+    hysteresis: AR(1) rho 0.9 noise passes at sigma 0.15 (0.26) and sigma 0.30 (1.13 / 1.52) and fails at sigma 0.50 (6.8), so tracking sigma above about 0.40 m implies tier C/D;
 
     (5) grounded-foot classifier agreement >= 95% on hand-labelled frames before foot-based rule decisions are used.
 
@@ -18923,6 +19099,10 @@ entries:
   - url: https://cleaningtheglass.com/stats/guide/league_shooting
     supports: heaves are estimated from distance plus shot/game clock and removed; no numeric threshold published
   notes: 'Replaces the researcher''s two conflicting heave rules: ''r >= 10 m or y >= 12.700'', and the ctg_non_corner_3 variant.'
+  expr: r > 12.0 and game_clock_s <= 3.0
+  review_fixes_2026_10_20:
+  - 'loop2 NULL EXPRESSIONS: This needs the period clock, which none of the 10 proposed names supplies. Optional: add game_clock_s (period clock from rule_shot_clock_sync, in seconds)
+    to the extension. This would close the M-SQ-007 heave flag exactly (SQ.H_DIST_M = 12.0 strict, SQ.H_TIME_S = 3.0 inclusiv'
 - id: cbbd_location_encoding
   layer: rule
   name: CBBD shotInfo.location encoding
@@ -19112,8 +19292,9 @@ entries:
   layer: rule
   name: Sector x ring grid cell (15 deg x 0.5 m)
   side: n/a
-  bounds_text: 'An index rule. theta_c = 0 if (y < 0 and x >= 0), 180 if (y < 0 and x < 0), else t. sector = min(floor(theta_c / 15), 11); ring = min(floor(r / 0.5), RING_MAX). Variant:
-    y < 0 -> sector 12 (behind the rim plane; canon_behind_board uses the board-face cut instead).'
+  bounds_text: 'An index rule. theta_c = 0 if (y < 0 and x >= 0), 180 if (y < 0 and x < 0), else t. sector = min(floor(theta_c / 15), 11); ring = min(floor(r / 0.5), 61). Variant: y
+    < 0 -> sector 12 (behind the rim plane; canon_behind_board uses the board-face cut instead). Repo: geometry.sector(theta) must take (x, y) and apply theta_c; its max(theta, 0) clamp
+    sends left-behind-rim points to sector 0.'
   reference_point: n/a
   priority: 0
   rank: 6099
@@ -19195,9 +19376,9 @@ entries:
     x: 0
     y: 13
     z: 0
-  expr: y >= HALF_Y and ax < SIDE_X and y < FAR_END_Y
-  bounds_text: A shot from the backcourt (y >= 12.700; the division line counts as backcourt), OR r >= 10.0 with the game clock or shot clock <= 2.0 s at release. The clock clause cannot
-    be expressed, so expr covers only the geometric (backcourt) part.
+  expr: y > HALF_Y and ax < SIDE_X and y < FAR_END_Y
+  bounds_text: 'Geometric part only: a shot from the backcourt (y > 12.700). The clock-gated far-shot heave is canon_heave (r > 12.0 m and period clock <= 3 s, M-SQ-007); the pbpstats
+    variant (r > 12.192 m and clock < 2.0 s, M-SIT-048) is a named variant. The former ''r >= 10.0 with clock <= 2.0 s'' clause is dropped.'
   edge_basis: Frontcourt edge of the division line.
   reference_point: last_floor_contact
   priority: 10
@@ -19210,10 +19391,12 @@ entries:
     supports: heaves are excluded from deep-3 counts (NBA)
   probes_inside:
   - - 0
-    - 12.7
+    - 12.7001
   - - 3
     - 20
   probes_outside:
+  - - 0
+    - 12.7
   - - 0
     - 12.69
   - - 0
@@ -19221,6 +19404,8 @@ entries:
   - - 7.62
     - 13
   notes: Heaves are excluded before computing depth stats, as ESPN does. CBBD has no backcourt 3PA (max y 10.43), and 0.1% of 3PA are at r >= 10.
+  review_fixes_2026_10_20:
+  - 'loop2 EDGE-CASE ADVERSARY: A shot from the frontcourt edge is called a backcourt heave while three_depth calls it logo.'
 - id: offensive_spacing_reference
   layer: rule
   name: Spacing reference (mean inter-player distance)
@@ -19285,9 +19470,10 @@ entries:
   name: Angle sectors and distance rings
   side: n/a
   index_expr:
-    sector_15deg: floor(m / 15)
-    ring_0p5m: floor(r / 0.5)
-  bounds_text: sector = floor(theta / 15), using m plus the side instead of a clamp; ring = floor(r / 0.5). These are index functions, so there is no boolean expr.
+    sector_15deg: min(floor((0 if (y < 0 and x >= 0) else (180 if (y < 0 and x < 0) else t)) / 15), 11)
+    ring_0p5m: min(floor(r / 0.5), 61)
+  bounds_text: 'Same index as sector_ring_cell (one definition): theta_c = 0 behind the rim plane on the right, 180 on the left, else t; sector in [0, 11] from the right end line; ring
+    capped at 61 (schema ring_0p5m).'
   reference_point: feet_midpoint
   priority: 50
   rank: 8050
@@ -19302,6 +19488,9 @@ entries:
   review_fixes_2026_10_20:
   - 'expr fixed by data engineering: Index rules (sector_ring_bins, sector_ring_cell, nba_distance_5ft_bands) have a null expr even though they are computable functions. The two sector
     rules also define conflicting conventions: folded m '
+  - 'loop2 CROSS-SPEC CONSISTEN: The dictionary has two contradictory sector rules, and the repo has a third. sector_ring_bins.index_expr sector_15deg = floor(m/15) gives values -6..6
+    and the same sector for left and right, while the schema column of that name is [0, 11], measured from the right end line'
+  expr: null
 - id: stack_alignment
   layer: rule
   name: Stack alignment
@@ -19316,3 +19505,1501 @@ entries:
   sources:
   - url: repo:docs/taxonomy/offense_full.md:3462
     supports: A11.21
+- id: rule_signed_distance_field
+  layer: rule
+  name: Signed distance, nearest boundary and label ETA for every label
+  side: n/a
+  expr: null
+  bounds_text: 'For any region R with an expr and the object''s reference point p: sd_R(p) = +min{|p - q| : q not in R} if p is in R, else -min{|p - q| : q in R}, in metres, clipped
+    to [-5.00, 5.00] and stored to 0.01 m. The court_region label L(p) always gets sd_L, plus nearest_boundary_label = the label of court_region at the first point beyond the nearest
+    boundary. Every other partition scheme''s winner gets sd too. Multi-label layers get sd for each emitted label and for each label with -1.0 <= sd < 0 (labels the object is within
+    1 m of). Computation for court_region: closed form over its boundary primitives (lines x = +-SIDE_X, +-LANE_X, +-CORNER_X, and x = +-RA_R for BOARD_Y <= y < 0; y = END_Y, BOARD_Y
+    (for |x| <= RA_R), FT_Y, BREAK_Y, HALF_Y; circles r = RA_R (y >= 0), 4.2672, ARC_R; rays m = 30, 60, 80). Reference implementation for any expr: from p, march rays at 1 deg in 0.01
+    m steps up to the current best distance + 0.01 m, bisect each crossing 30 times, then refine within +-1 deg of the best ray in 0.01 deg steps. Its tolerance against the closed form
+    is 0.005 m. Label ETA: g = unit vector from the nearest boundary point to p (outward when p is outside). Closing speed c = -(v . g) for p inside (c > 0 means moving toward the boundary).
+    label_eta_s = sd / c when c > 0.2 m/s and sd > 0, else null (not leaving). Stored at 0.01 s. Hysteresis rules use this sd as d_in.'
+  notes: No industry or academic labelling scheme we found publishes boundary margins. NBA/Synergy-style integer-foot zones and StatsBomb yard cells (kloppy PR 232) store only the cell.
+    sd is what makes every label auditable (how close to flipping it was) and is the input both rule_hysteresis_painted and rule_probabilistic_membership already assume.
+  priority: 100
+  rank: 5100
+  family: rule
+  source_kind: proposal
+  confidence: high
+  reference_point: per label (same as the label's reference_point)
+  probes_sd:
+  - - 0
+    - 0.6
+    - restricted_area
+    - 0.67
+    - paint_non_ra
+  - - 0
+    - -0.2
+    - restricted_area
+    - 0.181
+    - paint_non_ra
+  - - 5.5
+    - 1.5
+    - long_mid_baseline_right
+    - 1.0492
+    - wing_three_right
+  - - 5.3
+    - 5.3
+    - wing_three_right
+    - 0.7452
+    - long_mid_wing_right
+  - - 0
+    - 7.6
+    - top_three
+    - 0.8499
+    - long_mid_top
+  - - 6.95
+    - 0
+    - corner_three_right
+    - 0.3492
+    - long_mid_baseline_right
+  - - 1.0
+    - 5.6
+    - long_mid_top
+    - 1.0615
+    - slot_three_right
+  - - 2.6
+    - 2.6
+    - short_mid_right
+    - 0.5902
+    - long_mid_wing_right
+  - - 0
+    - 2.5
+    - paint_non_ra
+    - 1.23
+    - restricted_area
+  - - 3.0
+    - 7.0
+    - slot_three_right
+    - 0.8657
+    - long_mid_top
+  - - 4.2
+    - 4.2
+    - long_mid_wing_right
+    - 0.8104
+    - wing_three_right
+  probe_tolerance_m: 0.005
+- id: three_offset_far_inside
+  layer: zone_scheme:three_offset
+  name: Far inside the arc (> 5 ft)
+  side: centre
+  anchor:
+    x: 0
+    y: 2.5
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) < -1.524
+  bounds_text: d3 < -1.524 (more than 5 ft inside the outside edge); d3 = (|x| - CORNER_X if y <= BREAK_Y else r - ARC_R), the signed distance outside the outside edge of the three-point
+    line in the regime that is_three uses; d3 > 0 iff is_three(x, y). Frontcourt in bounds only.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 1
+  rank: 6001
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 0
+    - 2.5
+  - - 4.0
+    - 0
+  probes_outside:
+  - - 0
+    - 5.3
+  - - 0
+    - 13
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: three_offset_long_two
+  layer: zone_scheme:three_offset
+  name: Long two (1-5 ft inside)
+  side: centre
+  anchor:
+    x: 0
+    y: 5.9
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and -1.524 <= (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) < -0.3048
+  bounds_text: -1.524 <= d3 < -0.3048; d3 as in three_offset_far_inside.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 2
+  rank: 6002
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 0
+    - 5.9
+  - - 5.5
+    - 0
+  probes_outside:
+  - - 0
+    - 5.2
+  - - 0
+    - 6.5
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: three_offset_toe_two
+  layer: zone_scheme:three_offset
+  name: Toe on the line (two)
+  side: centre
+  anchor:
+    x: 0
+    y: 6.6
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and -0.3048 <= (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 0
+  bounds_text: -0.3048 <= d3 <= 0 (includes the painted line, which is two-point territory); d3 as in three_offset_far_inside.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 3
+  rank: 6003
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 0
+    - 6.6
+  - - 6.6008
+    - 0
+  - - 0
+    - 6.7501
+  - - -6.5
+    - 0
+  probes_outside:
+  - - 0
+    - 6.44
+  - - 6.61
+    - 0
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: three_offset_toe_three
+  layer: zone_scheme:three_offset
+  name: Toe behind the line (three, <= 1 ft)
+  side: centre
+  anchor:
+    x: 0
+    y: 6.9
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and 0 < (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 0.3048
+  bounds_text: 0 < d3 <= 0.3048; d3 as in three_offset_far_inside.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 4
+  rank: 6004
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 0
+    - 6.9
+  - - 6.75
+    - 0
+  - - -6.9
+    - 1.0
+  probes_outside:
+  - - 0
+    - 6.7501
+  - - 0
+    - 7.06
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: three_offset_spot_up
+  layer: zone_scheme:three_offset
+  name: Spot-up three (1-5 ft behind)
+  side: centre
+  anchor:
+    x: 5.3
+    y: 5.3
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and 0.3048 < (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 1.524
+  bounds_text: 0.3048 < d3 <= 1.524; d3 as in three_offset_far_inside.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 5
+  rank: 6005
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 5.3
+    - 5.3
+  - - 7.5
+    - 0
+  - - 0
+    - 8.2
+  probes_outside:
+  - - 0
+    - 7.05
+  - - 0
+    - 8.28
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: three_offset_deep
+  layer: zone_scheme:three_offset
+  name: Deep three (> 5 ft behind)
+  side: centre
+  anchor:
+    x: 0
+    y: 9.0
+    z: 0
+  expr: (ax < SIDE_X and END_Y < y < FAR_END_Y) and y <= HALF_Y and (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) > 1.524
+  bounds_text: d3 > 1.524 (frontcourt only; heaves stay in three_depth_heave); d3 as in three_offset_far_inside.
+  reference_point: feet_midpoint
+  reference_point_events:
+    shot: last_floor_contact
+  priority: 6
+  rank: 6006
+  partition: true
+  family: shot_zone
+  source_kind: proposal + CBBD aggregate
+  confidence: medium
+  probes_inside:
+  - - 0
+    - 9.0
+  - - 0
+    - 12.7
+  probes_outside:
+  - - 0
+    - 8.27
+  - - 0
+    - 12.71
+  - - 7.62
+    - 5
+  temporal:
+    hysteresis: painted
+    h_min_m: 0.1
+    h_k_sigma: 0.5
+    dwell_ms: 133
+- id: rule_continuous_coordinates
+  layer: rule
+  name: Continuous coordinate vector per object per frame
+  side: n/a
+  expr: null
+  value_exprs:
+    d3: (ax - CORNER_X if y <= BREAK_Y else r - ARC_R)
+    d_sideline: SIDE_X - ax
+    d_endline: y - END_Y
+    d_division: HALF_Y - y
+    sd_paint_out: hypot(max(ax - LANE_X, 0), max(abs(y - (FT_Y + END_Y) / 2) - (FT_Y - END_Y) / 2, 0)) + min(max(ax - LANE_X, abs(y - (FT_Y + END_Y) / 2) - (FT_Y - END_Y) / 2), 0)
+    ball_angle_delta: abs(((t - degrees(atan2(by, bx))) + 540) % 360 - 180)
+  bounds_text: 'Every object, every frame, store (x, y, r, t, m) plus these values, evaluated with the dictionary grammar (numeric, not boolean), at 0.01 m / 0.1 deg. d3 = signed distance
+    behind the three-point line in the is_three regime (> 0 iff three; within 0.031 m of the Euclidean distance to the line for |d3| <= 1.524; it switches formula at y = BREAK_Y, so
+    deep inside the arc it is a regime value, not a distance). d_sideline, d_endline, d_division = distances to the inside edges (in bounds > 0). sd_paint_out = exact signed distance
+    to the paint rectangle |x| <= LANE_X, END_Y <= y <= FT_Y (negative inside). ball_angle_delta = unsigned angle at the rim between the object and the ball (0..180 deg). It needs bx,
+    by and is null without the ball. It is the continuous form of ball_side, with no 0.9 m dead band. An arc-length coordinate along the three-point line (s3) is deferred: the proposed
+    form jumps by up to 6.9 m across y = BREAK_Y for interior points (x = 0.5: 9.18 at y = 1.41, 2.29 at y = 1.42).'
+  probes:
+    (0,7.6):
+      d3: 0.8499
+      sd_paint_out: 3.409
+    (5.3,5.3):
+      d3: 0.7452
+      d_sideline: 2.32
+      sd_paint_out: 3.6441
+    (6.95,0):
+      d3: 0.3492
+      d_endline: 1.6002
+    (0,2.5):
+      d3: -4.2501
+      sd_paint_out: -1.691
+    (2.5,2.0):
+      sd_paint_out: 0.6712
+    (7.0,1.5):
+      d3: 0.4088
+    (5.3,5.3) ball (-5.3,5.3):
+      ball_angle_delta: 90.0
+    (6.95,0) ball (5.3,5.3):
+      ball_angle_delta: 45.0
+  notes: Cervone et al. (arXiv 1408.0777) and Miller et al. (arXiv 1401.0942) model location as a continuous field, not discrete zones. These coordinates give downstream models the same
+    continuous inputs, with court-aware axes (line-relative depth), which a raw (x, y) does not give.
+  priority: 100
+  rank: 5100
+  family: rule
+  source_kind: proposal
+  confidence: high
+- id: rule_space_control
+  layer: rule
+  name: Dominant region, team control and named-spot control
+  side: n/a
+  expr: null
+  bounds_text: 'Time to reach floor point q for player i with position p_i and velocity v_i (rim frame, smoothed per rule_trajectory_smoothing): T_i(q) = tau + |q - (p_i + v_i tau)|
+    / v_max, with tau = 0.25 s and v_max = 7.0 m/s (proposal; recalibrate to the P99 of tracked player speed). Mesh: square 0.10 m cells covering the frontcourt in bounds (|x| < 7.62,
+    -1.6002 < y <= 12.700), with cell centres at x = -7.57 + 0.10 i and y = -1.5502 + 0.10 j. Dominant region of i = the cells where T_i is the minimum over all 10 players. Ties go to
+    the defence. dom_area_m2 = 0.01 x the cell count, at 0.01 m2. Offensive control: PC_off(q) = 1 / (1 + exp(-(min_def T(q) - min_off T(q)) / s)) with s = 0.25 s. Team control = mean
+    of PC_off over the mesh, at 0.01. Named-spot control: for every spot, court_region and zone-slot entry with an anchor (mirrored entries at both mirrors), spot_control_<id> = PC_off(anchor),
+    at 0.01. Label open_<id> (multi-label, relative layer) when PC_off(anchor) >= 0.70 for >= 0.20 s (6 frames). Euclidean Voronoi (tau = 0, all speeds equal) is stored as a variant
+    for comparison. Evaluate only with team control (rule_no_team_control_frames) and with all 10 players observed or predicted <= 0.5 s; otherwise null.'
+  probes:
+  - attackers:
+    - - 6.95
+      - 0
+      - 0
+      - 0
+    defenders:
+    - - 5.0
+      - 1.0
+      - 0
+      - 0
+    q:
+    - 6.95
+    - 0
+    PC_off: 0.7777
+  - attackers:
+    - - 6.95
+      - 0
+      - 0
+      - 0
+    defenders:
+    - - 5.0
+      - 1.0
+      - 3.5596
+      - -1.8252
+    q:
+    - 6.95
+    - 0
+    PC_off: 0.6639
+  - attackers:
+    - - 5.3
+      - 5.3
+      - 0
+      - 0
+    defenders:
+    - - 3.5
+      - 3.0
+      - 0
+      - 0
+    q:
+    - 6.95
+    - 0
+    PC_off: 0.3637
+  notes: Taki-Hasegawa fastest-arrival and Fujimura-Sugihara dominant regions on square or hex meshes (floodlight.readthedocs.io models/space). Kinematic dominant regions are far smaller
+    than Voronoi cells, median 73 vs 171 m2 (PMC8440569). The continuous-control idea follows Fernandez-Bornn 2018 as summarised in Frontiers fspor.2021.676179. No basketball labelling
+    scheme attaches control to named spots; this makes 'open corner' a measured label.
+  priority: 100
+  family: rule
+  source_kind: proposal
+  confidence: low
+- id: rule_offense_formation_slots
+  layer: rule
+  name: Formation-relative offensive slots
+  side: n/a
+  expr: null
+  bounds_text: 'Templates (rim frame; post_* slots use x times the ball side sign s = 1 if bx >= 0 else -1): 5_out = {top (0, 7.6), wing_r (5.3, 5.3), wing_l (-5.3, 5.3), corner_r (6.95,
+    0), corner_l (-6.95, 0)}; 4_out_1_in = {slot_r (3.0, 7.0), slot_l (-3.0, 7.0), corner_r, corner_l, post_ball (1.8288 s, 0.9)}; 4_out_high = {slot_r, slot_l, corner_r, corner_l, high_post
+    (0, 4.95)}; 3_out_2_in = {top, wing_r, wing_l, post_ball (1.8288 s, 0.9), post_help (-1.8288 s, 0.9)}. Every coordinate is an existing anchor (top_three, wing_three, corner_three,
+    slot_three, low_post, high_post). Each frame, with team control in the half court (all 5 attackers y <= HALF_Y): for every template, Hungarian-match the 5 attackers to the slots,
+    minimising the summed squared distance; score = mean matched Euclidean distance. Active template = the lowest score, if <= 1.5 m. Switch only when another template beats the active
+    one by >= 0.5 m for >= 1.0 s (30 frames); otherwise keep it. Else formation = unstructured. Per attacker, store formation, slot, and the slot-relative offset (dx, dy) = position
+    - slot point (0.01 m). occupies_slot when |offset| <= 1.5 m. Defensive slots stay in zone_slot_assignment.'
+  probes:
+  - attackers:
+    - - 0.4
+      - 7.9
+    - - 5.0
+      - 5.6
+    - - -5.6
+      - 4.9
+    - - 6.9
+      - 0.3
+    - - -6.8
+      - 0.5
+    bx: 5.0
+    formation: 5_out
+    score: 0.4501
+    slots:
+    - top
+    - wing_r
+    - wing_l
+    - corner_r
+    - corner_l
+  - attackers:
+    - - 2.8
+      - 7.3
+    - - -3.2
+      - 6.8
+    - - 6.9
+      - 0.3
+    - - -6.8
+      - 0.5
+    - - 1.9
+      - 1.0
+    bx: 2.8
+    formation: 4_out_1_in
+    score: 0.3185
+    slots:
+    - slot_r
+    - slot_l
+    - corner_r
+    - corner_l
+    - post_ball
+  notes: Template role assignment mirrors the defensive zone_slot_assignment already in the file. Formation-relative offsets let a play be compared across possessions even when the absolute
+    spots differ.
+  priority: 100
+  rank: 5100
+  family: rule
+  source_kind: proposal
+  confidence: medium
+- id: rule_learned_soft_zones
+  layer: rule
+  name: Learned soft shot zones (frozen artifact)
+  side: n/a
+  expr: null
+  bounds_text: 'Build offline, version-pin, and never refit silently. Input: located non-FT FGA from licensed CBBD, converted with cbbd_location_encoding, frontcourt only, folded to
+    the right (x -> |x|). Grid: 0.3048 m tiles over 0 <= x < 7.62, -1.6002 <= y < 9.0 (25 x 35 tiles). For each team-season with >= 300 FGA, fit a Gaussian-kernel intensity (bandwidth
+    0.6 m) normalised to unit mass. Stack the surfaces into Lambda and run NMF with K = 10, KL loss, nndsvda init, seed 0, 2000 iterations: Lambda ~ W B. Freeze B to config/learned_zones_v1.npz
+    with its SHA-256 in this entry. Per object per frame, soft membership w_k(p) = B_k(tile(p)) / sum_j B_j(tile(p)), stored as the top 3 (k, w) at 0.01. Hard learned label = argmax_k.
+    Name each basis by its overlap with court_region (the label holding the largest share of B_k''s mass). Refit only with a version bump and a report of the basis-to-court_region crosswalk.'
+  notes: 'Miller, Bornn, Adams, Goldsberry, ICML 2014 (arXiv 1401.0942): 1 sq ft tiles over a 35 x 50 ft half court, LGCP surfaces, NMF K = 10 with KL loss, bases interpretable as shot
+    types (corner 3, wing 3, top 3, long two...). We use a KDE instead of an LGCP for tractability. Keep the result a learned, auditable alternative to the hand-drawn court_region, not
+    a replacement.'
+  priority: 100
+  family: empirical
+  source_kind: proposal
+  confidence: low
+- id: rule_ball_height_required
+  layer: rule
+  name: Height-dependent labels need a measured height
+  side: n/a
+  expr: null
+  bounds_text: 'entries whose expr uses z (backboard, ring, backboard_target_rectangle, lob_catch_above_rim, basket_cylinder, rule_ball_out_of_bounds, ball_goaltend_zone, ball_within_basket,
+    rule_ball_z_basket_cylinder) are evaluated only with a measured ball/body height. The loader passes z=None when height is not estimated; the entry is then absent (reason no_height),
+    never evaluated at z = 0. spotlib: default z=None in inside()/labels()/env (env may substitute 0.0 only when ''z'' is not in the entry''s names).'
+  priority: 1
+  reference_point: ball_3d
+  source_kind: proposal
+  confidence: high
+  family: review
+- id: rim_5ft
+  layer: zone_scheme:rim_radius
+  name: Within 5 ft of the rim centre
+  side: centre
+  expr: r <= 1.524 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r <= 1.524 (5 ft), in bounds (NBA close touch, rim defender).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 1.524
+  - - 1.07
+    - 1.07
+  probes_outside:
+  - - 0
+    - 1.53
+  - - 1.08
+    - 1.08
+- id: beyond_20ft
+  layer: zone_scheme:rim_radius
+  name: Beyond 20 ft of the rim centre (perimeter)
+  side: centre
+  expr: r > 6.096 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r > 6.096 (20 ft), in bounds; the in-bounds complement is interior (gravity split, NBA drive start).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 6.1
+  - - 4.32
+    - 4.32
+  probes_outside:
+  - - 0
+    - 6.096
+  - - 4.31
+    - 4.31
+- id: rim_6ft
+  layer: zone_scheme:rim_radius
+  name: Inside 6 ft of the rim centre
+  side: centre
+  expr: r < 1.8288 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r < 1.8288 (6 ft), in bounds (DFG% <6 ft shot band).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 1.82
+  - - 1.29
+    - 1.29
+  probes_outside:
+  - - 0
+    - 1.8288
+  - - 1.3
+    - 1.3
+- id: beyond_15ft
+  layer: zone_scheme:rim_radius
+  name: Beyond 15 ft of the rim centre
+  side: centre
+  expr: r > 4.572 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r > 4.572 (15 ft), in bounds (penetration start, DFG% >15 ft).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 4.58
+  - - 3.24
+    - 3.24
+  probes_outside:
+  - - 0
+    - 4.572
+  - - 3.23
+    - 3.23
+- id: rim_r_4p5
+  layer: zone_scheme:rim_radius
+  name: Within 4.5 m of the rim centre (crash radius)
+  side: centre
+  expr: r <= 4.5 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r <= 4.5, in bounds (crash_r_m).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: stance_centre
+  probes_inside:
+  - - 0
+    - 4.5
+  - - 3.18
+    - 3.18
+  probes_outside:
+  - - 0
+    - 4.51
+  - - 3.19
+    - 3.19
+- id: rim_r_5p0
+  layer: zone_scheme:rim_radius
+  name: Inside 5.0 m of the rim centre (gang radius)
+  side: centre
+  expr: r < 5.0 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r < 5.0, in bounds (gang rebounding).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: stance_centre
+  probes_inside:
+  - - 0
+    - 4.99
+  - - 3.53
+    - 3.53
+  probes_outside:
+  - - 0
+    - 5.0
+  - - 3.54
+    - 3.54
+- id: beyond_7m
+  layer: zone_scheme:rim_radius
+  name: Beyond 7.0 m of the rim centre
+  side: centre
+  expr: r > 7.0 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r > 7.0, in bounds, full court (repo safety).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: stance_centre
+  probes_inside:
+  - - 0
+    - 7.01
+  - - 0
+    - 20.0
+  probes_outside:
+  - - 0
+    - 7.0
+  - - 4.94
+    - 4.94
+- id: beyond_8m
+  layer: zone_scheme:rim_radius
+  name: Beyond 8.0 m of the rim centre
+  side: centre
+  expr: r > 8.0 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r > 8.0, in bounds, full court (creative safety).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: stance_centre
+  probes_inside:
+  - - 0
+    - 8.01
+  - - 0
+    - 20.0
+  probes_outside:
+  - - 0
+    - 8.0
+  - - 5.65
+    - 5.65
+- id: beyond_33ft
+  layer: zone_scheme:rim_radius
+  name: Beyond 33 ft of the rim centre (retreat)
+  side: centre
+  expr: r > 10.0584 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r > 10.0584 (33 ft), in bounds, full court (PO count).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: stance_centre
+  probes_inside:
+  - - 0
+    - 10.06
+  - - 0
+    - 25.0
+  probes_outside:
+  - - 0
+    - 10.0584
+  - - 7.11
+    - 7.11
+- id: short_band_1_3m
+  layer: zone_scheme:rim_radius
+  name: Short non-rim band, 1 to 3 m
+  side: centre
+  expr: not is_three(x, y) and 1.0 < r <= 3.0 and y > END_Y
+  bounds_text: two-point area, 1.0 < r <= 3.0.
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: last_floor_contact
+  probes_inside:
+  - - 0
+    - 1.01
+  - - 0
+    - 3.0
+  probes_outside:
+  - - 0
+    - 1.0
+  - - 0
+    - 3.01
+- id: beyond_3m
+  layer: zone_scheme:rim_radius
+  name: At least 3.0 m from the rim centre
+  side: centre
+  expr: r >= 3.0 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: r >= 3.0, in bounds (Hudl catch-and-shoot jump shot).
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: last_floor_contact
+  probes_inside:
+  - - 0
+    - 3.0
+  - - 2.13
+    - 2.13
+  probes_outside:
+  - - 0
+    - 2.99
+  - - 2.12
+    - 2.12
+- id: reb_at_rim
+  layer: zone_scheme:rebound_distance
+  name: Rebound at the rim (Opta, < 5 ft)
+  side: centre
+  expr: r < 1.524 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: 'rebounder at the frame of first control: r < 1.524, in bounds.'
+  partition: true
+  priority: 10
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 1.52
+  - - 0
+    - -0.5
+  probes_outside:
+  - - 0
+    - 1.524
+- id: reb_short
+  layer: zone_scheme:rebound_distance
+  name: Short rebound (Opta, 5-10 ft)
+  side: centre
+  expr: 1.524 <= r < 3.048 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: 'rebounder at the frame of first control: 1.524 <= r < 3.048, in bounds.'
+  partition: true
+  priority: 20
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 1.524
+  - - 0
+    - 3.04
+  probes_outside:
+  - - 0
+    - 1.52
+  - - 0
+    - 3.048
+- id: reb_long
+  layer: zone_scheme:rebound_distance
+  name: Long rebound (Opta, >= 10 ft)
+  side: centre
+  expr: r >= 3.048 and y > END_Y and y < FAR_END_Y and ax < SIDE_X
+  bounds_text: 'rebounder at the frame of first control: r >= 3.048, in bounds, full court.'
+  partition: true
+  priority: 30
+  family: shot_zone
+  reference_point: feet_midpoint
+  probes_inside:
+  - - 0
+    - 3.048
+  - - 0
+    - 20.0
+  probes_outside:
+  - - 0
+    - 3.04
+  - - 7.62
+    - 5.0
+- id: reversal_band
+  layer: zone_scheme:ball_reversal
+  name: Ball-reversal side band
+  side: mirrored
+  expr: x >= 3.0 and y > END_Y and y < HALF_Y and x < SIDE_X
+  bounds_text: x >= 3.0 (mirrored), frontcourt in bounds; a reversal = consecutive catches in opposite side bands.
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: ball
+  probes_inside:
+  - - 3.0
+    - 5.0
+  - - 7.0
+    - 0.0
+  probes_outside:
+  - - 2.99
+    - 5.0
+  - - 3.0
+    - 12.71
+- id: midcourt_band_4m
+  layer: fullcourt
+  name: Metulini transition band (+-4 m of the division line)
+  side: centre
+  expr: abs(y - (HALF_Y + LINE_W / 2)) <= 4.0 and ax < SIDE_X
+  bounds_text: '|y - 12.7254| <= 4.0, inside the sidelines (evaluated on the team centroid).'
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: team_centroid
+  probes_inside:
+  - - 0
+    - 8.7254
+  - - 0
+    - 16.72
+  probes_outside:
+  - - 0
+    - 8.72
+  - - 0
+    - 16.73
+- id: alignment_snap_zone
+  layer: fullcourt
+  name: Alignment snap zone (ball inside y = 9.0 m)
+  side: centre
+  expr: END_Y < y <= 9.0 and ax < SIDE_X
+  bounds_text: -1.6002 < y <= 9.0, inside the sidelines.
+  partition: false
+  priority: 10
+  family: shot_zone
+  reference_point: ball
+  probes_inside:
+  - - 0
+    - 9.0
+  - - 5
+    - 0
+  probes_outside:
+  - - 0
+    - 9.01
+  - - 0
+    - -1.6002
+- id: paint_buffer_0p5
+  layer: landmark
+  name: Paint plus 0.5 m buffer ('in or near the paint')
+  side: centre
+  expr: ax <= LANE_X + 0.5 and END_Y < y <= FT_Y + 0.5
+  bounds_text: '|x| <= 2.3288 and -1.6002 < y <= 4.691.'
+  partition: false
+  priority: 10
+  family: painted
+  reference_point: stance_centre
+  probes_inside:
+  - - 2.3288
+    - 0
+  - - 0
+    - 4.691
+  probes_outside:
+  - - 2.33
+    - 0
+  - - 0
+    - 4.7
+- id: epv7_region
+  layer: rule
+  expr: null
+  family: rule
+  bounds_text: 'Project crosswalk (approximation of Cervone et al. Fig. 3) from court_region to 7 disjoint EPV regions: 1 restricted_area; 2 paint_non_ra; 3 mid_range = short_mid_right/left
+    + long_mid_baseline_right/left + long_mid_wing_right/left + long_mid_top; 4 corner_three_left; 5 corner_three_right; 6 above_break_three = wing_three_right/left + slot_three_right/left
+    + top_three; 7 backcourt. out_of_bounds and unknown -> no region.'
+  notes: Used by M-SIT-089.
+- id: ball_ring_contact
+  layer: rule
+  name: Ball touching the ring (torus contact)
+  side: centre
+  anchor:
+    x: 0
+    y: 0.2365
+    z: 3.16
+  expr: hypot(r - 0.2365, z - 3.0401) <= 0.1293
+  bounds_text: 'Ball centre within ball radius (0.1213) + rod radius (0.0080) = 0.1293 m of the ring rod''s centre circle (radius 0.2286 + 0.0079 = 0.2365, height 3.048 - 0.0079 = 3.0401).
+    Exact torus test, not a box. Used for: shot-clock reset on ring contact and the 20-s offensive-rebound reset (NCAA men), rim-touch flag on misses, and basket-interference timing.'
+  reference_point: ball_3d
+  priority: 31
+  rank: 5031
+  family: rule
+  source_kind: rule_book
+  confidence: medium
+  aliases:
+  - hit the rim
+  - rim touch
+  - ring touch
+  probes_inside:
+  - - 0
+    - 0.2365
+    - 3.1601
+  - - 0.3655
+    - 0
+    - 3.0401
+  - - 0
+    - 0.12
+    - 3.05
+  probes_outside:
+  - - 0
+    - 0
+    - 3.3
+  - - 0
+    - 0.2365
+    - 3.1801
+  - - 0
+    - 0.4
+    - 3.04
+  - - 0
+    - 0
+    - 3.04
+  notes: Probes are (x, y, z). Ring metal is the landmark 'ring'; this is the ball-centre set that touches it. Flange geometry is not in the rule book, so flange contact is not modelled.
+- id: paint_touch
+  layer: rule
+  name: Paint touch (ball in the lane below the ring)
+  side: centre
+  anchor:
+    x: 0
+    y: 2
+    z: 1.0
+  expr: ax <= LANE_X and END_Y < y <= FT_Y and z < 3.048
+  bounds_text: 'Ball floor projection inside the lane (lines included: |x| <= 1.8288, y <= 4.191) with the ball centre below the ring (z < 3.048), on a frame where an offensive player
+    has the ball (dribble, catch, hold). Passes through the air over the lane do not count. One paint touch per entry: a new one needs the ball out of the lane for >= 0.5 s.'
+  reference_point: ball_3d
+  priority: 40
+  rank: 5040
+  family: rule
+  source_kind: convention + proposal
+  confidence: medium
+  aliases:
+  - paint touch
+  - touch the paint
+  - paint touches
+  - ball in the paint
+  probes_inside:
+  - - 0
+    - 2
+    - 1.0
+  - - 1.82
+    - 4.18
+    - 0.5
+  - - 0
+    - 4.19
+    - 2.0
+  probes_outside:
+  - - 0
+    - 2
+    - 3.1
+  - - 1.84
+    - 2
+    - 1.0
+  - - 0
+    - 4.2
+    - 1.0
+  notes: Probes are (x, y, z). NBA/Second Spectrum count paint touches by the toucher's location; this uses the ball (measurable when feet are occluded) and stores the toucher's feet
+    label as an attribute. Lob catches above the ring are lob_catch_above_rim.
+- id: shot_entry_flat
+  layer: zone_scheme:shot_entry_angle
+  name: 'Shot entry angle: flat (< 40 deg)'
+  side: centre
+  anchor:
+    x: 3
+    y: 3
+    z: 3.9
+  expr: degrees(atan2(2 * (z - 3.048), max(r, 0.01))) < 40
+  bounds_text: 'Evaluated on the ball at the apex frame (max z) of a field-goal try. Drag-free parabola: entry angle at ring height = atan(2 (z_apex - 3.048) / r_apex). Bands flat <
+    40, optimal 40-50, steep > 50 deg. Apex below the ring = flat. A velocity-based angle from the fitted trajectory supersedes this when it exists; the two must agree within 2 deg.'
+  reference_point: ball_3d
+  priority: 20
+  rank: 5020
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - flat shot
+  - line drive
+  probes_inside:
+  - - 3
+    - 3
+    - 3.9
+  - - 0
+    - 6.75
+    - 4.0
+  probes_outside:
+  - - 0
+    - 4
+    - 4.8
+  - - 0
+    - 1.5
+    - 4.2
+- id: shot_entry_optimal
+  layer: zone_scheme:shot_entry_angle
+  name: 'Shot entry angle: optimal (40-50 deg)'
+  side: centre
+  anchor:
+    x: 0
+    y: 4
+    z: 4.8
+  expr: 40 <= degrees(atan2(2 * (z - 3.048), max(r, 0.01))) <= 50
+  bounds_text: See shot_entry_flat; 40 <= angle <= 50 deg.
+  reference_point: ball_3d
+  priority: 21
+  rank: 5021
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - good arc
+  - 45-degree entry
+  probes_inside:
+  - - 0
+    - 4
+    - 4.8
+  - - 0
+    - 6
+    - 5.6
+  probes_outside:
+  - - 3
+    - 3
+    - 3.9
+  - - 0
+    - 1.5
+    - 4.2
+- id: shot_entry_steep
+  layer: zone_scheme:shot_entry_angle
+  name: 'Shot entry angle: steep (> 50 deg)'
+  side: centre
+  anchor:
+    x: 0
+    y: 1.5
+    z: 4.2
+  expr: degrees(atan2(2 * (z - 3.048), max(r, 0.01))) > 50
+  bounds_text: See shot_entry_flat; angle > 50 deg.
+  reference_point: ball_3d
+  priority: 22
+  rank: 5022
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - rainbow
+  - high arc
+  probes_inside:
+  - - 0
+    - 1.5
+    - 4.2
+  - - 0
+    - 1
+    - 4.0
+  probes_outside:
+  - - 0
+    - 4
+    - 4.8
+  - - 0
+    - 2.5
+    - 4.2
+- id: arc_offset_step_in
+  layer: zone_scheme:arc_offset
+  name: 'Arc offset: step-in two (0-3 ft inside)'
+  side: centre
+  anchor:
+    x: 0
+    y: 6.75
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and -0.9144 < (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 0
+  bounds_text: 'Signed distance d to the three-point line''s outside edge (d = |x| - 6.6008 at or below the break, r - 6.7501 above): -0.9144 < d <= 0 (two-point, includes the painted
+    line).'
+  reference_point: last_floor_contact
+  priority: 10
+  rank: 5010
+  family: review
+  source_kind: rule_book + proposal
+  confidence: low
+  partition: true
+  aliases:
+  - step-in two
+  - foot on the line
+  probes_inside:
+  - - 0
+    - 6.75
+  - - 6.6
+    - 0
+  - - 0
+    - 5.84
+  probes_outside:
+  - - 0
+    - 6.76
+  - - 0
+    - 5.83
+  - - 6.62
+    - 0
+- id: arc_offset_on_line
+  layer: zone_scheme:arc_offset
+  name: 'Arc offset: just behind the line (0-2 ft)'
+  side: centre
+  anchor:
+    x: 0
+    y: 6.76
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and 0 < (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 0.6096
+  bounds_text: 0 < d <= 0.6096 (three-point; d > 0 is exactly is_three).
+  reference_point: last_floor_contact
+  priority: 11
+  rank: 5011
+  family: review
+  source_kind: rule_book + proposal
+  confidence: low
+  partition: true
+  aliases:
+  - just behind the line
+  - toes behind the line
+  probes_inside:
+  - - 0
+    - 6.76
+  - - 6.61
+    - 0
+  - - 7.2
+    - 0.5
+  probes_outside:
+  - - 0
+    - 6.75
+  - - 0
+    - 7.37
+  - - 7.62
+    - 0
+- id: arc_offset_one_step
+  layer: zone_scheme:arc_offset
+  name: 'Arc offset: one step off (2-5 ft)'
+  side: centre
+  anchor:
+    x: 0
+    y: 7.37
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and 0.6096 < (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) <= 1.524
+  bounds_text: 0.6096 < d <= 1.524.
+  reference_point: last_floor_contact
+  priority: 12
+  rank: 5012
+  family: review
+  source_kind: rule_book + proposal
+  confidence: low
+  partition: true
+  aliases:
+  - a step behind
+  - step-back range
+  probes_inside:
+  - - 0
+    - 7.37
+  - - 0
+    - 8.27
+  probes_outside:
+  - - 0
+    - 7.359
+  - - 0
+    - 8.28
+- id: arc_offset_deep
+  layer: zone_scheme:arc_offset
+  name: 'Arc offset: well behind the line (> 5 ft)'
+  side: centre
+  anchor:
+    x: 0
+    y: 8.28
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and (ax - CORNER_X if y <= BREAK_Y else r - ARC_R) > 1.524
+  bounds_text: d > 1.524, frontcourt.
+  reference_point: last_floor_contact
+  priority: 13
+  rank: 5013
+  family: review
+  source_kind: rule_book + proposal
+  confidence: low
+  partition: true
+  aliases:
+  - well behind the line
+  probes_inside:
+  - - 0
+    - 8.28
+  - - 0
+    - 12.7
+  probes_outside:
+  - - 0
+    - 8.27
+  - - 0
+    - 12.71
+  notes: Catch-and-shoot depth = this band at the catch frame; shot depth = at last floor contact. Points deeper than 3 ft inside are unlabelled.
+- id: tip_touch_zone
+  layer: landmark
+  name: Tip zone (ball touched near the rim above 9 ft)
+  side: centre
+  anchor:
+    x: 0
+    y: 1
+    z: 3.2
+  expr: r <= 2.0 and y >= BOARD_Y and z > 2.7432
+  bounds_text: Ball centre within 2.0 m (horizontal) of the rim centre, in front of the board plane, above 2.7432 m (9 ft), on a touch frame that is not a catch (contact < 3 frames).
+    Tip-in if the next ring/basket event follows; tip-out if the next touch is a teammate at r > 4.2672.
+  reference_point: ball_3d
+  priority: 41
+  rank: 5041
+  family: review
+  source_kind: proposal
+  confidence: low
+  aliases:
+  - tip
+  - tap
+  - tip-out
+  - tap-out
+  - tip-in
+  probes_inside:
+  - - 0
+    - 1
+    - 3.2
+  - - 1.9
+    - 0
+    - 2.8
+  probes_outside:
+  - - 0
+    - 1
+    - 2.7
+  - - 2.1
+    - 0
+    - 3.2
+  - - 0
+    - -0.4
+    - 3.2
+  notes: Probes are (x, y, z). The 2.0 m radius matches lob_catch_above_rim.
+- id: ball_backboard_contact
+  layer: rule
+  name: Ball touching the backboard face
+  side: centre
+  anchor:
+    x: 0
+    y: -0.3
+    z: 3.3
+  expr: BOARD_Y <= y <= BOARD_Y + 0.1213 and ax <= 0.9144 and 2.8956 <= z <= 3.9624
+  bounds_text: Ball centre within one ball radius (0.1213 m) in front of the board face y = -0.381, centre inside the face outline |x| <= 0.9144, 2.8956 <= z <= 3.9624. Edge hits with
+    the centre outside the outline are excluded (known under-count).
+  reference_point: ball_3d
+  priority: 32
+  rank: 5032
+  family: rule
+  source_kind: rule_book + proposal
+  confidence: medium
+  aliases:
+  - off the glass
+  - bank
+  - glass
+  probes_inside:
+  - - 0
+    - -0.3
+    - 3.3
+  - - 0.9
+    - -0.27
+    - 2.9
+  probes_outside:
+  - - 0
+    - -0.25
+    - 3.3
+  - - 0.95
+    - -0.3
+    - 3.3
+  - - 0
+    - -0.3
+    - 2.85
+  - - 0
+    - -0.3
+    - 3.97
+- id: post_depth_deep
+  layer: zone_scheme:post_depth
+  name: 'Post-up depth: deep (<= 6 ft)'
+  side: centre
+  anchor:
+    x: 1.5
+    y: 0.5
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and not is_three(x, y) and r <= 1.8288
+  bounds_text: r <= 1.8288 at the post-up catch frame.
+  reference_point: feet_midpoint
+  priority: 10
+  rank: 5010
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - deep post-up
+  probes_inside:
+  - - 1.5
+    - 0.5
+  - - 0
+    - 1.8
+  probes_outside:
+  - - 1.9
+    - 0.5
+- id: post_depth_standard
+  layer: zone_scheme:post_depth
+  name: 'Post-up depth: standard (6-10 ft)'
+  side: centre
+  anchor:
+    x: 2.2
+    y: 1.0
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and not is_three(x, y) and 1.8288 < r <= 3.048
+  bounds_text: 1.8288 < r <= 3.048.
+  reference_point: feet_midpoint
+  priority: 11
+  rank: 5011
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - standard post-up
+  probes_inside:
+  - - 2.2
+    - 1.0
+  - - 0
+    - 3.04
+  probes_outside:
+  - - 1.5
+    - 0.5
+  - - 2.5
+    - 2.0
+- id: post_depth_high
+  layer: zone_scheme:post_depth
+  name: 'Post-up depth: high (10-15 ft)'
+  side: centre
+  anchor:
+    x: 2.5
+    y: 2.0
+    z: 0
+  expr: ax < SIDE_X and END_Y < y <= HALF_Y and not is_three(x, y) and 3.048 < r <= 4.572
+  bounds_text: 3.048 < r <= 4.572; beyond 4.572 a post catch is a face-up and gets no band.
+  reference_point: feet_midpoint
+  priority: 12
+  rank: 5012
+  family: review
+  source_kind: proposal
+  confidence: low
+  partition: true
+  aliases:
+  - high post-up
+  probes_inside:
+  - - 2.5
+    - 2.0
+  - - 0
+    - 4.5
+  probes_outside:
+  - - 2.2
+    - 1.0
+  - - 3.5
+    - 3.0
+- id: heave_frontcourt_deep
+  layer: shot_zone_alt
+  name: Frontcourt heave range (r >= 10 m)
+  side: centre
+  anchor:
+    x: 0
+    y: 11
+    z: 0
+  expr: r >= 10.0 and ax < SIDE_X and END_Y < y <= HALF_Y
+  bounds_text: 'Frontcourt, r >= 10.0 m: the geometric gate of the heave rule''s clock clause (game or shot clock <= 2.0 s at release).'
+  reference_point: last_floor_contact
+  priority: 11
+  rank: 7011
+  family: empirical
+  source_kind: empirical + proposal
+  confidence: low
+  aliases:
+  - desperation three
+  - end-of-clock heave
+  probes_inside:
+  - - 0
+    - 10.0
+  - - 5
+    - 9
+  probes_outside:
+  - - 0
+    - 9.99
+  - - 0
+    - 12.71
+- id: heave_half_court
+  layer: shot_zone_alt
+  name: Heave from the backcourt, inside three-quarter court
+  side: centre
+  anchor:
+    x: 0
+    y: 15
+    z: 0
+  expr: HALF_Y < y < 19.8882 and ax < SIDE_X
+  bounds_text: 12.700 < y < 19.8882 (division line to 70.5 ft from the attacked end line).
+  reference_point: last_floor_contact
+  priority: 12
+  rank: 7012
+  family: empirical
+  source_kind: proposal
+  confidence: low
+  aliases:
+  - half-court heave
+  - half-court shot
+  probes_inside:
+  - - 0
+    - 12.71
+  - - 3
+    - 19.88
+  probes_outside:
+  - - 0
+    - 12.7
+  - - 0
+    - 19.8882
+- id: heave_three_quarter
+  layer: shot_zone_alt
+  name: Heave from three-quarter court or deeper
+  side: centre
+  anchor:
+    x: 0
+    y: 23
+    z: 0
+  expr: 19.8882 <= y < FAR_END_Y and ax < SIDE_X
+  bounds_text: 19.8882 <= y < 27.051.
+  reference_point: last_floor_contact
+  priority: 13
+  rank: 7013
+  family: empirical
+  source_kind: proposal
+  confidence: low
+  aliases:
+  - three-quarter-court heave
+  - full-court heave
+  - length-of-court shot
+  probes_inside:
+  - - 0
+    - 19.8882
+  - - 7.6
+    - 27.0
+  probes_outside:
+  - - 0
+    - 19.88
+  - - 0
+    - 27.051
+- id: rule_early_offense_phase
+  layer: rule
+  name: Early-offense phase (between transition and half court)
+  side: n/a
+  anchor:
+    x: null
+    y: null
+    z: null
+  expr: null
+  bounds_text: 'phase = early_offense from the first frame after rule_transition_window ends until the first of: (a) 12.0 s elapsed since new team control (shot clock <= 18 of 30), (b)
+    a rule_alignment_templates match other than pistol_21 held >= 0.5 s, (c) a ball screen or handoff at pnr_location_* with the ball handler at r > 6.0 that starts > 2.0 s after transition
+    ended (a drag screen inside transition stays drag_screen_spot). Then phase = half_court. Offensive rebounds and dead-ball restarts start in half_court directly (no early_offense).
+    Shot and possession labels carry phase.'
+  reference_point: n/a
+  priority: 101
+  rank: 5101
+  family: rule
+  source_kind: proposal
+  confidence: low
+  aliases:
+  - early offense
+  - secondary break
+  - flow
+  notes: Synergy and most public splits use only transition vs half court; flow/early-offense possessions are a known third class that coaches chart separately. Thresholds to tune on
+    labelled MSU possessions.
+- id: nail_area
+  layer: spot
+  name: Nail area (middle half of the free-throw line)
+  side: centre
+  expr: ax < 0.9144 and 3.683 <= y <= 4.699
+  bounds_text: '|x| < 0.9144 m (the middle half of the 12-ft FT line; the elbows own 0.9144 to 2.7432) and 3.683 <= y <= 4.699 m (same band as the elbow: top of lane space 3 to 0.508
+    m beyond the FT line far edge).'
+  anchor:
+    x: 0
+    y: 4.191
+    z: 0
+  reference_point: feet_midpoint
+  priority: 80
+  rank: 1080
+  family: interior
+  source_kind: proposal
+  confidence: medium
+  aliases:
+  - nail (as a position)
+  - nail spot
+  probes_inside:
+  - - 0
+    - 4.191
+  - - 0.91
+    - 3.683
+  - - -0.91
+    - 4.699
+  - - 0
+    - 3.683
+  probes_outside:
+  - - 0.9144
+    - 4.0
+  - - 0
+    - 4.7
+  - - 0
+    - 3.68
+  - - -0.9144
+    - 4.0
+  notes: Fills the gap between elbow_left and elbow_right; the painted point and its 0.9 m disk stay as landmark nail.

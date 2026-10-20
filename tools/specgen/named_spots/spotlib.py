@@ -46,7 +46,8 @@ BASE = dict(abs=abs, min=min, max=max, hypot=math.hypot, atan2=math.atan2, degre
             sqrt=math.sqrt, floor=math.floor, is_three=is_three, dist=dist, seg_dist=seg_dist, **C)
 
 
-def env(x, y, z=0.0, **ctx):
+def env(x, y, z=None, **ctx):
+    z = 0.0 if z is None else z
     t = math.degrees(math.atan2(y, x)) if (x or y) else 90.0
     e = dict(BASE, x=x, y=y, z=z, ax=abs(x), r=math.hypot(x, y), t=t, m=fold(t))
     bx = ctx.get("bx")
@@ -56,7 +57,10 @@ def env(x, y, z=0.0, **ctx):
     return e
 
 
-CTX_NAMES = {"bx", "by", "hx", "hy", "ax_", "ay_", "ball_side"}
+CTX_NAMES = {"bx", "by", "hx", "hy", "ax_", "ay_", "ball_side", "dribbling", "lowest_defender_y", "px", "py",
+             "sx", "sy", "n_off_in_paint", "team_centroid_x", "team_centroid_y", "t_since_catch_s", "table_side_x_sign",
+             "lowest_attacker_y", "game_clock_s", "shot_clock_s"}
+MIRROR_X = ("bx", "hx", "ax_", "px", "sx", "team_centroid_x")
 POINT_NAMES = {"x", "y", "z", "ax", "r", "t", "m"}
 OK_NODES = (ast.Expression, ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Compare, ast.IfExp, ast.Call, ast.Name,
             ast.Constant, ast.Load, ast.Tuple, ast.And, ast.Or, ast.Not, ast.USub, ast.UAdd, ast.Add, ast.Sub,
@@ -91,13 +95,15 @@ class Spot:
         self.ctx = self.names & CTX_NAMES
         self.code = compile(d["expr"], self.id, "eval") if d.get("expr") else None
 
-    def inside(self, x, y, z=0.0, side="right", **ctx):
+    def inside(self, x, y, z=None, side="right", **ctx):
         if self.code is None:
             return None
         if x is None or y is None or x != x or y != y:
             return None  # missing position: label unknown, never out of bounds
+        if "z" in self.names and z is None:
+            return None  # height needed but not measured: label absent (reason no_height)
         need = {"bx", "by"} if "ball_side" in self.ctx else set()
-        if any(ctx.get(k) is None for k in (self.ctx - {"ball_side"}) | need):
+        if any(ctx.get(k) is None for k in (self.ctx - {"ball_side", "table_side_x_sign"}) | need):
             return None  # missing context: label absent (reason no_context)
         if self.side == "table_side":
             x = x * ctx.get("table_side_x_sign", 1)
@@ -105,10 +111,10 @@ class Spot:
             return False
         if self.side == "mirrored" and side == "left":
             x = -x
-            ctx = {k: (-v if k in ("bx", "hx", "ax_") and v is not None else v) for k, v in ctx.items()}
+            ctx = {k: (-v if k in MIRROR_X and v is not None else v) for k, v in ctx.items()}
         return bool(eval(self.code, {"__builtins__": {}}, env(x, y, z, **ctx)))
 
-    def labels(self, x, y, z=0.0, **ctx):
+    def labels(self, x, y, z=None, **ctx):
         """Return the side-qualified ids this point falls in."""
         out = []
         if x is None or y is None or x != x or y != y:
