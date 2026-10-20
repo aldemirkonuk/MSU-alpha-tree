@@ -24,20 +24,20 @@
   "court_region": {
    "paint_non_ra": 821,
    "restricted_area": 806,
-   "wing_three_right": 377,
-   "wing_three_left": 347,
-   "slot_three_right": 177,
-   "slot_three_left": 161,
-   "corner_three_right": 157,
+   "wing_three_left": 377,
+   "wing_three_right": 347,
+   "slot_three_left": 177,
+   "slot_three_right": 161,
+   "corner_three_left": 157,
    "top_three": 156,
    "long_mid_top": 153,
-   "corner_three_left": 148,
-   "short_mid_left": 115,
-   "short_mid_right": 99,
-   "long_mid_wing_left": 54,
-   "long_mid_baseline_left": 40,
-   "long_mid_wing_right": 34,
-   "long_mid_baseline_right": 30
+   "corner_three_right": 148,
+   "short_mid_right": 115,
+   "short_mid_left": 99,
+   "long_mid_wing_right": 54,
+   "long_mid_baseline_right": 40,
+   "long_mid_wing_left": 34,
+   "long_mid_baseline_left": 30
   },
   "three_depth": {
    "none": 2152,
@@ -51,17 +51,17 @@
    "ctg_short_mid": 1058,
    "ctg_rim": 764,
    "ctg_long_mid": 330,
-   "ctg_corner_3_right": 157,
-   "ctg_corner_3_left": 148
+   "ctg_corner_3_left": 157,
+   "ctg_corner_3_right": 148
   },
   "nba_basic": {
    "nba_above_the_break_3": 1218,
    "nba_in_the_paint_non_ra": 821,
    "nba_restricted_area": 806,
-   "nba_mid_range_left": 289,
-   "nba_mid_range_right": 236,
-   "nba_corner_3_right": 157,
-   "nba_corner_3_left": 148
+   "nba_mid_range_right": 294,
+   "nba_mid_range_left": 231,
+   "nba_corner_3_left": 157,
+   "nba_corner_3_right": 148
   }
  }
 }

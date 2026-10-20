@@ -226,7 +226,7 @@ The crosswalks to NBA.com (basic, range, area), Cleaning the Glass, pbpstats and
 
 - Static: every expression passes the AST whitelist; every anchor and probe lands where it should, both sides.
 - Partitions (0.05 m grid, 231,401 points): court_region, nba_basic, nba_range, nba_area, ctg, pbpstats, br_distance cover 100% with 0 overlaps; every other partition scheme has 0 overlaps.
-- Real data: 3675 located MSU 2025-26 field-goal attempts in CBBD (34 games). Every shot gets exactly one label in each scheme. Two-vs-three agreement with CBBD: 3672/3675 (the 3 disagreements are within 4 cm of the line). CBBD 'rim' shots: 761 restricted area, 347 paint. Transform: CBBD x 0..940, y 0..500 tenths of a foot, rim 5.25 ft from each end line, nearer basket attacked. CBBD's left/right orientation is not yet checked against video.
+- Real data: 3675 located MSU 2025-26 field-goal attempts in CBBD (34 games). Every shot gets exactly one label in each scheme. Two-vs-three agreement with CBBD: 3672/3675 (the 3 disagreements are within 4 cm of the line). CBBD 'rim' shots: 761 restricted area, 347 paint. Transform: CBBD x 0..940, y 0..500 tenths of a foot, rim 5.25 ft from each end line, nearer basket attacked. CBBD's left/right orientation was checked on four UConn made baskets against video (2026-10-20): CBBD's y axis points to the attacker's left, and the transform negates it.
 - Speed: all 474 expressions for 10 players and the ball cost 0.81 ms per frame with one environment per object-frame (budget 33.37 ms at 29.97 fps).
 
 ## 10. What it replaces

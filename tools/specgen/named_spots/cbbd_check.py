@@ -4,6 +4,9 @@ Reads licensed CBBD play files from the private folder; writes aggregates only.
 Usage: python tools/specgen/named_spots/cbbd_check.py <cbbd_plays_glob>... --out results/named_spots_test/cbbd_summary.json
 CBBD location: x 0..940, y 0..500 (tenths of a foot); the rim is 52.5 (5.25 ft) from each end line;
 the attacked basket is the nearer one (fit: 99.92% of shots agree on two vs three).
+Lateral sign checked against video 2026-10-20 (UConn game, makes 3, 4, 9, 10 from
+_audit/uconn/made_basket_lag.csv): CBBD y runs toward the attacker's LEFT, so x = -(y - 250) at
+the low-x end and x = (y - 250) at the high-x end (attacker's right is +x in our frame).
 """
 import argparse, collections, glob, json, sys
 from pathlib import Path
@@ -16,8 +19,8 @@ FT = 0.03048  # one tenth of a foot in metres
 
 def to_rim_frame(X, Y):
     if X < 470:
-        return (Y - 250) * FT, (X - 52.5) * FT
-    return (250 - Y) * FT, (887.5 - X) * FT
+        return (250 - Y) * FT, (X - 52.5) * FT
+    return (Y - 250) * FT, (887.5 - X) * FT
 
 
 def main():
