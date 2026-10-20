@@ -27,3 +27,4 @@
 | 2026-10-20T02:09Z | runner | stats-depth-pass | done | 1,115 labelled; registry 0.4.0 |
 | 2026-10-20T02:21Z | runner | stats-l4-round4-units | done | registry 0.5.0 |
 | 2026-10-20T02:33Z | runner | stats-formula-fixes | done | 35 applied; registry 0.6.0 |
+| 2026-10-20T02:42Z | runner | stats-resolve-14 | done | registry 0.7.0 |

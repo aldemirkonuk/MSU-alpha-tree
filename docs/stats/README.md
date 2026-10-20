@@ -184,3 +184,4 @@ Other counts: 9818 input references (9153 resolve to a proposed schema column, 3
 - Depth pass on the 1,115 previously confirmed stats and play-by-play counts reproduced against the box: [depth_pass_2026-10-19.md](depth_pass_2026-10-19.md). Registry 0.4.0: every stat has a depth label (L4 119, L5 16); verified true 397, partial 637, internal 480, reference_only 63, false 14.
 - L4 round 4 (the 80 recipe metrics) and the 108 unit and range fixes: [l4_round4_units_2026-10-19.md](l4_round4_units_2026-10-19.md). Registry 0.5.0: L4 137, L5 34.
 - 35 formula fixes approved by Aldemir and applied: registry 0.6.0 ([formula_fixes_proposed_2026-10-19.md](formula_fixes_proposed_2026-10-19.md)).
+- The 14 unconfirmed stats resolved (5 confirmed, 7 fixed, 2 project-defined, none retired): [unconfirmed_14_resolved_2026-10-19.md](unconfirmed_14_resolved_2026-10-19.md). Registry 0.7.0: false 0.

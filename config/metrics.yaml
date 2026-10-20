@@ -1,4 +1,4 @@
-version: 0.6.0
+version: 0.7.0
 date: '2026-10-19'
 status: proposed
 title: MSU Alpha 3 metric registry
@@ -126,30 +126,29 @@ counts:
   sources_total: 3763
   metrics_without_source: 5
   verified:
-    internal: 479
-    'true': 398
-    partial: 637
+    internal: 481
+    'true': 407
+    partial: 640
     reference_only: 63
-    'false': 14
   verification_depth:
-    L3: 665
-    L4: 137
-    L2: 135
-    L1: 585
-    L5: 34
-    L0: 35
+    L3: 670
+    L4: 138
+    L2: 138
+    L1: 587
+    L5: 33
+    L0: 25
   data_tier:
     pbp: 440
-    box: 328
-    external_only: 109
+    box: 329
+    external_only: 108
     tracking_broadcast: 585
     market: 113
     tracking_pro_only: 15
     experimental: 1
   computable_now:
     after_pbp: 447
-    'yes': 401
-    external: 120
+    'yes': 402
+    external: 119
     after_tracking: 597
     conditional: 8
     'no': 9
@@ -1255,7 +1254,7 @@ categories:
     - R-PR-03
     - R-CX-29
     why: Weights the two teams' tendencies when projecting a matchup (who sets the pace, who decides turnover rate).
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: 'KenPom offense vs defense: the summary (Wayback snapshot, opened by harvester)'
       url: https://web.archive.org/web/20251208140304/https://kenpom.com/blog/offense-vs-defense-the-summary/
@@ -1268,17 +1267,32 @@ categories:
       supports: Model value = alpha*offense + beta*defense + gamma*site + e, with season values that exclude the game itself. A logit is used for percentage stats. Control is the share of variance in the
         predicted value due to the offensive term (98.5% offense / 1.5% defense for FT% in 2014-15), not the coefficient ratio.
       opened: '2026-10-19'
+    - title: 'KenPom: Offense vs. Defense: free throw percentage (Ken Pomeroy, 07.06.15), Wayback snapshot 20251208140304'
+      url: https://web.archive.org/web/20251208140304/http://kenpom.com/blog/offense-vs.-defense-free-throw-percentage
+      supports: 'Methodology section: model value = α(offense) + β(defense) + γ(site) + ε. Season values exclude the game itself, there are two samples per game, and FT% is fit at shot level (about 220,000
+        samples). A logit model is used for percentage stats. Control is the share of the predicted value''s variance that comes from α(offense) versus β(defense): in 2014-15 that was 98.5% offense and
+        1.5% defense. Per-season table of %Offense and HCA.'
+      opened: '2026-10-19'
+    - title: 'KenPom: Offense vs. Defense: The summary (12.03.15), Wayback snapshot 20251208140304'
+      url: https://web.archive.org/web/20251208140304/https://kenpom.com/blog/offense-vs-defense-the-summary/
+      supports: 'Master list of offense-control percentages with HCA per stat: FT% 98% (HCA +0.5%), APL 86% (-0.1s), 3P% 83%, OR% 73%, 3PA% 71%, A% 71%, PPP 64% (+3.7), NST% 59%, 2P% 50%, TO% 49%, FTR 36%,
+        Stl% 30%. Also says the predictive pie has three parts: offense, defense and random variance.'
+      opened: '2026-10-19'
     notes:
     - Harvester opened the KenPom summary post via Wayback; the weight-ratio form is paraphrased and the intro post with the exact model was not opened. Unverified. computable_now = yes only once the CBBD
       D-I box pull (>= 1,000 games) is loaded. Ability is prior-games-only or leave-one-game-out, never an in-sample season mean (leakage).
     - '2026-10-19 verification: The registry formula b_O/(b_O+b_D) is wrong. KenPom explicitly measures the share of predicted-value variance contributed by each term, which differs from the coefficient
       ratio whenever offensive and defensive season values have different spreads. The registry also omits the site term.'
     - 2026-10-19 formula replaced (F31, approved by Aldemir); old formula kept in formula_before_2026_10_19
+    - '2026-10-19 resolution (confirm): I opened the methodology post (FT% part of the 2015 series) and the summary post through Wayback using curl. The current registry formula matches the source: a regression
+      of the game stat on offensive and defensive season values that exclude the game, plus a site term, with a logit for percentages and shot-level fitting for FT%. Control_O is the share of predicted-value
+      variance from the α·off term, and HCA = γ. Two sources plus the published per-stat table give L2. Units: control share is 0-100 percent, and HCA is in the stat''s own units. One caveat: KenPom does
+      not say how the covariance between the two terms is handled, so Var(α·off)/(Var(α·off)+Var(β·def)) is the natural reading but is n'
     provenance:
       covers_groups:
       - g:off_control_share_ovd_influence
     verified_before_2026_10_19: 'false'
-    verification_depth: L1
+    verification_depth: L2
     depth_possible: 'L4: reproduce KenPom''s published offense shares (for example eFG-related 3P% 83%, 2P% 50%, TO% 49%, OR% 73%, FTR 36%, PPP 64%, APL 86%) on one season of D-I game data with leave-one-game-out
       season values. Needs the CBBD D-I box pull (>= 1 season).'
     value_range: 0-100 percent
@@ -1296,6 +1310,7 @@ categories:
       reason: The registry formula b_O/(b_O+b_D) is wrong. KenPom explicitly measures the share of predicted-value variance contributed by each term, which differs from the coefficient ratio whenever offensive
         and defensive season values have different spreads. The registry also omits the site term.
       found_in: 450-formula pass
+    verified_before_resolution: 'false'
   - id: M-TEFF-015
     name: Expected game possessions (pre-game tempo projection)
     category: team_efficiency
@@ -6889,9 +6904,11 @@ categories:
     - home_rank
     - home-away rank
     definition: How much more a specific team (or arena) benefits at home than the league-average home edge.
-    formula: 'KenPom: HCA_team = regression(home scoring adv, home foul adv, home non-steal TO adv, home block adv, elevation) on the past 6 seasons, applied to the next 2 (coefficients unpublished). EvanMiya:
-      home_effect = mean(margin residual | home) - mean(margin residual | road); Home Rank = rank(home_effect). Ours: hierarchical team effect h_i ~ Normal(h, tau^2) added to M-TRAT-004 for home games,
-      shrunk by number of home games.'
+    formula: 'KenPom (from 2017-18): home-scoring advantage HSA_team = mean home scoring margin - mean road scoring margin (conference games). HCA vs a neutral court is about HSA/2 (worked example: Texas
+      Tech 2002-09, +6.0 home and -9.3 road, gives 15.3, so 7.6 pts). Home-foul advantage = home foul margin - road foul margin, and likewise for home non-steal-TO advantage and home block advantage. HCA_team
+      = regression that predicts the next 2 seasons'' home-court advantage from the past 6 seasons'' HSA, home-foul adv, home non-steal-TO adv, home block adv and arena elevation. Coefficients are unpublished,
+      so store KenPom''s value as reference. EvanMiya Home Rank: no published definition, store the rank only (reference). Ours: hierarchical team effect h_i ~ Normal(h, tau^2) added to M-TRAT-004 for home
+      games and shrunk by the number of home games.'
     inputs:
     - games.home_score
     - games.away_score
@@ -6925,7 +6942,7 @@ categories:
     - R-FD-11
     - R-CX-29
     why: Breslin Center vs an average arena; road-game expectations for MSU at specific Big Ten venues.
-    verified: 'false'
+    verified: partial
     sources:
     - name: 'KenPom: how to measure site-specific home-court advantage, part two, 7 Aug 2017 (Wayback; opened in fix pass)'
       url: https://web.archive.org/web/20251214141803/https://kenpom.com/blog/how-to-measure-site-specific-home-court-advantage-part-two/
@@ -6939,10 +6956,24 @@ categories:
       url: https://evanmiya.com/team-ratings
       supports: shows a Home Rank column only; no home-effect definition
       opened: '2026-10-19'
+    - title: 'KenPom: How to measure site-specific home-court advantage, part one (07.27.17), Wayback 20251214141803'
+      url: https://web.archive.org/web/20251214141803/https://kenpom.com/blog/how-to-measure-home-court-advantage/
+      supports: 'Defines ''home-court advantage'' as the difference between home and road scoring margin in conference play. Texas Tech 2002-2009: +6.0 at home and -9.3 on the road, a difference of 15.3,
+        which implies 7.6 pts vs neutral. The average team was 3.75. Past HCA regresses strongly toward the mean.'
+      opened: '2026-10-19'
+    - title: 'KenPom: How to measure site-specific home-court advantage, part two (08.07.17), Wayback 20251214141803'
+      url: https://web.archive.org/web/20251214141803/https://kenpom.com/blog/how-to-measure-site-specific-home-court-advantage-part-two/
+      supports: 'Home-foul advantage is the best single predictor. The final model uses the past six seasons to predict the next two, with home-scoring, home-foul, non-steal turnover and block advantages
+        plus elevation. Footnote 2: home-foul advantage = foul difference at home relative to foul difference on the road. Air Force is top at 4.5 pts.'
+      opened: '2026-10-19'
     notes:
     - KenPom team-specific HCA in use from 2017-18 (part two dated 7 Aug 2017); before that see M-TRAT-026 versions.
     - '2026-10-19 depth pass: The KenPom HCA part two page (archive) could not be opened, and the EvanMiya page gives no formula. Neither component was confirmed this session, so this is downgraded from
       confirmed.'
+    - '2026-10-19 resolution (fix): I opened both KenPom posts this session through Wayback. They confirm the KenPom part of the formula and add the definitions of the inputs (home-minus-road margins in
+      conference games, half the difference = advantage vs neutral). The Texas Tech worked example reproduces: (6.0 - (-9.3))/2 = 7.65, published as 7.6. The EvanMiya ''mean residual home minus road'' formula
+      has no source: a web search and the earlier opening of evanmiya.com/team-ratings found only a Home Rank column with no definition. So it is reduced to a stored reference rank. Coefficients are unpublished,
+      so the KenPom HCA value itself is reference-only and our hierarchical version is internal. L2: two posts plus a worked example'
     provenance:
       harvest_members:
       - Site-specific home-court advantage (KenPom HCA rating) (KenPom; harvest kenpom_torvik.jsonl:19; verified=True)
@@ -6953,10 +6984,23 @@ categories:
     value_range: about 0-7 points per game
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L2
     depth_possible: L2
     l4_recipe: none.
     edge_cases: few home games, so heavy shrinkage is needed; venue changes
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: 'KenPom: HCA_team = regression(home scoring adv, home foul adv, home non-steal TO adv, home block adv, elevation) on the past 6 seasons, applied to the next 2 (coefficients
+      unpublished). EvanMiya: home_effect = mean(margin residual | home) - mean(margin residual | road); Home Rank = rank(home_effect). Ours: hierarchical team effect h_i ~ Normal(h, tau^2) added to M-TRAT-004
+      for home games, shrunk by number of home games.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: 'I opened both KenPom posts this session through Wayback. They confirm the KenPom part of the formula and add the definitions of the inputs (home-minus-road margins in conference games, half
+        the difference = advantage vs neutral). The Texas Tech worked example reproduces: (6.0 - (-9.3))/2 = 7.65, published as 7.6. The EvanMiya ''mean residual home minus road'' formula has no source:
+        a web search and the earlier opening of evanmiya.com/team-ratings found only a Home Rank column with no definition. So it is reduced to a stored reference rank. Coefficients are unpublished, so
+        the KenPom HCA value it'
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-TRAT-028
     name: Strength of schedule (average opponent rating)
     category: team_ratings
@@ -8050,8 +8094,9 @@ categories:
     - Quality games record
     - v 1-25 / v 26-50 / v 51-100 records
     definition: Adjusted efficiency and won-lost record restricted to games against strong opponents (venue-adjusted top 50 for T-Rank; rank bands for TeamRankings).
-    formula: Qual metrics = T-Rank AdjOE / AdjDE / Barthag computed over games vs venue-adjusted top-50 opponents; record vs band k = W-L over games with opponent rank in band k (ranks as of cutoff). Our
-      version runs on M-TRAT-004 (system = msu_alpha).
+    formula: Torvik Qual. Eff. = T-Rank adjusted OE, adjusted DE and Barthag computed over the team's games against T-Rank top-50 opponents only (trank.php top=50 filter). Qual. Games = W-L record in those
+      games. Whether Torvik's top-50 cut is venue-adjusted is not published, so do not assert it. Record vs band k = W-L over games with opponent rank in band k (ranks as of cutoff). Our version runs on
+      M-TRAT-004 (system = msu_alpha).
     inputs:
     - ratings_snapshots.value[system=torvik]
     - games.home_score
@@ -8078,7 +8123,7 @@ categories:
     related_requirements:
     - R-FD-06
     why: Tournament-relevant performance; pairs with Opponent Adjust (M-TRAT-011).
-    verified: 'false'
+    verified: partial
     sources:
     - name: T-Rank FAQ "Every possession counts" (Adam's WI Sports Blog; opened by harvester and this pass)
       url: http://adamcwisports.blogspot.com/p/every-possession-counts.html
@@ -8092,9 +8137,22 @@ categories:
       url: http://adamcwisports.blogspot.com/p/every-possession-counts.html
       supports: T-Rank FAQ read in full; no Qual O/D/Barthag definition found in the read text
       opened: '2026-10-19'
+    - title: T-Rank team page, Michigan St. 2024 (Wayback 20250320001027)
+      url: https://web.archive.org/web/20250320001027/https://www.barttorvik.com/team.php?team=Michigan+St.&year=2024
+      supports: '''Fun Stuff'' table: the ''Qual. Eff.'' link points to trank.php?top=50&year=2024. Offense 116.4 (43), Defense 97.9 (68), Barthag .8799 (32). ''Qual. Games 3-10 (.231)'' rank 87. Section
+        tooltip: ''Adjusted Efficiency in Tournament Quality Tests''. The Vs filter offers All/Conf./Noncon/Top 100/Top 50/Last 10.'
+      opened: '2026-10-19'
+    - title: T-Rank FAQ 'Every possession counts' (Adam's WI Sports Blog)
+      url: http://adamcwisports.blogspot.com/p/every-possession-counts.html
+      supports: Defines game adjusted efficiency (Game Adj. OE = PPPo / (Opp Adj. DE / Avg PPP)) and Barthag-based win probability. No text on Qual or top 50 (searched the fetched page for 'top 50', 'Qual',
+        'venue').
+      opened: '2026-10-19'
     notes:
     - '2026-10-19 depth pass: The definition was not re-confirmed this session (the H-Rank and Qual text was not in the read portion), so this is downgraded. A Torvik L4 path exists.'
     - '2026-10-19 Not reproduced: Torvik Qual Games uses a venue-adjusted top-50 list we do not have.'
+    - '2026-10-19 resolution (fix): I opened the Wayback team page this session. In its HTML, Qual. Eff. is the T-Rank efficiency and Barthag filtered to top=50 opponents, and Qual. Games is the W-L record
+      in those games. Neither the page nor the FAQ says the top-50 list is venue-adjusted, so the ''venue-adjusted top 50'' wording in the registry has no source and is dropped. Two web searches found no
+      other definition. One source shows the definition, which is L1. The published MSU 2024 values (116.4 / 97.9 / .8799; 3-10) are available for a future L4 check once Torvik game-level data is loaded.'
     provenance:
       harvest_members:
       - Q-Rank (adjusted efficiency in tournament quality tests) (Bart Torvik; harvest kenpom_torvik.jsonl:103; verified=True)
@@ -8105,11 +8163,22 @@ categories:
     value_range: pts/100; probability 0-1; counts
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L1
     depth_possible: L4
     l4_recipe: Torvik 2026 Qual Games (count of games vs the venue-adjusted top 50) is reproducible exactly from CBBD games plus Torvik ranks; Qual O/Qual D/Qual Barthag can then be compared after running
       T-Rank adjustment on that subset.
     edge_cases: Venue-adjusted top-50 band depends on as-of rank date
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: Qual metrics = T-Rank AdjOE / AdjDE / Barthag computed over games vs venue-adjusted top-50 opponents; record vs band k = W-L over games with opponent rank in band k (ranks
+      as of cutoff). Our version runs on M-TRAT-004 (system = msu_alpha).
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: I opened the Wayback team page this session. In its HTML, Qual. Eff. is the T-Rank efficiency and Barthag filtered to top=50 opponents, and Qual. Games is the W-L record in those games. Neither
+        the page nor the FAQ says the top-50 list is venue-adjusted, so the 'venue-adjusted top 50' wording in the registry has no source and is dropped. Two web searches found no other definition. One
+        source shows the definition, which is L1. The published MSU 2024 values (116.4 / 97.9 / .8799; 3-10) are available for a future L4 check once Torvik game-level data is loaded.
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-TRAT-043
     name: Won-lost record and winning percentage
     category: team_ratings
@@ -15497,14 +15566,17 @@ categories:
     - Brick Index
     - brick_index
     definition: ESPN field name apparently about missed-shot volume; no description or formula seen.
-    formula: unpublished
+    formula: 'BrickIndex = 2 * (TS_lg - TS) / 100 * (FGA + 0.44 * FTA) / (MIN / 40); TS and TS_lg in percent 0-100, TS_lg = league-average TS% for the season; unit = points per 40 minutes; lower is better
+      (negative = points saved versus league average). ESPN''s printed description uses a fixed 52.8 and no 2/100 factor, but that version does not reproduce ESPN''s own values. Reverse-engineered approximation:
+      ESPN prints ((52.8 - TS%) x (FGA + 0.44 FTA)) / (MIN/40), which does not reproduce ESPN''s own values; this points form matches 12 NBA player-seasons within about 4% with a per-season league TS, and
+      the implied baseline varies about +/-0.3 TS points by player. ESPN publishes it for the NBA only; for NCAA we compute it from the box with the season''s D-I TS%.'
     inputs:
     - external:espn.brick_index (unverified)
     unit: unknown
     level: player (unverified)
     direction: unknown
-    data_tier: external_only
-    computable_now: 'no'
+    data_tier: box
+    computable_now: 'yes'
     min_sample: Unknown.
     as_of_rule: 'External snapshot: take the latest snapshot dated on or before the day before tip (R-FD-06; is_point_in_time = true in ratings_snapshots); end-of-season values are never used in backtests
       (R-DS-04).'
@@ -15514,24 +15586,55 @@ categories:
     - R-DS-10
     - R-DQ-01
     why: Kept for completeness and cross-source checks; do not use as model input until the formula is known.
-    verified: 'false'
-    sources: []
+    verified: partial
+    sources:
+    - title: hoopR source R/espn_nba_data.R (espn_nba_player_stats column docs)
+      url: https://raw.githubusercontent.com/sportsdataverse/hoopR/main/R/espn_nba_data.R
+      supports: 'Line ~2215: offensive_brick_index, described as how many points a player costs his team with his shooting versus league average per 40 minutes, with the printed formula ((52.8 - TS%) x
+        (FGA + (FTA x 0.44))) / (Min/40). This column is absent from espn_mbb_data.R.'
+      opened: '2026-10-19'
+    - title: ESPN core API, NBA athlete season statistics (e.g. athlete 1966, seasons 2014/2016/2018/2020; athletes 3975, 6450)
+      url: https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2016/types/2/athletes/1966/statistics
+      supports: offensive category, stat 'brickIndex' (displayName 'Brick Index'), with the same description and formula text. Values such as -2.327 for 1966 in 2016, -4.94 in 2014 and 0.442 for 3975 in
+        2020. For 2025 every player I checked returns 0.0.
+      opened: '2026-10-19'
+    - title: ESPN core API, men's college basketball athlete statistics (athlete 4593919, season 2021)
+      url: https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2021/types/2/athletes/4593919/statistics
+      supports: The payload has minutes, FGA and points but no brickIndex field.
+      opened: '2026-10-19'
     notes:
     - Seen by the harvester on the hoopR player-stats page only; not re-opened and absent from the opened hoopR team-stats page, so it has no confirmed source. By name it is probably lower_is_better, but
       no direction is asserted until the page is re-opened and values are checked. Drop if it cannot be confirmed.
     - '2026-10-19 verification: A web search found no ESPN ''Brick Index''; it is not in the hoopR ESPN team-stats columns. The existence of the stat is unconfirmed. Drop it or mark it pending until it
       is observed in a payload.'
     - '2026-10-19 unit fix: no ESPN ''Brick Index'' found in any payload; status pending until observed, not computed'
+    - '2026-10-19 resolution (fix): The stat exists. It is an ESPN NBA player stat (Hollinger-style), described in the ESPN API and documented in hoopR. The registry note ''not found anywhere'' was wrong,
+      because the earlier search looked only at the MBB/team pages. I recomputed 12 NBA player-seasons (2014-2020) from ESPN''s own TS, FGA, FTA and MIN. The printed formula (52.8 fixed, no factor 2/100)
+      misses by roughly 50x. The points form 2*(lgTS - TS)/100*TSA/(MIN/40) matches. The league TS it implies is constant within each season: about 53.7-54.2 for 2014, 53.9-54.6 for 2016, 55.6-55.9 for
+      2018 and 56.5 for 2020, which tracks the rise in league TS. Using one TS_lg per season, all 12 values reproduce to within about 4%. I am not Skeptic: Neither source shows the corrected formula. hoopR
+      line 2215 and the ESPN API both print only ((52.8 - TS%) x (FGA + FTA x 0.44)) / (Min/40). I tested the proposed fix against ESPN API values. It fits 2019-20 well: implied TS_lg is 56.47-56.50 for
+      three players, but 56.68 for athlete 3992. In 2015-16, implied TS_lg varies from 53.94 to 54.57 across six players (Curry 54.57, LeBron 53.99), and in 20'
     provenance:
       input_groups:
       - g:brick_index
     verified_before_2026_10_19: 'false'
-    verification_depth: L0
+    verification_depth: L3
     depth_possible: L1 only if the field is seen in an ESPN API payload
     value_range: pending
     range_basis: unit fix 19 Oct
     edge_cases: none
     unit_fix_2026_10_19: no ESPN 'Brick Index' found in any payload; status pending until observed, not computed
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: unpublished
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: 'The stat exists. It is an ESPN NBA player stat (Hollinger-style), described in the ESPN API and documented in hoopR. The registry note ''not found anywhere'' was wrong, because the earlier
+        search looked only at the MBB/team pages. I recomputed 12 NBA player-seasons (2014-2020) from ESPN''s own TS, FGA, FTA and MIN. The printed formula (52.8 fixed, no factor 2/100) misses by roughly
+        50x. The points form 2*(lgTS - TS)/100*TSA/(MIN/40) matches. The league TS it implies is constant within each season: about 53.7-54.2 for 2014, 53.9-54.6 for 2016, 55.6-55.9 for 2018 and 56.5 for
+        2020, which tracks the'
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-SHOOT-065
     name: Situational shooting splits
     category: shooting
@@ -30572,7 +30675,7 @@ categories:
     - R-CX-29
     - R-PC-07
     why: Fair turnover rate for creators who pass a lot out of P&R.
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: Nylon Calculus (FanSided), Understanding Synergy play type data
       url: https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/
@@ -30580,16 +30683,25 @@ categories:
       url: https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/
       supports: Opened; describes Synergy categories but no PnR TO% formula including passing possessions was found
       opened: '2026-10-19'
+    - title: 'Nylon Calculus (FanSided, 2017-09-08): How to understand Synergy play type categories'
+      url: https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/
+      supports: 'Section ''Other random Synergy notes'' (opened with curl and the raw HTML read): to get a true turnover percentage for pick-and-roll players, take PnR BH TOs / (PnR BH Possessions + PnR
+        BH Passing Possessions). The paragraph uses Lonzo Ball as its example and notes that passing possessions appear on Synergy but not on NBA.com.'
+      opened: '2026-10-19'
     notes:
     - Nylon Calculus formula is a fraction; x100 applied for the file-wide percent convention (0-100).
     - '2026-10-19 depth pass: Downgraded: the cited page does not show the formula. Re-source or reclassify as internal.'
+    - '2026-10-19 resolution (confirm): The earlier downgrade was wrong. The cited article does print the formula in its ''Other random Synergy notes'' section, and I confirmed the wording in the raw page
+      HTML this session. The registry formula is the same fraction times 100, which follows the file''s 0-100 percent convention. The same article says a Synergy possession is logged only if it ends in
+      a shot, turnover or shooting foul, so the denominator counts ended possessions. I found no second independent source (no Synergy glossary page could be opened), so the depth stays at L1.'
     value_range: 0-100 (percent)
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L1
     depth_possible: L1
     l4_recipe: none
     edge_cases: Passing possessions double-count with the receiver's play type.
+    verified_before_resolution: 'false'
   - id: M-TOV-040
     name: Turnover rate by pressure band and press
     category: turnovers_steals
@@ -41611,7 +41723,7 @@ categories:
     - R-PL-08
     - R-PE-05
     why: Better predictor of FT skill than FT% (makes and misses graded).
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: 'McGrath, Glazer, Bushong, Nguyen, Goldsberry: Commanding the Foul Shot (arXiv 2512.08824)'
       url: https://arxiv.org/abs/2512.08824
@@ -41625,11 +41737,24 @@ categories:
       url: https://arxiv.org/pdf/2512.08824
       supports: bullseye 2 inches behind rim centre; command bounded 0-1
       opened: '2026-10-19'
+    - title: McGrath et al., Commanding the Foul Shot (arXiv 2512.08824), PDF
+      url: https://arxiv.org/pdf/2512.08824
+      supports: 'Section 3, Eq. (1): C = 1 / (1 + sqrt(mu^2 + sigma^2)), command ''bounded between 0 and 1''. Section 2: bullseye is 2 inches behind the rim''s centre; mu = mean landing distance from the
+        bullseye, sigma = standard deviation of those distances across all shots (Hawk-Eye, NBA 2024-25).'
+      opened: '2026-10-19'
+    - title: arXiv 2512.08824v2 HTML
+      url: https://arxiv.org/html/2512.08824v2
+      supports: Eq. 1 in LaTeX, the same as the PDF; no unit is stated for mu or sigma.
+      opened: '2026-10-19'
     notes:
     - 'Eq. 1 confirmed. C is not scale-invariant: with mu in metres (~0.05) C would be ~1 for every shooter, hence the inch scale s. The source does not print the unit of mu explicitly (inches inferred
       from the 2-inch bullseye definition). Source population: NBA Hawk-Eye 2024-25. Needs 3D ball landing position; broadcast monocular video likely insufficient.'
     - '2026-10-19 depth pass: Registry formula puts the 1 inside the square root (1/sqrt(1+mu^2+sigma^2)); source has 1 + sqrt(mu^2+sigma^2). Contradicted, so downgraded.'
     - 2026-10-19 formula replaced (F07, approved by Aldemir); old formula kept in formula_before_2026_10_19
+    - '2026-10-19 resolution (confirm): The current (F07) registry formula matches Eq. 1 once mu and sigma are expressed in units of s. The 1 sits outside the square root, as in the source. The source never
+      states the unit of mu or sigma, and its figures (including the ''normalized command'' plot) are images. Choosing inches (s = 0.0254 m) is therefore our inference from the 2-inch bullseye definition,
+      not a stated fact. C is not scale-invariant, so values compare with the paper only if the paper also used inches. Note that sigma is the standard deviation of scalar landing distances, not of 2-D
+      landing positions; the implementation must follow that. Both sources are the same paper and there is no numeric example, so L1.'
     provenance:
       harvest_groups:
       - g:ft_command
@@ -41651,6 +41776,7 @@ categories:
       fix_id: F07
       reason: Registry formula puts the 1 inside the square root (1/sqrt(1+mu^2+sigma^2)); source has 1 + sqrt(mu^2+sigma^2). Contradicted, so downgraded.
       found_in: 1,115 depth pass
+    verified_before_resolution: 'false'
   - id: M-FOUL-103
     name: Free-throw launch angle
     category: fouls_ft
@@ -64467,9 +64593,11 @@ categories:
     - attention drawn (on-ball)
     - doubles drawn
     definition: Average number of defender-units guarding a player while he holds the ball (5 units total per frame).
-    formula: 'att_on(i) = sum_s sum_d p_di(s) * 1[i has ball] / sum_s 1[i has ball] (p_di from the full defender x attacker probability matrix); double-teamed share = share of on-ball seconds with >= 2
-      defenders having p_di >= 0.5. Fallback until the matrix exists (argmax only): att_on_fallback(i) = sum_s sum_d 1[defensive_matchups.attacker_id(d,s) = i] * matchup_prob(d,s) * 1[i has ball] / on-ball
-      seconds; Franks "units" are not recoverable with argmax only.'
+    formula: 'att_on(i) = sum_t sum_j E_tji * 1[i has ball at t] / sum_t 1[i has ball at t], where E_tji = posterior P(defender j guards attacker i at t) from the Franks HMM (forward-backward E-step; mean
+      defender position 0.62*attacker + 0.11*ball + 0.27*hoop), and the sum runs only over frames in which all ten players are in the offensive half court. Each frame has 5 units (sum_i sum_j E_tji = 5),
+      so 0 <= att_on <= 5; about 1.2 for league leaders. Double-teamed share (our extension, not defined in the paper) = share of on-ball seconds with >= 2 defenders having E_tji >= 0.5. Argmax-only fallback:
+      sum_t sum_j 1[defensive_matchups.attacker_id(j,t) = i] * 1[i has ball] / on-ball seconds. This is a hard-assignment count that keeps the 5-units-per-frame total. Do not weight it by matchup_prob,
+      because that weighting breaks the total.'
     inputs:
     - defensive_matchups.matchup_prob
     - defensive_matchups.attacker_id
@@ -64493,7 +64621,7 @@ categories:
     - R-DF-31
     - R-CX-29
     why: On-ball threat level; who draws doubles and how often.
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: Franks, Miller, Bornn, Goldsberry (2015), Characterizing the spatial structure of defensive skill in professional basketball, Annals of Applied Statistics (arXiv 1405.0231)
       url: https://arxiv.org/pdf/1405.0231
@@ -64501,20 +64629,43 @@ categories:
       url: https://arxiv.org/abs/1405.0231
       supports: 'Franks et al. abstract: quantifies aspects of defensive play; does not mention matchup probabilities'
       opened: '2026-10-19'
+    - title: Franks, Miller, Bornn, Goldsberry, Characterizing the spatial structure of defensive skill in professional basketball (arXiv 1405.0231, AoAS 2015), full PDF
+      url: https://arxiv.org/pdf/1405.0231
+      supports: 'Sec 2 / 2.1: HMM over who-guards-whom, E-step expected assignments E_tjk by forward-backward. Sec 2.2: analysis restricted to frames with all players in the offensive half court; Gamma
+        = (0.62, 0.11, 0.27). Table 1 caption: average attention = total time guarded by each defender / total time playing, split by time with and without the ball; five units of attention per moment;
+        on-ball leaders double-teamed about 20% of the time. On-ball values: DeRozan 1.213, Durant 1.209, Rudy Gay 1.201.'
+      opened: '2026-10-19'
     notes:
     - 'Franks et al.: leaders receive about 1.2 units on-ball, i.e. double-teamed about 20% of on-ball time. Matchup probabilities come from defensive_matchups (per second). Defense category owns double-team
       counts (M-DEF-073). The schema stores only the argmax assignment per defender-second, so the published form needs the pending probability matrix.'
     - '2026-10-19 depth pass: Only abstract opened; matchup-probability basis not confirmed. Re-open full text.'
+    - '2026-10-19 resolution (fix): Full text opened. The attention definition (expected assignments summed over defenders, divided by on-ball time, 5 units per frame) matches the primary formula. Two changes:
+      (1) the paper computes it only on frames with all players in the offensive half court, which the formula omitted; (2) the old fallback multiplied the argmax by matchup_prob, which is neither the paper''s
+      measure nor a 5-unit split, so it becomes a hard-assignment count. The paper gives no threshold for its double-team figure, so the >= 0.5 share is labelled as our extension. The published Table 1
+      values are recorded but were not reproduced (no tracking data), so the depth is L3, not L4.'
     provenance:
       merged_from:
       - Attention drawn (on-ball) (Franks et al.)
     value_range: 0-5 defender units
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L3
     depth_possible: L2
     l4_recipe: none
     edge_cases: No on-ball seconds gives 0/0.
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: 'att_on(i) = sum_s sum_d p_di(s) * 1[i has ball] / sum_s 1[i has ball] (p_di from the full defender x attacker probability matrix); double-teamed share = share of on-ball
+      seconds with >= 2 defenders having p_di >= 0.5. Fallback until the matrix exists (argmax only): att_on_fallback(i) = sum_s sum_d 1[defensive_matchups.attacker_id(d,s) = i] * matchup_prob(d,s) * 1[i
+      has ball] / on-ball seconds; Franks "units" are not recoverable with argmax only.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: 'Full text opened. The attention definition (expected assignments summed over defenders, divided by on-ball time, 5 units per frame) matches the primary formula. Two changes: (1) the paper
+        computes it only on frames with all players in the offensive half court, which the formula omitted; (2) the old fallback multiplied the argmax by matchup_prob, which is neither the paper''s measure
+        nor a 5-unit split, so it becomes a hard-assignment count. The paper gives no threshold for its double-team figure, so the >= 0.5 share is labelled as our extension. The published Table 1 values
+        are recorded but wer'
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-SPACE-035
     name: Defensive attention drawn off-ball
     category: spacing_offball
@@ -64522,8 +64673,9 @@ categories:
     - attention drawn (off-ball)
     - off-ball gravity (Franks)
     definition: Average number of defender-units guarding a player while he does not have the ball.
-    formula: 'att_off(i) = sum_s sum_d p_di(s) * 1[i off ball] / sum_s 1[i off ball]. Fallback (argmax only): sum_s sum_d 1[defensive_matchups.attacker_id(d,s) = i] * matchup_prob(d,s) * 1[i off ball] /
-      off-ball seconds.'
+    formula: 'att_off(i) = sum_t sum_j E_tji * 1[i on court and not ball carrier at t] / sum_t 1[i on court and not ball carrier at t], using only frames with all ten players in the offensive half court.
+      E_tji = posterior P(defender j guards attacker i at t) from the Franks HMM. Range 0-5 defender units; about 1.06 for league leaders. Argmax-only fallback: hard-assignment count sum_t sum_j 1[defensive_matchups.attacker_id(j,t)
+      = i] * 1[i off ball] / off-ball seconds, with no matchup_prob weighting.'
     inputs:
     - defensive_matchups.matchup_prob
     - defensive_matchups.attacker_id
@@ -64546,7 +64698,7 @@ categories:
     - R-DF-31
     - R-CX-29
     why: Perceived off-ball threat; complements gravity with a model-light measure.
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: Franks, Miller, Bornn, Goldsberry (2015), Characterizing the spatial structure of defensive skill in professional basketball, Annals of Applied Statistics (arXiv 1405.0231)
       url: https://arxiv.org/pdf/1405.0231
@@ -64554,19 +64706,36 @@ categories:
       url: https://arxiv.org/abs/1405.0231
       supports: Abstract only; no attention/matchup definition
       opened: '2026-10-19'
+    - title: Franks, Miller, Bornn, Goldsberry, Characterizing the spatial structure of defensive skill in professional basketball (arXiv 1405.0231), full PDF
+      url: https://arxiv.org/pdf/1405.0231
+      supports: 'Sec 2.1 (E_tjk expected assignments), Sec 2.2 (offensive half-court frames only), Table 1 ''Average attention drawn, on and off ball'', off-ball column: Curry 1.064, Durant 1.063, Carmelo
+        Anthony 1.048, Dwight Howard 1.044, Pekovic 1.036.'
+      opened: '2026-10-19'
     notes:
     - Needs the full matchup probability matrix (pending); defensive_matchups holds only the argmax attacker per defender-second.
     - '2026-10-19 depth pass: Not confirmed by opened page.'
+    - '2026-10-19 resolution (fix): Same definition as the on-ball version (Table 1, off-ball column), now confirmed in the full text. The formula needs the offensive half-court frame restriction from Sec
+      2.2, and the fallback must be an unweighted hard-assignment count so the 5-unit total holds. Published values are recorded but not reproduced, so the depth is L3.'
     provenance:
       merged_from:
       - Attention drawn (off-ball) (Franks et al.)
     value_range: 0-5 defender units
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L3
     depth_possible: L2
     l4_recipe: none
     edge_cases: Zero off-ball seconds.
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: 'att_off(i) = sum_s sum_d p_di(s) * 1[i off ball] / sum_s 1[i off ball]. Fallback (argmax only): sum_s sum_d 1[defensive_matchups.attacker_id(d,s) = i] * matchup_prob(d,s)
+      * 1[i off ball] / off-ball seconds.'
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: Same definition as the on-ball version (Table 1, off-ball column), now confirmed in the full text. The formula needs the offensive half-court frame restriction from Sec 2.2, and the fallback
+        must be an unweighted hard-assignment count so the 5-unit total holds. Published values are recorded but not reproduced, so the depth is L3.
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-SPACE-036
     name: Defender attention share
     category: spacing_offball
@@ -70673,13 +70842,21 @@ categories:
     - R-PL-12
     - R-CX-29
     why: Defensive lateral work that forward-speed metrics miss.
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: PlayerData basketball metrics overview
       url: https://support.playerdata.com/knowledge/basketball-metrics-overview
+    - title: 'PlayerData Help Center: Basketball metrics overview (Wayback snapshot 2025-12-12)'
+      url: http://web.archive.org/web/20251212145657/https://support.playerdata.com/knowledge/basketball-metrics-overview
+      supports: 'Directional Metrics > Lateral Accelerations: ''Counted when the lateral acceleration is above 3m/s² for a duration of at least 0.5s''; described as high-intensity side-to-side movement
+        frequency. The same page gives the 1/2/3 m/s² for at least 0.5 s gates for longitudinal accelerations and decelerations.'
+      opened: '2026-10-19'
     notes:
     - PlayerData counts this from an IMU; our version needs pose facing and passes the same gates. player_positions.accel_mps2 is a signed tangential scalar and cannot give a lateral component.
     - '2026-10-19 depth pass: PlayerData source failed to open (SSL error); not re-confirmed. Maths of projection sound.'
+    - '2026-10-19 resolution (confirm): The live page fails on an SSL error, but the Wayback snapshot opened. It confirms both gates, above 3 m/s^2 and at least 0.5 s, and that the stat is a count. PlayerData
+      measures this with a body-worn IMU. Our version projects the positional acceleration onto the axis perpendicular to torso facing. That is a sound tracking stand-in for the IMU''s lateral axis, but
+      it is not the vendor''s method. The source says ''side-to-side'', so using |a_lat| (both directions) fits the source. One source with no worked example, so L1.'
     schema_pending:
     - player_positions.ax_mps2 / ay_mps2 (proposed); until then a_vec is derived on the fly from velocity
     provenance:
@@ -70688,10 +70865,11 @@ categories:
     value_range: '>= 0'
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L1
     depth_possible: L1
     l4_recipe: none
     edge_cases: Torso facing noise; projection undefined without pose.
+    verified_before_resolution: 'false'
   - id: M-PHYS-058
     name: Changes of direction
     category: physical
@@ -73079,7 +73257,10 @@ categories:
     - Offensive player acceleration field
     - microtransition acceleration field
     definition: Player-specific map from court location to expected acceleration (with and without the ball), used in a possession microtransition model.
-    formula: mu(z) = (mu_x(z), mu_y(z)) estimated by hierarchical spatial model (R-INLA in the source) from tracking positions
+    formula: 'Per offensive player l, fitted separately with and without the ball, with step eps = 1/25 s: x_l(t+eps) = x_l(t) + alpha_x^l [x_l(t) - x_l(t-eps)] + eta_x^l(t), where eta_x^l(t) ~ N(mu_x^l(z_l(t)),
+      (sigma_x^l)^2). y is modelled the same way. The acceleration field (mu_x^l(z), mu_y^l(z)) is a spatial effect: a Gaussian process with Matern covariance, represented by a GMRF/SPDE approximation on
+      a triangular court mesh (d0 = 383 vertices) and fitted in R-INLA. Each player is fitted on his own data, with no hierarchical pooling. Positions are on player_positions.x_fc_m / y_fc_m (the source
+      uses feet). mu is a per-step position increment; report acceleration as a(z) ~= mu(z) / eps^2 in m/s^2, which is exact only when alpha = 1.'
     inputs:
     - player_positions.x_fc_m
     - player_positions.y_fc_m
@@ -73102,7 +73283,7 @@ categories:
     related_requirements:
     - R-CX-29
     why: Movement tendencies for simulation and expected-possession-value models.
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: Cervone, D'Amour, Bornn, Goldsberry, arXiv 1408.0777 (multiresolution possession model; player acceleration fields)
       url: https://arxiv.org/abs/1408.0777
@@ -73110,20 +73291,39 @@ categories:
       url: https://arxiv.org/abs/1408.0777
       supports: 'Cervone et al. EPV abstract: hierarchical spatiotemporal transition models; no acceleration field or INLA mentioned'
       opened: '2026-10-19'
+    - title: Cervone, D'Amour, Bornn, Goldsberry, A multiresolution stochastic process model for predicting basketball possession outcomes (arXiv 1408.0777v3, JASA 2016), full PDF
+      url: https://arxiv.org/pdf/1408.0777
+      supports: 'Sec 3 (eps = 1/25 s, the data''s temporal resolution). Sec 3.1, Eq. (5) offensive microtransition model, with eta ~ N(mu_x^l(z^l(t)), sigma^2) read as ''an acceleration effect''. Figure
+        4: acceleration fields (mu_x, mu_y) for Parker and Howard, with and without the ball. Sec 4 (after Eq. 16): estimated in R-INLA with a GMRF approximation to a Matern GP, fitted per player in parallel,
+        L = 461. Appendix A.3: triangular mesh with d0 = 383.'
+      opened: '2026-10-19'
     notes:
     - 'Abstract opened; acceleration-field detail confirmed in the harvested full-text extract (build working extract, not published). Frame: computed on player_positions.x_fc_m/y_fc_m (fixed full-court
       frame). x_m/y_m are in the attacked-rim frame, which flips at every change of possession and would add a jump of metres to tens of metres per flip.'
     - '2026-10-19 depth pass: Not confirmed by opened page.'
+    - '2026-10-19 resolution (fix): The full text confirms the field, but the old formula called the model ''hierarchical''. The paper says the microtransition model is fitted per player in parallel, with
+      no hierarchical pooling. The old formula also left out the equation that defines mu: an additive innovation mean on the position update at a 1/25 s step, so mu is a displacement and must be divided
+      by eps^2 to give m/s^2. Separate fields with and without the ball are confirmed by Figure 4. The source gives no numeric field values, so the depth is L2 (equation plus figure).'
     provenance:
       harvest_rows:
       - Offensive player acceleration field [line 13]
     value_range: m/s^2
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L2
     depth_possible: L1
     l4_recipe: none
     edge_cases: ''
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: mu(z) = (mu_x(z), mu_y(z)) estimated by hierarchical spatial model (R-INLA in the source) from tracking positions
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: 'The full text confirms the field, but the old formula called the model ''hierarchical''. The paper says the microtransition model is fitted per player in parallel, with no hierarchical pooling.
+        The old formula also left out the equation that defines mu: an additive innovation mean on the position update at a 1/25 s step, so mu is a displacement and must be divided by eps^2 to give m/s^2.
+        Separate fields with and without the ball are confirmed by Figure 4. The source gives no numeric field values, so the depth is L2 (equation plus figure).'
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-PHYS-097
     name: Body-relative lateral velocity and movement side (per frame)
     category: physical
@@ -87748,7 +87948,7 @@ categories:
     - R-SR-04
     - R-IV-28
     why: Basis for timeout behaviour and timeout-effect studies.
-    verified: 'false'
+    verified: internal
     sources:
     - name: MSU Alpha 3 signals vocab (timeout_30s Rule 5-14.4.c, timeout_60_75s Rule 5-14.4.a-b; from docs/rules/PRMBB_RulesBook.pdf)
       url: repo:config/vocab/signals.yaml
@@ -87764,9 +87964,21 @@ categories:
       url: http://www.ncaa.org/media-center-panel-approves-changes-to-enhance-the-flow-of-the-game-in-mens-basketball/
       supports: Mentions media timeouts and challenges only; no timeout types or lengths
       opened: '2026-10-19'
+    - title: NCAA 2026-27 Men's Basketball Rules Book (local docs/rules/PRMBB_RulesBook.pdf)
+      url: repo:docs/rules/PRMBB_RulesBook.pdf
+      supports: 'Rule 5-14.4: a charged timeout does not exceed 75 s (full, non-media game), 60 s (60-second timeout, media game) or 30 s. 5-14.8/9: four 75 s plus two 30 s timeouts in non-media games and
+        in games with fewer than three media timeouts. 5-14.10: three 30 s plus one 60 s timeouts in media games, media timeouts at the first dead ball at or after the 15/10/5 or 16/12/8/4 minute marks,
+        and 5-14.10.e: a timeout, replay or challenge dead ball within 30 s before or at the first dead ball after a mark becomes the media timeout. 5-14.12: injury timeouts, and 5-14.12.b: one granted
+        at a media mark, or as the first 30 s timeout of the second half, becomes media and is not charged. 5-14.1.d-e and 5-14.15: appeal and coach''s challenge timeouts. 5-16.1.e: a successful challenge
+        is not charged. 5-17: an excessive timeout costs an administrative technical and lasts 75 s (non-media) or 30 s (media).'
+      opened: '2026-10-19'
     notes:
     - Type set from NCAA Rule 5-14.4 via the repo vocab and schema enum; Benz poster cited only for the media vs called distinction (it does not mention 30/60/75 s).
     - '2026-10-19 depth pass: Not confirmed this session: the rule reference was not reopened and the Benz PDF could not be read. The taxonomy is plausible but unverified.'
+    - '2026-10-19 resolution (internal): No outside formula exists for this composite classification (type plus context plus inferred purpose), so it is our own definition. I reopened the rules book this
+      session. Each enum type maps to a rule: team_30/60/75 (5-14.4, 5-14.8 to .10), media (5-13.2, 5-14.10), injury_charged (5-14.12), appeal_charged (5-14.1.d, 5-14.15), challenge (5-14.1.e, 5-16.1.e),
+      excessive (5-17), and official stoppage for replay or injury (5-14.2). Lengths are 30, 60 and 75 s. Two edge cases the implementation must respect: (1) an injury or appeal timeout that becomes a media
+      timeout is not charged (5-14.12.b, 5-14.1 final paragraph), so a row with became_media=true must not count as a charged team stoppage; (2)'
     provenance:
       merged_inputs:
       - '163: Timeout Game Period (regular vs last 5 min) (coaching_decisions.jsonl:38)'
@@ -87775,10 +87987,11 @@ categories:
     value_range: category; seconds
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L3
     depth_possible: L2 with NCAA rulebook Rule 5 opened
     l4_recipe: none (CBBD PBP timeout playType rows give counts but no published type split)
     edge_cases: Called timeouts absorbed into media timeouts.
+    verified_before_resolution: 'false'
   - id: M-SIT-039
     name: After-timeout (ATO) efficiency
     category: situational
@@ -90798,7 +91011,9 @@ categories:
     aliases:
     - EPV state space
     definition: 'Discrete possession state: ballcarrier x one of seven court regions x defended flag, or transition states (shot, pass, turnover, rebound in progress) or end states.'
-    formula: C_t = C(Z_t) in C_poss u C_trans u C_end; C_poss = {player} x {region 1..7} x {defended}.
+    formula: C_t = C(Z_t) in C = C_poss u C_trans u C_end. C_poss = {ballcarrier ID} x {region ID in 1..7 (disjoint court regions)} x {1[defended]}, where defended = some defender within 5 ft (1.524 m)
+      of the ballcarrier at t. C_trans = {shot attempt from c in C_poss, pass to c' in C_poss from c in C_poss, turnover in progress, rebound in progress}. C_end = {made 2pt (value 2), made 3pt (value 3),
+      end of possession (value 0)}. A pass's target state c' is the receiver's region and defended flag when the pass starts. Fouls, violations and stoppages are not modelled.
     inputs:
     - state_frame.ball_handler_player_id
     - state_frame.ball_x_m
@@ -90818,7 +91033,7 @@ categories:
     - R-SR-12
     - R-SY-03
     why: State space for EPV and possession value (impact).
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: 'Cervone et al.: POINTWISE / EPV (arXiv 1408.0777)'
       url: https://arxiv.org/pdf/1408.0777
@@ -90826,19 +91041,37 @@ categories:
       url: https://arxiv.org/abs/1408.0777
       supports: 'Abstract: possession as a multiresolution stochastic process (state details not on abstract page)'
       opened: '2026-10-19'
+    - title: Cervone, D'Amour, Bornn, Goldsberry, A multiresolution stochastic process model for predicting basketball possession outcomes (arXiv 1408.0777v3), full PDF
+      url: https://arxiv.org/pdf/1408.0777
+      supports: 'Sec 2.2 ''A Coarsened Process'' and Figure 3: C_end with point values 2, 3, 0; C_poss = {player ID} x {region ID} x {1[defended]}, seven disjoint court regions, defended means a defender
+        within 5 feet; C_trans list; excluded events. Sec 3.3: pass target state taken at pass start (''seven court regions and two defensive spacings'').'
+      opened: '2026-10-19'
     notes:
     - Cross-ref impact (EPV).
     - '2026-10-19 depth pass: The state definition (7 regions x defended) was not confirmed this session.'
+    - '2026-10-19 resolution (fix): The full text confirms the structure of the current formula: ballcarrier x 7 regions x defended, plus transition and end states. The formula left out the operational
+      defended threshold (5 ft = 1.524 m), the end-state point values, and the pass-target rule, all of which an implementation needs, so they are added. The region boundaries appear only as a diagram in
+      Figure 3, not as coordinates, so our 7-region partition remains our own approximation of that figure.'
     provenance:
       merged_inputs:
       - '27: Coarsened possession state (academic.jsonl:12)'
     value_range: category
     range_basis: verifier 19 Oct (depth pass)
     verified_before_depth_pass: 'true'
-    verification_depth: L0
+    verification_depth: L3
     depth_possible: L1 with the full EPV paper
     l4_recipe: none (tracking)
     edge_cases: n/a
+    verified_before_resolution: 'false'
+    formula_before_2026_10_19: C_t = C(Z_t) in C_poss u C_trans u C_end; C_poss = {player} x {region 1..7} x {defended}.
+    formula_change:
+      date: '2026-10-19'
+      approved_by: 'Aldemir (19 Oct: ''find sources, fix or retire each one'')'
+      fix_id: U14
+      reason: 'The full text confirms the structure of the current formula: ballcarrier x 7 regions x defended, plus transition and end states. The formula left out the operational defended threshold (5
+        ft = 1.524 m), the end-state point values, and the pass-target rule, all of which an implementation needs, so they are added. The region boundaries appear only as a diagram in Figure 3, not as coordinates,
+        so our 7-region partition remains our own approximation of that figure.'
+      found_in: resolution of the 14 unconfirmed stats
   - id: M-SIT-090
     name: 'Situational exposure: possessions played and share by situation'
     category: situational
@@ -97307,10 +97540,19 @@ categories:
     related_requirements:
     - R-CX-28
     why: Fact-register and storyline numbers (R-CX-28) for pre-game cards.
-    verified: 'false'
+    verified: internal
     sources:
     - name: 'Local export header only: archive-3/Coach Results.csv (COACH ID, COACH, PAKE, PASE, GAMES, W, L, WIN%, R64..CHAMP, F4%, CHAMP%)'
       url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/Coach%20Results.csv
+    - title: 'Local Kaggle-derived export: archive-3/Coach Results.csv (read in full, 332 coach rows)'
+      url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/Coach%20Results.csv
+      supports: 'Header COACH ID, COACH, PAKE, PAKE RANK, PASE, PASE RANK, GAMES, W, L, WIN%, R64..CHAMP, TOP2, F4%, CHAMP%. Example rows: Tom Izzo R64 16, F4 4, CHAMP 0, F4% 88.60%, CHAMP% 35.50%. Mark
+        Few F4 2, F4% 97.60%.'
+      opened: '2026-10-19'
+    - title: 'Local export: archive-3/Seed Results.csv and Team Results.csv (same column family)'
+      url: local:~/Desktop/UnicornProjects/NCAA2026_mArchMadness/archive-3/Seed%20Results.csv
+      supports: 'Seed 6: 68 appearances, 0 titles, CHAMP% 31.20%. Seed 2: 1 title, CHAMP% 97.70%. Team Results Houston: 0 titles, CHAMP% 59.80%.'
+      opened: '2026-10-19'
     notes:
     - Only the local CSV header was read (no published definition page opened); formulas are the obvious ones implied by the column names. A coach career record needs every tournament game at every school;
       games/coaches do not yet hold that and coach_id is unverified, so the metric is external (CoachResults.csv cross-check) until coverage is confirmed.
@@ -97318,11 +97560,15 @@ categories:
       CHAMP = 0 with CHAMP% 35.50%. Mark Few has 2 F4s and 97.6%. These columns look like model-based probabilities, not observed rates.'
     - '2026-10-19 unit fix: the local Coach Results file''s percentage columns do not match its own counts (Izzo F4 4 of 16 = 25% vs 88.6% in the file)'
     - 2026-10-19 formula replaced (F01, approved by Aldemir); old formula kept in formula_before_2026_10_19
+    - '2026-10-19 resolution (internal): No published definition exists. Searches for the Kaggle dataset (nishaanamin ''March Madness Data'') found no data dictionary, and the Baselight mirror is shut down.
+      Local checks on all 332 rows: GAMES = W + L, WIN% = W/GAMES (to 3 dp), and W = R32+S16+E8+F4+F2+CHAMP all hold, so R64 is appearances in the round of 64 and First Four losses count only in L/GAMES.
+      F4% and CHAMP% are not observed rates. 214 coaches with F4 = 0 have F4% > 0, and seeds with 0 titles have CHAMP% up to 31.2%. They behave like a model''s probability of at least one F4 or title across
+      the appearances. A seed-only version (per-seed title rate backed out of Seed Results, combined as 1 - prod(1 - q_seed) over Tournament Mat'
     provenance:
       merged_inputs:
       - '35: Coach Tournament Record and Round Reach Rates'
     verified_before_2026_10_19: 'false'
-    verification_depth: L5
+    verification_depth: L4
     depth_possible: L5 reached for WIN%. F4% and CHAMP% need the source's definition.
     value_range: WIN% 0-1; source F4%, CHAMP% 0-100
     range_basis: verifier 19 Oct
@@ -97338,6 +97584,7 @@ categories:
       reason: 'Checked against the local Coach Results.csv: WIN% = W/GAMES holds on all 332 rows. But Izzo has F4 = 4 over R64 = 16 appearances (25%) while the file shows F4% 88.60%, and CHAMP = 0 with
         CHAMP% 35.50%. Mark Few has 2 F4s and 97.6%. These columns look like model-based probabilities, not observed rates.'
       found_in: 450-formula pass
+    verified_before_resolution: 'false'
   - id: M-COACH-086
     name: Wins over win-probability expectation by game segment (in-game coaching proxy)
     category: coaching
@@ -98780,7 +99027,7 @@ categories:
     related_requirements:
     - R-MK-30
     why: Shows whether a book loads margin on favourites or underdogs (favourite-longshot pricing).
-    verified: 'false'
+    verified: 'true'
     sources:
     - name: 'R package implied: introduction vignette (Lyngstad)'
       url: https://cran.r-project.org/web/packages/implied/vignettes/introduction.html
@@ -98788,11 +99035,24 @@ categories:
       url: https://cran.r-project.org/web/packages/implied/vignettes/introduction.html
       supports: Margin = sum(1/odds) - 1; wpo method returns specific_margins 0.03057, 0.02683, 0.01396 for odds 4.20/3.70/1.95; basic 0.2332/0.2647/0.5022.
       opened: '2026-10-19'
+    - title: implied R package source, R/implied_probabilities.R (GitHub opisthokonta/implied, master)
+      url: https://raw.githubusercontent.com/opisthokonta/implied/master/R/implied_probabilities.R
+      supports: 'Lines 159-162: inverted_odds = 1/odds and margin = sum(inverted_odds) - target_probability. Lines 263-267 (method ''wpo''): fair_odds = (n*odds)/(n - margin*odds), probabilities = 1/fair_odds,
+        specific_margins = (margin*fair_odds)/n. Line 66 doc: ''specific_margins (method = ''wpo''): Matrix of the margins applied to each outcome.'''
+      opened: '2026-10-19'
+    - title: 'implied: introduction vignette (CRAN)'
+      url: https://cran.r-project.org/web/packages/implied/vignettes/introduction.html
+      supports: 'wpo example: res2$probabilities row 1 = 0.2310332 0.2632083 0.5057585, and res2$specific_margins row 1 = 0.03056706 0.02683049 0.01396320 for odds 4.20/3.70/1.95'
+      opened: '2026-10-19'
     notes:
     - The implied vignette discusses margin allocation for wpo but does not name a specific_margin formula; the identity m_i = r_i - p_i is our definition.
     - '2026-10-19 verification: Reproduced the vignette: booksum 1.021186 and wpo p = 0.2310/0.2632/0.5058. The package''s specific_margins equal r_i/p_i - 1 (0.03057, 0.02683, 0.01396 exactly), not r_i
       - p_i. Our absolute form gives 0.00706 for every outcome (= M/n under wpo). The identity sum(r_i - p_i) = booksum - 1 holds but is not the published quantity.'
     - 2026-10-19 formula replaced (F11, approved by Aldemir); old formula kept in formula_before_2026_10_19
+    - '2026-10-19 resolution (confirm): The package defines specific_margin_i = M * fair_odds_i / n = M/(n p_i). Under wpo, p_i = r_i - M/n, so this equals (r_i - p_i)/p_i = r_i/p_i - 1, which is the registry
+      formula. I reproduced the result: M = 0.021186, p = 0.231033/0.263208/0.505759, and r_i/p_i - 1 = 0.0305671/0.0268305/0.0139632, matching the vignette to all printed digits. The identity sum p_i m_i
+      = sum r_i - 1 holds. Notes: the package returns specific_margins only for wpo, so applying r_i/p_i - 1 to other de-vig methods is our generalisation. The quantity is a dimensionless relative margin
+      (ratio), not a probability, so the unit label should be ''ratio''.'
     provenance:
       merged_inputs:
       - '137: specific_margin'
@@ -98811,6 +99071,7 @@ categories:
       reason: 'Reproduced the vignette: booksum 1.021186 and wpo p = 0.2310/0.2632/0.5058. The package''s specific_margins equal r_i/p_i - 1 (0.03057, 0.02683, 0.01396 exactly), not r_i - p_i. Our absolute
         form gives 0.00706 for every outcome (= M/n under wpo). The identity sum(r_i - p_i) = booksum - 1 holds but is not the published quantity.'
       found_in: 450-formula pass
+    verified_before_resolution: 'false'
   - id: M-MKT-013
     name: Fair probability, multiplicative (basic normalisation)
     category: market
@@ -108878,3 +109139,8 @@ registry_change_log:
   date: '2026-10-19'
   by: Mac session (msu-colab)
   change: 35 formula fixes F01-F35 approved by Aldemir and applied; old formulas kept in formula_before_2026_10_19. docs/stats/formula_fixes_proposed_2026-10-19.md
+- version: 0.7.0
+  date: '2026-10-19'
+  by: Mac session (msu-colab)
+  change: 'Resolved the 14 unconfirmed stats (3 research agents + skeptic). {''confirm'': 5, ''formula fixed'': 7, ''fix'': 7, ''internal'': 2}. None retired; Brick Index found (ESPN NBA) and kept as partial,
+    reverse-engineered.'
