@@ -79,7 +79,7 @@ Market accuracy of the median CBBD closing spread on MSU games (computed, no pub
 | Wrong or unverified unit text (BPI per 70, seconds with no seconds term, plays vs half-court possessions, unknown EvanMiya unit, currency) | 7 | M-TRAT-014, M-PASS-037, M-PLAY-039 |
 | Formula scale bug (Min% entered as percent gives ~220 points per game) | 1 | M-IMP-056 PRPG |
 
-Old values are kept in  and ; every fix has  and a dated note. km is now registered as an allowed unit for travel and geography distances above 1 km; court and movement distances stay in metres.
+Old values are kept in `unit_before_2026_10_19` and `value_range_before_unit_fix`; every fix has `unit_fix_2026_10_19` and a dated note. km is now registered as an allowed unit for travel and geography distances above 1 km; court and movement distances stay in metres.
 
 ## Registry depth now
 
