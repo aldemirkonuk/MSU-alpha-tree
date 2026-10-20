@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "specgen" / "named_spots"))
 from check import entry_checks, partition_checks  # noqa: E402
-from spotlib import load  # noqa: E402
+from spotlib import court_region, load  # noqa: E402
 
 DOC, SPOTS = load()
 
@@ -41,9 +41,26 @@ def test_edge_rules():
     assert lab(0.0, 12.71) == "backcourt"
     assert lab(7.62, 5.0) == "out_of_bounds"  # boundary lines are out
     assert lab(-5.3, 5.3) == "wing_three_left"
-    assert region[0].labels(float("nan"), 1.0) == ["unknown"]
+    assert court_region(SPOTS, float("nan"), 1.0) == ["unknown"]
+    assert sum(len(s.labels(float("nan"), 1.0)) for s in SPOTS.values()) == 0
 
 
 def test_missing_context_is_none_not_false():
     rel = next(s for s in SPOTS.values() if s.ctx and s.code)
     assert rel.inside(1.0, 5.0) is None
+
+
+def test_doc_shows_every_entry_in_full():
+    """docs/data/named_spots.md: no entry missing, no text shortened, tables well formed (doc_no_truncation)."""
+    from gen_doc import build, check  # noqa: E402
+
+    md, entries = build()
+    assert check(md, entries, entries) == []
+
+
+def test_court_picture_matches_court_region():
+    """docs/data/named_spots_court.svg: random points in every shaded cell get that cell's label."""
+    from gen_svg import region_polygons, verify  # noqa: E402
+
+    consts = {k: v for k, v in DOC["constants"].items() if isinstance(v, (int, float))}
+    assert verify(region_polygons(consts), SPOTS, n=60) == []

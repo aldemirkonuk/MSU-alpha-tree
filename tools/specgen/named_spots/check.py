@@ -29,7 +29,7 @@ def entry_checks(doc, spots):
             x, y = p[0], p[1]
             z = p[2] if len(p) > 2 else (0.0 if "z" in s.names else None)
             side = "right" if (s.side != "mirrored" or x >= 0) else "left"
-            if s.inside(x, y, z, side=side) != want:
+            if s.inside(x, y, z, side=side, **({"table_side_x_sign": 1} if s.side == "table_side" else {})) != want:
                 bad[kind].append((e["id"], p))
 
         a = e.get("anchor") or {}

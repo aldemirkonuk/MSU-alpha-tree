@@ -17,6 +17,17 @@ C = dict(RIM_Y_FROM_END=1.6002, END_Y=-1.6002, BOARD_Y=-0.381, LANE_X=1.8288, FT
          HALF_Y=12.700, SIDE_X=7.62, FAR_END_Y=27.051, LINE_W=0.0508)
 
 
+MAX_ABS_M = 100.0
+
+
+def _fin(v):
+    return v is not None and isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _ok(v):
+    return _fin(v) and abs(v) <= MAX_ABS_M
+
+
 def is_three(x, y):
     if y <= C["BREAK_Y"]:
         return abs(x) > C["CORNER_X"]
@@ -49,7 +60,7 @@ BASE = dict(abs=abs, min=min, max=max, hypot=math.hypot, atan2=math.atan2, degre
 def env(x, y, z=None, **ctx):
     z = 0.0 if z is None else z
     t = math.degrees(math.atan2(y, x)) if (x or y) else 90.0
-    e = dict(BASE, x=x, y=y, z=z, ax=abs(x), r=math.hypot(x, y), t=t, m=fold(t))
+    e = dict(BASE, x=x, y=y, z=z, ax=abs(x), r=math.hypot(x, y), t=t, m=(math.degrees(math.atan2(y, abs(x))) if (x or y) else 90.0))
     bx = ctx.get("bx")
     if bx is not None:
         e["ball_side"] = 0 if abs(bx) < 0.9 else (1 if bx > 0 else -1)
@@ -98,15 +109,18 @@ class Spot:
     def inside(self, x, y, z=None, side="right", **ctx):
         if self.code is None:
             return None
-        if x is None or y is None or x != x or y != y:
-            return None  # missing position: label unknown, never out of bounds
-        if "z" in self.names and z is None:
+        if not _ok(x) or not _ok(y):
+            return None  # missing or non-finite position: label unknown, never out of bounds
+        if "z" in self.names and not _ok(z):
             return None  # height needed but not measured: label absent (reason no_height)
         need = {"bx", "by"} if "ball_side" in self.ctx else set()
-        if any(ctx.get(k) is None for k in (self.ctx - {"ball_side", "table_side_x_sign"}) | need):
+        if any(not _fin(ctx.get(k)) for k in (self.ctx - {"ball_side", "table_side_x_sign"}) | need):
             return None  # missing context: label absent (reason no_context)
         if self.side == "table_side":
-            x = x * ctx.get("table_side_x_sign", 1)
+            s_ = ctx.get("table_side_x_sign")
+            if s_ not in (1, -1):
+                return None
+            x = x * s_
         if self.side == "mirrored" and (x < 0 if side == "right" else x >= 0):
             return False
         if self.side == "mirrored" and side == "left":
@@ -117,8 +131,8 @@ class Spot:
     def labels(self, x, y, z=None, **ctx):
         """Return the side-qualified ids this point falls in."""
         out = []
-        if x is None or y is None or x != x or y != y:
-            return ["unknown"]
+        if not _ok(x) or not _ok(y):
+            return []
         if self.side == "mirrored":
             for s in ("right", "left"):
                 if self.inside(x, y, z, side=s, **ctx):
@@ -126,6 +140,13 @@ class Spot:
         elif self.inside(x, y, z, **ctx):
             out.append(self.id)
         return out
+
+
+def court_region(spots, x, y):
+    """The canonical region label(s) of a point, or ["unknown"] when the position is missing."""
+    if not _ok(x) or not _ok(y):
+        return ["unknown"]
+    return [l for s in spots.values() if s.d["layer"] == "zone_scheme:court_region" for l in s.labels(x, y)]
 
 
 def load(path=CONFIG):
