@@ -25,3 +25,4 @@
 | 2026-10-20T01:00Z | runner | stats-l4-units | done | L4 on CBBD; 30 unit fixes; registry 0.3.0 |
 | 2026-10-20T01:21Z | runner | stats-l4-round2 | done | Torvik/KenPom/PBP checks; registry 0.3.1 |
 | 2026-10-20T02:09Z | runner | stats-depth-pass | done | 1,115 labelled; registry 0.4.0 |
+| 2026-10-20T02:21Z | runner | stats-l4-round4-units | done | registry 0.5.0 |

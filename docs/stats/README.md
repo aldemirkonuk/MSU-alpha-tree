@@ -182,3 +182,4 @@ Other counts: 9818 input references (9153 resolve to a proposed schema column, 3
 - L4 reproduction on CBBD data for MSU 2025-26 and the 30 unit fixes: [l4_reproduction_2026-10-19.md](l4_reproduction_2026-10-19.md). Registry version 0.3.0; 42 metrics now at L4, 10 at L5.
 - L4 round 2 (play-by-play, situational, KenPom and Torvik): [l4_round2_2026-10-19.md](l4_round2_2026-10-19.md). Registry 0.3.1; 46 metrics at L4, 12 at L5.
 - Depth pass on the 1,115 previously confirmed stats and play-by-play counts reproduced against the box: [depth_pass_2026-10-19.md](depth_pass_2026-10-19.md). Registry 0.4.0: every stat has a depth label (L4 119, L5 16); verified true 397, partial 637, internal 480, reference_only 63, false 14.
+- L4 round 4 (the 80 recipe metrics) and the 108 unit and range fixes: [l4_round4_units_2026-10-19.md](l4_round4_units_2026-10-19.md). Registry 0.5.0: L4 137, L5 34.
