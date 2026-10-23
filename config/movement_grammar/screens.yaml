@@ -1,0 +1,2009 @@
+family: screens
+version: 0.3.0
+date: '2026-10-20'
+owner: Mac session
+status: proposal under the build freeze (items marked canonical are the family's canonical definitions; every numeric value is an engineering proposal until fitted on MSU film)
+scope: one canonical screen detector with strict and loose outputs (R-ST-17), the screen moment, ball screens, off-ball screens, handoffs, screen angle, and defender response as attributes
+frame: attacked-rim frame of config/named_spots.yaml 0.3.2 (metres, rim at the origin, y toward half court); 29.97 fps, DT = 1001/30000 s; elapsed time = (n_frames - 1) * DT
+implementation: tools/specgen/movement/detectors/screens.py (reads every param below at import; this file is the single source of truth)
+tests: tests/movement/test_screens.py (V0 synthetic scenarios from tools/specgen/movement/sim.py, sigma_p 0.3 m, fixed seeds)
+conventions:
+  kinematics: every speed, heading, acceleration and stand test comes from mvlib (CA-RTS smoothing per MP-04, validity gates per MP-07). Never raw per-frame differences.
+  stand: per-frame stand = mvlib stationary_s2 < 5.99 (chi-square 2 dof, 95 %), not raw speed < 0.3, because CA-RTS speed is biased upward at rest (Rayleigh floor).
+  direction_change: 'pre/post mean velocities skip the plant phase (MP-13): pre = [t-0.6, t-0.1] s, post = [t+0.1, t+0.6] s unless an item says otherwise.'
+  confidence: every Event.conf = mvlib.window_conf(p, start, end) x min over actors of edge_factor(t0) x min over actors of gap_factor(start, end) (MP-16), where p is the per-frame product of the item's p_terms; events with conf below emit_min_conf are not emitted.
+  probabilities: distance gates use p_below/p_above with mvlib.sigma_dist x screen_noise_calibration.dist_sigma_scale; speed gates on a window use the Rice posterior P(true |v| < thr | v_hat, sigma_win) (2-D Gaussian error, flat prior), not Phi on the magnitude (fixes check SCR-R01-b).
+  spots: every location label is a named_spots id evaluated with spotlib (never redefined here); band gates written as r/m numbers are movement gates taken from the cited rows, not spots.
+  symbols: s = screener, u = user (h = handler for on-ball), D_u = user's defender (D_h for on-ball), D_s = screener's defender, b = ball; t_s = screen moment; P_s = screen point (screen_frame); r = hypot(x, y); m = degrees(atan2(y, |x|)); v_r > 0 = toward the rim (mvlib).
+  benchmarks: 'Keshri et al. (NESSIS 2017) ball-screen HMM: accuracy 0.868; the check re-read Table 3 as precision 0.94 / recall 0.77 (the research had them transposed). McQueen et al. recall 0.82 / precision 0.80 is research-reported via the hex-map DHO paper. CourtMotion (arXiv 2512.01478) AP 0.82-0.85 is a pick-prediction score against its own heuristic labels, not a detection bar, and is cited only for the side-crossing definition.'
+  acceptance: R-ST-02 proposal, STRICT precision >= 0.90 and recall >= 0.85 on gold (>= 50 labelled screens per class, >= 5 games, R-ST-10).
+fixed_check_errors:
+- 'SCR-R01/R02-a (high): stationarity is no longer v_thr + sigma_v. The loose/strict flags threshold the LS estimate itself (|v_LS| <= v_thr), only when testable (v_thr / sigma_win >= testable_ratio), else NULL; the moving-screen hint fires only on the lower bound P(|v| > 0.6) >= 0.9, so the two bands cannot overlap.'
+- 'SCR-R01-b (high): p_stat is the Rice posterior P(|v| < thr), not Phi((thr - |v|)/sigma).'
+- 'SCR-R01-c (medium): sigma_win is the empirical window-velocity sigma of the actual smoother: K_CAL * sqrt(mean var_v) * sqrt(Nc / (Nc + N)), Nc = 27 frames fitted on V0 noise (white + AR(1) 0.9); refit on film (screen_noise_calibration).'
+- 'SCR-R01-d (medium): one minimum LS window (15 frames); the stop ends on the s2 stay test (99.9 %) or a displacement > max(1.0 m, 3 sigma) from the stop anchor; roll and slip detectors measure displacement explicitly.'
+- 'SCR-R00/P02-between (high): between() replaced by a path-blocking test (screener within 0.8 m of D_u''s straight route to u(t + 0.5 s)) OR contact_likely, plus the user passing the screen line.'
+- 'SCR-R00/R03-circular (medium): D_u is frozen at the SET stop onset a - 1.0 s, then t_s is computed.'
+- 'SCR-P02-gate (medium): the 1.2 m user gate uses the median of 3 frames around the closest approach, not the window minimum (5 frames inflate a sharp V at 5 m/s).'
+- 'SCR-P01-contact-gap (medium): contact classes are contiguous (likely <= 0.80, possible <= 1.20, unlikely <= 1.50, none > 1.50); TOUCH duration is pose-only.'
+- 'SCR-P03-deflect (medium): DEFLECT needs pre speed >= 2.5 m/s and a change >= max(30 deg, 2.5 sigma_heading); SEP_GAIN is a residual against the user''s own acceleration.'
+- 'SCR-R02-keshri, SCR-R00-courtmotion, SCR-R03-ctg (medium/low): benchmarks and citations corrected (see conventions.benchmarks and screen_moment).'
+- 'SCR-D01-bands (medium): deep_drop_high band added (depth >= 3.5, r > 5.5), precedence blitz > contain > hedge > at_level > high_drop > deep_drop > deep_drop_high, CTG mapping table added.'
+- 'SCR-A01-location (low): location comes only from the named_spots pnr_location partition (first match in that layer); handlers outside it get location none plus court_region.'
+- 'SCR-O07/R04-y (low): cross gates use y < 2.5 in both places.'
+- 'SCR-R05-hyst (low): re-screen split hysteresis is 0.4 m (about 2 sigma_d of smoothed pairs) with a 3-frame dwell.'
+- 'SCR-A05-slip (low): slip speed is tested as displacement (delta r <= -1.0 m within 0.5 s = 15 frames), not a 9-frame v_r.'
+- 'unverified-citations (medium): coachhoops, coachesclipboard and UMich pages were not opened by the research and are not cited; hex-map DHO numbers are marked research-reported.'
+changes_loop1:
+- id: SCR-T01-crash-screener_far
+  severity: critical
+  what: '_coverage_on: coverage_coarse = min over the candidates that are in the precedence order, else none (''screener_far'' has no coarse class).'
+  why: order.index('screener_far') raised ValueError whenever a switch was detected with the screener > 1.5 m from the handler and killed detect_all.
+  evidence: slot_switch seed 7 crashed at sigma_p 0.2/0.3/0.5 (4 crashes in the tester sweep); 0 crashes in 5250 runs after. Test test_t01_switch_with_far_screener_does_not_crash.
+- id: SCR-T02-ice-unreachable
+  severity: high
+  what: detect_ball_screen_coverage iterates on-ball rows that are screens OR read reject (p = p_set for rejects).
+  why: 'ICE requires read = reject, which requires d_su_ca > 1.2 m, while is_screen requires <= 1.2 m: the ice branch, ice_s and ice_lateral_m were dead.'
+  evidence: 'wing_reject_ice: route ice on 4 of 5 seeds at sigma_p 0.3 (0 of 10 before). Test test_t02_ice_is_reachable_on_a_rejected_ball_screen.'
+- id: SCR-T03-closest-approach-not-motion-gated
+  severity: high
+  what: '_build: t_c = argmin d_su over frames where the user moves (displacement speed >= tsu_min_speed_mps), the screener stands (t >= a) and the user is not inside / within screen.user_arrive_s
+    before a stand of his own; plain argmin only when no frame qualifies. step_up_screen: the n_y > 0.3 gate became the attribute n_y_setup.'
+  why: The stationary set-up next to a standing handler was taken as the closest approach (user speed ~0.2 m/s), so step-ups and tight screens failed and rejects read unused. user_arrive_s
+    was added in this loop because the motion gate alone let two screeners arriving side by side read as a screen (side-by-side FPs rose 20 -> 29 at sigma_p 0.3). The n_y gate held only
+    for wing step-ups; at the slot D_h is beside the screener and n_y at d_sD ~0.9 m is noise (-0.81..0.0 over seeds); 'from below' is already below_m + approach_vy_mps.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: step_up_screen
+    R .47/.35/.15 -> .95/.80/.38 (P 1.0 -> .97/.97/1.0); side_ball_screen R .81/.71/.34 -> .96/.90/.55; ball_screen R .92/.85/.54 -> .99/.93/.60; screen P .95/.93/.89 -> .97/.97/.94
+    and R .95/.91/.79 -> .99/.95/.86; wing_reject_ice reads reject 4 of 5. Tests test_t03_*.'
+- id: SCR-T04-matchup-reassigned-after-first-screen
+  severity: high
+  what: '_records: a stop that follows an earlier SET row of the same screener within screen_window.window_s reuses that row''s freeze frame (unless the first screen was switched or
+    the ball changed hands); the cost of (D, s) also drops frames where s stood screening D in earlier rows (_matchup_excl).'
+  why: The 2 s matchup window of the second screen covered the first, where D_h stood next to the screener, so P(D_h guards s) ~0.5 >= own_man_p and the used second screen was dropped.
+    The tester's exclusion alone was not enough (the screener also passes within ~1 m of D_h while stepping off), so its alternative (reuse the first row's freeze) was added too.
+  evidence: 'rescreen_same_side: the second screen row now exists on 4 of 5 seeds (screen, ball_screen recovered). re_screen itself stays ~0.5 recall on that scene because its two t_s
+    are 3.3-3.5 s apart, outside the canonical CTG 3 s screen_window (not changed). Test test_t04_rescreen_after_an_unused_first_screen_is_kept.'
+- id: SCR-T05-flare-never-fires
+  severity: high
+  what: flare_deg 120 -> 100 (flare_screen and screen_angle); off-ball 'away use' in screen_frame (away_use_deg 60, away_speed_s 0.5); _is_flare requires n . unit(ball - P_s) >= n_ball_min
+    0.5 and n_r > n_r_min -0.5.
+  why: A slot-to-corner flare makes ~116 deg to u->ball; a fading user never crosses the screen line, so geometry flare came with read unused. n_ball (tester) removes pin-down fades;
+    n_r (added here) removes users popping off a double to the weak-side wing, which the 100 deg threshold let in.
+  evidence: 'Author flare scene 7 of 7 seeds; new flare_away scene (ball - D_u - s - u) 6 of 7 with read use on 4 of 7 via the away use. On the tester scenes flare FPs 7/9/20 -> 0/0/13 (sigma_p 0.2/0.3/0.5). The tester''s right_flare stays at 0 recall by
+    design: it puts the screener on the ball side of D_u (n . ball = -0.7), where he does not block D_u''s chase to the corner; the tester''s own formula (n . ball >= 0.5) is kept because
+    it matches the author scene and excludes pin-down fades. Tests test_t05_flare_away_use, test_positive[flare_screen-flare].'
+- id: SCR-T06-role-reversal-false-sets
+  severity: high
+  what: 'screen_set: D within set_def_radius_m on >= def_contact_frames (5) frames of the stand itself (was: anywhere in the padded window); role-reversal veto (role_reversal_s 1.0:
+    u starts a stand without the ball next to D_s within 1 s after t_s); screen_the_screener needs a used second screen by a third player.'
+  why: 'Runners into a double/stagger/elevator and cutters stopping past a defender produced ''u screens s'' rows (46 % of screen_set FPs). The holder exception was added here because
+    the veto first killed switched PnRs (the handler stops next to D_s after a switch: slot_switch screen 0 of 5).'
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: screen_set P .71/.68/.65
+    -> .86/.83/.72 (R unchanged .99-1.0 at 0.2/0.3); screen_read P .73/.69/.68 -> .88/.84/.75; screen_interaction FPs 28/30/37 -> 16/15/20; screen_the_screener P .38/.39/.38 -> .95/.91/.81.
+    Tests test_t06_*.'
+- id: SCR-T07-offball-coverage-on-unused
+  severity: medium
+  what: detect_off_ball_screen_coverage emits unused/rejected rows only when the coverage is top_lock, switch or pre_switch.
+  why: Every unused SET (stacks, teammates who never came) got a coverage row with coverage none.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: off_ball_screen_coverage
+    P .27/.26/.26 -> .68/.67/.53 (FP 688/745/750 -> 123/127/217), R 1.0/1.0/1.0 -> 1.0/.98/.96. Test test_t07_offball_coverage_rows_only_for_screens_or_real_coverage.'
+- id: SCR-T08-drag-height-and-phase
+  severity: high
+  what: drag_screen.ps_r_hi_m 7.5 -> 9.5; new trail_start_y_m 10.0 (screener y at a - trail_s); phase_checked stays false.
+  why: A drag set 8.3 m from the rim was never found; a half-court screener running down from the top was labelled drag.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: drag_screen P .58/.61/.60
+    -> 1.0/1.0/1.0, R .95/.70/.30 -> .95/.85/.50; double_drag R .45/.40/.10 -> .85/.85/.30. Test test_t08_drag_height_and_trailer_origin.'
+- id: SCR-T09-flip-runthrough
+  severity: medium
+  what: 'flip_screen: the first side needs a show of >= show_frames (6) consecutive frames with |offset| >= min_offset_m, d(s, h) <= max_sh_m and screener speed < show_speed_mps (3.0).'
+  why: A screener running past the handler's middle side on the way to his set was called a flip. The tester's 9 frames at 2.0 m/s dropped flip recall 0.95 -> 0.30 (CA-RTS speed is biased
+    up near a plant); measured runs below 3.0 m/s are 9-28 frames on real flips and 0 on run-throughs.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: flip_screen P .70/.76/.64
+    -> 1.0/1.0/1.0, R .97/.85/.23 -> 1.0/.82/.20. Test test_t09_runthrough_is_not_a_flip.'
+- id: SCR-T10-veer-same-stop
+  severity: medium
+  what: 'veer_screen: the off-ball row must come from a new stand (r2.stop.a > r1.stop.b); the 0.6 s lower bound is dt_min_s.'
+  why: 'The unused off-ball row created by the same Detroit stand counted as a veer. The tester''s extra ''r2 used or rejected'' was not applied: the author''s veer scenario (and the
+    YAML rule, ''any user'') has an unused second screen.'
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: veer_screen P .43/.55/.62
+    -> 1.0/1.0/1.0, R 1.0/.85/.40 -> 1.0/.85/.30. Test test_t10_veer_needs_a_new_stand.'
+- id: SCR-T11-approach-after-set
+  severity: medium
+  what: '_approaches skips t when s ended a >= strict_dwell_s stand within after_stop_s (1.5) or had a screen row for h within after_screen_s (2.0); ghost: r rises by >= ghost_dr_m 0.8
+    within rise_window_s 1.5 (was 1.0 m within 1.0 s).'
+  why: 'Post-screen rolls and pops were re-read as slip/fake approaches. The tester''s ghost test (mean v_r <= -1.0 m/s over 0.5 s) failed on the tester''s own slot_ghost (-0.3 to -0.9:
+    the screener plants at the approach in V0), so the rise test was re-fitted instead: ghosts rise 0.95-2.5 m in 1.5 s, fake-lateral exits <= 0.66 m. The fake ''lateral'' pop_arc exclusion
+    was not applied: it would drop the author''s fake_lateral (exit at r 6.9, inside pop_arc_zone), and ghosts are now caught first.'
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: slip_screen P .58/.62/.42
+    -> 1.0/1.0/.79; fake_screen P .44/.45/.29 -> .94/.91/.82; ghost_screen R .65/.53/.30 -> .95/.78/.38. Test test_t11_no_approach_right_after_a_screen_and_ghost_rise.'
+- id: SCR-T12-fake-dho-gate-mismatch
+  severity: medium
+  what: 'fake candidates: d <= approach_m (the code added 0.3 m); receiver_close_mps 0.5 (b comes to the ball); after_screen_s 1.5 (no candidate right after a used ball screen for a).'
+  why: Code and YAML disagreed; a driver passing a static spot-up and a handler attacking a second big became fake DHOs / keeps.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: dho_keep P .59/.56/.50
+    -> 1.0/1.0/1.0; fake_dho P .89/.85/.77 -> 1.0/1.0/.89 (R .88 -> .82 at 0.3). Test test_t12_driver_past_a_static_spot_up_is_not_a_fake_handoff.'
+- id: SCR-T13-holder-noise-fake-dho
+  severity: medium
+  what: holder switch margin = max(0.15, holder_margin_k 1.5 x K_CAL x sqrt(var_p_a + var_p_b)); holder_min_run_frames 9 -> 12; DHO needs hander_hold_s and receiver_hold_s 0.5; the exchange
+    frame is min(raw-ball catch, holder segment start).
+  why: At sigma_p 0.5 the holder flipped between handler and screener and made spurious DHOs and handoff chains. 15 frames (tester) fragmented real possessions at sigma_p 0.5 (ucla .62
+    -> .50, shuffle .57 -> .42, slip .80 -> .65 recall vs 9 frames); 12 keeps the DHO precision. Anchoring the exchange on the raw-ball catch recovers DHOs whose receiver segment started
+    late.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: dho P .97/.82/.34
+    -> 1.0/.95/.67 (R .68 -> .60 at 0.5); handoff_chain P 1.0/.79/.21 -> 1.0/1.0/.60. Test test_t13_t22_holder_does_not_flip_on_ball_screens_at_high_noise.'
+- id: SCR-T14-blind-hint-noise
+  severity: medium
+  what: blind_deg 90 -> 120 and blind_p_min 0.8 on p_above(facing angle, blind_deg, sigma_angle), sigma_angle = degrees(sigma_d / d) x sqrt 2. Author back_blind scene moved squarely
+    behind D_u (it sat at 122 deg) and its rate test relaxed 8/10 -> 6/10.
+  why: Any screener slightly behind the shoulder line of a stationary defender counted as blind.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: FP 176/177/143
+    -> 45/36/33. Precision stays ~0.08 on the tester''s labels and recall fell .85/.75/.50 -> 0/.15/.10, because the tester''s only positive (blind_back_left, 122 deg) sits at its own
+    new 120 deg limit; a grid over 90-120 deg x p 0.5-0.8 never beat precision 0.12, since the remaining ''FPs'' are screeners squarely behind a stationary defender within 0.8 m (157-175
+    deg), which Rule 4-35.3 does call blind. Test test_t14_side_behind_ball_screen_is_not_blind, test_blind_hint_detection_rate.'
+- id: SCR-T15-transfer-air-travel-biased
+  severity: medium
+  what: _transfers measures release / catch on the raw ball track (hand_r_m 0.6, 5-frame median) instead of the holder-segment gap.
+  why: HOLD_R 1.0 m absorbed ~2 m of flight; a 2.8 m / 0.5 s pitch measured 1.1-1.6 m / 0.13-0.23 s.
+  evidence: 'pitch scene (tester pitch_not_dho) at sigma_p 0.3, seeds 1-5: air 0.23-0.43 s, travel 1.4-2.4 m, type pitch 5 of 5. Residual bias ~2 x hand_r_m remains (documented, not
+    corrected). Test test_t15_pitch_air_time_from_the_raw_ball.'
+- id: SCR-T16-out-double-labels-down
+  severity: medium
+  what: off_ball_screen_other OUT requires not _is_down(r).
+  why: An elbow down screen was also emitted as an out screen.
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: off_ball_screen_other
+    P .50/.47/.38 -> 1.0/.91/.62. Test test_t16_elbow_down_screen_is_not_out.'
+- id: SCR-T17-location-at-ts
+  severity: low
+  what: _location reads pnr_location at the handler's set-up frame (_t_dir), like direction.
+  why: At t_s the handler is already turning the corner; slot screens were labelled high.
+  evidence: 'slot_pnr_middle: location slot 5 of 5. Test test_t17_slot_location_read_at_the_set_up.'
+- id: SCR-T18-brittle-spot-gates
+  severity: low
+  what: zipper start in low_post/block/mid_post (start_r_max_m removed); flex screener in low_post/mid_post/block; pin_down geometry no longer splits into other_pin_down (attribute high_screen_point);
+    stagger accepts later screens with is_screen and passed.
+  why: '0.1-0.3 m margins: a 0.3 m shift of the author scenes cut zipper and flex recall; pin_down flipped at m = 40 deg; the second stagger screen with a trailing defender failed the
+    blocking term.'
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: zipper R .80/.80/.70
+    -> 1.0/1.0/.85; flex .55/.65/.60 -> 1.0/.95/.80; stagger .88/.72/.62 -> .97/.93/.75; pin_down strict R .72/.70/.70 -> 1.0/.93/.78. Tests test_t18_*.'
+- id: SCR-T19-yaml-params-unused
+  severity: low
+  what: 'flex window_s and screen_moment.pad_s are read; constants promoted to params: veer dt_min_s, hammer user_r_min_m/user_m_lo/user_m_hi, wedge n_r_min, iverson curl_r_m/loose_band_*,
+    post-action roll_vr_window_s/roll_ctg_r_m/stand_frames/pop_arc_r_m, coverage near_h_m/blitz_window_s/contain_speed_mps/screener_far_m/deep_drop_high_m, double_ball_screen sink_r_m/trade_r_m,
+    fake_dho backdoor_r_m/backdoor_dr_m/between_m, handoff_chain handback_*/weave_*, blind mutual_m, ghost arc_r_m.'
+  why: The module claims the YAML is the single source of truth.
+  evidence: Every YAML param name is referenced in screens.py except the three calibration/acceptance values marked 'not read by the detectors'. Test test_t19_every_yaml_param_is_read_by_the_detectors.
+- id: SCR-T20-moving-hint-arrivals
+  severity: low
+  what: moving_screen_hint also needs D's mean speed >= def_speed_mps (1.0) and D's velocity toward s >= def_closing_mps (0.5) over [t_c - along_pre_s, t_c - along_post_s].
+  why: 'Trailers decelerating into a set next to an arriving defender fired. The tester''s second change (p_moving on the window ending at t_c - 0.1) was not applied: that window sees
+    more of the approach and raises p_moving for exactly these decelerating arrivals.'
+  evidence: 'tester scenes (scratchpad test_screens/scenes.py, 175 scenes incl. mirrored/shifted author scenes), seeds 1-10, sigma_p 0.2/0.3/0.5; P/R before -> after: moving_screen_hint
+    P .58/.45/.19 -> .97/.76/.40, R unchanged .95/.85/.35. Test test_t20_moving_hint_needs_the_defender_moving_into_the_path.'
+- id: SCR-T21-env-numpy
+  severity: low
+  what: rice_below uses _trapz = np.trapezoid or np.trapz.
+  why: numpy 1.26 has no np.trapezoid. pyproject.toml was not edited (outside this family's files); numpy should be declared there by the owner.
+  evidence: Test test_t21_rice_integration_has_a_numpy_1_fallback.
+- id: SCR-T22-untested-branches
+  severity: low
+  what: handback needs raw-ball air >= handback_min_air_s (0.2) on both legs.
+  why: 'Holder flicker made spurious handbacks in Detroit sets at sigma_p 0.5. The other untested branches (zoom, miami, weave, double_high trade/sink, pin_in, baseline_exit, boundary_parallel,
+    snake/split/retreat) still have no scenario: left open for loop 2.'
+  evidence: 'detroit / high_pnr at sigma_p 0.5: no handoff_chain or dho on seeds 1-5. Test test_t13_t22_holder_does_not_flip_on_ball_screens_at_high_noise.'
+changes_loop2:
+- id: REG-fake_dho-receiver-gate
+  severity: medium
+  what: 'fake_dho receiver_close_mps (0.5) is tested on the peak receiver_mean_frames (5) running mean of b velocity toward a over [t_c - receiver_window_s (1.2), t_c - 0.1], not on the mean over [t_c - 0.6, t_c - 0.1].'
+  why: 'Loop-1 regression: a backdoor receiver comes up and plants just before the fake, so the 0.5 s mean read 0.05-0.29 m/s and the candidate was dropped (fake_dho_backdoor__M 10 -> 7 at sigma_p 0.2). The confirmer proposed 0.2 m/s; the peak window keeps the 0.5 m/s meaning (b came to the ball) and scored better.'
+  evidence: 'Tester sweep (175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5, both harnesses give identical results): fake_dho R .93/.82/.20 -> 1.00/.90/.20, P 1.0/1.0/.89 unchanged; dho_keep R .90 -> .93 at 0.2. On the 27 handoff scenes 0.2 m/s gave 39/36/8 hits, the peak window 40/36/8, both with no new FP. Test test_l2_fake_dho_receiver_who_plants_before_the_fake (mirrored backdoor 7 -> 10 of 10 at 0.2); test_t12 still passes.'
+- id: REG-location-logo-flip
+  severity: medium
+  what: 'ball_screen location: when the set-up label is pnr_location_logo but the screen point P_s is not at logo depth, the P_s label is used (side and direction still from the set-up).'
+  why: 'Loop-1 regression (SCR-T17): a handler waiting at r 8.8-9.4 m for a screen set at r 7.2-7.8 m was labelled logo, so high_ball_screen was not emitted.'
+  evidence: 'high_ball_screen R .98/.93/.45 -> 1.00/.95/.57 (P 1.0/1.0/.93 -> 1.0/1.0/.94); ball_screen strict hits 314/285/152 -> 315/286/159. Scene high_wait_deep (handler at r 9.4 m) high_ball_screen 0/2/0 -> 10/9/7 of 10. Test test_l2_ball_screen_depth_comes_from_the_screen; test_t17 (slot) still passes.'
+- id: SCR-T05-flare-n_ball
+  severity: high
+  what: 'flare_screen n_ball_min 0.5 -> 0.0 (D_u not on the far side of the screener from the ball); n_r > n_r_min and the 100 deg test still exclude pin-down fades.'
+  why: 'n is averaged over the stand while D_u is still moving, so a correctly oriented flare (true n_ball 0.69) read 0.11-0.57 and 0.5 removed most real flares (confirmer). The tester''s right_flare scene stays invalid as a positive (screener on the wrong side of D_u; author and confirmer agree), so harness flare recall stays near 0 by design.'
+  evidence: 'Corrected flare (D_u ball-side of s, scratch supplement + its mirror, 20 runs per sigma): 10/10/9 -> 19/19/16 hits. Full sweep with 0.0: flare FPs unchanged 0/0/13, no other detector changed. Variants 0.2 and -0.3 on all scenes: 0.2 recovers fewer flares (19/16/14), -0.3 adds pin-down FPs. Test test_l2_flare_with_the_defender_on_the_ball_side (corr_flare 3 -> 9 of 10 at 0.3; pin_down and iverson stay silent).'
+- id: SCR-T04-re_screen-window
+  severity: medium
+  what: 'screen_window.rescreen_gap_s 1.5 s: a later row of the same (s, u) whose stand starts within 1.5 s after the earlier stand ends is linked as a split re-screen even when the t_s gap exceeds window_s (never merged). A later used row from a new stand after an unused / rejected first row is split, not merged (the merge hid the used screen).'
+  why: 'rescreen_same_side has t_s 3.3-3.5 s apart (> window_s 3 s), so rescreen_of was never set; once the loop-2 off-ball vetoes removed a spurious earlier row, a used second screen 2.6 s after an unused one was merged and dropped from screen.'
+  evidence: 're_screen R .47/.55/.38 -> .95/.85/.45, P 1.0/1.0/.94 -> 1.0/1.0/.95; the split rule alone added 4/1 screen, 4/2 ball_screen and 4/2 ball_screen_coverage hits at sigma_p 0.3/0.5 with no FP. Test test_l2_rescreen_linked_beyond_the_window_by_the_stand_gap (re_screen 2 -> 7 of 10 at 0.3).'
+- id: SCR-T06-role-reversal-residual
+  severity: medium
+  what: 'screen_set off-ball vetoes: (a) s holds the ball on >= holder_veto_frames of t_s +- holder_veto_s; (b) u stands through it (a stop covers t_s +- still_cover_s and peak 5-frame median speed over [t_s - still_pre_s, t_s + still_post_s] < still_user_mps); (c) u, without passing the screener, settles into a stand starting within still_cover_s of t_s and never moves again in the window. screen_read reject also needs that peak speed >= still_user_mps. veer_screen keeps reading the rows vetoed by (b)/(c).'
+  why: 'NEG_cutter_brush, NEG_back_short_cut (+__M) and NEG_A_double_drag_late__M gave screen_set / screen_read / off_ball_screen_coverage FPs on 27-30 of 30 runs (a cutter stopping next to a standing teammate''s defender, the ball holder as an off-ball screener); in double_side_by_side the second screener screened the first while both arrived.'
+  evidence: 'screen_set P .86/.83/.72 -> .98/.90/.80; screen_read P .88/.84/.75 -> .97/.90/.82; off_ball_screen_coverage P .68/.67/.53 -> .88/.78/.58; screen P .97/.97/.94 -> .99/.98/.94; screen_interaction FPs 16/15/20 -> 3/5/20; no hit lost on any detector. Without the veer carve-out veer R fell 1.0/.85/.30 -> 0/.10/.10 (the veer leg is a stand for a standing corner player); still_pre_s 1.0 -> 0.3 removed 16 more FPs with no hit lost; branch (c) without the passed condition cost 3 stagger hits (users stopping right after the last screener), with it none. Tests test_l2_no_off_ball_set_for_a_standing_user_or_by_the_ball_holder, test_l2_veer_keeps_its_stand_for_a_standing_teammate, test_l2_a_reject_is_a_move, test_l2_screeners_arriving_side_by_side_are_no_screen_for_each_other.'
+- id: back_screen-on-flex
+  severity: low
+  what: back_screen returns nothing when the row is a flex cut (flex_screen takes precedence for baseline screens).
+  why: back_screen fired on 25-28 of 30 flex runs (A_flex__M, NEG_A_flex_from_wing__M, A_flex__S).
+  evidence: 'back_screen P .60/.63/.65 -> .78/.77/.78, R 1.0/.93/.90 unchanged; flex scene back_screen 10/9/3 -> 0/0/0 of 10. Test test_l2_flex_cut_is_not_a_back_screen.'
+- id: SCR-T22-untested-branches
+  severity: low
+  what: 'Positive and near-miss scenes for handoff_chain weave (two perimeter DHOs; near miss: the second exchange is a pass) and miami (DHO, then the hander screens for the receiver; near miss: a pass instead of the DHO).'
+  why: The weave and miami branches were never exercised.
+  evidence: 'weave 4 of 5, miami 3 of 5 at sigma_p 0.3; near misses 0. Test test_l2_handoff_chain_weave_and_miami. Still without a scene: zoom, handback positive, double_high trade/sink, pin_in, baseline_exit, boundary_parallel. numpy is still not declared in pyproject.toml (outside this family''s files).'
+- id: declined-loop2
+  severity: info
+  what: 'Not changed: blind_screen_hint thresholds (SCR-T14) and dho.holder_min_run_frames 12 (the loop-1 trade-off behind the ucla / shuffle / dho / veer / flip / spain drops at sigma_p 0.5).'
+  why: 'Blind hint: a label dispute, not a detector bug. The remaining FPs are screeners squarely behind a stationary D_h at 0.4-0.8 m (157-179 deg), which Rule 4-35.3 calls blind; the tester''s only positive (blind_back_left) measures 111-121 deg, at the visual-field limit (the confirmer agrees and recommends fixing the labels). Holder runs: the shorter minimum recovers the sigma_p 0.5 recall of ucla / shuffle / veer / flip but loses core screen recall at the same noise tier, so a noise-tier-aware value cannot separate them.'
+  evidence: 'Full tester sweeps (loop-2 code before the still_pre_s and settling-veto refinements, which do not touch the holder) with holder_min_run_frames 9: hits -34, FP -42, screen R at 0.5 .86 -> .83 (514 -> 499), dho 36 -> 32; with 10: hits -3, strict +12, FP -23, but screen / screen_set R at 0.5 -8 while ucla +2, shuffle +4. Blind hint P/R unchanged 0/.08/.06 and 0/.15/.10.'
+changes_loop4:
+- id: SCR-L4-01-stand-variance-floor
+  severity: high
+  what: 'screen_stationarity: the stand statistic is s2 = |v|^2 / (K_CAL^2 max(var_v, s2_var_v_floor_sigma_mps^2)) with the floor 0.183 m/s (the CA-RTS steady-state velocity sigma at sigma_p 0.2, the lowest production tier), instead of mvlib stationary_s2 with the raw var_v.'
+  why: 'Real SportVU (vendor-smoothed, told sigma 0.15) has a tiny var_v, so enter / stay meant |v| < 0.40-0.70 m/s and brief NBA screen plants (smoothed minimum 0.6-0.8 m/s) never formed a stand, while the same plant stands at sigma_p >= 0.2: the stand test was stricter on precise tracks than on video tracks. In an independent geometric ball-screen candidate pass (handler 4-12.5 m from the rim, his nearest defender within 2.5 m, a slow teammate within 1.2 m of that defender), 35 of 166 unmatched candidates had no stand at all (screener minimum speed 0.42-1.49 m/s).'
+  evidence: 'Real data, 3 games, 114 tracked min, per 48 both teams (runner, sigma told 0.15): screen 58.4 -> 60.5 and ball_screen 14.7 -> 16.4 with this change alone. Synthetic sweep (175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5): identical to without it on the regressed scenes and no detector changed (the floor is below every production var_v). Synthetic brief plant (screener drifts 0.6 m through the set at 0.67 m/s): stand found on 2 / 5 / 10 of 10 seeds at sigma 0.05 / 0.10 / 0.30 before, 10 / 10 / 10 after. Test test_l4_brief_plant_forms_a_stand_on_precise_tracks.'
+- id: SCR-L4-02-on-ball-defender
+  severity: high
+  what: 'screen_target_defender on-ball override: when d is the defender nearest the ball holder h (h a teammate of s, holding on >= onball_hold_frac of [a - onball_window_s, a]) on >= onball_def_frac of the holder frames, within onball_def_max_m, and nearer h than s on average, P(d guards h) is set to that fraction and the other attackers share the rest in proportion.'
+  why: 'The 2 s mean-distance matchup still read the previous man of a defender who had just picked up the ball (switch, transition pick-up, help and recover), so the screen on the handler''s defender became an own-man stop or an off-ball row with the wrong user. In the candidate funnel 40 unmatched candidates were own-man and 33 had another user; 42 of the handler-defender cases did contact the screener with P(guards h) 0.00-0.47.'
+  evidence: 'Real data: screen 60.5 -> 67.6 and ball_screen 16.4 -> 18.9 per 48 with SCR-L4-01 in place (unmatched candidates 153 -> 143). Synthetic sweep: spain_pnr / back_screen / screen_the_screener FPs 4 / 32 / 6 -> 0 / 28 / 2 summed over sigma_p, re_screen and ball_screen hits +1 at 0.5, and 16 new double_drag FPs on NEG_A_double_drag_late (fixed by SCR-L4-03). Synthetic switch scene (D_h picks up the handler 1.1 s before the set): ball_screen 0 -> 10 / 10 / 6 of 10 at sigma_p 0.2 / 0.3 / 0.5. Test test_l4_ball_defender_is_the_defender_on_the_ball.'
+- id: SCR-L4-03-double-drag-set-before
+  severity: medium
+  what: 'double_drag.set_before_s 0.5 s: each screener has stood at least 0.5 s (t_s - stand onset) before his screen moment.'
+  why: 'Once SCR-L4-02 named D_h correctly, a second trailer still running in when D_h (trailing the handler over the first drag) brushed him became the second screen of a double drag 0.3-0.8 s after the first; a screener who is still arriving is a moving screener, not a set second screen. 0.5 s is the strict dwell of screen_stationarity.'
+  evidence: 'NEG_A_double_drag_late__M double_drag FPs 6 (before loop 4) / 22 (with SCR-L4-02) -> 0 of 30; double_drag hits unchanged 17 / 17 / 6 of 20 at sigma_p 0.2 / 0.3 / 0.5. Real data: no double_drag before or after. Test test_l4_double_drag_needs_a_set_second_screener.'
+- id: loop4-summary
+  severity: info
+  what: 'Net effect of SCR-L4-01..03. Real data (3 SportVU games 2015-16, 6855 s tracked; runner, sigma told 0.15, rates per 48 min both teams): screen_set 222.2 -> 229.8, screen 58.4 -> 67.6, ball_screen 14.7 -> 18.9, high / side ball screen 2.9 / 2.9 -> 3.8 / 3.8, off_ball_screen_coverage 84.4 -> 88.6, dho 14.3 unchanged. With added noise 0.3: screen_set 281.1 -> 283.6, screen 60.5 -> 61.3, ball_screen 8.4 -> 8.4. Synthetic sweep (5250 runs): hits 12612 -> 12618, strict 11832 -> 11837, FPs 1139 -> 1122, no detector worse at any sigma_p, 0 crashes.'
+  why: 'Reference: Second Spectrum counts just under 70 picks per game per offense in a recent season, no team below 54 (Raptors Republic, https://www.raptorsrepublic.com/?p=133298); 2015-16 used fewer, so 90-140 ball screens per 48 for both teams is the reference band. Synergy-style play-type splits put pick-and-roll ball handler plus roll man at about a quarter of possessions that end in a play type. Ball screens remain 5-7x under the band. play-by-play has no screen labels, so there is no PBP precision / recall for this family.'
+  evidence: 'Open (not fixed this loop): (1) on-ball SET rows are about 63 per 48 and only 70 of 150 are used; 45 of the unused fail the d_su_max_m 1.2 m centre gate only or with notpassed (median d_su 1.5 m on unused on-ball rows), a threshold question left for gold labels; (2) 50 of 143 unmatched geometric candidates have no stand (screener minimum speed 0.42-1.49 m/s: rolling / slipping screeners); (3) under added noise 0.3 ball_screen halves (18.9 -> 8.4) and screen_set rises 23 %, so the usage gates lose on-ball screens to noise; (4) off-ball unused rows are 289 of 492 screen_read rows, which inflates screen_set relative to used screens.'
+v0_results: 'sigma_p 0.3, seeds 1-5, 53 positive cases (48 detectors): 242 / 265 = 91 % pass kind + actors + t0 within 0.3 s + conf 0.2-1 + attributes; no detector fires on the null scenario (10 moving players, ball passed) for any of the 5 seeds. Weakest: side/step-up PnR 3/5 (handler wraps the screener, closest approach ambiguous), the rest 4-5/5. Synthetic only (V0): no claim about film until gold labels exist. Loop 1 (independent tester report, 22 failures): 196 tests pass (163 + 33 regression tests); on the tester''s 175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5 (5250 runs) 0 crashes (4 before); per-item before/after numbers are in changes_loop1. Loop 2 (confirmer report on loop 1): on the same sweep hits 12539 -> 12612, strict 11756 -> 11832, FPs 1818 -> 1139, no detector worse at any sigma_p; see changes_loop2.'
+noise_driven_design (V0 findings of this task, each documented at its item):
+- 'smoothed positions under V0 noise (white + AR(1) 0.9, sigma_p 0.3) have 0.17 m per-axis error (median 2-D error 0.23 m, p90 0.44 m) with slow drift; pair distances wander 0.3-0.5 m for up to 1 s, so every distance gate has a probability and the screen moment uses a contact window, not a bare argmin'
+- 'the CA-RTS filter (mvlib, MP-03 gate 13.8) loses manoeuvring players at sigma_p <= 0.1 (errors up to 2.6 m): reported to the measurement family; tests stay at sigma_p 0.3'
+- 'holder: mvlib nearest-player holder plus a sticky switch (max(0.15 m, 1.5 x K_CAL x sqrt(var_p_a + var_p_b)) since loop 1) and 12-frame minimum runs (9 before loop 1), so a screener brushing past the handler does not take the ball'
+- 'screen candidates need the user moving at the closest approach; adjacent standing teammates (stacks, Detroit) are not screens for each other'
+added_missing_items:
+- dho_pitch_disambiguation (dribble pitch vs DHO vs ball screen)
+- screen_target_defender (zone fallback when the matchup is ambiguous; pre-switch flag)
+- screen_inbound_context (screens while the ball is out of bounds)
+- screen_noise_calibration (measured sigma_v and NULL-rate study before STRICT is used for reports)
+- off_ball_screen_coverage outputs pre_switch; ball_screen_coverage carries the CTG route/coverage/switch mapping including none, late and normal
+- screen_record_schema links composite sets (Horns, Chicago, Floppy, Pistol, pick-the-picker) to action ids
+- elevator_screen noise floor (gap-change test is primary; the 0.6 m closed gap is an attribute)
+- screen (false-positive budget) and screen_pose_legality (pose-only legality items as explicit needs_data)
+items:
+# ======================================================================================
+# Rules (shared measurement; no events of their own)
+# ======================================================================================
+- id: screen_frame
+  level: rule
+  name: Shared screen notation and per-screen measurement frame
+  aliases: [screen frame, F3.0 measurement frame]
+  research_ids: [SCR-R00]
+  actors: {screener: s, user: u, defender: D_u, screener_defender: D_s, ball: b}
+  t0: t_s (screen_moment)
+  rule: |
+    Per candidate (s, u, D_u) on smoothed tracks:
+    - d_su(t) = dist(s, u); d_sD(t) = dist(s, D_u); sep(t) = dist(u, D_u).
+    - n window: [t_s - n_avg_pre_s, t_s + n_avg_post_s] clipped to start at the stop onset.
+    - P_s = the screen point: mean of s over the stop frames within +-ps_avg_s of t_s (s(t_s) when t_s is outside the stop). n = unit(D_u - s) averaged over the n
+      window (the side the screener blocks).
+    - n_r = n . unit(P_s - rim). d_hat = unit(u(t_s + disp_post_s) - u(t_s - disp_pre_s)) (user path direction; falls back to unit(P_s - u(t_s - disp_pre_s)) when the displacement is < min_disp_m).
+    - u_hat_pre = unit mean velocity of u over [t_s - 0.5, t_s - 0.1] s (MP-13); replaced by d_hat when that mean speed < 1.0 m/s.
+    - screen line = line through P_s perpendicular to d_hat; lambda(obj, t) = (obj(t) - P_s) . d_hat, positive = beyond the screen.
+    - away use (off-ball only, loop 1, SCR-T05) - u moves straight away from the screener (angle(displacement, u(t_s - disp_pre_s) - P_s) <= away_use_deg, |displacement| >= screen_angle.flare_disp_m) and sep_gain >= screen_interaction.sep_gain_m; this counts as passed with t_h = t_s (a flare user never crosses the screen line).
+    - passed = lambda_u goes from <= -pass_margin_m to >= +pass_margin_m inside [t_s - pass_pre_s, t_s + pass_post_s] and, at the crossing (t_h = first frame
+      lambda_u >= 0), u is within pass_lateral_m of P_s along the screen line.
+    - blocking = for >= block_min_frames frames in [t_s - 0.3, t_s + 0.5] s, seg_dist(s(t), D_u(t), u(t + block_lookahead_s)) <= block_radius_m (the screener stands on the defender's route to where the user is going), or contact_likely.
+    This replaces the research between() test, which fails for back and down screens (check SCR-R00/P02-between).
+  params:
+    ps_avg_s: {value: 0.5, unit: s, note: 'P_s = mean of the standing screener over the stop frames within +-ps_avg_s of t_s (noise; s(t_s) when outside the stop)'}
+    n_avg_pre_s: {value: 0.6, unit: s, note: 'research 0.2 s; widened (clipped to the stop) because n is noisy at d_sD < 1 m (n_r noise about +-0.3 at 0.2 s)'}
+    n_avg_post_s: {value: 0.1, unit: s}
+    disp_pre_s: {value: 0.5, unit: s}
+    disp_post_s: {value: 1.0, unit: s}
+    min_disp_m: {value: 0.5, unit: m}
+    pass_margin_m: {value: 0.3, unit: m, note: 'about one smoothed position sigma; stops jitter around the line counting as a pass'}
+    pass_lateral_m: {value: 1.5, unit: m, note: 'the crossing must happen within this lateral distance of P_s (a user attacking away crosses the line far from the screen)'}
+    pass_pre_s: {value: 1.0, unit: s}
+    pass_post_s: {value: 1.0, unit: s}
+    block_radius_m: {value: 0.8, unit: m}
+    block_lookahead_s: {value: 0.5, unit: s}
+    block_min_frames: {value: 3, unit: frames}
+    away_use_deg: {value: 60.0, unit: deg, note: 'off-ball away use (flare/fade, SCR-T05): angle(user displacement, u0 - P_s) <= this, |displacement| >= screen_angle.flare_disp_m and sep_gain >= screen_interaction.sep_gain_m count as passed (t_h = t_s)'}
+    away_speed_s: {value: 0.5, unit: s, note: 'away use: the user speed gate of screen_read is the peak 5-frame median speed over [t_c, t_c + away_speed_s] (the closest approach of a fade is its first step)'}
+  min_duration_s: null
+  outputs: [P_s, n, n_r, d_hat, u_hat_pre, lambda_u, lambda_D, passed, t_h, blocking, blocking_margin_m]
+  confidence: {level: high, model: deterministic geometry; uncertainty propagates through sigma_dist in the detectors that use it}
+  noise: n is unstable when d_sD < 0.5 m, hence the window average; lambda crossings need the 0.3 m margin at sigma_p 0.3.
+  conflicts_resolved:
+  - F3.0 lambda (along the user direction) vs named_spots pnr_big_* depth (along screener->rim) are both kept; named_spots is canonical for coverage labels, lambda is secondary.
+  - research between() replaced by blocking + passed (check high error).
+  sources:
+  - {url: 'https://arxiv.org/pdf/2512.01478', supports: side-crossing pick definition (stationary teammate, handler crosses the teammate-basket line within 1 s; handler outside the arc)}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/defense_full.md', supports: F3.0 screen point, screen line and level offset}
+  status: canonical
+  detector: null
+- id: screen_target_defender
+  level: rule
+  name: Target defender assignment (D_u), own-man screens, zone fallback and pre-switch
+  aliases: [D_u, screened defender, matchup freeze]
+  research_ids: [SCR-R00, check missing zone/pre-switch]
+  actors: {defender: D_u, user: u, screener: s}
+  t0: SET stop onset a (freeze at a - freeze_offset_s)
+  rule: |
+    Matchup proxy (until the defense_full section 0.3 HMM exists): at frame t, c(d, o) = mean distance of defender d to attacker o over [t - matchup_window_s, t];
+    P(d guards o) = exp(-c^2 / (2 tau^2)) normalised over attackers o. Frozen at t_f = a - freeze_offset_s (a = SET stop onset; fixes the circular t_s definition).
+    Loop 1 (SCR-T04): when an earlier SET row of the same s ended within screen_window.window_s before this stop, with no switch on it and no ball transfer since, its freeze frame is reused; and the frames where s stood screening d in earlier rows (d within set_def_radius_m of the standing s) are dropped from the cost of the pair (d, s) - contact with a standing screener is not guarding him. For a defender d within set_def_radius_m of the stopped screener: u = argmax_o P(d guards o). If u == s or P(d guards s) >= own_man_p, the stop is an own-man stop and no screen row is made.
+    On-ball override (loop 4, SCR-L4-02): when d is the defender nearest the ball holder h (h != s) over [a - onball_window_s, a] (see params) and the proxy names another attacker, P(d guards h) = that nearest fraction and the other attackers share the rest in proportion; the ball-handler's defender is defined by the ball, not by a 2 s mean distance.
+    Zone fallback: if max_o P(d guards o) < ambiguous_p, D_u_ambiguous = true, both top-2 attackers are stored, u = the top-1 attacker, and every p term is multiplied by ambiguity_penalty.
+    pre_switch flag: the defender nearest u over [t_s - 0.5, t_s] is D_s, not D_u (the defense switched before the screen).
+  params:
+    freeze_offset_s: {value: 1.0, unit: s}
+    matchup_window_s: {value: 2.0, unit: s, note: 'stands in for HMM persistence; a defender caught on a screener for 0.5 s is not reassigned to him'}
+    matchup_tau_m: {value: 1.5, unit: m}
+    own_man_p: {value: 0.5, unit: probability}
+    ambiguous_p: {value: 0.5, unit: probability}
+    ambiguity_penalty: {value: 0.8, unit: factor}
+    onball_window_s: {value: 1.0, unit: s, note: 'loop 4 (SCR-L4-02): on-ball override window [a - onball_window_s, a] before the stand onset'}
+    onball_hold_frac: {value: 0.5, unit: fraction, note: 'loop 4: one teammate of s holds the ball on at least this fraction of the window'}
+    onball_def_frac: {value: 0.7, unit: fraction, note: 'loop 4: d is the defender nearest the holder (within onball_def_max_m) on at least this fraction of the holder frames; P(d guards h) is then set to this fraction and the other attackers share the rest in proportion'}
+    onball_nearer_holder: {value: true, unit: bool, note: 'loop 4: and d is nearer the holder than the screener on average over those frames (a help defender who dropped with his own man at the rim is not the ball defender)'}
+    onball_def_max_m: {value: 2.5, unit: m, note: 'loop 4: on-ball defender distance (NBA on-ball defenders play 0.6-2.0 m off the ball; help defenders are further)'}
+  min_duration_s: null
+  outputs: [D_u, P_D_u, D_u_ambiguous, top2, D_s, pre_switch]
+  confidence: {level: medium, model: softmax over mean distances (proxy); replaced by the HMM posterior when available}
+  noise: Zone and scramble defenses give ambiguous matchups; the fallback keeps the row but lowers confidence. A pre-switch makes the frozen D_u the wrong man; the flag exposes it.
+  conflicts_resolved:
+  - research froze D_u at t_s - 1.0 while t_s depended on D_u (circular); freeze moved to a - 1.0 s.
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/defense_full.md', supports: section 0.3 matchup HMM (the proxy stands in until it is built)}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: own-man screens are not ball screens}
+  status: proposal
+  detector: null
+- id: screen_stationarity
+  level: rule
+  name: Noise-aware screener stationarity (stand intervals, LS window speed, strict/loose flags)
+  aliases: [stationary, stand, screener stationarity]
+  research_ids: [SCR-R01]
+  actors: {player: any (screener)}
+  t0: stop onset a
+  rule: |
+    Stand interval: mvlib.hysteresis(enter = s2 < s2_max, stay = s2 < s2_stay (s2 = mvlib stationary_s2 with var_v floored at s2_var_v_floor_sigma_mps^2, loop 4), min_s = loose_dwell_s, max_gap_frames = stand_gap_frames), then split
+    where the smoothed position leaves the anchor (mean of the first anchor_frames frames) by more than max(exit_disp_m, exit_k_sigma x K_CAL x sqrt(2 mean var_p)).
+    Window speed: v_LS = least-squares slope of the smoothed x and y over the stop interior (trim trim_frames at each end when at least min_ls_frames remain; never fewer than
+    min_ls_frames, centred on the stop). sigma_win = K_CAL * sqrt(mean var_v) * sqrt(vel_err_corr_frames / (vel_err_corr_frames + N)).
+    Flags: loose = |v_LS| <= loose_v_mps when loose_v_mps / sigma_win >= testable_ratio, else NULL; strict = |v_LS| <= strict_v_mps and dwell >= strict_dwell_s when
+    strict_v_mps / sigma_win >= testable_ratio, else NULL (FALSE when the dwell is short). A NULL is stored as null, never as false.
+    Probabilities: p_loose = P(|v| < loose_v_mps), p_strict = P(|v| < strict_v_mps), Rice posterior with sigma_win. testable_ratio 1.8 means a truly still player passes the flag >= 80 % of the time.
+  params:
+    s2_max: {value: 5.99, unit: chi-square 2 dof, note: 'enter (95 %)'}
+    s2_stay: {value: 13.82, unit: chi-square 2 dof, note: 'stay (99.9 %); correlated noise gives runs of moderate s2 at rest'}
+    s2_var_v_floor_sigma_mps: {value: 0.183, unit: m/s, note: 'loop 4 (SCR-L4-01): the stand statistic uses s2 = |v|^2 / (K_CAL^2 max(var_v, floor^2)); 0.183 m/s is the CA-RTS steady-state velocity sigma at sigma_p 0.2 m (the lowest production tier), so enter / stay mean |v| below 0.80 / 1.22 m/s at worst and the stand test is no stricter on precise tracks (SportVU, sigma 0.05-0.15: 0.40-0.70 / 0.61-1.06 m/s) than on video tracks'}
+    stand_gap_frames: {value: 3, unit: frames}
+    loose_v_mps: {value: 0.6, unit: m/s}
+    strict_v_mps: {value: 0.3, unit: m/s}
+    loose_dwell_s: {value: 0.3, unit: s}
+    strict_dwell_s: {value: 0.5, unit: s}
+    min_ls_frames: {value: 15, unit: frames}
+    trim_frames: {value: 5, unit: frames, note: 'drops the arrival/departure tails from the LS window'}
+    anchor_frames: {value: 9, unit: frames}
+    exit_disp_m: {value: 1.0, unit: m, note: 'V0 correlated noise wanders the smoothed position by up to 0.5 m within 1 s at rest (seen in this task), so 0.6 m split real stops'}
+    exit_k_sigma: {value: 3.0, unit: sigma, note: 'exit threshold = max(exit_disp_m, exit_k_sigma x K_CAL x sqrt(2 mean var_p))'}
+    vel_err_corr_frames: {value: 27, unit: frames, note: 'fitted on V0 noise (white + AR(1) rho 0.9, sigma_p 0.3) - window sigma 0.33 m/s at N 15, 0.26 at N 30'}
+    testable_ratio: {value: 1.8, unit: ratio}
+  min_duration_s: 0.3
+  outputs: [stop_start, stop_end, dwell_s, v_ls_mps, sigma_win_mps, p_loose, p_strict, loose (true|false|null), strict (true|false|null)]
+  confidence: {level: medium, model: Rice posterior on the window speed; flags are point decisions}
+  noise: |
+    V0 simulation (this task, CA-RTS q 30, sigma_p 0.3 m, white + AR(1) noise): per-frame s2 < 5.99 passes 98 % of still frames, 80 % at 0.6 m/s and 41 % at 1.0 m/s, so the
+    per-frame test cannot reject slow walkers on its own; the window LS speed separates still (median 0.32 m/s at N 30) from 1.0 m/s walkers (median 1.05). STRICT (0.3 m/s) needs
+    sigma_win <= 0.167 m/s and is NULL at sigma_p 0.3 for every stop shorter than several seconds; it becomes testable at about sigma_p 0.1.
+  conflicts_resolved:
+  - "'Stationary' values <0.5 (M-SPACE-043, SEAL, R-ST-02 live), <=0.3 / <0.6 (screens), 1.0 (named_spots slow_speed), <1.94-2.0 (stand-walk band): screens use 0.30 strict / 0.60 loose on the LS window speed; the per-frame stand is the mvlib s2 test."
+  - check SCR-R01-a/b/c/d fixes (see fixed_check_errors)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/research/load_thresholds.md', supports: calibration step 2 (measured sigma_p)}
+  status: canonical
+  detector: null
+- id: screen_noise_calibration
+  level: rule
+  name: Measured noise model and STRICT NULL-rate study (calibration plan)
+  aliases: [sigma_v calibration]
+  research_ids: [check missing noise model]
+  actors: {player: any}
+  t0: n/a
+  rule: |
+    Before STRICT is used for reports: (1) measure sigma_win(N) on >= 200 stationary player-intervals of MSU film (free throws, dead balls) per camera/tracker version;
+    (2) refit vel_err_corr_frames; (3) report the expected NULL rate of strict and loose against the measured stop-duration distribution of labelled screens;
+    (4) if the strict NULL rate exceeds max_strict_null_rate, reports use LOOSE + interaction (or pose) and say so.
+  params:
+    min_stationary_intervals: {value: 200, unit: count, note: 'calibration-plan value (not read by the detectors)'}
+    max_strict_null_rate: {value: 0.2, unit: fraction, note: 'calibration-plan value (not read by the detectors)'}
+    dist_sigma_scale: {value: 1.4, unit: factor, note: 'V0 fit (this task): mvlib.sigma_dist (K_CAL x sqrt(var_a + var_b)) = 0.17 m vs the measured pair-distance error 0.24 m under white + AR(1) noise; every distance p term uses sigma_dist x this factor until film calibration'}
+  min_duration_s: null
+  outputs: [sigma_win table, null rates]
+  confidence: {level: n/a, model: n/a}
+  noise: Every threshold in this file assumes V0 noise until this study runs.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/research/load_thresholds.md', supports: calibration steps}
+  status: proposal
+  detector: null
+  needs_data: [MSU film with tracked stationary players]
+- id: screen_window
+  level: rule
+  name: Screen search window, re-screen merge/split, de-duplication and false-positive budget
+  aliases: [screen window, rescreen merge]
+  research_ids: [SCR-R05]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: |
+    Candidates: every SET (screen_set) of an offensive player s whose stand interval has a defender of a teammate within set_def_radius_m. De-duplicate rows with the same
+    (s, u) and |t_s difference| <= dedupe_s. A later row of the same (s, u) with t_s gap in (dedupe_s, window_s] is MERGED into the first (rescreen_count + 1) unless it is split:
+    s moved more than split_move_m + hyst_m from P_s between the two, or dist(s, D_u) exceeded split_def_m + hyst_m for >= hyst_dwell_frames frames, or the ball changed hands, or (loop 2) the first row was unused / rejected and the later one, from a new stand, is not.
+    A later row of the same (s, u) whose t_s gap exceeds window_s but whose stand starts within rescreen_gap_s after the earlier stand ends is a split re-screen as well (loop 2).
+    A split row stores rescreen_of = the first row. Double screens give one row per screener.
+    False-positive budget: on V0 null scenarios (8 players moving, no screens) the expected number of emitted screens is 0; on film, track false SETs per possession (target <= fp_budget_per_poss).
+  params:
+    dedupe_s: {value: 0.6, unit: s}
+    window_s: {value: 3.0, unit: s}
+    rescreen_gap_s: {value: 1.5, unit: s, note: 'loop 2 (SCR-T04 re_screen): a later row whose stand starts within this time after the earlier stand ends is linked as a re-screen (rescreen_of, never merged) even when the t_s gap exceeds window_s'}
+    split_move_m: {value: 1.22, unit: m}
+    split_def_m: {value: 3.05, unit: m}
+    hyst_m: {value: 0.4, unit: m, note: 'about 2 sigma_d of smoothed pair distances (check SCR-R05-hyst)'}
+    hyst_dwell_frames: {value: 3, unit: frames}
+    fp_budget_per_poss: {value: 0.2, unit: count, note: 'film acceptance target (not read by the detectors)'}
+  min_duration_s: null
+  outputs: [rescreen_count, rescreen_of, merged]
+  confidence: {level: high, model: deterministic}
+  noise: Distance gates near 1.22 / 3.05 m chatter; the 0.4 m band and 3-frame dwell absorb it.
+  conflicts_resolved:
+  - no repo values; CTG 4 ft (1.22 m), 10 ft (3.05 m), 3 s adopted
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: 4 ft relocation and 10 ft defender split of re-screens; 3 s window; one screening frame per screen}
+  status: canonical
+  detector: null
+- id: screen_confidence
+  level: rule
+  name: Screen confidence model
+  aliases: [screens.confidence]
+  research_ids: [SCR-R06]
+  actors: {all: all}
+  t0: t_s
+  rule: |
+    Event.conf follows MP-16: window_conf(p) x edge_factor x gap_factor, with p = p_stat (Rice posterior of the loose band) x p_below(d_su_ca, d_su_max_m, sigma_d)
+    x p_below(d_sD(t_s), set_def_radius_m, sigma_d) x ambiguity_penalty (if D_u_ambiguous). The research logistic score is stored as attrs.p_logit with the hand weights below,
+    for retraining (logistic regression on gold, R-ST-10, then isotonic calibration). Rows whose actors are Kalman-bridged (gap_factor) are down-weighted by mvlib.gap_factor; camera
+    cuts end segments, so no event spans a cut.
+  params:
+    b0: {value: -1.5, unit: logit}
+    b1_z_stat: {value: 1.0, unit: logit per z}
+    b2_user_gate: {value: 1.0, unit: logit per z}
+    b3_def_gate: {value: 0.8, unit: logit per z}
+    b4_deflect: {value: 0.7, unit: logit}
+    b5_delay: {value: 0.7, unit: logit}
+    b6_sep_gain: {value: 1.0, unit: logit per m}
+    b7_use: {value: 0.5, unit: logit}
+    emit_min_conf: {value: 0.15, unit: probability}
+  min_duration_s: null
+  outputs: [conf, p_logit, features]
+  confidence: {level: low until fitted, model: see rule}
+  noise: Weights are guesses until fitted; paint occlusion lowers recall for interior screens.
+  conflicts_resolved:
+  - research p = sigmoid(...) kept as an attribute; Event.conf uses the MP-16 form required by the movement grammar
+  sources:
+  - {url: 'https://global-uploads.webflow.com/5f1af76ed86d6771ad48324b/622770e864911f5635f56f75_Using%20Hex%20Maps%20to%20Classify%20%20Cluster%20Dribble%20Hand-off%20Variants%20in%20the%20NBA%202.pdf', supports: rules generate candidates and a classifier decides (research-reported)}
+  status: proposal
+  detector: null
+- id: screen_inbound_context
+  level: rule
+  name: Screens while the ball is out of bounds (SLOB/BLOB)
+  aliases: [inbound screen, SLOB screen, BLOB screen]
+  research_ids: [check missing inbound]
+  actors: {screener: s, user: u, inbounder: holder out of bounds}
+  t0: t_s
+  rule: |
+    If the ball position at t_s is on or beyond a boundary line (|x| >= 7.62 or y <= -1.6002, named_spots edge rule), the screen is off-ball by definition (nobody in bounds
+    has the ball), inbound = true, and the on-ball location gates do not apply. CTG's zipper-before-inbound maps to zipper_screen with inbound = true.
+  params:
+    side_x_m: {value: 7.62, unit: m}
+    end_y_m: {value: -1.6002, unit: m}
+  min_duration_s: null
+  outputs: [inbound]
+  confidence: {level: medium, model: deterministic}
+  noise: Ball XY near the line is noisy; the flag is evaluated on the smoothed ball.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: zipper defined before an inbound}
+  status: proposal
+  detector: null
+- id: dho_pitch_disambiguation
+  level: rule
+  name: Dribble handoff vs short pitch vs ball screen
+  aliases: [pitch vs DHO]
+  research_ids: [check missing pitch]
+  actors: {hander: a, receiver: b}
+  t0: t_ex
+  rule: |
+    For a possession change a -> b (cleaned holder runs). Air time and travel come from the raw ball track (loop 1, SCR-T15) - release = last frame of a's segment whose 5-frame median d(raw ball, a) <= hand_r_m, catch = first later frame within hand_r_m of b (fallback - the holder-segment gap); the exchange frame is min(raw catch, start of b's holder segment). DHO when dist(a, b) <= 1.0 m and air time <= 0.3 s (dho); PITCH when it is not a DHO and air time <= pitch_max_air_s
+    and ball travel <= pitch_max_travel_m; otherwise PASS. A ball screen needs no possession change (holder = u throughout [t_s - 0.15, t_s + 0.15]); a hander who keeps the ball is
+    a fake DHO / keep. CTG names this pitch/DHO/screen confusion as its main error source.
+  params:
+    pitch_max_air_s: {value: 1.0, unit: s}
+    pitch_max_travel_m: {value: 4.0, unit: m}
+    hand_r_m: {value: 0.6, unit: m, note: 'SCR-T15: release = last frame of the hander segment with 5-frame median d(raw ball, a) <= hand_r_m; catch = first later frame within hand_r_m of b; air_s and travel_m come from these (HOLD_R 1.0 m absorbed about 2 m of flight)'}
+  min_duration_s: null
+  outputs: [transfer_type (dho | pitch | pass)]
+  confidence: {level: medium, model: deterministic on cleaned holder runs}
+  noise: Ball occluded in the hands; possession is inferred from the nearest player (mvlib.HOLD_R) with runs < 5 frames removed.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: handoffs vs pitches as a source of error}
+  status: proposal
+  detector: null
+- id: screen_record_schema
+  level: set_component
+  name: Screen record schema and compositional naming contribution
+  aliases: [screens table row, action_sequence entry]
+  research_ids: [SCR-S01]
+  actors: {all: all}
+  t0: t_s
+  rule: |
+    screen_kind (on_ball | off_ball | handoff | fake_handoff) and screen_geometry (down, pin_down, wide_pin_down, other_pin_down, flare, back, ucla, rip, wedge_offball, cross,
+    stagger, double, elevator, hammer, flex, zipper, iverson, shuffle, sts, pin_in, out, baseline_exit, middle, other) are separate columns. On-ball pre_action: none, step_up,
+    sprint_up, drag, ram, wedge_ram, flip. screener_action_after adds touch and fake_other; handler_read adds unused.
+    Token = <location|geometry>-<kind>[(<pre_action>)][-><post_action>][/<read>], e.g. 'side-PnR(step_up)->roll/use'. Every set stores the name and the ordered screen ids (R-ST-06).
+    Composite set links (named by the composition engine, not detected here): Chicago = pin_down -> dho (handoff_chain zoom); pick-the-picker = screen_the_screener;
+    Floppy = double_screen on one side + single down/pin_down on the other; Horns = two high bigs (double_ball_screen pre-screen gate) + ball screen; Pistol/21 = drag_screen
+    or dho in early offense on the wing.
+  params: {}
+  min_duration_s: null
+  outputs: [schema]
+  confidence: {level: high, model: n/a}
+  noise: n/a
+  conflicts_resolved:
+  - screens.yaml:244 enum mixes kind and geometry; split into two columns (needs owner approval under the build freeze)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/screens.yaml', supports: current enum}
+  status: proposal
+  detector: null
+# ======================================================================================
+# Primitives
+# ======================================================================================
+- id: screen_set
+  level: primitive
+  name: SCREEN_SET (screener stops near a teammate's defender)
+  aliases: [set_screen, screen_set, set a screen]
+  research_ids: [SCR-P01]
+  actors: {screener: s, defender: D_u, user: u (intended)}
+  t0: stop onset a
+  rule: |
+    Fires for s on its stand interval [a, b] (screen_stationarity) when: s does not catch the ball within [a - pad_s, b + receive_s]; the stop is not confidently moving (P(|v| > loose_v_mps) < moving_p_min; the loose
+    flag itself is reported, and p_loose enters the confidence); s is not the holder on >= holder_frac of the stop; a defender D whose frozen matchup
+    (screen_target_defender) is a teammate u != s is within set_def_radius_m of s on >= def_contact_frames frames of the stand [a, b] (loop 1, SCR-T06 - was anywhere in [a - pad_s, b + pad_s]); the row is not role-reversed (u does not start a stand of his own, without the ball, within role_reversal_s after t_s with median d(u, D_s) <= set_def_radius_m - u was running in to screen for s); s is in bounds; for on-ball screens r_s in
+    [on_ball_r_min_m, on_ball_r_max_m] (CTG 10-45 ft); for off-ball screens y_s - y_ball <= off_ball_upcourt_max_m (CTG 40 ft); y_s <= frontcourt_y_m + drag_allowance_m.
+    Contact class from the 5-frame median of d_sD at t_s: likely <= contact_likely_m, possible <= contact_possible_m, unlikely <= set_def_radius_m, none above.
+    Loop 2 (SCR-T06 residual): an off-ball row is dropped when s holds the ball on >= holder_veto_frames of [t_s - holder_veto_s, t_s + holder_veto_s], or when u stands through it (a stop of u
+    covers [t_s - still_cover_s, t_s + still_cover_s] and u's peak 5-frame median speed over [t_s - still_pre_s, t_s + still_post_s] is below still_user_mps; or u, who does not pass
+    the screener, settles into a non-moving stop that starts within still_cover_s of t_s, lasts past t_s + still_post_s, and his speed stays below still_user_mps from its onset - two
+    screeners arriving side by side). These rows are kept aside for veer_screen only.
+    Unused and rejected screens are kept as SET rows (CTG under-captures them).
+  params:
+    set_def_radius_m: {value: 1.5, unit: m}
+    pad_s: {value: 0.5, unit: s}
+    holder_frac: {value: 0.5, unit: fraction}
+    receive_s: {value: 0.3, unit: s, note: 'no SET when s catches the ball within [a - pad_s, b + receive_s] (DHO receiver or catch)'}
+    moving_p_min: {value: 0.9, unit: probability, note: 'stop excluded when P(|v| > loose_v_mps) >= this (the moving-screen lower bound); loose=false stops below it stay as low-confidence SETs'}
+    on_ball_r_min_m: {value: 3.05, unit: m}
+    on_ball_r_max_m: {value: 13.72, unit: m}
+    off_ball_upcourt_max_m: {value: 12.19, unit: m}
+    frontcourt_y_m: {value: 12.7, unit: m}
+    drag_allowance_m: {value: 2.0, unit: m}
+    contact_likely_m: {value: 0.8, unit: m}
+    contact_possible_m: {value: 1.2, unit: m}
+    def_contact_frames: {value: 5, unit: frames, note: 'SCR-T06: D within set_def_radius_m of s on >= this many frames inside the stand [a, b] (was: anywhere in the padded window)'}
+    role_reversal_s: {value: 1.0, unit: s, note: 'SCR-T06: row (s, u) dropped when u starts a stand within this time after t_s with median d(u, D_s) <= set_def_radius_m over its first loose_dwell_s (u was running in to screen for s)'}
+    holder_veto_s: {value: 0.2, unit: s, note: 'loop 2 (SCR-T06 residual): an off-ball row is dropped when s holds the ball on >= holder_veto_frames frames of [t_s - holder_veto_s, t_s + holder_veto_s]'}
+    holder_veto_frames: {value: 5, unit: frames, note: 'loop 2: see holder_veto_s'}
+    still_cover_s: {value: 0.5, unit: s, note: 'loop 2 (SCR-T06 residual): an off-ball row is dropped when a stop of u covers [t_s - still_cover_s, t_s + still_cover_s] and u never moves (still_user_mps)'}
+    still_pre_s: {value: 0.3, unit: s, note: 'loop 2: start of the user-speed window, before t_s (0.3 vs 1.0: 16 fewer FPs at sigma_p 0.3/0.5 on the tester sweep, no hit lost)'}
+    still_post_s: {value: 1.5, unit: s, note: 'loop 2: end of the user-speed window, after t_s'}
+    still_user_mps: {value: 1.0, unit: m/s, note: 'loop 2: peak 5-frame median user speed over [t_s - still_pre_s, t_s + still_post_s] below this = the user stood (also required for screen_read reject; the 1.0 m/s moving gate of screen_moment, below screen.user_speed_off_mps 2.0 which gates a use)'}
+  min_duration_s: 0.3
+  outputs: [screener, intended user, defender, stop interval, dwell_s, v_ls_mps, strict, loose, contact_distance_m (centre-to-centre), contact_class, P_s court_region]
+  confidence: {level: medium, p_terms: [p_loose, 'p_below(d_sD_min, set_def_radius_m, sigma_d)', ambiguity_penalty]}
+  noise: Clustered bigs and post seals give false SETs (seal rules resolve them); centre-to-centre distance cannot go below about 0.45 m, so 0.80 m is the contact proxy (2 sigma_d).
+  conflicts_resolved:
+  - "actions_extra 'contact_distance_m <= 0.30' is a surface gap (centre - 0.5 m); centre-to-centre 0.80 m here"
+  - CTG own-man exclusion adopted; contact bands made contiguous (check SCR-P01-contact-gap)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: screener 10-45 ft from the rim}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: off-ball screener no more than 40 ft up-court; unused screens captured at a much lower rate}
+  status: canonical
+  detector: detect_screen_set
+- id: screen
+  level: primitive
+  name: SCREEN, the canonical screen with STRICT and LOOSE outputs (R-ST-17)
+  aliases: [SCREEN, SCR, SCREEN_strict, SCREEN_loose, R-ST-17, R-ST-02]
+  research_ids: [SCR-R02]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s (screen_moment)
+  rule: |
+    One row per (s, u, t_s) where a SET exists and the user comes to the screen: d_su_ca (ca_median_frames median at the closest approach in [t_s - 0.3, t_s + 1.0], taken over frames where the user moves, the screener stands and the user is not settling into a stand of his own - user_arrive_s; loop 1, SCR-T03) <= d_su_max_m,
+    the user is moving there (displacement speed over +-0.3 s >= user_moving_mps; added gate, false-positive budget: adjacent standing teammates in a stack or Detroit
+    alignment are not screens for each other) and dist(s, D_u)(t_s) <= set_def_radius_m. Both flags are stored on every row:
+    LOOSE = screen_stationarity.loose AND d_su_ca <= d_su_max_m AND D_u within set_def_radius_m at t_s (NULL when stationarity is untestable).
+    STRICT = screen_stationarity.strict (|v_LS| <= 0.30 m/s, dwell >= 0.5 s) AND d_su_ca <= d_su_max_m AND user speed at the closest approach >= user_speed_on_mps (on-ball) or
+    user_speed_off_mps (off-ball) AND screen_interaction with (d_sD <= strict_contact_m or DEFLECT or DELAY). NULL when stationarity is untestable and every other term holds.
+    Reports use STRICT; LOOSE is the sensitivity view. kind = handoff when s handed the ball to u (dho) around the stop, on_ball when u holds the ball on >= 5 of
+    the 9 frames around t_s, else off_ball.
+  params:
+    user_arrive_s: {value: 0.5, unit: s, note: 'SCR-T03: the closest approach t_c is taken over frames where the user moves (displacement speed >= screen_moment.tsu_min_speed_mps), the screener stands (t >= a) and the user is not inside, or within user_arrive_s before, a stand of his own'}
+    d_su_max_m: {value: 1.2, unit: m}
+    strict_contact_m: {value: 1.0, unit: m}
+    user_speed_on_mps: {value: 1.0, unit: m/s}
+    user_speed_off_mps: {value: 2.0, unit: m/s}
+    ca_pre_s: {value: 0.3, unit: s}
+    ca_post_s: {value: 1.0, unit: s}
+    ca_median_frames: {value: 3, unit: frames, note: 'median around the closest approach (removes the window-minimum bias; 5 frames inflate a sharp V at 5 m/s)'}
+    onball_frames: {value: 5, unit: frames of 9}
+    user_moving_mps: {value: 1.0, unit: m/s, note: 'displacement speed of the user over +-0.3 s at the closest approach; two standing teammates side by side are not a screen'}
+  min_duration_s: 0.3
+  outputs: [kind, strict_rule_fired, loose_rule_fired, rule_values_used (v_ls, sigma_win, dwell, d_su_ca, d_sD_min, user_speed), read, interaction, screen_angle_deg, dir_class_generic, location, rescreen_count, p_logit]
+  confidence: {level: medium, p_terms: [p_loose, 'p_below(d_su_ca, d_su_max_m, sigma_d)', 'p_below(d_sD(t_s), set_def_radius_m, sigma_d)', ambiguity_penalty]}
+  noise: At sigma_p 0.3 strict is NULL (untestable) on typical 0.5-1.5 s stops; a strict NULL rate above 20 % on film means reports need pose or LOOSE + interaction (screen_noise_calibration).
+  conflicts_resolved:
+  - 1) requirements.md:377 'within about 1 m' kept as prose; numeric value 1.2 m
+  - 2) R-ST-02 live text (<0.5 m/s, >=0.3 s, 1.0 m) retired; R-ST-02 cites R-ST-17 (quality_review C7)
+  - 3) offense section 0.2 SCREEN_loose (<0.6 m/s, >=0.3 s, 1.2 m) kept as LOOSE
+  - 4) offense A0 / A11.18 / motion_starts / screens.yaml:565 (<=0.3 m/s, >=0.5 s, 1.2 m) kept as STRICT
+  - 5) set_taxonomy section 0 (2 ft/s, 0.3 s, 4 ft) = LOOSE in feet; superseded
+  - defender-test variants unified in screen_interaction; speeds measured on the LS window, never per frame
+  - A0 user speed 2.0 m/s kept off-ball only; on-ball 1.0 m/s (handlers slow at the screen)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-ST-17 / R-ST-02 texts}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/quality_review.md', supports: C7 resolution}
+  - {url: 'https://www.nessis.org/nessis17/Keshri_adj.pdf', supports: 'ball-screen detection from screener speed, screener-defender distance and handler distance; accuracy 0.868 (P 0.94 / R 0.77 on the standard reading of Table 3)'}
+  status: canonical
+  detector: detect_screen
+- id: screen_moment
+  level: primitive
+  name: Screen moment t_s (single reference frame for offense, defense and legality labels)
+  aliases: [screen moment, screening frame, contact time t0, screen_moment_ts_ms]
+  research_ids: [SCR-R03]
+  actors: {screener: s, defender: D_u, user: u}
+  t0: t_s
+  rule: |
+    Dips of d_sD(t) over [a - pad_s, b + pad_s] (smoothed tracks; [a, b] = SET stop) are local minima <= screen.d_su_max_m separated by a rise of >= screen_window.hyst_m.
+    The dip used is the one nearest the user's closest approach to the screener (argmin d_su over frames from the stop onset a on whose displacement speed over
+    +-tsu_half_s is >= tsu_min_speed_mps; a trailer running past the handler before he stops is not the use),
+    or, when the user never moves (unused screen), the first frame from the stop onset inside the earliest dip's contact window (contact is made while the screener
+    stands; a flat dip has no meaningful argmin); a later screen by the same screener is a later stop and a separate row (re-screens through screen_window; CTG: the first
+    screen sets the frame). Inside the dip's contact window (contiguous frames with d_sD <= max(dip minimum + dip_band_m, screen_set.set_def_radius_m), the defender
+    still engaged) t_s is the frame nearest that closest approach: for a sharp dip this is the argmin of
+    d_sD (R-ST-20); for a flat dip (defender parked on the screener) it is the use, which keeps t_s stable under noise and close to CTG's screening frame. If D_u is bridged for
+    more than occl_max_s, t_s = argmin d_su and
+    t_s_source = user_fallback. DHO: t_s = argmin d(hander, D_receiver) in [t_ex - 0.5, t_ex + 1.0]. Uncertainty = half the dip width. t_su_min is stored for CTG comparison.
+  params:
+    pad_s: {value: 0.5, unit: s}
+    occl_max_s: {value: 0.5, unit: s}
+    dip_band_m: {value: 0.4, unit: m, note: 'about 2 sigma_d of smoothed pair distances at sigma_p 0.3'}
+    tsu_min_speed_mps: {value: 1.0, unit: m/s, note: 'the user''s closest approach is taken over frames where the user moves (when there are any)'}
+    tsu_half_s: {value: 0.3, unit: s, note: 'moving = displacement over [t - 0.3, t + 0.3] s / 0.6 s >= tsu_min_speed_mps (a corner plant does not count as standing)'}
+  min_duration_s: null
+  outputs: [screen_moment_frame, t_s_source, t_s_uncertainty_s, d_sD_min, t_su_min]
+  confidence: {level: high, p_terms: [same as screen_set]}
+  noise: A flat minimum (defender attached for 0.5 s) gives up to about +-0.25 s jitter; the dip width is stored.
+  conflicts_resolved:
+  - R-ST-20 (min screener-defender distance) adopted over offense A3/A4 minimum handler-screener distance, which is stored as t_su_min
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: one screening frame per screen; the first screen sets the frame}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-ST-20}
+  status: canonical
+  detector: detect_screen_moment
+- id: screen_read
+  level: primitive
+  name: SCREEN_USE / REJECT / UNUSED and handler reads (snake, split, retreat)
+  aliases: [use_screen, use, turn the corner, reject, refuse, unused]
+  research_ids: [SCR-P02]
+  actors: {user: u, screener: s, defender: D_u}
+  t0: t_s
+  rule: |
+    USE: d_su_ca <= screen.d_su_max_m AND passed (screen_frame) AND blocking (screen_frame) AND user speed at the closest approach >= 1.0 m/s on-ball / 2.0 m/s off-ball.
+    REJECT: u comes within reject_approach_m of s in [t_s - 1.0, t_s + 1.5], d_su_ca > d_su_max_m, u does not pass, and u's attack direction (mean velocity over 0.5 s from
+    the first frame after t_s - 0.5 at which u moves, displacement speed >= 1.0 m/s) makes >= reject_turn_deg with the direction from u to the screen point. Loop 2: a reject also needs u to move (peak 5-frame median speed over [t_s - screen_set.still_pre_s, t_s + screen_set.still_post_s] >= screen_set.still_user_mps).
+    UNUSED: SET exists and neither USE nor REJECT within unused_s.
+    On-ball extras: SNAKE = USE (the handler crosses the rim->screener line), then he crosses back over it by >= screen_frame.pass_margin_m within snake_s; SPLIT = handler within split_seg_m of segment(D_h, D_s) while they
+    are < split_gap_m apart; RETREAT = handler v_r <= -retreat_vr_mps (away from the rim) mean over retreat_s after t_s. Precedence: retreat > snake > split > use > reject > unused.
+    Exit class (off-ball): curl = end r < r_s - curl_dr_m; fade = exit angle to u->ball > fade_deg; straight otherwise.
+  params:
+    reject_approach_m: {value: 2.5, unit: m}
+    reject_turn_deg: {value: 90.0, unit: deg}
+    unused_s: {value: 3.0, unit: s}
+    snake_s: {value: 1.5, unit: s}
+    split_gap_m: {value: 2.0, unit: m}
+    split_seg_m: {value: 0.5, unit: m, note: 'handler within this distance of the D_h-D_s segment (projection 0.15-0.85)'}
+    retreat_vr_mps: {value: 1.5, unit: m/s}
+    retreat_s: {value: 0.5, unit: s}
+    curl_dr_m: {value: 1.0, unit: m}
+    fade_deg: {value: 120.0, unit: deg}
+  min_duration_s: 0.2
+  outputs: [read (use | reject | unused | snake | split | retreat), d_su_ca, t_h, user_speed, exit (curl | straight | fade)]
+  confidence: {level: medium, p_terms: ['use: p_close x p_stat', 'reject: p_above(d_su_ca, d_su_max_m, sigma_d) x p_stat', 'unused: p_above(d_su_min, reject_approach_m, sigma_d)']}
+  noise: A user at a true 1.5 m passes a window-minimum 1.2 m gate about 31 % of the time at sigma_p 0.3 (check); the 3-frame median at the closest approach removes the min bias.
+  conflicts_resolved:
+  - between() replaced (check high error); CourtMotion side-crossing kept only as the passed test
+  sources:
+  - {url: 'https://arxiv.org/pdf/2512.01478', supports: side-crossing use test}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: handler reads; rejects and unused screens}
+  status: canonical
+  detector: detect_screen_read
+- id: screen_interaction
+  level: primitive
+  name: Defender interaction (contact proxy, deflection, delay, separation gain)
+  aliases: [screen effectiveness, defender deflected or delayed, screen_absorbed]
+  research_ids: [SCR-P03]
+  actors: {defender: D_u, screener: s, user: u}
+  t0: t_s
+  rule: |
+    Pre window [t_s - 0.6, t_s - 0.1] s, post window [t_s + 0.1, t_s + 0.6] s (MP-13). CONTACT: d_sD(t_s) 5-frame median <= contact_m. DEFLECT: |heading(pre mean v) -
+    heading(post mean v)| >= max(deflect_deg, deflect_sigma_k * sigma_heading) with pre speed >= deflect_min_speed_mps. DELAY: |post mean v| <= delay_ratio * |pre mean v| and drop
+    >= delay_drop_mps. SEP_GAIN = sep(t_s + 0.7) - sep(t_s - 0.3) (5-frame medians); residual = SEP_GAIN - reaction_lag_s * max(0, user speed gain), fires when >= sep_gain_m.
+    interaction = dist(s, D_u)(t_s) <= radius_m AND (CONTACT or DEFLECT or DELAY or residual SEP_GAIN). Continuous: defender_delay_s (time D_u within radius_m of s while
+    lambda_u > 0 in [t_s, t_s + 2.0]); detour_m (D_u path length minus chord over [t_s - 0.3, t_s + 0.7]).
+  params:
+    contact_m: {value: 0.8, unit: m}
+    radius_m: {value: 1.5, unit: m}
+    deflect_deg: {value: 30.0, unit: deg}
+    deflect_sigma_k: {value: 2.5, unit: sigma}
+    deflect_min_speed_mps: {value: 2.5, unit: m/s}
+    delay_ratio: {value: 0.7, unit: ratio}
+    delay_drop_mps: {value: 0.8, unit: m/s}
+    sep_gain_m: {value: 0.5, unit: m}
+    reaction_lag_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: [interaction, contact_class, deflect_deg, delay_ratio, sep_gain_m, residual_sep_gain_m, defender_delay_s, detour_m]
+  confidence: {level: medium, p_terms: [screen p terms, 'p_below(d_sD(t_s), radius_m, sigma_d)']}
+  noise: Heading noise is about 17 deg on a pre-post difference at 1.5 m/s, hence the 2.5 m/s floor; separation gain is the most robust test (positions only).
+  conflicts_resolved:
+  - radius 1.5 m (offense section 0.2, motion_starts) kept; A5 1.0 m is the strict contact gate
+  - speed drop 30 % (A5) vs 40 % (motion_starts) -> 30 % plus an absolute 0.8 m/s floor
+  - DEFLECT floor raised and SEP_GAIN made residual (check SCR-P03-deflect)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: heading change > 30 deg / speed drop within 1.5 m}
+  status: canonical
+  detector: detect_screen_interaction
+- id: screener_post_action
+  level: primitive
+  name: Screener post-action (roll, short roll, pop to the arc, pop mid)
+  aliases: [roll, dive, deep roll, short roll, pop, pick-and-pop, pop mid]
+  research_ids: [SCR-P04, SCR-P05]
+  actors: {screener: s, user: u}
+  t0: t_h (user crosses the screen line); fallback t_s
+  rule: |
+    After an on-ball screen (or a DHO by the hander), first match in order:
+    ROLL: mean v_r over a 15-frame window >= roll_vr_mps starting within roll_start_s after t_h, r <= roll_r_m within roll_window_s of t_s, and min r - r(P_s) <= -roll_dr_m.
+    deep_roll flag r <= deep_r_m within 1.5 s; roll_ctg flag r <= 4.27 m (14 ft).
+    SHORT_ROLL: min r - r(P_s) <= -short_dr_m and s stands (s2 stand >= 5 frames) or holds the ball inside short_roll_zone (named spot) within roll_window_s.
+    POP_ARC: s inside pop_arc_zone (named spot) within roll_window_s, displacement from P_s >= pop_move_m, r never < pop_min_r_m, end r >= r(P_s).
+    POP_MID: displacement >= pop_move_m outward and a stand at pop_mid_r_lo_m <= r < pop_mid_r_hi_m within roll_window_s.
+  params:
+    roll_vr_mps: {value: 1.5, unit: m/s}
+    roll_start_s: {value: 1.0, unit: s}
+    roll_r_m: {value: 2.5, unit: m}
+    roll_window_s: {value: 2.0, unit: s}
+    roll_dr_m: {value: 2.0, unit: m}
+    deep_r_m: {value: 2.0, unit: m}
+    short_dr_m: {value: 1.0, unit: m}
+    pop_move_m: {value: 1.5, unit: m}
+    pop_min_r_m: {value: 5.5, unit: m}
+    pop_mid_r_lo_m: {value: 4.0, unit: m}
+    pop_mid_r_hi_m: {value: 6.6, unit: m}
+    roll_vr_window_s: {value: 0.5, unit: s, note: 'roll start: mean v_r over this window (15 frames; was hard-coded)'}
+    roll_ctg_r_m: {value: 4.27, unit: m, note: 'roll_ctg flag: min r <= 14 ft (CTG roll)'}
+    stand_frames: {value: 10, unit: frames, note: 'short roll / pop mid: a stand run of this length'}
+    pop_arc_r_m: {value: 6.6, unit: m, note: 'pop_arc p term p_above(r at window end, pop_arc_r_m)'}
+  min_duration_s: 0.3
+  outputs: [action (roll | short_roll | pop_arc | pop_mid), deep_roll, roll_ctg, min_r, end spot]
+  confidence: {level: medium, p_terms: ['roll: p_below(min r, roll_r_m, sigma_p)', 'pop: p_above(end r, 6.6, sigma_p)']}
+  noise: Paint occlusion; Kalman bridging over 0.5 s gives roll_unconfirmed via gap_factor.
+  conflicts_resolved:
+  - A11.18 + motion_starts roll gates combined; F5.4 r < 2 within 1.5 s = deep_roll flag; CTG 14 ft = roll_ctg flag
+  - POP and SHORT_ROLL zones = named_spots pop_arc_zone / short_roll_zone; shared with the screener/big-actions family, which owns the canonical definition
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: roll within about 14 ft; pop}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: short_roll_zone and pop_arc_zone}
+  status: proposal
+  detector: detect_screener_post_action
+# ======================================================================================
+# Ball screens
+# ======================================================================================
+- id: ball_screen
+  level: action
+  name: Ball screen (pick-and-roll) with location, direction and the F5 5-tuple
+  aliases: [PnR, on-ball screen, pick]
+  research_ids: [SCR-A01]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: |
+    A screen (either flag) with kind on_ball. Location = the first zone_scheme:pnr_location label (named_spots pnr_location_*) at the handler's position at his set-up frame (as for direction; loop 1, SCR-T17); when that label is pnr_location_logo but the screen point P_s is not at logo depth, the P_s label is used (loop 2, REG-location: logo only when the screen itself is set at logo depth), else none
+    (court_region stored). Direction = ball_screen_to_middle / ball_screen_to_sideline (named_spots, screener position with hx, hy = handler) at the handler's set-up frame:
+    the last frame within dir_search_s before t_s with handler speed < dir_setup_speed_mps (else t_s - dir_lead_s); at t_s he is already turning the corner. empty_side = no teammate
+    with sign(x) = sign(x_s) and |x| > empty_side_x_m at t_s. Pre-action: sprint_up when the screener's mean speed over [a - 1.0, a] > sprint_up_mps and y(a - 1.0) < sprint_up_y_m.
+  params:
+    empty_side_x_m: {value: 3.0, unit: m}
+    sprint_up_mps: {value: 3.5, unit: m/s}
+    sprint_up_y_m: {value: 1.0, unit: m}
+    dir_setup_speed_mps: {value: 1.5, unit: m/s, note: 'handler set-up = last frame before t_s slower than this'}
+    dir_search_s: {value: 1.5, unit: s}
+    dir_lead_s: {value: 0.5, unit: s, note: 'fallback set-up frame t_s - dir_lead_s when the handler never slows'}
+  min_duration_s: 0.3
+  outputs: [location, direction, empty_side, pre_action, post_action, read, coverage, screen_angle_deg, strict, loose]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Handler possession errors misassign u; on-ball needs the holder on >= 5 of 9 frames around t_s.
+  conflicts_resolved:
+  - F5.1 bands superseded by the named_spots pnr_location partition (no r-free overlaps, check SCR-A01-location)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: pnr_location_*, ball_screen_to_middle / _sideline}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: ball-screen definition}
+  status: canonical
+  detector: detect_ball_screen
+- id: high_ball_screen
+  level: action
+  name: High PnR (middle / top ball screen)
+  aliases: [middle ball screen, top PnR, high pick-and-roll]
+  research_ids: [SCR-A02]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: ball_screen with location pnr_location_high. double_tag = two teammates at |x| > 3.0 m with sign(x) = the handler's exit side at t_s.
+  params:
+    tag_x_m: {value: 3.0, unit: m}
+  min_duration_s: 0.3
+  outputs: [as ball_screen, double_tag]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: The slot/high boundary at m 75 flickers; the label is read once at t_s.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: high PnR}
+  status: canonical
+  detector: detect_high_ball_screen
+- id: side_ball_screen
+  level: action
+  name: Side (wing) PnR
+  aliases: [wing PnR, side pick-and-roll]
+  research_ids: [SCR-A02]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: ball_screen with location pnr_location_side. shake = the strong-side corner player (m <= 15 at t_s - 0.5) lifts r by >= shake_dr_m or m by >= shake_dm_deg toward the
+    wing in [t_s - 0.5, t_s + 2.0]; empty_side as ball_screen.
+  params:
+    shake_dr_m: {value: 1.5, unit: m}
+    shake_dm_deg: {value: 15.0, unit: deg, note: 'or the corner player lifts by this much in m (corner to wing along the arc keeps r)'}
+  min_duration_s: 0.3
+  outputs: [as ball_screen, shake, empty_side]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: as high_ball_screen
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: side PnR, shake A5.19}
+  status: canonical
+  detector: detect_side_ball_screen
+- id: step_up_screen
+  level: action
+  name: Step-up screen
+  aliases: [step up, sprint-up step-up]
+  research_ids: [SCR-A03]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: |
+    ball_screen where: y_s(a - 1.0) <= y_h(t_s) - below_m (arrives from below; a = stop onset, restated from t_s - 1.0 because long stops hide the approach); the screener's mean
+    v_y over [a - 1.0, a - 0.1] >= approach_vy_mps; handler location pnr_location_side or pnr_location_slot; handler mean v_y over [t_s, t_s + 1.0] < 0;
+    ball_screen_to_sideline at the handler's set-up. n_y (n averaged over n_avg_s at the handler's set-up frame) is stored as the attribute n_y_setup;
+    it is no longer a gate (changes_loop1 SCR-T03-stepup).
+  params:
+    below_m: {value: 1.5, unit: m}
+    approach_vy_mps: {value: 1.0, unit: m/s}
+    n_avg_s: {value: 0.5, unit: s, note: 'n averaged over [set-up - n_avg_s, set-up] inside the stop'}
+  min_duration_s: 0.3
+  outputs: [pre_action = step_up, screener start spot, delta_y_approach]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: A sprint-up from the block also arrives from below; both flags may be true.
+  conflicts_resolved:
+  - approach window anchored on the stop onset (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: step-up F5.3}
+  status: canonical
+  detector: detect_step_up_screen
+- id: flip_screen
+  level: action
+  name: Flip (screener changes side before contact)
+  aliases: [flip, flip the screen]
+  research_ids: [SCR-A04]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: |
+    ball_screen where l(t) = signed offset of s from the line (handler at its set-up frame) -> rim (5-frame mean) has the opposite sign before the set: the pre-flip
+    frame is the frame of largest |l| on the other side within [a - window_s, set-up], taken among runs of >= show_frames consecutive frames with |l| >= min_offset_m, s within max_sh_m of h and screener speed < show_speed_mps (a show; loop 1, SCR-T09 - a run-past is not a flip); |l| >= min_offset_m there and over the last 5 frames
+    before the set-up; the direction labels (ball_screen_to_middle / _sideline) at the pre-flip and set-up frames both exist and differ. Pose option (shoulders
+    rotate > 60 deg) needs pose.
+  params:
+    window_s: {value: 1.5, unit: s}
+    min_offset_m: {value: 0.4, unit: m}
+    max_sh_m: {value: 2.0, unit: m}
+    show_frames: {value: 6, unit: frames, note: 'SCR-T09: the first side needs >= show_frames consecutive frames with |offset| >= min_offset_m, d(s, h) <= max_sh_m and screener speed < show_speed_mps (a show, not a run-past). V0 sigma_p 0.3: real flips give 9-28 such frames, run-throughs 0'}
+    show_speed_mps: {value: 3.0, unit: m/s, note: 'tester proposed 9 frames at 2.0 m/s; that dropped flip recall 0.95 -> 0.30 on the tester scenes (CA-RTS speed is biased up near a plant)'}
+  min_duration_s: 0.3
+  outputs: [flip, offset trajectory]
+  confidence: {level: low-medium, p_terms: [screen p terms, 'p_above(|l_pre|, min_offset_m, sigma_p) x p_above(|l_post|, min_offset_m, sigma_p)']}
+  noise: Offset noise about 0.4 m; the label change plus both margins are required.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: flip (repo definition; no external one found)}
+  status: proposal
+  detector: detect_flip_screen
+- id: re_screen
+  level: action
+  name: Re-screen (second screen by the same screener for the same handler)
+  aliases: [re-screen, rescreen, twist]
+  research_ids: [SCR-A04, SCR-R05]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s of the second screen
+  rule: |
+    A ball screen that follows an earlier on-ball SET row (used or not) of the same (s, h) with t_s2 - t_s1 in (screen_window.dedupe_s, screen_window.window_s]. merged = not split by screen_window; rescreen_opposite when
+    the direction label flips, rescreen_same otherwise; trigger = under (D_h went under on the first) or reject (handler rejected the first). TWIST = two ball screens by
+    different screeners from opposite directions within twist_s (attribute twist_with).
+  params:
+    twist_s: {value: 2.0, unit: s}
+  min_duration_s: 0.3
+  outputs: [rescreen_of, merged, rescreen_side, trigger, twist_with]
+  confidence: {level: low-medium, p_terms: [second screen p terms]}
+  noise: Relies on two separate stops; a screener who drifts without a second stop is merged.
+  conflicts_resolved:
+  - F5.2 'same pair, second screen <= 3 s' kept; CTG merge/split decides the row
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: re-screen split at 4 ft / 10 ft}
+  status: canonical
+  detector: detect_re_screen
+- id: slip_screen
+  level: action
+  name: Slip (screener leaves for the rim before a full screen) with touch flag
+  aliases: [slip, slip the screen, touch]
+  research_ids: [SCR-A05]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_a (closest approach of s to D_h)
+  rule: |
+    APPROACH: holder h; s (not the holder) with d(s, h) <= approach_h_m or d(s, D_h) <= approach_d_m at t_a = local argmin d(s, D_h) (or d(s, h) when D_h is unknown), and
+    the screener's own velocity toward h >= approach_speed_mps over [t_a - 1.0, t_a - 0.1]; not a handoff approach (h heading within 30 deg of s with speed >= 1.0 m/s);
+    no strict-length stand (>= 0.5 s) within [t_a - 0.5, t_a + 0.5], none ending within after_stop_s before t_a, and no screen row (s, h) with t_s in [t_a - after_screen_s, t_a] (loop 1, SCR-T11 - post-screen movement is not a new approach); s does not receive the ball within [t_a - 0.5, t_a + 1.0]; the pair is not a fake_dho
+    approach (h bringing the ball to s) within 1.0 s.
+    SLIP: r(t + 0.5 s) - r(t) <= -slip_dr_m for a start t in [t_a - 0.5, t_a + slip_start_max_s], and r <= slip_r_m within slip_window_s of t_a. quick = loose
+    stationarity never fired near t_a; slow = a stop of 0.3-0.5 s with loose = true (CTG quick/slow). TOUCH flag = d_sD(t_a) <= 0.8 (contact duration < 0.2 s is pose-only).
+  params:
+    approach_h_m: {value: 2.0, unit: m}
+    approach_d_m: {value: 1.5, unit: m}
+    approach_speed_mps: {value: 1.0, unit: m/s}
+    slip_dr_m: {value: 1.0, unit: m}
+    slip_start_max_s: {value: 0.5, unit: s}
+    slip_r_m: {value: 3.0, unit: m}
+    slip_window_s: {value: 1.5, unit: s}
+    after_stop_s: {value: 1.5, unit: s, note: 'SCR-T11: no approach at t when s ended a stand of >= strict_dwell_s within this time before t (post-screen movement)'}
+    after_screen_s: {value: 2.0, unit: s, note: 'SCR-T11: or s screened h (screen row) within this time before t'}
+  min_duration_s: 0.3
+  outputs: [slip_type (quick | slow), touch, peak v_r, dwell before exit]
+  confidence: {level: medium, p_terms: ['p_below(min r, slip_r_m, sigma_p)', 'p_below(d(s,h) or d(s,D_h) at t_a, approach gate, sigma_d)']}
+  noise: The 0.3-0.5 s dwell sits where stationarity is least testable; the displacement test (1.0 m in 15 frames) is about 4 sigma at sigma_p 0.3.
+  conflicts_resolved:
+  - SLIP dwell A0 < 0.5 s vs F5.4 < 0.3 s -> < 0.5 s with quick/slow sub-flags
+  - SLIP speed A0 v_r <= -2.0 vs motion_starts >= 3 m/s -> 2.0 m/s as displacement (check SCR-A05-slip)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: slips (quick / slow)}
+  status: canonical
+  detector: detect_slip_screen
+- id: ghost_screen
+  level: action
+  name: Ghost screen (approach without contact, exit to the arc)
+  aliases: [ghost, ghost screen, fake pick-and-pop]
+  research_ids: [SCR-A05]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_a
+  rule: APPROACH as slip_screen; loose stationarity never fires within [t_a - 0.5, t_a + 0.5] (no stop with loose = true); d_sD(t_a) > no_contact_m; r(s) rises by >= ghost_dr_m within rise_window_s of t_a (loop 1, SCR-T11); s inside pop_arc_zone (named spot) within ghost_window_s.
+  params:
+    no_contact_m: {value: 0.8, unit: m}
+    ghost_window_s: {value: 2.0, unit: s}
+    ghost_dr_m: {value: 0.8, unit: m, note: 'SCR-T11: r rises by >= ghost_dr_m within rise_window_s after t_a (was 1.0 m within 1.0 s)'}
+    rise_window_s: {value: 1.5, unit: s}
+    arc_r_m: {value: 6.6, unit: m, note: 'p term p_above(max r, arc_r_m) (was hard-coded)'}
+  min_duration_s: 0.3
+  outputs: [exit spot, max r]
+  confidence: {level: medium, p_terms: ['p_above(d_sD(t_a), no_contact_m, sigma_d)', 'p_above(end r, 6.6, sigma_p)']}
+  noise: Fixing LOOSE (no walker acceptance) stops ghosts being relabelled as slow slips.
+  conflicts_resolved:
+  - approach A0 1.5 m vs F5.4 2 m -> 2.0 m to the handler OR 1.5 m to the handler's defender
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: ghost / slip exits}
+  status: canonical
+  detector: detect_ghost_screen
+- id: fake_screen
+  level: action
+  name: Fake ball screen (other) - approach without a screen, lateral exit or move to another screen
+  aliases: [fake screen, fake_other, screen_fake umbrella]
+  research_ids: [SCR-A05]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_a
+  rule: APPROACH as slip_screen, no loose-fired stop around t_a, not slip and not ghost; then either a lateral exit (displacement >= lateral_disp_m over [t_a, t_a + 1.0] with |delta r| < lateral_dr_max_m) or a SET for a different user within move_to_screen_s.
+  params:
+    lateral_disp_m: {value: 2.0, unit: m}
+    lateral_dr_max_m: {value: 1.0, unit: m}
+    move_to_screen_s: {value: 2.0, unit: s}
+  min_duration_s: 0.3
+  outputs: [exit (lateral | move_to_screen)]
+  confidence: {level: low-medium, p_terms: [approach gate p]}
+  noise: Umbrella screen_fake = ghost_screen OR slip_screen OR fake_screen.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: screener actions without a screen}
+  status: proposal
+  detector: detect_fake_screen
+- id: drag_screen
+  level: action
+  name: Drag screen (transition ball screen)
+  aliases: [drag, transition ball screen, '7']
+  research_ids: [SCR-A06]
+  actors: {screener: s, handler: h, defender: D_h}
+  t0: t_s
+  rule: |
+    ball_screen where the screener's mean v_y over [a - trail_s, a - 0.1] <= -trail_vy_mps (trailing sprint toward the attacked rim; a = stop onset), the screener's y at a - trail_s >= trail_start_y_m (he came from beyond the top of the key or the backcourt; loop 1, SCR-T08), P_s at
+    ps_r_lo_m <= r <= ps_r_hi_m, and the handler in drag_screen_spot (named spot) at t_s. The phase gate (rule_transition_window, within 8 s of possession start) needs the
+    game-state context; without it phase_checked = false.
+  params:
+    trail_s: {value: 1.5, unit: s}
+    trail_vy_mps: {value: 3.0, unit: m/s}
+    ps_r_lo_m: {value: 6.0, unit: m}
+    ps_r_hi_m: {value: 9.5, unit: m, note: 'loop 1 SCR-T08: was 7.5 (0.75 m beyond the arc); a standard drag set 8.3 m from the rim gave 0 of 10; 9.5 = logo range, with trail_start_y_m against half-court step-downs'}
+    trail_start_y_m: {value: 10.0, unit: m, note: 'SCR-T08: the screener y at a - trail_s is >= this (he came from beyond the top of the key or from the backcourt)'}
+  min_duration_s: 0.3
+  outputs: [pre_action = drag, phase_checked]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Transition frames have camera pans and blur; gap_factor drops confidence.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/research/transition_full.md', supports: drag and double drag}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: drag_screen_spot}
+  status: canonical
+  detector: detect_drag_screen
+  needs_data: [possession start / transition phase from the game state (optional gate)]
+- id: double_drag
+  level: action
+  name: Double drag (77)
+  aliases: [double drag, '77', double stagger ball screen]
+  research_ids: [SCR-A06]
+  actors: {screener_1: s1, screener_2: s2, handler: h}
+  t0: t_s1
+  rule: Two ball screens on the same h by different screeners with dt_lo_s <= t_s2 - t_s1 <= dt_hi_s, both P_s at r >= min_r_m, and screener separation at t_s1 in [sep_lo_m, sep_hi_m + sep_tol_m] (spacing_in_band flag for [sep_lo_m, sep_hi_m]); each screener stood >= set_before_s before his t_s (loop 4); at least one is a drag_screen. Flags first_rolls,
+    second_pops.
+  params:
+    dt_lo_s: {value: 0.2, unit: s}
+    dt_hi_s: {value: 1.5, unit: s}
+    min_r_m: {value: 6.0, unit: m}
+    sep_lo_m: {value: 0.7, unit: m}
+    sep_hi_m: {value: 1.5, unit: m}
+    sep_tol_m: {value: 1.0, unit: m, note: 'spacing is a soft gate (below 2 sigma_d): pairs up to sep_hi_m + sep_tol_m are kept with spacing_in_band = false'}
+    set_before_s: {value: 0.5, unit: s, note: 'loop 4 (SCR-L4-03): each screener has stood at least this long (t_s - stand onset) before his screen moment; a trailer still running into the handler''s defender (contact at the first frames of his stand) is a moving screener, not the second screen of a double drag. 0.5 s = the strict dwell of screen_stationarity'}
+  min_duration_s: 0.3
+  outputs: [order of screeners, first_rolls, second_pops]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: 0.7-1.5 m spacing is below 2 sigma_d; screen order (from t_s) is more reliable than spacing.
+  conflicts_resolved:
+  - F2.1 '<= 1.5 s, r > 6.5' vs transition_full '<= 1.5 s, r >= 6.0, 0.7-1.5 m' -> transition_full
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/research/transition_full.md', supports: double drag spacing and timing}
+  status: canonical
+  detector: detect_double_drag
+- id: spain_pnr
+  level: action
+  name: Spain / stack pick-and-roll
+  aliases: [Spain, stack PnR, Bamberg]
+  research_ids: [SCR-A07]
+  actors: {screener: s1, back_screener: s2, handler: h, defender: D_s1}
+  t0: t_s1
+  rule: A ball_screen by s1 at t_s1 plus an off-ball screen by s2 whose user is s1 with 0 <= t_s2 - t_s1 <= dt_max_s, n_r(s2 screen) >= n_r_min (back), s1 roll (r(s1) <= roll_r_m within 2.0 s), and s2 inside spain_pop_spot (named spot) within pop_window_s of t_s2. stack flag = at t_s1 - 1.0, s2 within stack_m of s1.
+  params:
+    dt_max_s: {value: 1.5, unit: s}
+    n_r_min: {value: 0.5, unit: cosine}
+    roll_r_m: {value: 2.5, unit: m}
+    pop_window_s: {value: 2.0, unit: s}
+    stack_m: {value: 1.5, unit: m}
+  min_duration_s: 1.0
+  outputs: [stack, s2 pops, D_s1 depth]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: Three players within about 2 m; ID swaps likely, gap_factor penalises bridged tracks.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: spain_pop_spot}
+  status: canonical
+  detector: detect_spain_pnr
+- id: double_ball_screen
+  level: action
+  name: Double ball screen (side-by-side / Detroit) and Double high (trade / sink)
+  aliases: [double ball screen, Detroit, double high, trade, sink]
+  research_ids: [SCR-A08]
+  actors: {screener_1: s1, screener_2: s2, handler: h}
+  t0: t_s of the first screen
+  rule: |
+    DETROIT: two ball SETs on the same h (at least one used: the handler goes off one side), screeners <= detroit_gap_m apart at t_s, and |t_s1 - t_s2| <= detroit_dt_s or both stops overlapping
+    for >= detroit_overlap_s (both loose-stationary at the same time; t_s is ill-defined when both screeners share one defender dip).
+    DOUBLE_HIGH: pre-screen two bigs at r pre_r_lo_m..pre_r_hi_m, m >= pre_m_min, <= pre_gap_m apart at t_s1 - 1.0; two ball screens on the same h by different screeners
+    with dh_dt_lo_s <= t_s2 - t_s1 <= dh_dt_hi_s; trade = first screener reaches r >= 6.75 within 2.0 s; sink = first screener reaches r < 2.5.
+  params:
+    detroit_gap_m: {value: 1.2, unit: m}
+    detroit_dt_s: {value: 0.3, unit: s}
+    detroit_overlap_s: {value: 0.3, unit: s, note: 'simultaneity by overlapping stops when t_s is ill-defined in a shared dip'}
+    pre_r_lo_m: {value: 4.5, unit: m}
+    pre_r_hi_m: {value: 8.0, unit: m}
+    pre_m_min: {value: 60.0, unit: deg}
+    pre_gap_m: {value: 3.5, unit: m}
+    dh_dt_lo_s: {value: 0.8, unit: s}
+    dh_dt_hi_s: {value: 3.0, unit: s}
+    sink_r_m: {value: 2.5, unit: m, note: 'double_high_sink when the first screener reaches r < sink_r_m within 2 s (was hard-coded)'}
+    trade_r_m: {value: 6.75, unit: m, note: 'double_high_trade when the first screener reaches r >= trade_r_m'}
+  min_duration_s: 0.3
+  outputs: [sub_label (detroit | double_high_trade | double_high_sink | double_high), per-screener post-action]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: Two bodies about 1 m apart; ID swaps. The 0.8 s gap separates Detroit from double high.
+  conflicts_resolved:
+  - A1.4 2.5 s and A2.1 r 4.5-6.5 superseded by A11.17
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: double high A11.17}
+  status: canonical
+  detector: detect_double_ball_screen
+- id: ram_screen
+  level: action
+  name: Ram (screen for the screener, who then sets a ball screen) and wedge-ram
+  aliases: [ram, wedge into ball screen, wedge_ram]
+  research_ids: [SCR-A09]
+  actors: {first_screener: g, screener: s, handler: h}
+  t0: t_s of the off-ball screen
+  rule: s is the user of an off-ball screen by g, then sets a ball screen on h with t_s(ball) - t_s(off) in [dt_lo_s, dt_hi_s]; r_s < max_r_m at t_s(off); s moves >= move_m toward h between the two. wedge_ram = g's r >= wedge_r_m at its stop onset - 1.0 s; rub_ram = the first screen's loose flag is not true.
+  params:
+    dt_lo_s: {value: 0.8, unit: s}
+    dt_hi_s: {value: 2.5, unit: s}
+    max_r_m: {value: 4.5, unit: m}
+    move_m: {value: 3.0, unit: m}
+    wedge_r_m: {value: 5.5, unit: m}
+  min_duration_s: 0.8
+  outputs: [pre_action (ram | wedge_ram), rub_ram, linked screen ids]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: Screens closer than 0.6 s merge; kept separate when their t_s differ by > 0.6 s.
+  conflicts_resolved:
+  - "'Wedge' namespaced: wedge_ram (F5.3) here vs wedge_offball (wedge_screen) (R-ST-22)"
+  - research window [0.8, 2.0] s widened to 2.5 s so a ram from the block to a high screen (about 6 m at 4 m/s plus a stop) fits (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: ram, wedge F5.3}
+  status: proposal
+  detector: detect_ram_screen
+- id: veer_screen
+  level: action
+  name: Veer (ball screen, then the same screener sets an off-ball screen)
+  aliases: [veer]
+  research_ids: [SCR-A09]
+  actors: {screener: s, handler: h, user_2: u2}
+  t0: t_s of the ball screen
+  rule: The same s sets a ball screen, then an off-ball screen SET (any user; since loop 2 also a stand on the defender of a standing teammate, which screen_set no longer emits - still_user_mps) from a new stand (stop onset after the ball-screen stop ends; loop 1, SCR-T10) with t_s2 - t_s1 in (dt_min_s, dt_max_s].
+  params:
+    dt_max_s: {value: 2.5, unit: s}
+    dt_min_s: {value: 0.6, unit: s, note: 'lower bound of t_s2 - t_s1 (was hard-coded); the off-ball row must also come from a new stand (r2.stop.a > r1.stop.b, SCR-T10)'}
+  min_duration_s: 0.6
+  outputs: [linked screen ids]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: as ram_screen
+  conflicts_resolved:
+  - research 2.0 s widened to 2.5 s (proposal; the screener needs a second stop)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: veer}
+  status: proposal
+  detector: detect_veer_screen
+# ======================================================================================
+# Defender response (attributes; also emitted as their own events)
+# ======================================================================================
+- id: ball_screen_coverage
+  level: action
+  name: On-ball coverage and defender routes (over / under / through / ice / switch / drop / hedge / blitz / contain)
+  aliases: [coverage_coarse, coverage_fine_code, ballhandler_defender_route]
+  research_ids: [SCR-D01]
+  actors: {handler_defender: D_h, screener_defender: D_s, handler: h, screener: s}
+  t0: t_s
+  rule: |
+    ROUTE of D_h at the frame it crosses the screen line in [t_s - 0.3, t_s + route_post_s]: w = lateral coordinate along the screen line (sign = side where h passed P_s).
+    OVER = w_D on the handler side (w_D > 0); THROUGH = w_D between 0 and w(D_s) on the other side; UNDER = beyond D_s (or no D_s and w_D < 0). margin = distance to the nearest
+    boundary; route_unresolved when |margin| < sigma_d. ICE = D_h stays between h and P_s (lambda_D < 0, within ice_lateral_m of the screen side) for >= ice_s in [t_s - 1.0, t_s]
+    and the read is reject. Rejected ball screens are coverage rows too (p = p_set; loop 1, SCR-T02 - before, only is_screen rows were iterated, so ICE was unreachable). No crossing and no ice = none (CTG none).
+    D_s DEPTH at t_s + depth_delay_s: the named_spots pnr_big_* label (x, y = D_s; ax_, ay_ = s; hx, hy = h), precedence blitz > contain > hedge > at_level > high_drop >
+    deep_drop > deep_drop_high; blitz also needs D_h within near_h_m of h for >= blitz_dh_s over [t_s, t_s + blitz_window_s] (TRAP); contain = D_s within near_h_m of h with speed >= contain_speed_mps and D_h not within near_h_m; deep_drop_high = depth >= deep_drop_high_m with r > 5.5 (gap band, check SCR-D01-bands); screener_far when s is > screener_far_m from h (no pnr_big label applies; coarse class none - loop 1, SCR-T01 fixed a crash on it).
+    SWITCH = reciprocal matchup exchange (D_h -> s, D_s -> h, P >= switch_p) by t_s + 1.0 persisting >= switch_hold_s; late switch when the exchange happens in
+    (t_s + 1.0, t_s + 2.5]; switch_held_2s flag. coverage_coarse precedence: switch > blitz > ice > hedge > contain > at_level > drop bands.
+    CTG mapping (proposal): route {over: over, under: under, through: under, ice: ice, none: none}; coverage {blitz: blitz, hedge: hedge (bluff when D_s is back within 1.0 m of s
+    within 1.0 s), contain: contain, at_level: drop_contest, high_drop / deep_drop / deep_drop_high: drop, screener_far: none, switch: switch (late / normal)}.
+  params:
+    route_post_s: {value: 1.0, unit: s}
+    ice_s: {value: 0.5, unit: s}
+    ice_lateral_m: {value: 1.5, unit: m}
+    depth_delay_s: {value: 0.3, unit: s}
+    blitz_dh_s: {value: 0.6, unit: s}
+    switch_p: {value: 0.6, unit: probability, note: 'on the softmax matchup proxy (flatter than the HMM posterior); 0.8 when the defense_full HMM exists'}
+    switch_hold_s: {value: 1.5, unit: s}
+    late_switch_s: {value: 2.5, unit: s}
+    switch_window_s: {value: 0.5, unit: s, note: 'short matchup window for switch detection (the freeze uses 2.0 s)'}
+    near_h_m: {value: 1.5, unit: m, note: 'D_s near the handler (contain) and D_h near the handler (blitz) radius (was hard-coded)'}
+    blitz_window_s: {value: 1.5, unit: s, note: 'D_h near-handler time is counted over [t_s, t_s + blitz_window_s]'}
+    contain_speed_mps: {value: 1.0, unit: m/s}
+    screener_far_m: {value: 1.5, unit: m, note: 'screener more than this from the handler at t_s + depth_delay_s and no pnr_big band: big = screener_far (coverage_coarse none)'}
+    deep_drop_high_m: {value: 3.5, unit: m}
+  min_duration_s: 0.5
+  outputs: [route, route_margin_m, route_unresolved, big (blitz | contain | hedge | at_level | high_drop | deep_drop | deep_drop_high | screener_far), drop_depth_m, switch (none | normal | late), switch_held_2s, coverage_coarse, ctg_route, ctg_coverage]
+  confidence: {level: medium, p_terms: [screen p terms, 'route: Phi(|margin| / sigma_d)']}
+  noise: Route labels depend on which side of a 0.5-1 m gap D_h passes, close to the noise; the signed margin is kept. Matchup lag delays switch detection by about 0.5 s.
+  conflicts_resolved:
+  - SWITCH persistence defense section 0.4 >= 1.5 s vs F3.4 >= 2 s -> 1.5 s + switch_held_2s flag
+  - depth reference named_spots pnr_big_* canonical; F3.0 -lambda depth secondary
+  - bands made contiguous and ordered (check SCR-D01-bands)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: coverage, ballhandler-defender route and switch labels}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: pnr_big_* depth labels}
+  status: canonical
+  detector: detect_ball_screen_coverage
+- id: off_ball_screen_coverage
+  level: action
+  name: Off-ball screen coverage (chase, top-lock, under, switch, bump, pre-switch)
+  aliases: [off-ball screen defense, lock and trail, top lock]
+  research_ids: [SCR-D02]
+  actors: {defender: D_u, screener_defender: D_s, user: u, screener: s}
+  t0: t_s
+  rule: |
+    First match: SWITCH = matchup exchange (D_u -> s, D_s -> u) within switch_within_s of t_s persisting >= 1.5 s; PRE_SWITCH = screen_target_defender.pre_switch;
+    TOP_LOCK = at t_s - 0.5 D_u is within toplock_m of segment(u, ball) with projection 0.05-0.6 (between u and the ball) and the read is reject or unused;
+    UNDER = D_u crosses the screen line with r_D < r_s - under_margin_m (rim side of s) and reaches u(t_s + 1.0) within under_lag_s of u;
+    CHASE = mean dist(D_u, u) over [t_s - 0.3, t_s + 0.7] <= chase_m and D_u crosses the screen line on u's side of s;
+    BUMP = D_s steps >= bump_m across the screen line direction within 0.5 s of t_s and is back nearer its start by t_s + 1.5 s. Otherwise none. Rows - every off-ball screen; an unused or rejected SET only when its coverage is top_lock, switch or pre_switch (loop 1, SCR-T07).
+  params:
+    switch_within_s: {value: 0.8, unit: s}
+    toplock_m: {value: 0.8, unit: m}
+    under_margin_m: {value: 0.3, unit: m}
+    under_lag_s: {value: 0.4, unit: s}
+    chase_m: {value: 1.5, unit: m}
+    bump_m: {value: 1.0, unit: m}
+  min_duration_s: 0.5
+  outputs: [offball_coverage (switch | pre_switch | top_lock | under | chase | bump | none), margins, switch timing]
+  confidence: {level: low-medium, p_terms: [screen p terms]}
+  noise: Same side-of-gap ambiguity as ball_screen_coverage; top-lock needs a tracked ball.
+  conflicts_resolved:
+  - chase distance 1.0 m (research) relaxed to a 1.5 m window mean (noise; proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/defense_full.md', supports: off-ball screen coverages}
+  status: proposal
+  detector: detect_off_ball_screen_coverage
+# ======================================================================================
+# Off-ball screens
+# ======================================================================================
+- id: screen_angle
+  level: rule
+  name: Screen angle, orientation and generic off-ball direction class (SCREEN_DIR)
+  aliases: [screen_angle_deg, SCREEN_DIR, flat / angled screen]
+  research_ids: [SCR-R04]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: |
+    screen_angle_deg = angle(n, -u_hat_pre) in [0, 180] (0 = square to the user's path, > glancing_deg glancing). orientation_deg = angle of n from +y; flat when <= flat_deg,
+    angled when angled_lo_deg..angled_hi_deg. With shoulder keypoints the shoulder normal replaces n (orientation_source = pose).
+    Generic class with d = u(t_s + 1.0) - u(t_s - 0.5), dr_u = r_u(t_s + 1.0) - r_u(t_s - 0.5), first match: FLARE angle(d, u->ball) >= 120 and |d| >= 2.0; BACK n_r >= 0.5 and
+    dr_u <= -1.5; DOWN n_r <= -0.5 and dr_u >= 1.0; CROSS y_s < 2.5 and y_u < 2.5 and |dx| >= 2|dy| and |dx| >= 2.0; MIDDLE angle(d, u->ball) < 60; else OTHER.
+    Implemented as attributes of every screen row (attrs.screen_angle_deg, attrs.dir_class_generic); named geometry items override the generic class and both are stored.
+  params:
+    glancing_deg: {value: 60.0, unit: deg}
+    flat_deg: {value: 20.0, unit: deg}
+    angled_lo_deg: {value: 25.0, unit: deg}
+    angled_hi_deg: {value: 65.0, unit: deg}
+    flare_deg: {value: 100.0, unit: deg, note: 'loop 1 SCR-T05: was 120 (see flare_screen.flare_deg)'}
+    flare_disp_m: {value: 2.0, unit: m}
+    n_r_back: {value: 0.5, unit: cosine}
+    n_r_down: {value: -0.5, unit: cosine}
+    back_dr_m: {value: -1.5, unit: m}
+    down_dr_m: {value: 1.0, unit: m}
+    cross_y_m: {value: 2.5, unit: m}
+    cross_dx_m: {value: 2.0, unit: m}
+    middle_deg: {value: 60.0, unit: deg}
+    user_start_search_s: {value: 1.5, unit: s, note: 'user start position (start gates of named geometries) = last frame within this time before t_s with displacement speed < 1.0 m/s, else t_s - 0.5 s'}
+  min_duration_s: null
+  outputs: [screen_angle_deg, angle_class (square | glancing), orientation_deg, orientation_class (flat | angled | other; n folded to 0-90 deg from the y axis), orientation_source, dir_class_generic, n_r, dr_u, dx_u, dy_u]
+  confidence: {level: medium, model: attribute of the screen row}
+  noise: n unstable when d_sD < 0.5 m or D_u occluded (window mean); dr over 1.5 s is robust.
+  conflicts_resolved:
+  - offense section 0.2 y-sign rule restated radially (n_r, dr) so wing and corner screens classify correctly; CROSS y gate 2.5 m (check SCR-O07/R04-y)
+  sources:
+  - {url: 'https://arxiv.org/pdf/2512.01478', supports: shoulder-normal orientation (pose option)}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: off-ball screen direction types}
+  status: canonical
+  detector: null
+- id: down_screen
+  level: action
+  name: Down screen
+  aliases: [down, down screen]
+  research_ids: [SCR-O01]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (USE) with n_r <= n_r_max (screener above the defender), user dr over [t_s - 0.5, t_s + 1.0] >= user_dr_m, screener arrived from above (r(a) - r(a - 1.5) <= -arrive_dr_m; anchored on the stop onset), and r_u(t_s - 0.5) < r_s(t_s).
+  params:
+    n_r_max: {value: -0.5, unit: cosine}
+    user_dr_m: {value: 1.0, unit: m}
+    arrive_dr_m: {value: 1.0, unit: m}
+  min_duration_s: 0.3
+  outputs: [geometry = down, read, exit, coverage]
+  confidence: {level: medium, p_terms: [screen p terms, 'p_above(dr_u, user_dr_m, sigma_p)']}
+  noise: Interior clusters near the block; the user dr gate removes them.
+  conflicts_resolved:
+  - y-sign rule restated radially; F8.1 'screener at y 0-4, |x| 3-7' is a location feature
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: down screen}
+  status: canonical
+  detector: detect_down_screen
+- id: pin_down
+  level: action
+  name: Pin-down, wide pin-down and other pin-down
+  aliases: [pin down, wide pin-down, corner pin, other_pin_down, wide_pin_down]
+  research_ids: [SCR-O02]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: |
+    PIN_DOWN = down_screen where the user starts low (y_u <= low_y_m at the user's set-up, or r_u <= low_r_m). WIDE_PIN_DOWN (checked first) = off-ball screen with
+    n_y <= wide_n_y_max, user start
+    m <= wide_user_m_max and r >= wide_user_r_min_m, screener arrived from above (y(a) - y(a - 1.5) <= -wide_arrive_dy_m) and P_s at wide_ps_r_lo_m..wide_ps_r_hi_m with
+    m wide_ps_m_lo..wide_ps_m_hi (wide_pin_screen_spot capture stored). high_screen_point attribute = a pin_down with P_s m > wide_ps_m_hi (loop 1, SCR-T18 - was the geometry other_pin_down, which flipped under noise at m = 40 deg).
+  params:
+    wide_n_y_max: {value: -0.3, unit: unit-vector component, note: 'the defender is pinned below the screener (n_y); n_r cannot express below at m 15-40 (straight down has n_r = -sin m)'}
+    low_y_m: {value: 1.8, unit: m}
+    low_r_m: {value: 3.0, unit: m}
+    wide_user_m_max: {value: 25.0, unit: deg}
+    wide_user_r_min_m: {value: 6.0, unit: m}
+    wide_arrive_dy_m: {value: 2.0, unit: m}
+    wide_ps_r_lo_m: {value: 4.5, unit: m}
+    wide_ps_r_hi_m: {value: 6.5, unit: m}
+    wide_ps_m_lo: {value: 15.0, unit: deg}
+    wide_ps_m_hi: {value: 40.0, unit: deg}
+  min_duration_s: 0.3
+  outputs: [geometry (pin_down | wide_pin_down | other_pin_down), wide_pin_screen_spot, read]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Corner starts sit near the boundary where homography error is larger.
+  conflicts_resolved:
+  - "'down' and 'pin-down' split (user starts low), following CTG's wide/other split"
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: wide pin-down and other pin-down}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: wide_pin_screen_spot}
+  status: canonical
+  detector: detect_pin_down
+- id: flare_screen
+  level: action
+  name: Flare screen
+  aliases: [flare, fade screen, pinch fade]
+  research_ids: [SCR-O03]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (passed and close) where angle(d_u, u->ball) >= flare_deg with |d_u| >= disp_m over [t_s - 0.3, t_s + 1.2], the user ends at r >= end_r_m or |x| grows by >= dx_m, and n . unit(ball - P_s) >= n_ball_min (D_u not on the far side of the screener from the ball) and n_r > n_r_min (not a down-screen orientation; loop 1, SCR-T05). A user who fades straight away from the screener counts as passed (screen_frame away use). Needs the ball tracked. Ghost flare (no SET) is not detected in 0.1.0.
+  params:
+    flare_deg: {value: 100.0, unit: deg, note: 'loop 1 SCR-T05: was 120; a slot-to-corner flare with the ball on the opposite wing makes about 116 deg to u->ball'}
+    disp_m: {value: 2.0, unit: m}
+    end_r_m: {value: 6.6, unit: m}
+    dx_m: {value: 1.5, unit: m}
+    n_ball_min: {value: 0.0, unit: cosine, note: 'SCR-T05: n . unit(ball - P_s) >= this (n = unit(D_u - s): D_u is not on the far side of the screener from the ball, so the screener blocks his chase of the fading user; a pin-down fade has n toward the rim). Loop 2: was 0.5; n is averaged over the stand while D_u still moves, so a true 0.69 reads 0.11-0.57 and 0.5 dropped most real flares'}
+    n_r_min: {value: -0.5, unit: cosine, note: 'loop 1 SCR-T05: n_r > n_r_min (not a down-screen orientation); V0 flares have n_r -0.2..0.0, users popping off a double to the weak-side wing -0.97'}
+  min_duration_s: 0.3
+  outputs: [geometry = flare, user end spot]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Ball position errors flip u->ball; the ball must be tracked in the window.
+  conflicts_resolved:
+  - offense section 0.2 / F8.1 angle > 120 deg kept
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: flare screen}
+  status: canonical
+  detector: detect_flare_screen
+- id: back_screen
+  level: action
+  name: Back screen
+  aliases: [back, up screen, backscreen]
+  research_ids: [SCR-O04]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (passed and close) with n_r >= n_r_min (screener on the rim side of the defender), user dr over [t_s - 0.3, t_s + 1.2] <= -user_dr_m, and r_u <= end_r_m within end_window_s, and the row is not a flex cut (flex_screen takes precedence; loop 2). to_rim flag r < 2.0. Blind-screen hint in blind_screen_hint.
+  params:
+    n_r_min: {value: 0.5, unit: cosine}
+    user_dr_m: {value: 1.5, unit: m}
+    end_r_m: {value: 2.5, unit: m}
+    end_window_s: {value: 1.5, unit: s}
+  min_duration_s: 0.3
+  outputs: [geometry = back, end r, to_rim]
+  confidence: {level: medium, p_terms: [screen p terms, 'p_below(min r_u, end_r_m, sigma_p)']}
+  noise: Back screens are often blind and set at about 0.9 m; contact may not fire, sep_gain carries it.
+  conflicts_resolved:
+  - F8.1 r < 2 vs RA radius -> end gate 2.5 m with an r < 2.0 to_rim flag
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: back screen}
+  status: canonical
+  detector: detect_back_screen
+- id: ucla_screen
+  level: action
+  name: UCLA screen
+  aliases: [UCLA, UCLA cut, up screen from high post]
+  research_ids: [SCR-O05]
+  actors: {passer_user: u, screener: s, defender: D_u}
+  t0: pass release by u
+  rule: A pass by u released at r >= 6.75, m >= 60; an off-ball screen whose user is u with s in the elbow spot (named spots elbow / elbow_landmark) at t_s and t_s - release in [0, cut_window_s]; u reaches r < end_r_m with dr <= -cut_dr_m within cut_window_s of the release. Without a pass the row falls back to back_screen (ucla_no_pass).
+  params:
+    pass_r_min_m: {value: 6.75, unit: m}
+    pass_m_min: {value: 60.0, unit: deg}
+    cut_window_s: {value: 1.8, unit: s}
+    end_r_m: {value: 2.0, unit: m}
+    cut_dr_m: {value: 4.5, unit: m}
+  min_duration_s: 1.0
+  outputs: [geometry = ucla, pass release frame, cut end]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Pass detection depends on ball tracking.
+  conflicts_resolved:
+  - UCLA as cut vs as screen -> screen action with a linked cut
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: UCLA A5.20}
+  status: canonical
+  detector: detect_ucla_screen
+- id: rip_screen
+  level: action
+  name: Rip screen
+  aliases: [rip, rip screen]
+  research_ids: [SCR-O06]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: A back_screen where u starts on the wing (named spots wing_high / wing_mid / wing_low at t_s - 0.5) and the screener arrived from below (y(a) - y(a - 1.5) >= arrive_dy_m starting in low_post / mid_post / block).
+  params:
+    arrive_dy_m: {value: 1.5, unit: m}
+  min_duration_s: 0.3
+  outputs: [geometry = rip]
+  confidence: {level: low-medium, p_terms: [back_screen p terms]}
+  noise: Overlaps the generic back screen; gates are approach based.
+  conflicts_resolved:
+  - F8.1 back/up/rip split by approach and location (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: rip (repo rows)}
+  status: proposal
+  detector: detect_rip_screen
+- id: cross_screen
+  level: action
+  name: Cross screen
+  aliases: [cross, post cross, cross pin]
+  research_ids: [SCR-O07]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (close) with y_s < y_max_m and y_u < y_max_m at t_s; u moves laterally |dx| >= dx_m and |dx| >= ratio * |dy| over [t_s - 0.3, t_s + 1.2]; u ends on the ball side (sign(x_u) = sign(x_ball)) or within lane_x_m of x = 0 heading to it.
+  params:
+    y_max_m: {value: 2.5, unit: m}
+    dx_m: {value: 3.0, unit: m}
+    ratio: {value: 2.0, unit: ratio}
+    lane_x_m: {value: 1.0, unit: m}
+  min_duration_s: 0.5
+  outputs: [geometry = cross, user end]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Posts stand < 1 m apart without screening; the lateral displacement gate is required.
+  conflicts_resolved:
+  - F8.1 y < 2 and offense section 0.2 y < 3 -> y < 2.5 (check); the strict stationarity of A5.25 is stored, not required (NULL at sigma_p 0.3)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: cross screen}
+  status: canonical
+  detector: detect_cross_screen
+- id: stagger_screen
+  level: action
+  name: Stagger screen (double / triple stagger)
+  aliases: [stagger, staggered screens, double stagger, triple stagger]
+  research_ids: [SCR-O08]
+  actors: {screener_1: s1, screener_2: s2, user: u}
+  t0: t_s of the first screen
+  rule: Two off-ball screens on the same u by different screeners (the first used; later ones need only is_screen and passed, since their defender may already trail - loop 1, SCR-T18), second closest approach dt_lo_s..dt_hi_s after the first, screen points gap_lo_m < gap <= gap_hi_m apart (tight <= 2.0, standard <= 4.0, wide above). Triple = three. ambiguous_double_stagger when |gap - gap_lo_m| < 0.4.
+  params:
+    dt_lo_s: {value: 0.2, unit: s}
+    dt_hi_s: {value: 1.5, unit: s}
+    gap_lo_m: {value: 1.2, unit: m}
+    gap_hi_m: {value: 5.0, unit: m}
+    tight_m: {value: 2.0, unit: m}
+    standard_m: {value: 4.0, unit: m}
+  min_duration_s: 0.5
+  outputs: [gap_m, gap class, dt_s, order, n_screens]
+  confidence: {level: medium, p_terms: [product of the screen p terms]}
+  noise: Gap noise about 0.4 m.
+  conflicts_resolved:
+  - spacing F8.1 2-4 / A5.25 1.5-4 / motion_starts 2-5 -> 1.2-5.0 with sub-flags (no published value)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: stagger timing <= 1.5 s}
+  status: canonical
+  detector: detect_stagger_screen
+- id: double_screen
+  level: action
+  name: Double (parallel) off-ball screen
+  aliases: [double screen, parallel double, double down]
+  research_ids: [SCR-O09]
+  actors: {screener_1: s1, screener_2: s2, user: u}
+  t0: t_s of the first screen
+  rule: Two off-ball screens (close) on the same u by different screeners, screeners <= gap_max_m apart at t_s, closest approaches within dt_max_s. layout = side_by_side when |(s2 - s1) . u_hat| <= side_m, else stacked_double.
+  params:
+    gap_max_m: {value: 1.2, unit: m}
+    dt_max_s: {value: 0.3, unit: s}
+    side_m: {value: 0.6, unit: m}
+  min_duration_s: 0.3
+  outputs: [layout]
+  confidence: {level: medium, p_terms: [product of the screen p terms]}
+  noise: Adjacent bodies; ID swaps and merged detections.
+  conflicts_resolved:
+  - F8.1 and motion_starts 1.2 m identical
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: double 1.2 m}
+  status: canonical
+  detector: detect_double_screen
+- id: elevator_screen
+  level: action
+  name: Elevator (gate) screen
+  aliases: [elevator, gate, elevator_wide]
+  research_ids: [SCR-O10]
+  actors: {screener_1: s1, screener_2: s2, user: u}
+  t0: t_cross (user crosses the segment between the screeners)
+  rule: |
+    Two offensive players both standing (an s2 stand run over >= 60 % of [t_cross - 0.6, t_cross - 0.1]) with pre-gap (mean distance) in [pre_lo_m, pre_hi_m] (wide: up to
+    wide_hi_m);
+    u crosses the segment s1-s2 (projection 0-1) heading +y with speed >= cross_speed_mps; within close_s after the crossing the gap shrinks by >= gap_change_m (primary test,
+    noise floor) and each screener moves >= move_m toward the other. closed_gap_m (< 0.6 canonical, < 1.0 wide) is stored as an attribute because centre-to-centre 0.6 m is at
+    the physical floor (about 0.45 m) and inside the noise.
+  params:
+    pre_lo_m: {value: 0.9, unit: m}
+    pre_hi_m: {value: 1.6, unit: m}
+    wide_hi_m: {value: 3.0, unit: m}
+    cross_speed_mps: {value: 3.0, unit: m/s}
+    close_s: {value: 0.6, unit: s}
+    gap_change_m: {value: 0.5, unit: m}
+    move_m: {value: 0.2, unit: m, note: 'research 0.4 m; the gap change is the primary test, the per-screener move only checks that both close (0.2 m is about 1 sigma of a 0.6 s displacement)'}
+  min_duration_s: 0.5
+  outputs: [pre_gap_m, closed_gap_m, close_time_s, wide flag]
+  confidence: {level: low-medium, p_terms: ['p_above(gap change, gap_change_m, sigma_d)']}
+  noise: The closed gap is at the physical floor; the gap change is the primary test.
+  conflicts_resolved:
+  - A11.18 0.9-1.6 -> < 0.6 within 0.5 s canonical + elevator_wide; gap-change test added (proposal); cross speed 3.9 m/s lowered to 3.0 (proposal; the cut peaks near 4 m/s and the window mean is lower)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: elevator A11.18}
+  status: canonical
+  detector: detect_elevator_screen
+- id: hammer_screen
+  level: action
+  name: Hammer screen
+  aliases: [hammer]
+  research_ids: [SCR-O11]
+  actors: {driver: h, screener: s, user: u}
+  t0: drive start
+  rule: A drive by h (r from > drive_r_start_m to < drive_r_end_m, ending at m <= drive_m_max); an off-ball screen on the opposite side (sign(x_s) != sign(x_h at the drive end)) whose user moves to the corner (m <= corner_m_max) from r >= 6.6, m 20-60; a pass from h at r < pass_r_max_m to u with |dx| > pass_dx_m within pass_window_s after the user reaches the corner.
+  params:
+    drive_r_start_m: {value: 6.1, unit: m}
+    drive_r_end_m: {value: 3.05, unit: m}
+    drive_m_max: {value: 30.0, unit: deg}
+    corner_m_max: {value: 12.0, unit: deg}
+    pass_r_max_m: {value: 3.5, unit: m}
+    pass_dx_m: {value: 8.0, unit: m}
+    pass_window_s: {value: 1.5, unit: s}
+    user_r_min_m: {value: 6.6, unit: m, note: 'user start r (was hard-coded)'}
+    user_m_lo: {value: 20.0, unit: deg}
+    user_m_hi: {value: 60.0, unit: deg}
+  min_duration_s: 1.0
+  outputs: [linked drive, pass, closeout speed of D_u]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: The weak-side corner is often off-screen in broadcast.
+  conflicts_resolved:
+  - A5.18 timing (0.8 s) widened to 1.5 s (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: hammer A5.18}
+  status: canonical
+  detector: detect_hammer_screen
+- id: flex_screen
+  level: action
+  name: Flex screen
+  aliases: [flex, flex cut]
+  research_ids: [SCR-O12]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (close) where s is in low_post, mid_post or block (named spots; loop 1, SCR-T18) on the weak side (sign(x_s) = -sign(x_ball)), u starts at m <= start_m_max and r >= start_r_min_m on the screener's side, moves with y < path_y_m to r <= end_r_m on the ball side, |dx| >= dx_m within [t_s - window_s / 2, t_s + window_s / 2].
+  params:
+    start_m_max: {value: 20.0, unit: deg}
+    start_r_min_m: {value: 4.5, unit: m}
+    path_y_m: {value: 2.0, unit: m, note: 'research 1.5 m plus a 0.5 m noise margin on the smoothed path maximum'}
+    end_r_m: {value: 2.5, unit: m}
+    dx_m: {value: 4.0, unit: m}
+    window_s: {value: 2.0, unit: s}
+  min_duration_s: 0.5
+  outputs: [geometry = flex, continuity flag (down screen on s within 1.5 s)]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Heavy baseline occlusion.
+  conflicts_resolved:
+  - CTG flex (corner -> rim) and motion_starts flex combined
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: flex screen}
+  status: canonical
+  detector: detect_flex_screen
+- id: zipper_screen
+  level: action
+  name: Zipper screen
+  aliases: [zipper, zip, zipper cut]
+  research_ids: [SCR-O13]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: Off-ball screen (close) where u starts in low_post, block or mid_post (named spots; loop 1, SCR-T18 replaced r < 2.6 m), m start_m_lo..start_m_hi; the screener arrived from above (y(a) - y(a - 1.5) <= -arrive_dy_m) and stands at r ps_r_lo_m..ps_r_hi_m; u moves dy >= dy_m to r >= end_r_m, m end_m_lo..end_m_hi within window_s with |dx| < vert_ratio * |dy|. inbound flag from screen_inbound_context.
+  params:
+    start_m_lo: {value: 10.0, unit: deg}
+    start_m_hi: {value: 40.0, unit: deg}
+    arrive_dy_m: {value: 1.5, unit: m}
+    ps_r_lo_m: {value: 2.5, unit: m}
+    ps_r_hi_m: {value: 4.5, unit: m}
+    dy_m: {value: 4.0, unit: m}
+    end_r_m: {value: 6.75, unit: m}
+    end_m_lo: {value: 55.0, unit: deg}
+    end_m_hi: {value: 85.0, unit: deg}
+    window_s: {value: 2.0, unit: s}
+    vert_ratio: {value: 0.6, unit: ratio}
+  min_duration_s: 0.5
+  outputs: [geometry = zipper, inbound]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: The lane-line path is crowded.
+  conflicts_resolved:
+  - CTG zipper (inbound) vs repo zipper (block -> slot) -> repo canonical with an inbound flag; window 1.6 -> 2.0 s measured from t_s - 0.5 (proposal)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: zipper}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: zipper A5.24}
+  status: canonical
+  detector: detect_zipper_screen
+- id: iverson_screen
+  level: action
+  name: Iverson screen(s)
+  aliases: [Iverson, Iverson cut]
+  research_ids: [SCR-O14]
+  actors: {user: u, screener: s1, screener_2: s2 (optional)}
+  t0: start of u's lateral run (first frame |v_x| >= run_vx_mps)
+  rule: u starts at r >= start_r_m with |x| >= start_x_m, crosses x = 0 at y in [y_lo_m, y_hi_m], passes one or two off-ball screens (close) whose screeners stand at r 4.0-5.5 with m >= 55, |dx| >= dx_m within window_s, ends at r >= end_r_m on the opposite side. curl flag r < 4.0 after the last screen; loose band y 4.0-7.5 stored.
+  params:
+    start_r_m: {value: 6.5, unit: m}
+    start_x_m: {value: 3.5, unit: m}
+    y_lo_m: {value: 4.6, unit: m}
+    y_hi_m: {value: 7.0, unit: m}
+    dx_m: {value: 6.0, unit: m}
+    window_s: {value: 2.5, unit: s}
+    end_r_m: {value: 6.6, unit: m}
+    run_vx_mps: {value: 2.0, unit: m/s}
+    ps_r_lo_m: {value: 4.0, unit: m}
+    ps_r_hi_m: {value: 5.5, unit: m}
+    ps_m_min: {value: 55.0, unit: deg}
+    curl_r_m: {value: 4.0, unit: m, note: 'curl flag: min r < curl_r_m within 1 s after the last screen (was hard-coded)'}
+    loose_band_lo_m: {value: 4.0, unit: m, note: 'iverson_loose_band flag: crossing y in [lo, hi]'}
+    loose_band_hi_m: {value: 7.5, unit: m}
+  min_duration_s: 1.0
+  outputs: [n_screeners, curl]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Fast cut across the top with motion blur; path-level gates only.
+  conflicts_resolved:
+  - y band motion_starts 4-7 / A5.16 4.6-7.0 / actions_extra 3.5-7.5 -> A5.16 canonical with a loose band flag
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: Iverson}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: Iverson A5.16}
+  status: canonical
+  detector: detect_iverson_screen
+- id: wedge_screen
+  level: action
+  name: Wedge screen (off-ball, perimeter player screens the high post)
+  aliases: [wedge, wedge_offball, gut, slice]
+  research_ids: [SCR-O15]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: A back_screen-like off-ball screen (n_r >= 0.5) where the screener came from the perimeter (r_s >= perim_r_m at a - 1.0), u is in high_post_area or elbow / elbow_landmark (named spots) at t_s - 0.5, and u dives to r <= end_r_m within 1.5 s or becomes a ball screener within 2.0 s. gut = |x_s| < gut_x_m; slice = n within slice_deg of the radial; diagonal when n is 30-60 deg off the axes.
+  params:
+    perim_r_m: {value: 5.5, unit: m}
+    end_r_m: {value: 2.5, unit: m}
+    gut_x_m: {value: 1.5, unit: m}
+    slice_deg: {value: 20.0, unit: deg}
+    n_r_min: {value: 0.5, unit: cosine, note: 'back-screen orientation n_r >= this (was hard-coded)'}
+  min_duration_s: 0.3
+  outputs: [geometry = wedge_offball, sub_label (gut | slice | diagonal)]
+  confidence: {level: low, p_terms: [screen p terms]}
+  noise: Ambiguous with UCLA/rip; top-2 output when gates overlap (rows may co-exist).
+  conflicts_resolved:
+  - CTG wedge inside back screens; F5.3 wedge = ram -> namespaced wedge_offball vs wedge_ram
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: wedge}
+  status: proposal
+  detector: detect_wedge_screen
+- id: shuffle_screen
+  level: action
+  name: Shuffle screen
+  aliases: [shuffle, shuffle cut]
+  research_ids: [SCR-O16]
+  actors: {passer_user: u, screener: s, defender: D_u}
+  t0: pass release by u
+  rule: A pass by u, then an off-ball screen whose user is u with the screener at r ps_r_lo_m..ps_r_hi_m, m >= ps_m_min (high post), u ends at r < end_r_m on the side opposite to u's start (ball side after the pass), dr <= -dr_m within window_s of the release.
+  params:
+    ps_r_lo_m: {value: 4.0, unit: m}
+    ps_r_hi_m: {value: 5.5, unit: m}
+    ps_m_min: {value: 60.0, unit: deg}
+    end_r_m: {value: 2.5, unit: m}
+    dr_m: {value: 4.0, unit: m}
+    window_s: {value: 2.0, unit: s}
+  min_duration_s: 1.0
+  outputs: [geometry = shuffle]
+  confidence: {level: medium, p_terms: [screen p terms]}
+  noise: Depends on pass detection and ball side.
+  conflicts_resolved:
+  - A5.23 1.8 s window measured from the release widened to 2.0 s (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: shuffle A5.23}
+  status: proposal
+  detector: detect_shuffle_screen
+- id: screen_the_screener
+  level: action
+  name: Screen-the-screener (STS)
+  aliases: [STS, screen the screener, pick-the-picker]
+  research_ids: [SCR-O17]
+  actors: {first_screener_user: s, screener_2: s2, first_user: u}
+  t0: t_s of the first screen
+  rule: s sets a screen (first), then is the user of another used screen (read = use) by s2 != the first user (a mutual pair is a role reversal; loop 1) with t_s2 - t_s1 in [0, dt_max_s]; the STS user moves dr <= -back_dr_m after a back/cross first screen or dr >= down_dr_m after a down first screen (over [t_s2 - 0.3, t_s2 + 1.2]). Ricky and wiper are proposals not detected in 0.1.0.
+  params:
+    dt_max_s: {value: 1.5, unit: s}
+    back_dr_m: {value: 3.5, unit: m}
+    down_dr_m: {value: 3.0, unit: m}
+  min_duration_s: 1.0
+  outputs: [chain ids, roles]
+  confidence: {level: medium, p_terms: [product of both screen p terms]}
+  noise: Requires stable IDs through two screens.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: STS}
+  status: proposal
+  detector: detect_screen_the_screener
+- id: off_ball_screen_other
+  level: action
+  name: Pin-in, Out, Baseline exit and Middle (residual) off-ball screens
+  aliases: [pin_in, out, exit, baseline_exit, middle]
+  research_ids: [SCR-O18]
+  actors: {screener: s, user: u, defender: D_u}
+  t0: t_s
+  rule: |
+    First match. PIN_IN: the screener moved dr > +pin_in_dr_m from r < 4.5 and stands at r 4.0-6.5 between the defender and the shooter; the shooter moves <= pin_in_user_move_m at
+    r >= 6.6; r_D < r_u - 1.0; DELAY. OUT: screener at r out_ps_r_lo_m..out_ps_r_hi_m, m >= out_ps_m_min; the cutter passes (close) with dr >= out_dr_m ending r >= 6.6, angle change
+    <= out_turn_deg, no crossing of x = 0. An elbow down screen (down_screen) is not OUT (loop 1, SCR-T16). BASELINE_EXIT: y_s < base_y_m and the user moves to m <= base_m_max along the baseline. MIDDLE (residual): displacement within 60 deg of
+    u->ball and |x| reduced >= middle_dx_m; not claimed by another geometry.
+  params:
+    pin_in_dr_m: {value: 1.5, unit: m}
+    pin_in_user_move_m: {value: 1.5, unit: m}
+    out_ps_r_lo_m: {value: 3.8, unit: m}
+    out_ps_r_hi_m: {value: 5.2, unit: m}
+    out_ps_m_min: {value: 55.0, unit: deg}
+    out_dr_m: {value: 2.5, unit: m}
+    out_turn_deg: {value: 35.0, unit: deg}
+    base_y_m: {value: 1.0, unit: m}
+    base_m_max: {value: 12.0, unit: deg}
+    middle_dx_m: {value: 1.5, unit: m}
+  min_duration_s: 0.3
+  outputs: [geometry (pin_in | out | baseline_exit | middle)]
+  confidence: {level: low-medium, p_terms: [screen p terms]}
+  noise: Pin-in is seen only through the defender (needs a reliable D_u).
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/off-ball-screens', supports: completes the 13 CTG off-ball types}
+  status: proposal
+  detector: detect_off_ball_screen_other
+# ======================================================================================
+# Handoffs
+# ======================================================================================
+- id: dho
+  level: action
+  name: Dribble handoff (DHO), standard and strict
+  aliases: [DHO, handoff, hand-off]
+  research_ids: [SCR-H01]
+  actors: {hander: a, receiver: b, defender: D_b}
+  t0: t_ex = first frame of b's possession
+  rule: |
+    Possession transfer a -> b (cleaned holder runs) with dist(a, b) <= dist_max_m (closest 3-frame median within +-exch_win_s of t_ex), air time (holder-less frames) <= air_max_s, ball travel <= travel_max_m, and at
+    least one of a, b at speed > min_speed_mps, and real holds on both sides (a held >= hander_hold_s before, b keeps >= receiver_hold_s after; loop 1, SCR-T13). strict = dist <= strict_dist_m and air <= strict_air_s; conventional = receiver speed > conventional_mps; post_dho flag r_a <
+    post_r_m. The hander acts as screener: t_s = argmin d(a, D_b) in [t_ex - 0.5, t_ex + 1.0]; hander post-action from screener_post_action; the hander stop near D_b is a screen row of kind handoff. D_b coverage (F6 over / ice / switch / under) is not computed in 0.1.0.
+    handoff_exchange_spot (named spot, giver >= 5.5 m from the rim) stored.
+  params:
+    dist_max_m: {value: 1.0, unit: m}
+    exch_win_s: {value: 0.2, unit: s, note: 'exchange distance = closest 3-frame median within +-exch_win_s of the catch'}
+    air_max_s: {value: 0.3, unit: s}
+    travel_max_m: {value: 1.5, unit: m}
+    min_speed_mps: {value: 1.0, unit: m/s}
+    strict_dist_m: {value: 0.6, unit: m}
+    strict_air_s: {value: 0.2, unit: s}
+    conventional_mps: {value: 2.0, unit: m/s}
+    post_r_m: {value: 4.0, unit: m}
+    holder_min_run_frames: {value: 12, unit: frames, note: '0.4 s (loop 1, SCR-T13; was 9). The tester proposed 15; on the tester scenes at sigma_p 0.5 15 frames fragmented real possessions (ucla 0.62 -> 0.50, shuffle 0.57 -> 0.42, slip 0.80 -> 0.65 recall vs 9) while 12 keeps dho precision 0.67 (9: 0.64) with dho recall 0.60 (9: 0.53)'}
+    holder_switch_margin_m: {value: 0.15, unit: m, note: 'sticky holder - a teammate takes the ball only when nearer to it by this margin (or the holder is beyond mvlib.HOLD_R)'}
+    holder_margin_k: {value: 1.5, unit: sigma, note: 'SCR-T13: switch margin = max(holder_switch_margin_m, holder_margin_k x K_CAL x sqrt(var_p_a + var_p_b))'}
+    hander_hold_s: {value: 0.5, unit: s, note: 'SCR-T13: a DHO needs the hander to hold the ball for this long before the exchange'}
+    receiver_hold_s: {value: 0.5, unit: s, note: 'SCR-T13: and the receiver to keep it this long after'}
+  min_duration_s: 0.1
+  outputs: [t_ex, t_s, dist at exchange, air time, strict, conventional, post_dho, hander post-action]
+  confidence: {level: medium, p_terms: ['p_below(d_ab(t_ex), dist_max_m, sigma_d)']}
+  noise: The ball is occluded in the hands; holder = nearest offensive player within 1.0 m (mvlib) with runs < 5 frames removed (3-frame hysteresis in the research). A quick pitch looks like a DHO; air time separates them (dho_pitch_disambiguation).
+  conflicts_resolved:
+  - set_taxonomy < 0.91 m; offense / motion_starts <= 1.0 m; A11.18 <= 1.0 m / air <= 0.3 s canonical; 1.5 m flight only as a sanity gate
+  sources:
+  - {url: 'https://global-uploads.webflow.com/5f1af76ed86d6771ad48324b/622770e864911f5635f56f75_Using%20Hex%20Maps%20to%20Classify%20%20Cluster%20Dribble%20Hand-off%20Variants%20in%20the%20NBA%202.pdf', supports: 'DHO candidates by possession radius 5 ft and transfer within about 8 moments (research-reported; skeptic could not verify)'}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: handoffs counted with ball screens}
+  status: canonical
+  detector: detect_dho
+- id: fake_dho
+  level: action
+  name: Fake DHO (receiver goes away or backdoor)
+  aliases: [fake handoff, fake_handoff, wheel]
+  research_ids: [SCR-H02]
+  actors: {hander: a, receiver: b, defender: D_b}
+  t0: t_c (closest approach without transfer)
+  rule: |
+    APPROACH: a holds the ball and moves toward b (mean heading over [t_c - 0.6, t_c - 0.1] within heading_deg of a -> b, speed >= 1.0 m/s); d(a, b) at t_c (5-frame median)
+    <= approach_m (loop 1, SCR-T12 - the code no longer adds 0.3 m); mean closing speed >= closing_mps; b comes to the ball (mean velocity toward a over [t_c - 0.6, t_c - 0.1] >= receiver_close_mps); not within after_screen_s after a used ball screen for a; no transfer to b in [t_c - 0.3, t_c + 0.5] and a holds on >= 5 of the 9 frames after t_c; b is not standing as a
+    ball screener for a (no screen_set row with s = b, u = a within screen_excl_s of t_c: that is a ball screen, not a handoff).
+    AWAY: b moves >= away_m from its t_c position within away_s and d(a, b) grows. BACKDOOR: b's post heading turns >= backdoor_turn_deg from its pre heading (MP-13) and b
+    reaches r < backdoor_r_m with dr <= -backdoor_dr_m within 1.5 s; D_b within between_m of segment b-a at t_c flag stored.
+  params:
+    heading_deg: {value: 30.0, unit: deg}
+    screen_excl_s: {value: 1.0, unit: s, note: 'no fake handoff when b is a ball screener for a (SET row) within this time of t_c'}
+    approach_m: {value: 1.5, unit: m}
+    closing_mps: {value: 1.0, unit: m/s}
+    away_m: {value: 3.0, unit: m}
+    away_s: {value: 1.5, unit: s}
+    backdoor_turn_deg: {value: 120.0, unit: deg}
+    receiver_close_mps: {value: 0.5, unit: m/s, note: 'SCR-T12: b mean velocity toward a over [t_c - 0.6, t_c - 0.1] >= this (the receiver comes to the ball)'}
+    after_screen_s: {value: 1.5, unit: s, note: 'SCR-T12: no candidate within this time after a used ball screen for a (the handler attacking a second big)'}
+    receiver_window_s: {value: 1.2, unit: s, note: 'REG-fake_dho (loop 2): receiver_close_mps is tested on the peak receiver_mean_frames mean of b velocity toward a over [t_c - receiver_window_s, t_c - 0.1]'}
+    receiver_mean_frames: {value: 5, unit: frames, note: 'REG-fake_dho (loop 2): length of the running mean for the receiver approach'}
+    backdoor_r_m: {value: 2.0, unit: m, note: 'backdoor: b reaches r < backdoor_r_m (was hard-coded)'}
+    backdoor_dr_m: {value: 4.0, unit: m}
+    between_m: {value: 1.0, unit: m, note: 'defender_between flag: D_b within this of segment b-a'}
+  min_duration_s: 0.3
+  outputs: [sub_label (away | backdoor), t_c, d_ab at t_c]
+  confidence: {level: medium, p_terms: ['p_below(d_ab(t_c), approach_m, sigma_d)']}
+  noise: A missed transfer (occlusion) makes a real DHO look fake; the 5-of-9 holder check guards it.
+  conflicts_resolved:
+  - motion_starts FAKE_DHO and F6 keep merged as sub-labels; keep is its own detector (dho_keep)
+  sources:
+  - {url: 'https://global-uploads.webflow.com/5f1af76ed86d6771ad48324b/622770e864911f5635f56f75_Using%20Hex%20Maps%20to%20Classify%20%20Cluster%20Dribble%20Hand-off%20Variants%20in%20the%20NBA%202.pdf', supports: fake handoffs about 5.2 % of candidates (research-reported)}
+  status: canonical
+  detector: detect_fake_dho
+- id: dho_keep
+  level: action
+  name: Keep (hander fakes the handoff and drives)
+  aliases: [keep, refuse handoff]
+  research_ids: [SCR-H02]
+  actors: {hander: a, receiver: b}
+  t0: t_c
+  rule: The fake_dho APPROACH holds and a drives within keep_s of t_c (r(a) drops by >= keep_dr_m within 0.5 s, i.e. v_r >= 2.0 m/s on a 15-frame window) while still holding the ball.
+  params:
+    keep_s: {value: 1.0, unit: s}
+    keep_dr_m: {value: 1.0, unit: m}
+  min_duration_s: 0.3
+  outputs: [drive start, d_ab at t_c]
+  confidence: {level: medium, p_terms: ['p_below(d_ab(t_c), approach_m, sigma_d)']}
+  noise: as fake_dho
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: keep F6}
+  status: canonical
+  detector: detect_dho_keep
+- id: handoff_chain
+  level: set_component
+  name: Handoff chains - Get, Handback, Zoom (Chicago), Miami, Weave
+  aliases: [get, chase, throw-and-go, handback, zoom, Chicago, Miami, weave]
+  research_ids: [SCR-H03]
+  actors: {a: a, b: b, screener: s (zoom)}
+  t0: first event in the chain
+  rule: |
+    GET: pass a -> b, then DHO b -> a with t_ex - catch in [get_lo_s, get_hi_s]. HANDBACK: pass a -> b, then pass or pitch b -> a (raw-ball air handback_min_air_s..handback_air_s on the return, >= handback_min_air_s on the first leg; travel <= handback_travel_m) within handback_s, both at r >= handback_r_m (loop 1, SCR-T22). ZOOM: down_screen or pin_down on u, then a DHO to u within zoom_s of t_s. MIAMI: DHO a -> b, then a sets a ball screen for b within miami_s.
+    WEAVE: >= 2 DHOs within weave_s at r weave_r_lo_m..weave_r_hi_m, m >= weave_m_min.
+  params:
+    get_lo_s: {value: 0.3, unit: s}
+    get_hi_s: {value: 2.0, unit: s}
+    zoom_s: {value: 1.5, unit: s}
+    miami_s: {value: 1.5, unit: s}
+    weave_s: {value: 5.0, unit: s}
+    handback_s: {value: 1.5, unit: s, note: 'handback: return pass within this time (was hard-coded)'}
+    handback_air_s: {value: 0.5, unit: s}
+    handback_min_air_s: {value: 0.2, unit: s, note: 'SCR-T22: both legs are real passes (raw-ball air time, SCR-T15)'}
+    handback_travel_m: {value: 2.5, unit: m}
+    handback_r_m: {value: 6.75, unit: m}
+    weave_r_lo_m: {value: 6.5, unit: m, note: 'weave DHOs at r in [lo, hi] and m >= weave_m_min (was hard-coded)'}
+    weave_r_hi_m: {value: 9.0, unit: m}
+    weave_m_min: {value: 45.0, unit: deg}
+  min_duration_s: 0.5
+  outputs: [chain (get | handback | zoom | miami | weave), ordered action ids]
+  confidence: {level: medium, p_terms: [product of the linked events' conf]}
+  noise: Inherits DHO and pass detection errors.
+  conflicts_resolved:
+  - GET 0.5-1.5 s widened to 0.3-2.0 s from the catch (proposal)
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: handoff chains, weave A11.16}
+  status: proposal
+  detector: detect_handoff_chain
+# ======================================================================================
+# Legality hints (never foul calls)
+# ======================================================================================
+- id: moving_screen_hint
+  level: rule
+  name: Moving-screen legality hint (Rule 4-35.4)
+  aliases: [moving screen, illegal screen hint]
+  research_ids: [SCR-L01]
+  actors: {screener: s, defender: D}
+  t0: t_c (closest approach of s to D, <= contact_m)
+  rule: |
+    For an offensive non-holder s and a defender D who does not guard s, at a local minimum t_c of d(s, D) with 5-frame median <= contact_m: (a) P(|v| > 0.6 m/s) >= p_moving
+    on the LS window of min_ls_frames centred at t_c - 0.1 s (lower-bound test, disjoint from the loose band), (b) mean of v_s(t) . unit(D(t) - s(t)) over
+    [t_c - along_pre_s, t_c - along_post_s] >= along_n_mps (moving into the defender), (b2) over the same window D's mean speed >= def_speed_mps and D's velocity toward s >= def_closing_mps (the defender moves into the screener's path; loop 1, SCR-T20), (c)
+    contact_likely, (d) D is delayed or deflected (screen_interaction tests around t_c). A hint with a probability, never a foul.
+  params:
+    contact_m: {value: 0.8, unit: m}
+    p_moving: {value: 0.9, unit: probability}
+    along_n_mps: {value: 0.5, unit: m/s}
+    along_pre_s: {value: 0.4, unit: s}
+    along_post_s: {value: 0.1, unit: s, note: 'velocity toward D averaged over [t_c - along_pre_s, t_c - along_post_s] (at the closest approach the direction to D is perpendicular to a pass-by)'}
+    def_speed_mps: {value: 1.0, unit: m/s, note: 'SCR-T20: D mean speed over [t_c - along_pre_s, t_c - along_post_s] >= this'}
+    def_closing_mps: {value: 0.5, unit: m/s, note: 'SCR-T20: and D velocity toward s >= this (the defender moves into the screener path; two players arriving side by side are not a moving screen)'}
+  min_duration_s: null
+  outputs: [moving_screen_hint, p_moving, v_ls, v_along_n, d_sD_min]
+  confidence: {level: low, p_terms: ['P(|v| > 0.6)', 'p_below(d_sD, contact_m, sigma_d)']}
+  noise: At sigma_p 0.3 and 0.5 s windows only clearly moving screens (about > 1.2 m/s) are flagged; precision first.
+  conflicts_resolved:
+  - fouls.yaml 'speed > 0.5 m/s at contact' overlapped LOOSE (< 0.6); the hint now needs the lower bound above 0.6, contact, motion toward the defender and a delay
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: Rule 4-35.4 screener stationary at contact}
+  status: proposal
+  detector: detect_moving_screen_hint
+- id: blind_screen_hint
+  level: rule
+  name: Blind screen, too-close-to-moving-opponent and boundary-parallel legality hints (Rule 4-35.3 / 4-35.7)
+  aliases: [blind screen, 4-35.3, 4-35.7]
+  research_ids: [SCR-L02]
+  actors: {screener: s, defender: D_u}
+  t0: SET stop onset a
+  rule: |
+    Facing of D_u at a: heading if speed >= facing_speed_mps, else unit(midpoint(u, ball) - D_u). BLIND = p_above(angle(facing, D_u -> s), blind_deg, sigma_angle) >= blind_p_min with sigma_angle = degrees(sigma_d / d(s, D_u)(a)) x sqrt(2) (loop 1, SCR-T14 - was a point test at 90 deg).
+    contact_likely here = 5-frame median d(s, D_u) <= 0.80 m at the stop onset or at t_s.
+    BLIND_NO_STEP: blind, D_u speed < facing_speed_mps, d(s, D_u)(a) < step_m, contact_likely.
+    TOO_CLOSE_MOVING: blind, D_u speed >= facing_speed_mps, d(s, D_u)(a) < step_m + stride_s * closing speed, contact_likely.
+    BOUNDARY_PARALLEL: two screeners in screen_boundary_6ft_band (named spot), mutual distance <= mutual_m, joining line within parallel_deg of the boundary, contact_likely.
+  params:
+    facing_speed_mps: {value: 1.0, unit: m/s}
+    blind_deg: {value: 120.0, unit: deg, note: 'loop 1 SCR-T14: was 90; human visual field about +-100-120 deg; gated by probability (blind_p_min)'}
+    step_m: {value: 0.9, unit: m, note: 'unverified (Rule 4-35.3.a says only ''a normal step'')'}
+    stride_s: {value: 0.5, unit: s}
+    parallel_deg: {value: 20.0, unit: deg}
+    blind_p_min: {value: 0.8, unit: probability, note: 'SCR-T14: p_above(facing angle, blind_deg, sigma_angle) >= this, sigma_angle = degrees(sigma_d / d(s, D)(a)) x sqrt(2)'}
+    mutual_m: {value: 1.2, unit: m, note: 'boundary-parallel pair distance (was hard-coded)'}
+  min_duration_s: null
+  outputs: [hint (blind_no_step | too_close_moving | boundary_parallel), blind, facing_deg]
+  confidence: {level: low, p_terms: ['p_below(d(s, D_u)(a), step_m, sigma_d)', 'p_below(d_sD(t_s), 0.8, sigma_d)']}
+  noise: Facing from velocity is unreliable for slow defenders; pose improves it.
+  conflicts_resolved:
+  - A5 blind spacing 0.7-1.0 m vs fouls.yaml 0.9 m -> 0.9 m, flagged unverified
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: Rule 4-35.3 blind screens and 4-35.7}
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: screen_boundary_6ft_band}
+  status: proposal
+  detector: detect_blind_screen_hint
+- id: screen_pose_legality
+  level: rule
+  name: Pose-only screen legality items (wide stance, leaning, tripping leg, defender forcing through, touch duration)
+  aliases: [4-35.2.a, 4-35.6, touch duration]
+  research_ids: [SCR-L02, SCR-A05]
+  actors: {screener: s, defender: D_u}
+  t0: t_s
+  rule: Not measurable from floor XY. Stored as null until pose keypoints exist; the detector returns no events.
+  params: {}
+  min_duration_s: null
+  outputs: [wide_stance, leaning, tripping_leg, forced_through, touch_duration_s]
+  confidence: {level: n/a, model: n/a}
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: Rule 4-35}
+  status: proposal
+  detector: detect_screen_pose_legality
+  needs_data: [pose keypoints (shoulders, hips, feet)]

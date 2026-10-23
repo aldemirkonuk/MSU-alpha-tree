@@ -1,0 +1,1794 @@
+# Movement grammar - KINEMATICS family (bottom layer of the always-on movement labeller).
+#
+# Single source of truth for the kinematics detectors in
+# tools/specgen/movement/detectors/kinematics.py (parameters are loaded from this file at import).
+# Every numeric parameter is a {value, unit} pair; the detector code never hard-codes a threshold.
+#
+# Measurement inputs come from tools/specgen/movement/mvlib.py (CA-RTS smoothing per MP-04, features
+# and validity gates per MP-07, sigmas per MP-09, confidence factors per MP-16). Spot labels come
+# from config/named_spots.yaml through tools/specgen/named_spots/spotlib.py (never redefined here).
+family: kinematics
+version: 0.5.1
+date: '2026-10-23'
+owner: Mac session
+status: proposal
+scheme_version: kin-0.5.1
+frame: >-
+  attacked-rim frame of named_spots (metres, rim at the origin, +y toward half court, +x to the attacker's right
+  while he faces the basket); defenders defend the rim at the origin. The frame is MIRRORED seen from above
+  (x = right of someone facing -y), so a positive cross product pre x post (counter-clockwise in x/y) is a
+  physical RIGHT turn; every side attribute (cod, plant_step turn_side, curved_run) is the physical side (KIN-T01).
+time_base: 29.97 fps, DT = 1001/30000 s; every window is given in seconds and converted with mvlib.frames()
+estimators:
+  speed: CA-RTS speed |v| (mvlib Kin.speed), invalid in interp_long frames
+  speed_L: centred NaN-aware mean of speed over band_window_s (0.5 s); sigma_L = sigma_speed / sqrt(max(1, window / corr_time_s))
+  speed_bias_corrected: v_c = sqrt(max(mean(speed^2 over band_window_s) - 2 sigma_speed^2, 0)), the RMS form MP-09 E[speed^2 | v] = v^2 + 2 sigma^2 implies; removes the Rician floor of a still player (KIN-T03)
+  stationary: mvlib Kin.stationary_s2 (chi-square 2 dof); never a raw speed < 0.3 m/s test
+  heading_for_classes: heading of the mean velocity over dir_window_s (0.3 s); sigma_psi = sigma_vbar / |vbar| (rad)
+  acceleration: CA-RTS accel_along (exploratory views only, see accel_effort)
+
+common:
+  params:
+    emit_min: {value: 0.5, unit: probability, note: KIN-R05 emission threshold; items may override}
+    review_below: {value: 0.6, unit: probability, note: MP-16 review flag (requirements.md:587)}
+    edge_min_frames: {value: 5, unit: frames, note: mvlib.edge_factor is 0 below 5 frames from a segment edge (MP-06)}
+    coverage_min: {value: 0.8, unit: fraction, note: KIN-R03 share of observed (not interpolated) frames in the window}
+    corr_time_s: {value: 0.3, unit: s, note: MP-12 / MP-16 assumed correlation time of smoothed errors}
+    corr_time_s_q10: {value: 0.5, unit: s, note: 'KIN-T09: correlation time at the q 10 tier (measured speed-error autocorrelation 0.37 at a 0.5 s lag at sigma_p 0.5); used wherever corr_time_s is'}
+    tier_sigma_p: {value: 0.45, unit: m, note: 'mvlib switches CA-RTS to q 10 at median sigma_p >= this; the detector reads the tier from the smoothed covariance ratio sqrt(var_v / var_p) against the steady-state ratios of q 30 and q 10 at this sigma_p (Kin does not carry sigma_p)'}
+    s2_enter: {value: 5.99, unit: chi2_2dof, note: p = 0.05 under v = 0}
+    s2_stay: {value: 13.82, unit: chi2_2dof, note: p = 0.001 under v = 0 (exit-side hysteresis)}
+    stand_speed: {value: 0.5, unit: m/s, note: semantic stand edge used for the soft stand membership}
+    band_window_s: {value: 0.5, unit: s}
+    dir_window_s: {value: 0.3, unit: s}
+    id_ambig_r: {value: 1.0, unit: m, note: any two players (either team) closer than this}
+    id_ambig_pad_s: {value: 0.5, unit: s}
+    c_id_ambiguous: {value: 0.5, unit: factor, note: MP-16 c_id when proximity coincides with a rejected innovation}
+    facing_sigma_deg: {value: 25.0, unit: deg, note: proposal sigma of the XY facing proxy (pose target is 20 deg median)}
+    facing_cap_proxy: {value: 0.6, unit: factor, note: KIN-R05 facing_factor for the XY proxy}
+  confidence_model: >-
+    conf = P_cond x c_edge x c_gap x c_id x c_cap (MP-16). P_cond is the window mean of the per-frame
+    probability that the defining condition holds (mvlib.window_conf) or Phi(margin / sigma) of the
+    controlling quantity for point events; c_edge = mvlib.edge_factor(t0); c_gap = mvlib.gap_factor over
+    the window (1.0 observed, 0.8 short interpolation, 0 long gap); c_id = 0.5 when another player is
+    within 1.0 m while either track has an innovation rejected by the MP-03 gate within 0.5 s, else 1;
+    c_cap = item cap (facing proxy 0.6, exploratory views 0.5, XY jump proxy 0.3). An instance is emitted
+    when conf >= emit_min and coverage >= coverage_min; conf < review_below sets attrs.review. Raw conf is
+    to be mapped to calibrated probability by isotonic regression on the R-ST-01 hand labels before use
+    in set matching. Every event carries attrs.reasons (the thresholds it passed, with units),
+    attrs.alternatives (competing labels with their probabilities) and attrs.conf_components.
+
+items:
+# ---------------------------------------------------------------------------------------------
+# Rules (no detector of their own)
+# ---------------------------------------------------------------------------------------------
+- id: kin_features
+  level: rule
+  name: Kinematic feature pipeline for the family
+  aliases: [KIN-R01]
+  actors: [player]
+  t0: n/a (per-frame features)
+  rule: >-
+    Positions, velocities, accelerations and covariances come from the CA-RTS smoother of mvlib
+    (MP-04: q 30 m^2/s^5, q 10 when median sigma_p >= 0.45 m), run per segment; no feature is computed
+    by frame differencing. Raw-position screening of teleports and identity swaps happens BEFORE
+    smoothing in the measurement layer (MP-03 innovation gate in mvlib.ca_rts; frames whose innovation
+    exceeds the gate are rejected and flagged in Kin.rejected); frames whose CA-RTS speed exceeds
+    artefact_speed_cap are dropped from every detector's valid mask and events overlapping them carry
+    attrs.artefact. Noise tier: the q 10 tier (median sigma_p >= tier_sigma_p) is read from the smoothed
+    covariance ratio sqrt(var_v / var_p) and selects the *_q10 parameter variants (corr_time_s_q10, burst /
+    brake win_max_s_q10, hesitation dv_min_q10). This family adds: speed_L (0.5 s
+    centred mean of speed), the bias-corrected low speed v_c, mean-velocity headings for direction
+    classes, the per-frame band posterior (kin_speed_bands) and the identity-ambiguity factor c_id
+    (rejected innovation within 0.5 s while another player of either team is within 1.0 m). Heading is
+    used only where the mean speed passes max(0.8 m/s, 2.5 sigma_vbar) (noise-adaptive gate). Lateral
+    direction classes of defenders need ball coupling (couple_speed / on_ball_r, KIN-T11).
+  params:
+    heading_z: {value: 2.5, unit: sigma, note: heading valid only if |vbar| >= heading_z x sigma_vbar}
+    artefact_speed_cap: {value: 9.0, unit: m/s, note: secondary check only; above every match speed in basketball (NCAA D-I guard peak 7.04 +- 0.39 m/s)}
+    couple_speed: {value: 1.0, unit: m/s, note: 'KIN-T11: a defender lateral class needs the ball (or the nearest attacker when the ball is unobserved) moving >= this along the defender motion direction ...'}
+    on_ball_r: {value: 3.0, unit: m, note: '... or the defender within this distance of the ball; otherwise lateral motion is a rotation (forward_run sub_type rotation_run)'}
+  min_duration_s: null
+  outputs: [speed, speed_L, sigma_L, v_c, P_stand, heading_mean, sigma_psi, c_id, noise_tier, artefact]
+  confidence: medium
+  noise_notes: >-
+    CA-RTS is non-causal, so speed and event times carry no filter lag (the SG lag table of the research
+    does not apply); measured t0 bias per event is listed in validation_v0. At sigma_p 0.3 m a
+    still player reads mean speed 0.58 m/s (p95 1.06) and a 2.99 m/s maximum inside the first 5 frames of
+    a segment, so frames closer than edge_min_frames to an edge never seed an event. Correlated noise
+    (homography drift, pan bias, zoom-dependent sigma_p) is not covered by the white+AR(1) simulator;
+    k_cal (MP-09) absorbs it until measured. Dribbling and has_ball frames bias the box-bottom point;
+    no separate noise model yet (open question).
+  conflicts_resolved:
+  - 'Filter: research KIN-R01 proposed SG 15/31 frames; the family uses the CA-RTS of MP-04 that the whole grammar shares (one smoother, one sigma model). speed_L (0.5 s) plays the role of the SG31 band speed.'
+  - 'Artefact screen after smoothing (skeptic, high): moved before smoothing (MP-03 innovation gate). The 9.0 m/s cap is kept only as a secondary check; the unopened "NBA max 8.76 m/s via Petway" justification is dropped.'
+  - 'ID-swap ambiguity counted only same-team pairs within 1.0 m (skeptic, high): now any two players, but only when a rejected innovation coincides, so routine on-ball defence at < 1 m is not penalised.'
+  sources:
+  - {url: 'repo:tools/specgen/movement/mvlib.py', supports: 'CA-RTS smoother, feature validity gates, s2 statistic, edge and gap factors'}
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'noise propagation, window lengths, artefact screen'}
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'NCAA D-I peak speeds C 6.23 +- 0.33, F 6.63 +- 0.52, G 7.04 +- 0.39 m/s'}
+  status: proposal
+  detector: none
+
+- id: kin_speed_bands
+  level: rule
+  name: Speed-band scheme with soft membership (MP-10, resolves conflict C10)
+  aliases: [KIN-R02, MP-10, speed zones, velocity bands]
+  actors: [player]
+  t0: first frame of the run with P(band) >= 0.7, back-dated to the first contiguous frame with P >= 0.5
+  rule: >-
+    Primary edges (m/s): stand (s2 statistic, soft edge 0.5), walk < 2.0, jog 2.0-4.0, run 4.0-5.0,
+    high_speed 5.0-5.83, sprint > 5.83. Per-frame posterior on speed_L with sigma_L:
+    P(stand) = Phi((0.5 - v_c) / sigma_L); for the moving bands
+    P(b) = (1 - P(stand)) x [Phi((hi_b - speed_L) / sigma_L) - Phi((lo_b - speed_L) / sigma_L)]
+    with lo(walk) = 0, so the six probabilities sum to 1 and walk = not-stand and < 2.0 (one machine
+    for the stand/walk edge). Hard segments use the MP-10 probability hysteresis only: enter when
+    P(b) >= 0.7, stay while P(b) >= 0.3, minimum 0.5 s. Because the hysteresis acts on the probability
+    of the published edge, the stored edges equal the cited edges (no shifted 5.98 m/s sprint entry).
+    Dips below the stay level shorter than 0.3 s (one correlation time of the smoothed error) are
+    bridged, because the AR(1) error moves speed_L by up to about 0.9 m/s for a few frames at constant
+    true speed (sigma_p 0.3).
+    Other schemes (R-PL-01 2/4/5.5, A5 1.94/3.9/5.0/6.0, literature 1.94/3.89/5.0, WIMU, Kinexon 4.2,
+    SciSports 4.17/5.56/6.94, sprint 6.69, M-PHYS-035 7.0) are views on the 0.1 m/s speed histogram
+    and never primitive thresholds; counts are never summed across schemes. histogram_bin is the bin of
+    that view; no detector in this family reads it.
+  params:
+    p_enter: {value: 0.7, unit: probability}
+    p_stay: {value: 0.3, unit: probability}
+    p_backdate: {value: 0.5, unit: probability}
+    bridge_s: {value: 0.3, unit: s, note: dips below p_stay shorter than one correlation time are bridged}
+    histogram_bin: {value: 0.1, unit: m/s}
+  min_duration_s: 0.5
+  outputs: [band_probs per frame, band segments]
+  confidence: high
+  noise_notes: >-
+    sigma_L is about 0.31 m/s at sigma_p 0.3 (sigma_speed 0.40 m/s, k_cal 1.8), so a frame within 0.3 m/s
+    of an edge is ambiguous and the posterior shows it. Broadcast under-reads high speeds by 0.1-0.4 m/s
+    (MP-10), biasing sprint counts low near 5.83; the 6.69 m/s view is always reported next to it.
+  conflicts_resolved:
+  - 'C10: R-PL-11 / M-PHYS-023 edges 2.0/4.0/5.0/5.83 are primary. 2.0 is the walk-run transition; 5.0 is the HSR edge in 16 of 20 basketball LPS studies; 5.83 is used by 3 of 12 sprint studies and is reachable by NCAA centres (peak 6.23). It deviates from the modal 6.69 m/s sprint edge (7 of 12 studies, Tuttle 2024), so literature comparability is kept through the 6.69 view on every sprint effort.'
+  - 'MP-10 (probability 0.7/0.3) vs MP-11(1) (speed exit = enter - max(0.3, 0.75 sigma)) vs KIN-R02 (symmetric +-h): one mechanism per event type. Band segments use MP-10; speed efforts use an exit-side-only speed hysteresis (see hsr_effort).'
+  - 'KIN-P01/P02 stand-walk edge contradiction (skeptic, low): walk is not-stand and < 2.0; the 0.35 m/s walk exit is deleted.'
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'HSR 5.0 m/s in 16 of 20 studies; sprint 6.69 in 7 of 12, 5.83 in 3 of 12; merge stand and walk for load'}
+  - {url: 'https://en.wikipedia.org/wiki/Transition_from_walking_to_running', supports: 'walk-run transition about 2.0 m/s'}
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'NCAA D-I peak speeds by position'}
+  - {url: 'repo:config/metrics.yaml M-PHYS-023 / M-PHYS-035', supports: 'band edges and the 7.0 m/s view'}
+  status: canonical
+  detector: none (used by walk, jog, run, high_speed, sprint)
+
+- id: kin_validity
+  level: rule
+  name: Validity gating and live-ball context
+  aliases: [KIN-R03]
+  actors: [player]
+  t0: n/a
+  rule: >-
+    An instance is emitted only if observed coverage >= 0.8 of its frames, no long gap (c_gap 0),
+    and t0 is at least 5 frames from a segment edge. Camera cuts and gaps over 2.0 s split segments
+    in mvlib (MP-01/MP-05). Live/dead context comes from clock or PBP; the all-players-slow proxy
+    (all 10 players speed_L < 2.5 m/s for 2.5 s with ball speed < 1 m/s and a static player centroid)
+    may only tag context = dead_candidate, never exclude time, unless clock or PBP confirms. Implemented
+    (KIN-T12): every event carries attrs.context = dead_candidate when its t0 lies in such a run (all
+    players' speed_L < 2.5 m/s, ball speed < 1.0 m/s and player-centroid speed < 0.5 m/s for >= 2.5 s; the
+    ball must be observed), else live_or_unknown; attrs.coverage is the observed share of the window.
+  params:
+    dead_proxy_speed: {value: 2.5, unit: m/s}
+    dead_proxy_s: {value: 2.5, unit: s}
+    dead_proxy_ball_speed: {value: 1.0, unit: m/s}
+    dead_proxy_centroid_speed: {value: 0.5, unit: m/s, note: 'static player centroid: 0.5 s mean speed of the centroid of all players below this (proposal)'}
+  min_duration_s: null
+  outputs: [coverage, context]
+  confidence: medium
+  noise_notes: The dead-ball proxy also fires in walk-up half-court sets and at free throws, hence tag-only.
+  conflicts_resolved:
+  - 'Dead-ball proxy used to exclude load time (skeptic, low): tag-only now.'
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'coverage and gating'}
+  status: proposal
+  detector: none (tag applied in every detector through the shared event builder)
+  needs_data: [game clock or PBP for live/dead context (exclusion)]
+
+- id: kin_vref
+  level: rule
+  name: Individual reference speed and relative overlay
+  aliases: [KIN-R04, sprint_rel]
+  actors: [player]
+  t0: n/a
+  rule: >-
+    v_ref = median of the player's top-3 game maxima of the 1 s rolling mean speed; provisional until
+    5 games with coverage >= 0.70. sprint_rel = speed_L >= 0.879 v_ref for >= 1.0 s. Relative bands
+    are always reported next to the absolute ones, never instead of them. Cross-family recommendation:
+    rim run and leak-out use high_speed (>= 5.0) or >= 80% v_ref for >= 1.5 s, not 5.5 m/s for 2 s.
+  params:
+    sprint_rel_frac: {value: 0.879, unit: fraction of v_ref}
+    games_min: {value: 5, unit: games}
+  min_duration_s: 1.0
+  outputs: [v_ref, v_ref_provisional, pct_vref]
+  confidence: medium
+  noise_notes: Peak 1 s means are deflated by off-screen sprints and broadcast under-read at speed.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'position peak speeds'}
+  status: proposal
+  detector: none
+  needs_data: [multi-game history per player (one clip cannot define v_ref)]
+
+- id: kin_confidence
+  level: rule
+  name: Confidence model and storage
+  aliases: [KIN-R05, MP-16]
+  actors: [player]
+  t0: n/a
+  rule: See common.confidence_model. Storage - segment types in movement_primitives, events in a kinematic_events table (proposal); every row stores scheme_version, filter name and sigma.
+  params: {}
+  min_duration_s: null
+  outputs: [conf, conf_components, review, scheme_version]
+  confidence: medium
+  noise_notes: The product assumes independent factors; occlusion and identity problems are correlated, so isotonic calibration on labels is required.
+  conflicts_resolved:
+  - 'p_idswap (KIN-R05) vs c_id (MP-16): one factor, c_id = 0.5 under the evidence-based ambiguity test of kin_features.'
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'confidence components'}
+  status: proposal
+  detector: none
+
+# ---------------------------------------------------------------------------------------------
+# Speed states
+# ---------------------------------------------------------------------------------------------
+- id: stand
+  level: primitive
+  name: stand (measured stationary state)
+  aliases: [KIN-P01, MP-12, stationary, set, still]
+  actors: [player]
+  t0: first frame of the stationary run (s2 < 5.99 and P_stand >= 0.5)
+  rule: >-
+    Enter when s2 = v^T P_v^-1 v < 5.99 (chi-square 2 dof, p 0.05) and P_stand >= 0.5; stay while
+    s2 < 13.82 (p 0.001) and P_stand >= 0.3, bridging dips up to 0.3 s (one correlation time); minimum 0.5 s. P_stand is the
+    bias-corrected soft membership Phi((0.5 - v_c) / sigma_L). Sub-label stand_strict when every smoothed
+    position of the run lies within max(0.30 m, 2 x k_cal x sigma_pos) of the run centroid (noise-scaled
+    MP-12 strict-still test). Spot label at the centroid via named_spots court_region. Run-level check
+    (KIN-T03; the per-frame s2 test cannot reject a 0.9 m/s walker, s2 about 4.5 < 5.99): v_run =
+    |mean position over the last 0.2 s - mean over the first 0.2 s| / (duration - 0.2 s), sigma_run =
+    k_cal sqrt(2 mean var_p) / (duration - 0.2 s); the run is kept only if P_run = Phi((0.5 - v_run) /
+    sigma_run) >= run_check_p_min (0.6 at the q 30 tier, 0.5 at q 10; runs shorter than 0.4 s skip the
+    check). KIN2-STAND: the check is repeated on the run extended by run_check_ext_s (0.5 s) on each side and
+    the run passes on min(P_run, max(P_left, P_right)) (an extension past the clip edge counts as P 1): a slow
+    walker moves on both sides of a noise-stalled fragment, a true stand is entered or left on at most one.
+    stop and start use the frame gates only (their runs begin or end inside the speed transition).
+  params:
+    s2_enter: {value: 5.99, unit: chi2_2dof}
+    s2_stay: {value: 13.82, unit: chi2_2dof}
+    p_enter: {value: 0.5, unit: probability}
+    p_stay: {value: 0.3, unit: probability}
+    bridge_s: {value: 0.3, unit: s, note: dips of the stay condition up to one correlation time are bridged}
+    min_s: {value: 0.5, unit: s}
+    strict_disp_m: {value: 0.30, unit: m}
+    strict_sigma_mult: {value: 2.0, unit: sigma}
+    run_check_end_s: {value: 0.2, unit: s, note: 'KIN-T03 run-level displacement check: mean position over the first and last end windows'}
+    run_check_p_min: {value: 0.6, unit: probability, note: 'keep a stationary run only if P(v_run_c < stand_speed) >= this (stand only; stop and start use the frame gates). KIN2-STAND: 0.5 -> 0.6 at the q 30 tier'}
+    run_check_p_min_q10: {value: 0.5, unit: probability, note: 'KIN2-STAND: q 10 tier keeps 0.5 (0.6 cut true-stand recall at sigma_p 0.5 from 0.94 to 0.86)'}
+    run_check_ext_s: {value: 0.5, unit: s, note: 'KIN2-STAND: the run check is repeated on the run extended by this on each side; a run is rejected when both one-sided extensions read moving'}
+    run_check_conf: {value: false, unit: bool, note: 'multiply P_run into the confidence; false because it removed true stands at sigma_p 0.5 (screen set 0.71 -> 0.28 share), the gate alone removes the slow walkers'}
+  min_duration_s: 0.5
+  outputs: [t_start, t_end, centroid_x, centroid_y, spot, mean_speed, max_dev_m, stand_strict, p_run, v_run]
+  confidence: >-
+    P_cond = window mean of P_stand (bias-corrected, so a truly still player scores about 0.9 instead
+    of the 0.45-0.59 of the uncorrected MP-12 formula) x P_run; times c_edge, c_gap, c_id.
+  noise_notes: >-
+    s2 < 5.99 corresponds to a CA-RTS speed below about 0.98 m/s at sigma_p 0.3, so the soft P_stand
+    (edge 0.5 m/s) separates still from slow walking. Simulated still players: s2 < 5.99 on 98% (sigma_p
+    0.3) and 95% (0.5) of frames away from segment edges. Shuffling in place reads as stand.
+  conflicts_resolved:
+  - 'Stationary: < 0.5 (M-SPACE-043), <= 0.3 (screen strict), 1.0 (named_spots slow_speed), raw speed tests in MP-12/KIN-P01. Recommend the s2 test (MP-09) with a bias-corrected 0.5 m/s soft edge; the strict variant is displacement-based and noise-scaled, never 0.3 m/s.'
+  - 'Minimum duration 0.3 s (MP-12 at sigma_p <= 0.3) vs 0.5 s (KIN-P01, MP-12 at 0.3-0.5): 0.5 s, safe at every tier.'
+  sources:
+  - {url: 'repo:config/metrics.yaml M-SPACE-043', supports: 'stationary < 0.5 m/s'}
+  - {url: 'repo:docs/taxonomy/offense_full.md A5 SCREEN_strict', supports: 'strict-still sub-label'}
+  status: canonical
+  detector: detect_stand
+
+- id: walk
+  level: primitive
+  name: walk band segment
+  aliases: [KIN-P02, stand_walk (load view)]
+  actors: [player]
+  t0: kin_speed_bands t0
+  rule: P(walk) = (1 - P_stand) x Phi((2.0 - speed_L) / sigma_L); MP-10 hysteresis 0.7 / 0.3, minimum 0.5 s.
+  params:
+    lo: {value: 0.0, unit: m/s, note: lower edge handled by the stand membership}
+    hi: {value: 2.0, unit: m/s}
+    min_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
+  confidence: P_cond = window mean of P(walk) x c_edge x c_gap x c_id.
+  noise_notes: Walk/stand flicker is absorbed by the probability hysteresis.
+  conflicts_resolved: ['walk upper edge 1.94 (A5, [X5]) vs 2.0 (R-PL-11): 2.0; the difference is below sigma_L.']
+  sources:
+  - {url: 'https://en.wikipedia.org/wiki/Transition_from_walking_to_running', supports: 'walk-run transition about 2.0 m/s'}
+  status: canonical
+  detector: detect_walk
+
+- id: jog
+  level: primitive
+  name: jog band segment
+  aliases: [KIN-P03]
+  actors: [player]
+  t0: kin_speed_bands t0
+  rule: P(jog) on speed_L in [2.0, 4.0) m/s; MP-10 hysteresis 0.7 / 0.3, minimum 0.5 s.
+  params:
+    lo: {value: 2.0, unit: m/s}
+    hi: {value: 4.0, unit: m/s}
+    min_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
+  confidence: P_cond = window mean of P(jog) x c_edge x c_gap x c_id.
+  noise_notes: none beyond the edges.
+  conflicts_resolved: ['jog upper edge 3.89/3.9 (A5, [X5]) vs 4.0 (R-PL-11): 4.0.']
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'band edges used in basketball LPS studies'}
+  status: canonical
+  detector: detect_jog
+
+- id: run
+  level: primitive
+  name: run band segment
+  aliases: [KIN-P04]
+  actors: [player]
+  t0: kin_speed_bands t0
+  rule: P(run) on speed_L in [4.0, 5.0) m/s; MP-10 hysteresis 0.7 / 0.3, minimum 0.5 s.
+  params:
+    lo: {value: 4.0, unit: m/s}
+    hi: {value: 5.0, unit: m/s}
+    min_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
+  confidence: P_cond = window mean of P(run) x c_edge x c_gap x c_id.
+  noise_notes: The band is 1.0 m/s wide (about 3 sigma_L); where measured broadcast limits of agreement exceed 1.0 m/s report merged run+.
+  conflicts_resolved: ['run 4.0-5.5 (R-PL-01) vs 3.9-5.0 (A5) vs 4.0-5.0 (R-PL-11): 4.0-5.0.']
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'HSR edge 5.0 m/s'}
+  status: canonical
+  detector: detect_run
+
+- id: high_speed
+  level: primitive
+  name: high-speed band segment
+  aliases: [KIN-P05 segment, HSR band]
+  actors: [player]
+  t0: kin_speed_bands t0
+  rule: P(high_speed) on speed_L in [5.0, 5.83] m/s; MP-10 hysteresis 0.7 / 0.3, minimum 1.0 s (KIN2-BAND).
+  params:
+    lo: {value: 5.0, unit: m/s}
+    hi: {value: 5.83, unit: m/s}
+    min_s: {value: 1.0, unit: s, note: 'KIN2-BAND: 0.5 -> 1.0; the 0.5 s window-mean noise (0.25-0.40 m/s) exceeds the 0.15-0.3 m/s gap of a 4.7 m/s run to the 5.0 edge, so 0.5 s excursions entered; p_enter stays 0.7 (the band is 0.83 m/s wide, 0.85 dropped recall to 0)'}
+  min_duration_s: 1.0
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
+  confidence: P_cond = window mean of P(high_speed) x c_edge x c_gap x c_id.
+  noise_notes: >-
+    The band is only 0.83 m/s wide; with sigma_L 0.31 the maximum attainable P is about 0.82 at its
+    centre, so segments are short and often shared with run or sprint (alternatives carry it).
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'HSR edge 5.0 m/s'}
+  status: canonical
+  detector: detect_high_speed
+
+- id: sprint
+  level: primitive
+  name: sprint band segment
+  aliases: [KIN-P06 segment]
+  actors: [player]
+  t0: kin_speed_bands t0
+  rule: P(sprint) on speed_L > 5.83 m/s; MP-10 hysteresis 0.85 / 0.3, minimum 1.0 s (KIN2-BAND).
+  params:
+    lo: {value: 5.83, unit: m/s}
+    hi: {value: 99.0, unit: m/s, note: open upper edge}
+    min_s: {value: 1.0, unit: s, note: 'KIN2-BAND: 0.5 -> 1.0 (a steady 5.6 m/s run entered sprint on 0.5 s window-noise excursions in 3-9 of 10 clips)'}
+    p_enter: {value: 0.85, unit: probability, note: 'KIN2-BAND: band-rule 0.7 overridden for the open top band'}
+  min_duration_s: 1.0
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
+  confidence: P_cond = window mean of P(sprint) x c_edge x c_gap x c_id.
+  noise_notes: Broadcast under-reads maximal speeds by about 0.4 m/s; expect sprint counts biased low.
+  conflicts_resolved: ['sprint > 5.5 (R-PL-01), > 5.83 (R-PL-11), >= 6.0 (A5, no source), > 6.69 ([X5]), >= 7.0 (M-PHYS-035): > 5.83 primary, the rest views.']
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'sprint edges in basketball studies'}
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'NCAA D-I peak speeds'}
+  status: canonical
+  detector: detect_sprint
+
+# ---------------------------------------------------------------------------------------------
+# Speed efforts and peaks
+# ---------------------------------------------------------------------------------------------
+- id: hsr_effort
+  level: primitive
+  name: high-speed running effort
+  aliases: [KIN-P05 effort, speed_effort_hsr]
+  actors: [player]
+  t0: first frame with speed_L >= 5.0 m/s of the qualifying run
+  rule: >-
+    Enter at speed_L >= 5.0 m/s (the published edge itself); stay while speed_L >= 5.0 - h with
+    h = max(0.15 m/s, 0.5 sigma_L) (exit-side-only hysteresis); minimum 1.0 s. Covers high_speed and
+    sprint frames. Attrs carry the 0.5 s Kinexon view flag, direction (toward/away from the rim,
+    lateral) and start/end spots.
+  params:
+    edge: {value: 5.0, unit: m/s}
+    h_min: {value: 0.15, unit: m/s}
+    h_sigma_mult: {value: 0.5, unit: sigma_L}
+    min_s: {value: 1.0, unit: s}
+    conf_ref_h: {value: 0.075, unit: m/s, note: 'KIN4-EFFORT: P_cond tests the effort mean against edge - this (half the stay band h_min: a rule-conforming effort can have a true mean down to edge - h_min), not the entry edge; 0.15 lifted real recall more but added near-miss false efforts on the 5.6 m/s synthetic run'}
+    conf_ref_h_q10: {value: 0.0, unit: m/s, note: 'KIN4-EFFORT: at the q 10 tier the AR(1) excursions (0.5 s correlation) exceed the stay band; keep the entry edge'}
+    z_sel: {value: 1.0, unit: sigma, note: 'KIN-T09 selection allowance: the window was chosen because speed_L crossed the edge'}
+    direction_ratio: {value: 0.5, unit: fraction, note: 'direction toward_rim / away_from_rim when |mean v_r| / mean speed >= this, else lateral'}
+  min_duration_s: 1.0
+  outputs: [t_start, t_end, distance_m, peak_speed, mean_speed, direction, start_spot, end_spot]
+  confidence: >-
+    P_cond = Phi((mean speed_L over the effort - (5.0 - conf_ref_h)) / s_mean - z_sel) (KIN4-EFFORT: conf_ref_h
+    0.075 m/s at q 30, 0 at q 10), s_mean = mean sigma_speed /
+    sqrt(max(1, duration / corr_time)), z_sel 1.0 for selecting the window where the edge was crossed
+    (KIN-T09; the old window mean of P(speed_L >= 5.0) gave 0.71-0.83 to AR(1) excursions of a 4.7 m/s run);
+    x c_edge x c_gap x c_id.
+  noise_notes: Off-screen transition runs are missing not at random and bias counts low; report coverage.
+  conflicts_resolved:
+  - 'Effort minimum duration: 1.0 s (MSU) vs 0.5 s (Kinexon) vs > 1.0 s (SciSports): 1.0 s primary, Kinexon view as attribute.'
+  - 'Symmetric hysteresis moved the entry to 5.15 m/s (skeptic, medium): exit-side only, so the stored edge is the cited edge.'
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'HSR edge 5.0 m/s'}
+  status: canonical
+  detector: detect_hsr_effort
+
+- id: sprint_effort
+  level: primitive
+  name: sprint effort
+  aliases: [KIN-P06 effort, speed_effort_sprint]
+  actors: [player]
+  t0: first frame with speed_L > 5.83 m/s of the qualifying run
+  rule: >-
+    Enter at speed_L > 5.83 m/s; stay while speed_L >= 5.83 - h (h as hsr_effort); minimum 1.0 s.
+    Views always attached: time above 6.69 m/s (modal literature edge) and a very-high-speed flag
+    (>= 7.0 m/s for >= 1.0 s, M-PHYS-035). sprint_rel needs v_ref (kin_vref, needs_data).
+  params:
+    edge: {value: 5.83, unit: m/s}
+    view_edge: {value: 6.69, unit: m/s}
+    vhs_edge: {value: 7.0, unit: m/s}
+    h_min: {value: 0.15, unit: m/s}
+    h_sigma_mult: {value: 0.5, unit: sigma_L}
+    min_s: {value: 1.0, unit: s}
+    conf_ref_h: {value: 0.075, unit: m/s, note: 'KIN4-EFFORT: P_cond tests the effort mean against edge - this (half the stay band h_min: a rule-conforming effort can have a true mean down to edge - h_min), not the entry edge; 0.15 lifted real recall more but added near-miss false efforts on the 5.6 m/s synthetic run'}
+    conf_ref_h_q10: {value: 0.0, unit: m/s, note: 'KIN4-EFFORT: at the q 10 tier the AR(1) excursions (0.5 s correlation) exceed the stay band; keep the entry edge'}
+    z_sel: {value: 1.0, unit: sigma, note: 'KIN-T09 selection allowance: the window was chosen because speed_L crossed the edge'}
+    direction_ratio: {value: 0.5, unit: fraction, note: 'direction toward_rim / away_from_rim when |mean v_r| / mean speed >= this, else lateral'}
+  min_duration_s: 1.0
+  outputs: [t_start, t_end, distance_m, peak_speed, mean_speed, time_above_6p69_s, vhs, direction]
+  confidence: P_cond = Phi((mean speed_L - (5.83 - conf_ref_h)) / s_mean - z_sel) as hsr_effort x c_edge x c_gap x c_id.
+  noise_notes: Under-read of 0.1-0.4 m/s at maximal speed (MP-10) lowers counts near the edge.
+  conflicts_resolved: ['See sprint; sprint effort and band machine now use the same edge (5.83) with exit-side hysteresis.']
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'sprint edges'}
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'NCAA D-I peaks'}
+  status: canonical
+  detector: detect_sprint_effort
+
+- id: peak_speed
+  level: primitive
+  name: peak-speed event
+  aliases: [KIN-P07, max speed]
+  actors: [player]
+  t0: >-
+    frame of the maximum 1 s rolling-mean speed. On a plateau longer than 1 s the anchor is arbitrary
+    (anywhere on the plateau), so other families must not anchor timing to it (KIN-T10).
+  rule: >-
+    Per player per clip (one possession per clip in this tooling): the frame of maximum 1.0 s centred
+    rolling-mean speed, emitted when that mean is >= 3.5 m/s and the single-frame speed within the
+    second reaches >= 4.0 m/s. The single-frame maximum is stored but never used as an anchor. Only
+    valid frames (edge, gap and artefact masks) enter the mean and the frame maximum (KIN-T10).
+  params:
+    window_s: {value: 1.0, unit: s}
+    mean_min: {value: 3.5, unit: m/s}
+    frame_min: {value: 4.0, unit: m/s}
+  min_duration_s: 1.0
+  outputs: [peak_1s, peak_frame_speed, x, y, spot]
+  confidence: >-
+    Phi((peak_1s - 3.5) / sigma_1s - sqrt(2 ln N_eff)) x c_edge x c_gap x c_id, sigma_1s = sigma_speed /
+    sqrt(1.0 / corr_time), N_eff = valid clip time / 1.0 s (the clip maximum of N_eff noisy 1 s means is
+    biased high by about sqrt(2 ln N_eff) sigma; KIN-T10).
+  noise_notes: Single-frame maxima are noise-driven; the 1 s mean is robust.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: '1 s rolling peak'}
+  status: proposal
+  detector: detect_peak_speed
+
+- id: accel_effort
+  level: primitive
+  name: acceleration effort (instantaneous, exploratory view)
+  aliases: [KIN-P08, IMA acceleration]
+  actors: [player]
+  t0: first frame with accel_along >= 2.0 m/s^2 of the qualifying run
+  rule: >-
+    accel_along (CA-RTS) >= 2.0 m/s^2 for >= 0.5 s; the effort ends at the first frame with
+    accel_along <= 0 (Varley end rule); consistency speed(end) - speed(start) >= 1.0 m/s. Band
+    moderate [2.0, 3.0), high >= 3.0; peaks above 4.0 are flagged peak_capped. Released = false until
+    the MP-18 acceleration gate passes: conf is capped at 0.5 and attrs.gate_status = exploratory.
+  params:
+    a_enter: {value: 2.0, unit: m/s^2}
+    a_high: {value: 3.0, unit: m/s^2}
+    a_report_max: {value: 4.0, unit: m/s^2}
+    min_s: {value: 0.5, unit: s}
+    dv_check: {value: 1.0, unit: m/s}
+    released: {value: false, unit: bool}
+    view_cap: {value: 0.5, unit: factor}
+    emit_min: {value: 0.25, unit: probability}
+  min_duration_s: 0.5
+  outputs: [peak_a, mean_a, start_speed, end_speed, delta_v, band, gate_status]
+  confidence: P_cond = window mean of P(accel_along >= 2.0) over the qualifying run x c_edge x c_gap x c_id x 0.5 (not released).
+  noise_notes: >-
+    The smoother attenuates peak accelerations (sharp truth 7-9 m/s^2 is reduced, MP-14); vendor-comparable
+    counts need deconvolution or LPS/IMU calibration. Burst/brake (MP-14) are the primary acc/dec primitives.
+  conflicts_resolved:
+  - 'Edges 1.5 (Kinexon), 2.0 (LPS modal), 3.0, 3.5 (NBA): +-2.0 / +-3.0 per R-PL-12, others views.'
+  - 'MP-14 "per-frame accel band counts are NOT reported" vs KIN-P08 gated view: kept only as a capped exploratory view, never counted until released.'
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'acceleration > 2 m/s^2 in 14 of 22 LPS studies'}
+  - {url: 'https://hira.hope.ac.uk/id/eprint/1821/', supports: 'acceleration counts are the most sensitive to filter and minimum duration (soccer GPS, abstract only)'}
+  status: proposal
+  detector: detect_accel_effort
+
+- id: decel_effort
+  level: primitive
+  name: deceleration effort (instantaneous, exploratory view)
+  aliases: [KIN-P09]
+  actors: [player]
+  t0: first frame with accel_along <= -2.0 m/s^2 of the qualifying run
+  rule: Mirror of accel_effort on accel_along <= -2.0 m/s^2 for >= 0.5 s, ending at accel_along >= 0; same gate and cap.
+  params:
+    a_enter: {value: 2.0, unit: m/s^2, note: magnitude}
+    a_high: {value: 3.0, unit: m/s^2}
+    a_report_max: {value: 4.0, unit: m/s^2}
+    min_s: {value: 0.5, unit: s}
+    dv_check: {value: 1.0, unit: m/s}
+    released: {value: false, unit: bool}
+    view_cap: {value: 0.5, unit: factor}
+    emit_min: {value: 0.25, unit: probability}
+  min_duration_s: 0.5
+  outputs: [peak_a, mean_a, start_speed, end_speed, delta_v, band, gate_status]
+  confidence: As accel_effort with the sign flipped.
+  noise_notes: Real stops are short and large and are attenuated more than accelerations; prefer brake.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'separate deceleration gate'}
+  status: proposal
+  detector: detect_decel_effort
+
+# ---------------------------------------------------------------------------------------------
+# Velocity-change events (MP-14)
+# ---------------------------------------------------------------------------------------------
+- id: burst
+  level: primitive
+  name: burst (velocity-change acceleration)
+  aliases: [KIN-P10, MP-14 acceleration effort, first step, change of pace up]
+  actors: [player]
+  t0: onset of the speed rise from a change-point (hinge) fit of the smoothed speed over [max(turning point - 0.3 s, 20% level - 0.5 s), 80% level] (KIN-T07/T08 bound)
+  rule: >-
+    On the 0.2 s mean of CA-RTS speed, a zig-zag with 0.5 m/s retrace finds alternating troughs t_a and
+    peaks t_b. A rise is a burst when the largest speed gain inside any <= 1.0 s sub-window of
+    [t_a, t_b] is >= 2.0 m/s (mean acceleration >= 2.0 m/s^2) and t_b - t_a >= 0.3 s; the reported
+    window ends at t_b or t0 + 1.5 s. high_burst when that gain is >= 3.0 m/s. Sub-type by the
+    bias-corrected trough speed: from_stand < 1.0, change_of_pace >= 2.0, else from_walk; start_unknown
+    when the trough is within 5 frames of a segment edge. Non-maximum suppression +-0.5 s. At the q 10
+    tier the gain window is win_max_s_q10 (1.3 s, one extra smoother support; KIN-T08).
+  params:
+    dv_min: {value: 2.0, unit: m/s}
+    dv_high: {value: 3.0, unit: m/s}
+    win_max_s: {value: 1.0, unit: s}
+    min_s: {value: 0.3, unit: s}
+    max_s: {value: 1.5, unit: s}
+    retrace: {value: 0.5, unit: m/s}
+    smooth_s: {value: 0.2, unit: s}
+    onset_lookback_s: {value: 0.3, unit: s, note: change-point fit may start this far before the turning point}
+    hinge_before_t20_s: {value: 0.25, unit: s, note: 'KIN-T07/T08: the change-point fit never starts more than this before the 20% level; KIN2-HESI 0.5 -> 0.25 (confirmer measurement, re-measured)'}
+    win_max_s_q10: {value: 1.3, unit: s, note: 'KIN-T08: at the q 10 tier the gain window adds one smoother support (q 10 spreads a 0.5 s rise over about 1.3 s)'}
+    nms_s: {value: 0.5, unit: s}
+    from_stand_below: {value: 1.0, unit: m/s}
+    change_of_pace_from: {value: 2.0, unit: m/s}
+  min_duration_s: 0.3
+  outputs: [start_speed, end_speed, delta_v, delta_v_1s, mean_acc, sub_type, band, heading_end, v_r_end]
+  confidence: Phi((delta_v_1s - 2.0) / sigma_dv) x c_edge x c_gap x c_id, sigma_dv = sqrt(sigma_speed(t_a)^2 + sigma_speed(t_b)^2) (MP-14).
+  noise_notes: >-
+    sigma_dv is about 0.57 m/s at sigma_p 0.3 (k_cal included). The trough speed of a start from rest
+    reads about 0.5 m/s high (Rician floor), so delta_v is conservative by that amount. Bursts shorter
+    than 0.3 s (a single jab step) are missed. Occlusion re-entry starts are tagged start_unknown.
+    q 10 (sigma_p >= 0.45) spreads a 0.5 s rise over about 1.3 s: a 0 -> 3 m/s first step measures a
+    steepest 1.0 s gain of only 1.65-1.84 m/s at sigma_p 0.5 (tester KIN-T08), hence win_max_s_q10.
+  conflicts_resolved:
+  - 'MP-14 (local min to max, 0.5-1.5 s, mean accel >= 2) vs KIN-P10 (delta_v >= 2.0 within <= 1.0 s): the gain is measured on the steepest <= 1.0 s sub-window of the trough-to-peak rise, which satisfies both; duration floor 0.3 s (KIN-P10) because the rise of a real first step is often < 0.5 s.'
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'velocity-change events as noise-robust acceleration counts'}
+  - {url: 'https://hira.hope.ac.uk/id/eprint/1821/', supports: 'instantaneous acceleration counts are filter-sensitive (soccer GPS, abstract only)'}
+  status: proposal
+  detector: detect_burst
+
+- id: brake
+  level: primitive
+  name: brake (velocity-change deceleration)
+  aliases: [KIN-P11, MP-14 deceleration effort, change of pace down]
+  actors: [player]
+  t0: onset of the speed fall from a change-point (hinge) fit, as burst
+  rule: Mirror of burst on peak-to-trough falls, delta_v >= 2.0 m/s (high >= 3.0) within <= 1.0 s (1.3 s at the q 10 tier); attrs.next records stop / cod / burst found within next_window_s (0.5 s) after the trough, else continue.
+  params:
+    dv_min: {value: 2.0, unit: m/s}
+    dv_high: {value: 3.0, unit: m/s}
+    win_max_s: {value: 1.0, unit: s}
+    min_s: {value: 0.3, unit: s}
+    max_s: {value: 1.5, unit: s}
+    retrace: {value: 0.5, unit: m/s}
+    smooth_s: {value: 0.2, unit: s}
+    onset_lookback_s: {value: 0.3, unit: s, note: change-point fit may start this far before the turning point}
+    hinge_before_t20_s: {value: 0.25, unit: s, note: 'KIN-T07/T08: the change-point fit never starts more than this before the 20% level; KIN2-HESI 0.5 -> 0.25 (confirmer measurement, re-measured)'}
+    win_max_s_q10: {value: 1.3, unit: s, note: 'KIN-T08: at the q 10 tier the gain window adds one smoother support (q 10 spreads a 0.5 s rise over about 1.3 s)'}
+    nms_s: {value: 0.5, unit: s}
+    next_window_s: {value: 0.5, unit: s, note: 'attrs.next looks for stop / cod / burst within this after the trough'}
+  min_duration_s: 0.3
+  outputs: [start_speed, end_speed, delta_v, delta_v_1s, mean_dec, band, end_speed_bias_corrected, next]
+  confidence: As burst.
+  noise_notes: >-
+    Abrupt stops shorter than the smoother's support are smeared. The non-causal CA-RTS leaks a fall
+    0.1-0.3 s early, so the hinge onset leads the truth: median t0 error -0.10 / -0.13 / -0.18 s at sigma_p
+    0.2 / 0.3 / 0.5 on the loop-1 harness (validation_v1). The 50% crossing of the fall is nearly unbiased
+    (median 0.00-0.04 s) if a consumer needs an unbiased anchor; the onset definition is unchanged.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'deceleration events'}
+  status: proposal
+  detector: detect_brake
+
+- id: hesitation
+  level: action
+  name: hesitation / change of pace (brake then burst without stopping)
+  aliases: [stutter, hesi, change_of_pace]
+  actors: [player]
+  t0: brake onset
+  rule: >-
+    A brake immediately followed by a burst that share the zig-zag trough, each with delta_v >= 1.5 m/s
+    within <= 1.0 s, the time from the brake end (80% fall point plus the tangent extrapolation to the
+    trough) to the burst onset <= 0.6 s,
+    and the trough speed >= 1.0 m/s -> sub_type change_of_pace (the only sub_type since KIN2-HESI). The trough is the minimum of the per-frame
+    bias-corrected CA-RTS speed sqrt(max(speed^2 - 2 sigma_speed^2, 0)) within +-0.2 s of the zig-zag trough
+    (KIN-T07: the 0.2 s smoothed speed, and the 0.5 s v_c window, read a 0.3 m/s trough as about 1 m/s). A trough below 1.0 m/s is stop + start when stop fires; when it does not (the
+    still phase is under stop's 0.3 s) it is the separate item stop_and_go (KIN2-HESI: a near-stop is not a
+    brake-then-burst 'without stopping'). t0 is the brake hinge onset, but no earlier than
+    onset_max_before_trough_s before the zig-zag trough (KIN2-HESI). At the q 10 tier
+    dv_min is 1.2 m/s (dv_min_q10) and the trough edge 1.8 m/s (trough_min_q10). Missing-item fix: the research mentioned hesitations as missed but had
+    no primitive.
+  params:
+    dv_min: {value: 1.5, unit: m/s}
+    dv_min_q10: {value: 1.2, unit: m/s, note: 'KIN-T07: q 10 attenuates a 2.0 m/s dip to a measured 1.1-1.7 m/s (attenuation about 0.7); 1.5 x 0.8'}
+    gap_max_s: {value: 0.7, unit: s, note: 'KIN2-HESI: 0.6 -> 0.7; with the 0.25 s hinge bound the burst onset of a 0.2 s dwell reads up to 0.67 s after the brake end (sigma_p 0.3 and 0.5). Measured at sigma_p 0.3: 0.61/0.70 -> 0.62/0.75; at 0.5: 0.52/0.55 -> 0.50/0.60 (one tier-specific value was tried: 0.6 at q 10 keeps 0.52/0.55, F1 0.53 vs 0.55)'}
+    trough_min: {value: 1.0, unit: m/s}
+    trough_min_q10: {value: 1.8, unit: m/s, note: 'KIN-T07: at q 10 the blur lifts the per-frame trough of a 5 -> 0.3 -> 5 m/s stop-and-go to 1.04-1.62 m/s (p10-p90) while a 5 -> 3 -> 5 hesitation reads 3.36-3.79'}
+    trough_window_s: {value: 0.2, unit: s, note: 'KIN-T07: trough = min of the per-frame bias-corrected speed within +-this of the zig-zag trough'}
+    onset_max_before_trough_s: {value: 0.8, unit: s, note: 'KIN2-HESI: the CA-RTS blur leaks a 0.5 s fall early; the hinge onset of a 5 -> 3 -> 5 dip read 0.9-1.1 s against 1.5 s truth at sigma_p 0.3-0.5'}
+  min_duration_s: 0.6
+  outputs: [t_trough, trough_speed, brake_dv, burst_dv, dwell_s, has_ball, sub_type, noise_tier, t0_hinge]
+  confidence: >-
+    min(P_brake, P_burst) with the tier dv_min (MP-16 actions take the minimum of constituents) x P_trough,
+    P_trough = Phi((trough - 1.0) / sigma_L) (KIN-T07: the code always multiplied it in); times c_edge, c_gap,
+    c_id. Alternative stop_and_go = 1 - P_trough when >= 0.2.
+  noise_notes: >-
+    delta_v 1.5 is 2.6 sigma_dv at sigma_p 0.3; validate the false-event rate on labelled film before release.
+    q 10 attenuates a 5 -> 3 -> 5 m/s dip (2.0 m/s) to a measured 1.1-1.7 m/s (factor about 0.7), hence
+    dv_min_q10 1.2 m/s. t0 (brake onset) of a 0.5 s fall led the truth by a median 0.2 / 0.3 / 0.5 s at
+    sigma_p 0.2 / 0.3 / 0.5 (blur leaks the fall early); after the KIN2-HESI hinge bound 0.25 s and the
+    onset_max_before_trough_s bound the median is -0.17 s at every sigma_p (p90 0.28-0.40 s). Remaining misses
+    at sigma_p 0.3-0.5 are dips whose burst delta_v_1s reads 0.9-1.5 m/s (attenuated 2.0 m/s rise), so
+    min(P_brake, P_burst) stays below emit_min.
+  conflicts_resolved:
+  - {with: stop_and_go, resolution: 'trough below trough_min -> stop_and_go (KIN2-HESI), never both for one dip'}
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'velocity-change events'}
+  status: proposal
+  detector: detect_hesitation
+
+- id: stop_and_go
+  level: action
+  name: stop-and-go (brake to a near-stop and burst again without a measurable stand)
+  aliases: [stop_and_go_dribble, hard_hesitation]
+  actors: [player]
+  t0: brake onset (as hesitation, bounded by onset_max_before_trough_s)
+  rule: >-
+    KIN2-HESI: the hesitation brake/burst pair (same params: dv_min / dv_min_q10, gap_max_s,
+    trough_window_s, onset_max_before_trough_s) whose trough bias-corrected speed is below trough_min
+    (trough_min_q10 at the q 10 tier) while no stop fires between the brake onset and the burst peak (the
+    still phase is under stop's 0.3 s). Split out of hesitation sub_type stop_and_go (KIN-T07 fix 3), which
+    made a near-stop a 'hesitation without stopping'. When stop fires, stop + start label the dip instead.
+  params: {}
+  min_duration_s: 0.6
+  outputs: [t_trough, trough_speed, brake_dv, burst_dv, dwell_s, has_ball, sub_type, noise_tier, t0_hinge]
+  confidence: >-
+    min(P_brake, P_burst) x (1 - P_trough), P_trough = Phi((trough - trough_min) / sigma_L); times c_edge,
+    c_gap, c_id. Alternative hesitation = P_trough when >= 0.2.
+  noise_notes: >-
+    At the q 10 tier the blur lifts the per-frame trough of a 5 -> 0.3 -> 5 m/s dip to 1.04-1.62 m/s, hence the
+    tier edge trough_min_q10 1.8 m/s (hesitation params). Fires on that dip in 10/10 clips per side at
+    sigma_p 0.2 / 0.3 / 0.5 (KIN2-HESI evidence).
+  conflicts_resolved:
+  - {with: hesitation, resolution: 'trough below trough_min -> stop_and_go, else hesitation; never both for one dip'}
+  - {with: stop, resolution: 'when stop fires inside the dip, stop + start label it and stop_and_go is not emitted'}
+  sources:
+  - {url: 'repo:docs/research/load_thresholds.md', supports: 'velocity-change events'}
+  status: proposal
+  detector: detect_stop_and_go
+
+- id: stop
+  level: primitive
+  name: stop (moving to stationary)
+  aliases: [KIN-P12, hard_stop, stride_stop]
+  actors: [player]
+  t0: first frame of the stationary run (stand onset, MP-17)
+  rule: >-
+    A stationary run (stand gate: s2 < 5.99 with P_stand >= 0.5, stay s2 < 13.82 and P_stand >= 0.3)
+    lasting >= 0.3 s whose preceding 1.2 s (ending 0.2 s before t0) contains speed_L >= 3.0 m/s.
+    hard_stop when the 0.2 s mean of CA-RTS speed falls from >= 4.0 m/s (last such frame within the 1.2 s
+    pre window) to < 1.0 m/s within 0.8 s (KIN-T14: the old test used speed_L, a 0.5 s mean that falls
+    below 4.0 about 0.65 s before rest, against the s2-gate t0 that lags rest by 0.07-0.34 s, so a
+    7.5 m/s^2 stop read soft). Displacement/s2 based, not a raw
+    speed_S < 0.8 test. jump_stop vs stride_stop needs pose (attr stop_type = unknown). pull_up when
+    the player has the ball and a jump proxy follows within 1.0 s (composition layer).
+  params:
+    pre_min: {value: 3.0, unit: m/s}
+    fall_max_s: {value: 1.2, unit: s}
+    pre_gap_s: {value: 0.2, unit: s}
+    hard_pre: {value: 4.0, unit: m/s}
+    hard_fall_s: {value: 0.8, unit: s}
+    conf_window_s: {value: 1.0, unit: s, note: 'KIN2-STOP: P_stand window of the confidence (was still_min_s 0.3 s): right after a hard stop the CA-RTS residual holds the RMS-based P_stand near 0.4-0.6 for a few tenths of a second, which put one 4.5 m/s hard stop at conf 0.499; the event still spans still_min_s'}
+    hard_smooth_s: {value: 0.2, unit: s, note: 'KIN-T14: hard is tested on this short mean of CA-RTS speed, not on speed_L'}
+    hard_end_speed: {value: 1.0, unit: m/s, note: 'KIN-T14: end level of the hard-stop fall time'}
+    hard_fall_s_q10: {value: 1.1, unit: s, note: 'KIN-T14: q 10 smears the fall by one smoother support (+0.3 s, as burst win_max_s_q10)'}
+    still_min_s: {value: 0.3, unit: s}
+  min_duration_s: 0.3
+  outputs: [pre_speed, stop_time_s, stop_distance_m, x, y, spot, hard, hard_speed, hard_fall_time_s, stop_type, has_ball]
+  confidence: Phi((pre_speed - 3.0) / sigma_L) x window mean of P_stand over the first conf_window_s (1.0 s, KIN2-STOP; capped at the run end) x c_edge x c_gap x c_id.
+  noise_notes: The s2 gate fires when speed drops below about 1 m/s, so t0 leads the true zero-speed instant slightly; measured bias in tests is within +-0.3 s.
+  conflicts_resolved:
+  - 'KIN-P12 speed_S < 0.8 for 9 frames failed at sigma_p 0.5 (skeptic, high): replaced by the s2 stationary gate shared with stand.'
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml', supports: 'hop and jump stop definitions'}
+  status: proposal
+  detector: detect_stop
+
+- id: start
+  level: primitive
+  name: start (stationary to moving)
+  aliases: [MP-17 start, take-off from stand]
+  actors: [player]
+  t0: change-point onset of the speed rise after the stand (KIN-T13); the s2 gate exit is attrs.t0_gate
+  rule: >-
+    After a stand of >= 0.5 s, the gate exit t0_gate is the first frame past its last s2 < 5.99 frame,
+    provided the bias-corrected speed v_c reaches >= 1.0 m/s for >= 0.3 s within 1.0 s after t0_gate
+    (drift does not count). t0 = hinge (change-point) onset of the 0.2 s mean speed over
+    [t0_gate - 0.5 s, first frame with that speed >= 2.0 m/s (at most 0.6 s into the moving run)], clamped
+    to [t0_gate - 0.3 s, t0_gate] (the s2 gate stays satisfied until about 1 m/s, so the gate exit lagged
+    slow starts by 0.4-0.7 s; measured median bias +0.27 s -> 0.00 s on a 0 -> 1.5 m/s start).
+  params:
+    stand_min_s: {value: 0.5, unit: s}
+    move_speed: {value: 1.0, unit: m/s}
+    move_min_s: {value: 0.3, unit: s}
+    reach_window_s: {value: 1.0, unit: s}
+    refine_smooth_s: {value: 0.2, unit: s, note: 'KIN-T13: t0 = change-point onset on this short mean speed ...'}
+    refine_lookback_s: {value: 0.5, unit: s, note: '... fitted from the gate exit - this ...'}
+    refine_end_speed: {value: 2.0, unit: m/s, note: '... to the first frame where that mean speed reaches this ...'}
+    refine_end_max_s: {value: 0.6, unit: s, note: '... but at most this after the moving run starts ...'}
+    refine_max_lead_s: {value: 0.3, unit: s, note: '... and t0 is clamped to [gate exit - this, gate exit]'}
+  min_duration_s: 0.3
+  outputs: [stand_duration_s, x, y, spot, peak_speed_1s, t0_gate]
+  confidence: window mean of P_stand over the stand x window mean of Phi((v_c - 1.0) / sigma_L) over the moving run x c_edge x c_gap x c_id.
+  noise_notes: Overlaps burst (sub_type from_stand) by design; start is the state change, burst the effort.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:tools/specgen/movement/mvlib.py', supports: 's2 statistic'}
+  status: proposal
+  detector: detect_start
+
+# ---------------------------------------------------------------------------------------------
+# Direction change and path shape
+# ---------------------------------------------------------------------------------------------
+- id: cod
+  level: primitive
+  name: change of direction (cut event) with angle classes
+  aliases: [KIN-P13, MP-13, cut, plant-and-go, reversal, V-turn]
+  actors: [player]
+  t0: argmax of dpsi inside the firing run (turn apex)
+  rule: >-
+    For each valid frame t: pre = mean velocity over [t-0.65, t-0.25] s, post = mean over [t+0.25, t+0.65] s
+    (the plant phase and the +-0.25 s CA-RTS heading blur are skipped; KIN-T05 moved the windows out from
+    [t-0.5, t-0.1] because the blur biased dpsi 10-25 deg low). dpsi = angle(pre, post). Fire when dpsi >= 45 deg,
+    each arm speed >= max(1.0 m/s, 2.5 sigma_vbar of that window), dpsi / sigma_dpsi >= 3.5 and
+    |post - pre| >= max(1.0 m/s, 3 x sqrt(2) x sigma_vbar) (significance tests replacing the fixed 2.0 m/s
+    that made the 45-90 class unreachable below jog speed; window sigmas include the edge inflation).
+    Classes: angle [45, 90), sharp [90, 120), reversal >= 120 deg; reversal_alt_135 attr gives the MP-13
+    135 deg view. side = physical turn side; the named-spot frame is mirrored (x = attacker's right while
+    facing -y), so pre x post > 0 is a RIGHT turn (KIN-T01). A cod whose apex lies inside a curved_run and
+    whose frame-heading change within +-0.15 s of the apex is < 50% of the arc's total turn is an arc,
+    not a cut, and is not emitted (KIN-T04); otherwise the cod carries alternative curved_run. Tags: hard_cut when mean speed over
+    [t0+0.2, t0+0.6] >= 4.0 m/s; exit toward/away from the rim when mean v_r there is >= +1.0 / <= -1.0
+    m/s (mvlib sign, positive = toward); toward/away from the ball likewise. turn_duration from the last
+    frame with heading within max(15 deg, 2 sigma_psi) of the approach heading to the first frame within
+    that of the exit heading. Non-maximum suppression +-0.5 s.
+  params:
+    pre_s: {value: 0.65, unit: s, note: 'KIN-T05 (was 0.5): windows stay 0.4 s long'}
+    gap_s: {value: 0.25, unit: s, note: 'KIN-T05 (was 0.1): clears the +-0.25 s CA-RTS heading blur'}
+    pre_s_q10: {value: 0.75, unit: s, note: 'KIN-T05: q 10 tier (wider blur, tester recommendation)'}
+    gap_s_q10: {value: 0.35, unit: s, note: 'KIN-T05: q 10 tier; windows stay 0.4 s long'}
+    angle_min: {value: 45.0, unit: deg}
+    sharp: {value: 90.0, unit: deg}
+    reversal: {value: 120.0, unit: deg}
+    reversal_alt: {value: 135.0, unit: deg}
+    v_min: {value: 1.0, unit: m/s}
+    z_dv: {value: 3.0, unit: sigma}
+    z_psi: {value: 3.5, unit: sigma, note: dpsi / sigma_dpsi; at 1.5 m/s this asks about 65 deg, at >= 3 m/s the 45 deg edge binds}
+    dv_abs_min: {value: 1.0, unit: m/s}
+    hard_cut_speed: {value: 4.0, unit: m/s}
+    exit_from_s: {value: 0.2, unit: s}
+    exit_to_s: {value: 0.6, unit: s}
+    rel_speed: {value: 1.0, unit: m/s}
+    turn_tol_deg: {value: 15.0, unit: deg}
+    turn_search_s: {value: 1.0, unit: s, note: turn_duration search window on each side of t0}
+    nms_s: {value: 0.5, unit: s}
+    suppress_in_arc: {value: true, unit: bool, note: 'KIN-T04: drop a cod whose apex lies inside a curved_run and whose turn is uniform ...'}
+    arc_apex_half_s: {value: 0.25, unit: s, note: '... i.e. the frame-heading change within +-this of the apex (one CA-RTS heading-blur half-width) ...'}
+    arc_uniform_ratio: {value: 0.45, unit: fraction, note: '... is below this share of the arc total turn; otherwise the cod stays with alternative curved_run. Measured ratio at +-0.25 s: arcs and curls p90 0.40-0.43, angle and plant cuts p10 0.48-0.56 (sigma_p 0.2-0.5)'}
+  min_duration_s: null
+  outputs: [dpsi_deg, class, P_class, side, entry_speed, exit_speed, turn_duration_s, hard_cut, exit_rim, exit_ball, spot, sigma_dpsi_deg, path_shape, noise_tier]
+  confidence: >-
+    Phi((dpsi - 45) / sigma_dpsi) x Phi((min arm speed - 1.0) / sigma_vbar) x c_edge x c_gap x c_id;
+    sigma_dpsi = sqrt(sigma_psi_pre^2 + sigma_psi_post^2), sigma_psi = sigma_vbar / |v|, sigma_vbar =
+    sigma_speed / sqrt(0.4 / corr_time) (MP-13). The arm-speed factor (KIN-T05) stops slow false cods at
+    1.0 m/s from scoring 0.95.
+  noise_notes: >-
+    MP-13 simulation (CA-RTS q30): precision 0.95-0.96 / recall 0.67-0.72 at sigma_p 0.3, t0 median 0,
+    p90 0.13-0.20 s. Cuts through a deep plant are kept because the windows skip +-0.1 s around t.
+    Two turns within 1.0 s can merge (zig-zag); jab-and-go moves with arms below 0.4 s are missed.
+  conflicts_resolved:
+  - 'Reversal edge 120 (offense A5, motion_starts, F8.2, KIN-P13) vs 135 (MP-13): 120 primary because every repo taxonomy source and the cut families use it; 135 kept as attrs.reversal_alt_135.'
+  - 'COD method: KIN-P13 chord over +-0.7 s centroids vs MP-13 pre/post mean velocity: MP-13 (simulated precision/recall available); the chord method is labelled a proposal adapted from the triangle method (PMC8309627 used 0.5 s sub-windows over 2.5 s in soccer GPS).'
+  - 'Heading reversal timing 0.4 / 0.6 s (A5, motion_starts): stored as turn_duration for the cut families, not hard-coded in the primitive.'
+  - 'dv >= 2.0 gate vs class bands (measurement skeptic, medium): replaced by the significance gate.'
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8309627/', supports: 'triangle/chord COD method (soccer academy GPS 10 Hz, used by analogy)'}
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8196559/', supports: 'Mod505 maximal test in mixed-sex collegiate basketball students: approach 5.40 m/s, turning phase 1.22 s (not game cuts)'}
+  - {url: 'https://eprints.bournemouth.ac.uk/42162/', supports: 'COD counts differ about 7x between optical methods (2022 World Cup soccer, by analogy), so the method is disclosed'}
+  status: proposal
+  detector: detect_cod
+
+- id: plant_step
+  level: primitive
+  name: plant step (braking step before a direction change)
+  aliases: [KIN-P14, penultimate step, plant]
+  actors: [player]
+  t0: frame of the fitted speed minimum t_p
+  rule: >-
+    For a cod with dpsi >= 60 deg and approach speed >= 2.5 m/s: t_p = argmin speed in
+    [t0 - 0.4, t0 + 0.2] s, refined by a 9-frame quadratic fit (vertex) instead of a raw argmin.
+    Approach = mean CA-RTS speed over [t0 - 0.9, t0 - 0.5] s, the arm before braking (KIN-T06: the cod
+    pre-window lies inside the deceleration and read a 4.0 m/s approach as 2.0-3.5 m/s).
+    Plant when drop = approach - v_fit >= max(0.8 m/s, drop_frac x approach, 3 x sigma_fit), drop_frac 0.40
+    at the q 30 tier and 0.35 at q 10 (KIN2-PLANT; was 0.25). plant_ratio =
+    v_fit / entry, plus a bias-corrected ratio (Rician floor removed). plant_foot needs pose (unknown).
+  params:
+    angle_min: {value: 60.0, unit: deg}
+    entry_min: {value: 2.5, unit: m/s, note: on the approach speed}
+    approach_from_s: {value: 0.9, unit: s, note: 'KIN-T06: approach speed = mean CA-RTS speed over [t0 - 0.9, t0 - 0.5] s, the arm before braking'}
+    approach_to_s: {value: 0.5, unit: s}
+    search_before_s: {value: 0.4, unit: s}
+    search_after_s: {value: 0.2, unit: s}
+    fit_frames: {value: 9, unit: frames}
+    drop_abs: {value: 0.8, unit: m/s}
+    drop_frac: {value: 0.40, unit: fraction of entry speed, note: 'KIN2-PLANT: 0.25 -> 0.40 at the q 30 tier (a 65 deg cut at speed with a shallow 4.5 -> 3.5 m/s dip reads a corner-cut drop of 1.2-1.7 m/s, plant ratio 0.63-0.75; a real plant reads 0.35-0.62)'}
+    drop_frac_q10: {value: 0.35, unit: fraction of entry speed, note: 'KIN2-PLANT: 0.40 at q 10 dropped real-plant recall at sigma_p 0.5 to 0.75; 0.35 keeps 0.85'}
+    drop_z: {value: 3.0, unit: sigma}
+  min_duration_s: 0.2
+  outputs: [entry_speed, plant_speed, plant_ratio, plant_ratio_corrected, drop, turn_side, cod_t0, plant_foot]
+  confidence: min(cod conf, Phi((drop - thr) / sqrt(sigma_entry^2 + sigma_fit^2)) x c_edge x c_gap); sigma_entry = mean sigma_speed over the approach window / sqrt(max(1, 0.4 / corr_time)).
+  noise_notes: >-
+    The raw minimum of a noisy series is biased low (skeptic, 51-79% false plants on straight runs); the
+    quadratic-fit minimum plus the 3 sigma drop floor removes that bias. Side-step cuts at speed show small
+    drops and are missed by design. CA-RTS cuts the corner of a fast turn, which adds a smoothing dip to the
+    measured speed: a 65 deg cut at 4.5 -> 3.5 -> 4.5 m/s (true drop 1.0 < 0.25 x 4.5) reads as a plant in
+    2-4 of 10 clips at sigma_p 0.2-0.3 (loop-1 harness); fit the drop threshold on labelled film.
+  conflicts_resolved:
+  - 'Raw argmin plant test (skeptic, medium): replaced by the fitted minimum and a noise-scaled drop.'
+  sources:
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8196559/', supports: 'PFC 0.385 s, FFC 0.524 s in a maximal Mod505 test of collegiate basketball students'}
+  status: proposal
+  detector: detect_plant_step
+  notes: The lida.sport-iat.de record on PFC braking for COD >= 60 deg was not verified and is not cited.
+
+- id: curved_run
+  level: primitive
+  name: curved run (arc)
+  aliases: [KIN-P15, banana, arc run, curl path]
+  actors: [player]
+  t0: first frame of the qualifying run of window centres (back-dated to P >= 0.5)
+  rule: >-
+    Geometric curvature, not |turn_rate| / speed. At each centre t: mean velocities over the first
+    and last 0.3 s of [t-0.6, t+0.6] s give a signed heading change dpsi; the path length between the
+    two sub-window centres gives kappa = dpsi / path (1/m) with sigma_kappa = sigma_dpsi / path.
+    Per side: P = Phi((|kappa| - 0.15) / sigma_kappa) with consistent sign. Enter when P >= 0.7 and
+    |dpsi| / sigma_dpsi >= 3, stay while P >= 0.3 and z >= 2, all frames of the window with
+    speed_L >= 2.0 m/s, minimum 0.5 s, arc path >= 3.0 m. Dropped only when an MP-13 cod inside the run
+    shows a clear plant (plant_step drop test on the approach speed with P_drop >= 0.9, at the arc's own
+    plant_exclusion_drop_frac 0.25), or (KIN2-CURVE) when a cod >= 45 deg inside it has a concentrated apex:
+    frame-heading change within +-0.25 s >= cut_apex_ratio (0.52) of the arc's total turn. t0 is back-dated
+    while P >= p_backdate (0.2, KIN2-CURVE). Unplanted, uniform cods inside become alternatives cod_<class> (KIN-T04: the old blanket 45 deg exclusion made every curl
+    around a screener a cod). side is the physical side (mirrored frame: positive signed dpsi = right,
+    KIN-T01). A Kasa circle fit gives radius and centre: around_teammate when the
+    centre is within 1.5 m of a stationary teammate, around_rim when within 2.0 m of the rim.
+  params:
+    speed_min: {value: 2.0, unit: m/s}
+    kappa_min: {value: 0.15, unit: 1/m}
+    path_min: {value: 3.0, unit: m}
+    arm_s: {value: 0.6, unit: s}
+    end_w_s: {value: 0.3, unit: s}
+    z_enter: {value: 3.0, unit: sigma}
+    z_stay: {value: 2.0, unit: sigma}
+    p_enter: {value: 0.7, unit: probability}
+    p_stay: {value: 0.3, unit: probability}
+    min_s: {value: 0.5, unit: s}
+    cod_exclude_deg: {value: 45.0, unit: deg, note: 'used only when plant_exclusion is false (old blanket rule)'}
+    plant_exclusion: {value: true, unit: bool, note: 'KIN-T04: drop the arc only when a cod inside it shows a plant (plant_step drop test on the approach speed)'}
+    plant_exclusion_p: {value: 0.9, unit: probability, note: 'the plant must be clear: CA-RTS cuts the corner of a tight arc, so a 4.5 m/s R 4 m arc already shows a 1.4 m/s smoothing dip (P_drop 0.57 at sigma_p 0.3)'}
+    plant_exclusion_drop_frac: {value: 0.25, unit: fraction of entry speed, note: 'KIN2-PLANT: drop fraction of the plant test used for the arc exclusion (the loop-1 plant_step value), kept apart from plant_step drop_frac'}
+    cut_apex_exclusion: {value: true, unit: flag, note: 'KIN2-CURVE: drop the arc when a cod (>= cod.angle_min) inside it has a concentrated apex: heading change within +-cod.arc_apex_half_s >= cut_apex_ratio x the arc total (the cut side of the test detect_cod uses to suppress cods inside uniform arcs)'}
+    cut_apex_ratio: {value: 0.52, unit: fraction of the arc total turn, note: 'KIN2-CURVE: measured apex/total on false arcs over the 100 deg planted cut 0.45-0.77 (median 0.57), on curls and R 5 m bananas 0.28-0.51 (all 3 sigma_p, 10 seeds, both sides); cod.arc_uniform_ratio 0.45 removed one curl per sigma'}
+    p_backdate: {value: 0.2, unit: probability, note: 'KIN2-CURVE: 0.5 -> 0.2; the R 5 m banana t0 was 0.4-0.7 s late in about a third of clips (the window arms are not both on the arc yet where P first reaches 0.5); measured t0 median -0.13 / -0.13 / -0.20 s, p90 0.27 / 0.27 / 0.26 s at sigma_p 0.2 / 0.3 / 0.5'}
+    around_stand_p: {value: 0.5, unit: probability, note: window P_stand of the teammate for around_teammate}
+    alt_margin_deg: {value: 15.0, unit: deg, note: 'cod_angle alternative when max dpsi >= angle_min - this'}
+    alt_sigma_deg: {value: 10.0, unit: deg, note: sigma of that alternative probability (proposal)}
+    around_teammate_r: {value: 1.5, unit: m}
+    around_rim_r: {value: 2.0, unit: m}
+  min_duration_s: 0.5
+  outputs: [side, mean_kappa, radius_m, centre_x, centre_y, dpsi_total_deg, path_m, mean_speed, around_teammate, around_rim]
+  confidence: window mean of P(side) x c_edge x c_gap x c_id.
+  noise_notes: >-
+    At 4.5 m/s sigma_kappa is about 0.03 1/m (sigma_p 0.3) so kappa 0.15 is about 5 sigma; at 2 m/s it
+    is about 0.16 and the z gate requires a 48 deg turn, so slow arcs are only labelled when strong.
+    CA-RTS cuts the corner of tight arcs, so the measured speed dips (a 4.5 m/s R 4 m arc shows about
+    1.4 m/s); hence the 0.9 plant-evidence level for the exclusion.
+  conflicts_resolved:
+  - 'KIN-P15 |turn_rate|/speed curvature fired on 92-100% of straight runs (skeptic, critical): replaced by the geometric chord curvature with a propagated sigma and a z gate.'
+  - 'schema path_shape straight/curved had no threshold: curved = this item.'
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml cuts_named.cut_banana', supports: 'banana / curved cut path'}
+  status: proposal
+  detector: detect_curved_run
+
+# ---------------------------------------------------------------------------------------------
+# Direction classes (XY facing proxy, capped)
+# ---------------------------------------------------------------------------------------------
+- id: forward_run
+  level: primitive
+  name: forward run (direction class)
+  aliases: [KIN-P16, forward]
+  actors: [player]
+  t0: first frame of the confirmed class run
+  rule: >-
+    d = wrap(psi - phi) with psi the heading of the 0.3 s mean velocity and phi the facing. phi = pose
+    torso facing when available (needs_data); otherwise, for defenders, the bearing to the ball (or to
+    the nearest attacker when the ball is unobserved), confidence capped at 0.6. Offensive players are
+    not emitted (offense_emit false, KIN-T15: facing = heading makes every moving attacker forward).
+    Forward: enter |d| <= 40 deg, stay <= 50 deg, bias-corrected |vbar_c| >= max(0.8 m/s, 2.5
+    sigma_vbar), minimum 0.4 s. Lateral motion of a defender that is not coupled to the ball (see
+    defensive_slide) also counts as forward_run, sub_type rotation_run, alternative rotation_run (KIN-T11:
+    a help defender sprinting along the baseline faces his run, not the ball).
+  params:
+    enter_deg: {value: 40.0, unit: deg}
+    stay_deg: {value: 50.0, unit: deg}
+    edge_deg: {value: 45.0, unit: deg}
+    speed_min: {value: 0.8, unit: m/s}
+    min_s: {value: 0.4, unit: s}
+    offense_default_cap: {value: 0.5, unit: factor}
+    offense_emit: {value: false, unit: bool, note: 'KIN-T15: offense facing = heading, so forward_run is a tautology; not emitted until pose'}
+    emit_min: {value: 0.3, unit: probability}
+  min_duration_s: 0.4
+  outputs: [mean_abs_d, speed_band, distance_m, facing_source, P_class, sub_type, rotation_share]
+  confidence: window mean of (P(forward) + P(lateral) x uncoupled) x P(moving) x facing cap x c_edge x c_gap x c_id; sigma_d = sqrt(sigma_psi^2 + 25^2) deg; P(moving) on vbar_c.
+  noise_notes: Facing-proxy items cannot pass the 0.6 review threshold by construction; emit_min 0.3 keeps them for review and load views.
+  conflicts_resolved:
+  - 'Direction-class speed floor 0.5 (actions_extra) vs 2.0 (COD): 0.8 m/s with the noise-adaptive 2.5 sigma heading gate (skeptic, high: heading defined for still players at 1.0 m/s).'
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml movement_direction_classes', supports: 'forward |d| <= 45, lateral 45-135, backward >= 135, >= 0.40 s'}
+  status: proposal
+  detector: detect_forward_run
+  needs_data: [pose torso facing for offensive players and for the F1 target]
+
+- id: backpedal
+  level: primitive
+  name: backpedal (backward class)
+  aliases: [KIN-P17, retreat facing the ball]
+  actors: [player]
+  t0: first frame of the confirmed class run
+  rule: >-
+    Defenders only (XY proxy). Backward: enter |d| >= 140 deg, stay >= 130 deg, bias-corrected
+    |vbar_c| = sqrt(max(|vbar|^2 - 2 sigma_vbar^2, 0)) >= max(0.8, 2.5 sigma_vbar) (KIN-T11: a 0.45 m/s
+    creep read as a backpedal) and |vbar| <= 5.0 m/s (faster is facing_error), minimum 0.4 s. Attr transition when the
+    mean velocity toward the defended rim is >= 1.0 m/s.
+  params:
+    enter_deg: {value: 140.0, unit: deg}
+    stay_deg: {value: 130.0, unit: deg}
+    edge_deg: {value: 135.0, unit: deg}
+    speed_min: {value: 0.8, unit: m/s}
+    speed_cap: {value: 5.0, unit: m/s, note: unsupported proposal; no basketball measurement of maximal backpedal speed}
+    min_s: {value: 0.4, unit: s}
+    retreat_speed: {value: 1.0, unit: m/s}
+    emit_min: {value: 0.3, unit: probability}
+  min_duration_s: 0.4
+  outputs: [distance_m, mean_speed, facing_source, toward_rim_speed, ball_distance]
+  confidence: window mean of P(backward) x P(moving) x 0.6 x c_edge x c_gap x c_id.
+  noise_notes: The proxy cannot tell a backpedal from a sprint back with the back to the ball; pose is required for the F1 target.
+  conflicts_resolved: ['Enter 140 / exit 130 gives hysteresis around the repo 135 deg edge.']
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml movement_direction_classes', supports: 'backward class'}
+  status: proposal
+  detector: detect_backpedal
+  needs_data: [pose torso facing for offensive players and for a validated speed cap]
+
+- id: defensive_slide
+  level: primitive
+  name: defensive slide (lateral shuffle)
+  aliases: [KIN-P18, shuffle, slide]
+  actors: [player]
+  t0: first frame of the confirmed class run
+  rule: >-
+    Defenders only (XY proxy). Lateral: enter 50 <= |d| <= 130 deg, stay 45-135 deg; 0.8 <= |vbar| <=
+    3.0 m/s (stay <= 3.3); minimum 0.4 s. slide_low below 2.0 m/s, slide_high 2.0-3.0. Ball coupling
+    (KIN-T11): the ball (or the nearest attacker when the ball is unobserved) moves >= 1.0 m/s along the
+    defender's motion, or the defender is within 3.0 m of the ball; uncoupled lateral motion is a
+    rotation (forward_run sub_type rotation_run). With pose: no ankle-order swap (needs_data). Faster
+    lateral motion is crossover_run. KIN2-DSLIDE: a slide segment of at most xover_ramp_max_s (1.0 s) within
+    xover_ramp_gap_s (0.5 s) of a crossover_run segment of the same defender is the acceleration or
+    deceleration ramp of that run and is not emitted.
+  params:
+    lat_enter_lo: {value: 50.0, unit: deg}
+    lat_enter_hi: {value: 130.0, unit: deg}
+    lat_stay_lo: {value: 45.0, unit: deg}
+    lat_stay_hi: {value: 135.0, unit: deg}
+    speed_min: {value: 0.8, unit: m/s}
+    speed_max: {value: 3.0, unit: m/s, note: proposal; no study tested shuffling above about 2.2 m/s}
+    speed_max_stay: {value: 3.3, unit: m/s}
+    low_high_split: {value: 2.0, unit: m/s}
+    ball_dist_tol_m: {value: 0.3, unit: m, note: direction_vs_ball change tolerance}
+    xover_ramp_gap_s: {value: 0.5, unit: s, note: 'KIN2-DSLIDE: a slide segment within this of a crossover_run segment of the same player counts as touching it'}
+    xover_ramp_max_s: {value: 1.0, unit: s, note: 'KIN2-DSLIDE: touching slide segments up to this long are the acceleration / deceleration ramp of the crossover run (measured fragments 0.40-0.84 s) and are dropped; longer slide phases stay'}
+    min_s: {value: 0.4, unit: s}
+    emit_min: {value: 0.3, unit: probability}
+  min_duration_s: 0.4
+  outputs: [distance_m, mean_speed, peak_speed, sub_band, direction_vs_ball, facing_source, ball_coupled_share]
+  confidence: window mean of P(lateral) x P(speed <= 3.0) x coupled x P(moving) x 0.6 x c_edge x c_gap x c_id.
+  noise_notes: Short slides (< 0.4 s) are missed; markerless tracking has its largest errors in lateral shuffles.
+  conflicts_resolved: ['3.0 m/s upper cap is a proposal (fit on hand-labelled film).']
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml movement_direction_classes', supports: 'lateral class and slide definition'}
+  status: proposal
+  detector: detect_defensive_slide
+  needs_data: [pose ankle order for the canonical definition]
+
+- id: crossover_run
+  level: primitive
+  name: crossover run (open-hip lateral run)
+  aliases: [KIN-P19, crossover step run]
+  actors: [player]
+  t0: first frame of the confirmed class run
+  rule: >-
+    Defenders only (XY proxy). Lateral class as defensive_slide (including the ball coupling), with |vbar| >= 3.0 m/s (stay >= 2.7),
+    minimum 0.4 s. preceded_by_slide when a slide ends within 0.3 s before t0. With pose: >= 1
+    ankle-order swap (needs_data).
+  params:
+    lat_enter_lo: {value: 50.0, unit: deg}
+    lat_enter_hi: {value: 130.0, unit: deg}
+    lat_stay_lo: {value: 45.0, unit: deg}
+    lat_stay_hi: {value: 135.0, unit: deg}
+    speed_min: {value: 0.8, unit: m/s, note: heading validity floor shared with the other direction classes}
+    speed_enter: {value: 3.0, unit: m/s}
+    speed_stay: {value: 2.7, unit: m/s}
+    min_s: {value: 0.4, unit: s}
+    preceded_gap_s: {value: 0.3, unit: s}
+    emit_min: {value: 0.3, unit: probability}
+  min_duration_s: 0.4
+  outputs: [distance_m, mean_speed, preceded_by_slide, facing_source, ball_coupled_share]
+  confidence: window mean of P(lateral) x P(speed >= 3.0) x coupled x P(moving) x 0.6 x c_edge x c_gap x c_id.
+  noise_notes: The no-pose speed proxy confuses a forward run with a facing-proxy error.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/vocab/actions_extra.yaml movement_direction_classes', supports: 'crossover run definition'}
+  status: proposal
+  detector: detect_crossover_run
+  needs_data: [pose ankle order for the canonical definition]
+
+# ---------------------------------------------------------------------------------------------
+# Vertical (XY proxies only) and pose-only items
+# ---------------------------------------------------------------------------------------------
+- id: jump
+  level: primitive
+  name: jump (takeoff), XY release-context proxy
+  aliases: [KIN-P20, takeoff]
+  actors: [player]
+  t0: estimated takeoff = shot release frame - 0.2 s (proxy); first airborne frame with pose
+  rule: >-
+    Pose path (canonical, needs_data): airborne = neither foot grounded >= 2 frames; jump event flight
+    >= 0.30 s; height 9.81 t^2 / 8; bands low < 0.20, base 0.20-0.40, high > 0.40 m. XY path (this
+    detector): a shot-like release - a player of EITHER team ends a sustained control run (KIN4-JUMP: nearest
+    player within mvlib.HOLD_R for >= control_min_s 0.4 s with the ball moving with him, chord relative speed <=
+    control_rel_v 1.5 m/s after a noise allowance; gaps of control_bridge_s bridged, control_bridge_s_q10 at the q 10
+    tier, KIN5-BRIDGE; a bridged run ends at its last in-disc stretch of >= control_tail_min_s), at >= 2.0 m from the rim
+    of EITHER end, with the shooter inside the named_spots in-bounds gate in the shot rim's frame (KIN5-OOB), the ball flies
+    toward that rim (mean radial speed >= 0.5 x mean ball speed) and reaches within 1.0 m of it within
+    2.5 s before anyone gains sustained control, and it does not pass through (no frame within 0.4 s after rim
+    reach beyond 1.5 m from the rim at > 0.5 x the approach ball speed) - implies the releasing player
+    jumped (KIN-T02: baseline passes under the rim and kick-outs from the restricted area fired). The release
+    frame is back-dated by (ball-player distance / ball speed) at the frame the control run ends,
+    and takeoff is placed 0.2 s before release. Confidence capped at 0.3; halved when the shooter was stationary for
+    the 0.5 s before release (set shot or free throw alternative). Height is never estimated on this path. attrs x, y and
+    spot are all in the frame of the rim that was shot at (attrs.frame = shot_rim; the far rim's frame is the court rotated
+    by 180 deg; KIN5-FRAME). Optional ball-height path (KIN5-BALLZ, ball_z_path, default false: production video has no
+    reliable ball height): when Scene.ball_z exists the ball must reach z_apex_min_m between release and passthrough_s after
+    rim reach, and releases down to z_close_min_r from the rim are accepted; without ball height it is the XY path.
+  params:
+    rim_reach_r: {value: 1.0, unit: m}
+    release_min_r: {value: 2.0, unit: m, note: 'KIN-T02: release at least this far from the rim (rim_reach_r + 1.0)'}
+    radial_share_min: {value: 0.5, unit: fraction, note: 'KIN-T02: mean radial ball speed toward the rim over the flight >= this x mean ball speed'}
+    passthrough_s: {value: 0.4, unit: s, note: 'KIN-T02: reject when, within this after rim reach, the ball is beyond rim_reach_r + passthrough_margin_m ...'}
+    passthrough_margin_m: {value: 0.5, unit: m}
+    passthrough_speed_frac: {value: 0.5, unit: fraction, note: '... while moving faster than this x the approach ball speed'}
+    stationary_discount: {value: 0.5, unit: factor, note: 'P_cond = 1 - this x P(stationary before release)'}
+    flight_max_s: {value: 2.5, unit: s}
+    control_min_s: {value: 0.4, unit: s, note: 'KIN4-JUMP: ball control (nearest player of EITHER team within mvlib.HOLD_R) counts only when a run of the same player lasts >= this; shot flights pass over defenders and players under the rim for 0.17 s median, 0.35 s p90 (real tracking)'}
+    control_rel_v: {value: 1.5, unit: m/s, note: 'KIN4-JUMP: ... and the ball moves with the player: |change of the mean ball-player offset between the first and last control_end_s| / run duration <= this (fly-overs cross the 1 m disc at 3-8 m/s)'}
+    control_end_s: {value: 0.1, unit: s, note: 'KIN4-JUMP: end windows of that offset chord'}
+    control_bridge_s: {value: 0.05, unit: s, note: 'KIN4-JUMP: a control run of one player bridges gaps up to this (one frame: a noisy held ball steps out of the 1 m disc; 0.1 and 0.2 s merged real releases into later touches, PBP recall at noise 0.3 0.50 -> 0.48 -> 0.43)'}
+    control_bridge_s_q10: {value: 0.1, unit: s, note: 'KIN5-BRIDGE: bridge at the q 10 tier (scene majority of player tiers): at noise 0.5 a held ball leaves the 1 m disc for several frames and the one-frame bridge fragments control runs'}
+    control_tail_min_s: {value: 0.07, unit: s, note: 'KIN5-BRIDGE: a bridged control run ends at its last in-disc stretch of at least this (2 frames); a single in-disc frame after a gap is a released ball dipping back by noise'}
+    oob_z: {value: 0.0, unit: sigma, note: 'KIN5-OOB: a release whose shooter position at release (shot-rim frame) is beyond the in-bounds gate of named_spots by more than this x the position sigma is a throw-in, not a shot (0: the point estimate decides; real false releases lie 0.04-0.52 m out, true shots >= 0.43 m in, and 1 or 2 sigma kept 20-80% of the false ones)'}
+    ball_z_path: {value: false, unit: bool, note: 'KIN5-BALLZ: optional ball-height path (SportVU only; production video has no reliable ball height); the XY path is the default'}
+    z_apex_min_m: {value: 3.2, unit: m, note: 'KIN5-BALLZ: with ball_z_path the ball height between release and passthrough_s after rim reach must reach this (rim 3.05 m)'}
+    z_close_min_r: {value: 0.5, unit: m, note: 'KIN5-BALLZ: with ball_z_path a release down to this from the rim is accepted when the apex test passes (release_min_r applies on the XY path)'}
+    control_noise_z: {value: 2.0, unit: sigma, note: 'KIN4-JUMP: the offset chord is reduced by this x its noise sigma (sqrt(2) x sqrt(2 / end-window frames) x ball sigma_pos) before the relative-speed test'}
+    court_length_m: {value: 28.65, unit: m, note: 'KIN4-JUMP: 94 ft (NBA and NCAA); the far rim sits court_length - 2 rim_setback up the court'}
+    rim_setback_m: {value: 1.6002, unit: m, note: 'rim centre 5.25 ft from the end line (named_spots RIM_Y_FROM_END)'}
+    takeoff_lead_s: {value: 0.2, unit: s}
+    stationary_check_s: {value: 0.5, unit: s}
+    cap: {value: 0.3, unit: factor}
+    emit_min: {value: 0.1, unit: probability}
+  min_duration_s: 0.3
+  outputs: [release_frame, path, purpose, shooter_speed, rim, frame, x, y, spot, release_r, apex_z, alternatives]
+  confidence: 0.3 x (1 - 0.5 x P_stationary_before) x c_edge x c_gap.
+  noise_notes: >-
+    No validated monocular broadcast jump detector was found; this proxy says only that a shot release
+    implies a likely jump. Runners released inside about 2.5 m (floaters, layups) can fall under
+    release_min_r; tune it on labelled film. Real tracking (KIN4-JUMP, SportVU 3 games): about 40% of field-goal
+    attempts are released within 2 m of the rim and are not separable from interior passes and tips in XY (a
+    close-release path with a rim dwell test reached precision 0.38 on the added events, not kept); rebound and
+    block jumps are invisible to this proxy (the next control after a made shot looks like a rebound: same 0.6 m
+    from the rim, same timing). spot, x and y are in the frame of the rim that was shot at (far rim: court rotated).
+    KIN5-BALLZ on SportVU: the optional apex path lifts PBP FGA recall 0.52 -> 0.60 clean at equal or better precision
+    (changes_loop5); it is a research option, not a production path.
+  conflicts_resolved:
+  - 'Jump thresholds: airborne state 2 frames (named_spots), event flight >= 0.30 s (Kinexon/Stone), count h >= 0.20 m, high > 0.40 m.'
+  sources:
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'jump airtime >= 0.3 s'}
+  - {url: 'repo:config/named_spots.yaml rule_airborne_detection_thresholds', supports: 'airborne state'}
+  status: proposal
+  detector: detect_jump
+  needs_data: [pose ankle keypoints or box height for the canonical takeoff/flight path]
+
+- id: landing
+  level: primitive
+  name: landing, XY proxy
+  aliases: [KIN-P21]
+  actors: [player]
+  t0: jump proxy takeoff + 0.5 s nominal flight (proxy); first grounded frame with pose
+  rule: >-
+    For every jump proxy: landing placed 0.5 s after takeoff; type from the bias-corrected speed over
+    the next 0.3 s - stick < 1.0 m/s, run_out >= 2.0 m/s, else land_and_step. Confidence capped at 0.25. x, y and
+    spot are in the linked jump's shot-rim frame (attrs frame, rim; KIN5-FRAME).
+    landing_drift (radial, lateral) needs the pose takeoff and landing frames.
+  params:
+    nominal_flight_s: {value: 0.5, unit: s}
+    after_s: {value: 0.3, unit: s}
+    stick_speed: {value: 1.0, unit: m/s}
+    run_out_speed: {value: 2.0, unit: m/s}
+    cap: {value: 0.25, unit: factor}
+    emit_min: {value: 0.1, unit: probability}
+  min_duration_s: null
+  outputs: [landing_type, x, y, spot, frame, rim, linked_jump_t0]
+  confidence: min(jump conf, 0.25).
+  noise_notes: Timing is nominal; the landing frame with pose is +-1 frame.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml rule_airborne_freeze', supports: 'landing frames bypass hysteresis'}
+  status: proposal
+  detector: detect_landing
+  needs_data: [pose for the canonical landing frame and drift]
+
+- id: turn_in_place
+  level: primitive
+  name: turn in place / spin / pivot
+  aliases: [pivot, spin]
+  actors: [player]
+  t0: start of the body rotation
+  rule: Direction change with near-zero floor displacement (torso facing change >= 90 deg within 0.6 s while v_c < 1.0 m/s). Invisible to XY (the chord and pre/post methods need displacement). Missing-item fix.
+  params:
+    facing_change_deg: {value: 90.0, unit: deg}
+    window_s: {value: 0.6, unit: s}
+  min_duration_s: 0.2
+  outputs: [rotation_deg, side, has_ball]
+  confidence: pose-based; none from XY.
+  noise_notes: needs pose torso facing.
+  conflicts_resolved: []
+  sources: []
+  status: proposal
+  detector: detect_turn_in_place
+  needs_data: [pose torso facing]
+
+- id: jab_step
+  level: primitive
+  name: jab step
+  aliases: [jab]
+  actors: [player]
+  t0: jab foot lift
+  rule: One foot steps >= 0.3 m and returns within 0.6 s while the pivot foot stays planted. Below XY noise (sigma_p 0.3 m); needs ankle keypoints. Missing-item fix.
+  params:
+    step_m: {value: 0.3, unit: m}
+    return_s: {value: 0.6, unit: s}
+  min_duration_s: 0.2
+  outputs: [jab_side, pivot_foot]
+  confidence: pose-based; none from XY.
+  noise_notes: needs pose ankle keypoints.
+  conflicts_resolved: []
+  sources: []
+  status: proposal
+  detector: detect_jab_step
+  needs_data: [pose ankle keypoints]
+
+changes_loop1:
+# Independent tester report (loop 1): every critical/high/medium failure applied, and the low ones.
+# Where the fix deviates from the tester's exact proposal, 'why' says so with the measurement.
+- id: KIN-T01
+  what: 'cod side and curved_run side are the physical side: pre x post > 0 (counter-clockwise in x/y) is a RIGHT turn; frame header, cod and curved_run rules state the mirrored named-spot frame; plant_step turn_side follows.'
+  why: 'named_spots x is the attacker''s right while facing -y, so the frame is mirrored seen from above; the code mapped positive cross to left.'
+  evidence: 'tester: 60/60 cod (l_cut_100) and 41/41 curved_run (banana_R5) side labels inverted; after: cod class/side wrong 1/60, 2/59, 3/54 (mostly class at sigma_p 0.5), curved_run side 0/101; tests test_t01_cod_side_is_physical (right and mirrored left), test_curved_run_positive now expects right.'
+- id: KIN-T02
+  what: 'jump/landing release proxy: release >= release_min_r 2.0 m from the rim, mean radial ball speed >= 0.5 x ball speed over the flight, no pass-through within 0.4 s after rim reach (beyond rim_reach_r + 0.5 m at > 0.5 x approach speed). New params release_min_r, radial_share_min, passthrough_s, passthrough_margin_m, passthrough_speed_frac (stationary_discount made explicit).'
+  why: 'any loss of possession whose ball came within 1.0 m of the rim was a shot, so baseline passes under the rim and kick-outs from the restricted area made jumps.'
+  evidence: 'jump precision 0.71 / 0.70 / 0.53 -> 1.00 / 1.00 / 0.95 at sigma_p 0.2 / 0.3 / 0.5, recall unchanged (1.00 / 0.97 / 0.90); baseline-pass and kick-out scenes 0 jumps in 6/6 seeds (test_t02_jump_not_on_passes_near_rim), pull-up kept (test_t02_jump_still_on_pullup).'
+- id: KIN-T03
+  what: 'stand gets a run-level displacement check (run_check_end_s 0.2, run_check_p_min 0.5) and v_c is computed from the RMS speed sqrt(mean(speed^2) - 2 sigma^2).'
+  why: 'the per-frame s2 test cannot reject a 0.9 m/s walker. Deviations from the tester (measured): (a) sigma_run is the family mean-velocity sigma (mean sigma_speed / sqrt(span / corr_time)) with the Rician floor removed, not k_cal sqrt(2 var_p) / span, because var_p ignores the AR(1) position error: with the tester''s sigma the true final stand of the screener scene fell from 0.71 to 0.21 time share at sigma_p 0.5; (b) P_run gates but is not multiplied into conf (run_check_conf false): the product dropped the same stand to 0.28 because frame conf is only 0.5-0.86 at sigma_p 0.5; (c) applied to stand only: the stop run of S_sprint begins inside the deceleration and was rejected (v_run 0.50 m/s, P 0.499), and start runs end inside the rise.'
+  evidence: 'time share labelled stand, 0.9 m/s walker: 0.11 / 0.22 / 0.26 (tester) -> 0.09 / 0.14 / 0.25; 0.65 m/s drift 0.44-0.48 -> 0.32 / 0.41 / 0.42; true stands (screen set, final rest, pre-jog stand) keep 0.78-0.95; stand recall 1.00 / 1.00 / 0.95. test_t03_slow_walker_rarely_stand, test_t03_run_check_attrs_and_still_player_kept.'
+- id: KIN-T04
+  what: 'curved_run is dropped only when a cod inside shows a clear plant (plant_step drop test on the approach speed, P_drop >= plant_exclusion_p 0.9); unplanted cods inside become alternatives cod_<class>. detect_cod suppresses a cod whose apex sits inside a curved_run with a uniform turn (heading change within +-0.25 s of the apex < 0.45 of the arc total); else the cod carries alternative curved_run and attrs.path_shape. New params plant_exclusion, plant_exclusion_p, p_backdate, around_stand_p, alt_margin_deg, alt_sigma_deg (curved_run) and suppress_in_arc, arc_apex_half_s, arc_uniform_ratio (cod).'
+  why: 'the blanket 45 deg exclusion made every curl a cod. Deviations (measured): P_drop >= 0.5 excluded true arcs because CA-RTS cuts the corner of a tight arc (R 4 m at 4.5 m/s: 1.4 m/s smoothing dip, P_drop 0.57); the tester''s +-0.15 s / 50% uniformity test also removed real 65 deg cuts (apex ratio of cuts p10 0.29 at +-0.15 s); at +-0.25 s arcs and curls have p90 0.40-0.43 and cuts p10 0.48-0.56.'
+  evidence: 'curved_run recall 0.40 / 0.35 / 0.28 -> 0.90 / 0.85 / 0.78, precision 0.80 / 0.74 / 0.69 -> 0.90 / 0.79 / 0.69; curls labelled curved_run with around_teammate = screener (test_t04_curl_is_curved_run_around_screener); planted cuts never curved_run (test_t04_planted_cut_is_not_an_arc); cod recall kept 1.00 / 0.99 / 0.93.'
+- id: KIN-T05
+  what: 'cod windows pre_s 0.65 / gap_s 0.25 (q 10 tier 0.75 / 0.35, tester''s long-term suggestion, read through the noise tier), cod confidence multiplied by Phi((min arm speed - v_min) / sigma_vbar), turn_search_s parameter.'
+  why: 'CA-RTS spreads the heading change over about +-0.25 s (more at q 10), so the +-0.1 s plant gap biased dpsi 10-25 deg low and sharp cuts became angle cuts; slow false cods scored 0.95.'
+  evidence: 'median dpsi at sigma_p 0.5: 100 deg cut 76 -> 99, 65 deg cut 49 -> 63, 160 deg 148 -> 162; cod recall 0.99 / 0.97 / 0.80 -> 1.00 / 0.99 / 0.93; class/side errors 20/59 -> 1-3 per sigma; no cod on 1.0 m/s walks or 4.7 / 3.3 m/s runs. tests test_t05_sharp_cut_classed_sharp, test_t05_angle_cut_found, test_t05_cod_confidence_has_arm_speed_factor.'
+- id: KIN-T06
+  what: 'plant_step entry = approach speed, mean CA-RTS speed over [t0 - 0.9, t0 - 0.5] s (approach_from_s, approach_to_s); shared _plant_test helper (also used by curved_run); the impossible S_arc(R 1.5 m at 4.5 m/s) negative test is replaced by a 100 deg R 4 m arc.'
+  why: 'the cod pre-window lies inside the deceleration and read a 4.0 m/s approach as 2.0-3.5 m/s, so drops were under-read.'
+  evidence: 'plant_step recall 0.85 / 0.45 / 0.00 -> 1.00 / 1.00 / 0.85; precision 1.00 -> 0.71 / 0.80 / 0.74, false plants on shallow 65 deg cuts (4.5 -> 3.5 m/s) now visible because dpsi is no longer biased below 60 deg (noted in plant_step noise_notes). test_t06_plant_step_recall_with_approach_speed, test_plant_step_negative_rounded_turn.'
+- id: KIN-T07
+  what: 'hinge window bounded at t20 - 0.5 s (hinge_before_t20_s, burst and brake); hesitation trough = min of the per-frame bias-corrected speed within +-0.2 s (trough_window_s); sub_type change_of_pace / stop_and_go (stop_and_go only when no stop fires); dv_min_q10 1.2 m/s at the q 10 tier; YAML confidence now lists P_trough.'
+  why: 'early zig-zag extremes on noisy plateaus dragged t0 back; the 0.2 s smoothed trough read a 0.3 m/s trough as a hesitation; q 10 attenuates a 2 m/s dip to 1.1-1.7 m/s. Deviations: the tester said min of v_c; the 0.5 s v_c window reads the 0.3 m/s trough at a median 0.95-1.02 m/s (sigma_p 0.2-0.3), on the 1.0 m/s edge, so the per-frame bias-corrected speed is used (median 0.64-0.84); at q 10 even that reads 1.04-1.62, hence trough_min_q10 1.8 m/s (a 5 -> 3 -> 5 hesitation reads 3.36-3.79).'
+  evidence: 'hesitation recall 0.80 / 0.55 / 0.05 -> 0.80 / 0.55 / 0.15 within 0.4 s and 6-8 of 10 clips within +-1 s at every sigma_p; the 5 -> 0.3 -> 5 m/s scene is labelled stop_and_go in 20/20, 19/20, 19/20 clips (left + right) at sigma_p 0.2 / 0.3 / 0.5 (tester: hesitation in 33/60), and the 5 -> 3 -> 5 scene change_of_pace in 18/20, 17/20, 14/20 (any t0). Residual: onset leads the truth by a median 0.2-0.5 s (validation_v1 notes). tests test_t07_*.'
+- id: KIN-T08
+  what: 'noise tier detection (_tier from sqrt(var_v / var_p) against the steady-state ratios of q 30 and q 10 at tier_sigma_p 0.45); burst/brake win_max_s_q10 1.3 s; the KIN-T07 hinge bound; burst noise_notes state the q 10 attenuation.'
+  why: 'q 10 spreads a 0.5 s rise over about 1.3 s, so a 0 -> 3 m/s first step measured 1.65-1.84 m/s in a 1.0 s window and was missed.'
+  evidence: 'burst recall at sigma_p 0.5 0.71 -> 0.79, brake 0.71 -> 0.80 (precision 0.70 -> 0.77); tier correct on 0.3 and 0.5 scenes (test_t08_tier_detection); first step detected at sigma_p 0.5 (test_t08_first_step_burst_at_q10). validation_v0 claims replaced by validation_v1.'
+- id: KIN-T09
+  what: 'corr_time_s_q10 0.5 s used everywhere corr_time_s is (sigma_L, window sigmas, cod, direction, peak); effort confidence Phi((mean speed_L - edge) / s_mean - z_sel) with z_sel 1.0 and s_mean = mean sigma_speed / sqrt(max(1, duration / corr_time)).'
+  why: 'speed-error autocorrelation at 0.5 s is 0.37 at sigma_p 0.5, and window means of a probability conditioned on having crossed the edge were optimistic. Deviation: the tester wrote sigma_L x sqrt(corr / duration), which reduces the 0.5 s window twice; the per-frame sigma is reduced once over the effort.'
+  evidence: 'hsr_effort precision at sigma_p 0.5 0.64 -> 0.75 (recall 0.80 kept), sprint_effort 0.65 -> 0.91, high_speed band 0.58 -> 0.76; hsr_effort on 4.7 m/s runs at sigma_p 0.5 <= 1 in 6 clips (test_t09_no_hsr_effort_on_4p7_run_at_q10).'
+- id: KIN-T10
+  what: 'peak_speed masks invalid frames before the 1 s mean and the frame maximum; confidence subtracts sqrt(2 ln N_eff) for the clip maximum; t0 states that a plateau anchor is arbitrary.'
+  why: 'inflated edge frames entered the mean and the max-selection bias was ignored, so a 3.3 m/s jog gave a peak at conf about 0.9.'
+  evidence: 'peak_speed precision 0.99 / 0.89 / 0.85 -> 1.00 / 0.98 / 0.96, recall 1.00; 3.3 m/s jog <= 1 peak in 6 clips (test_t10_no_peak_speed_on_3p3_jog).'
+- id: KIN-T11
+  what: 'defender lateral classes need ball coupling (ball, else nearest attacker, moving >= couple_speed 1.0 m/s along the defender motion, or within on_ball_r 3.0 m); uncoupled lateral motion becomes forward_run sub_type rotation_run (alternative rotation_run); moving gate and P(moving) on the bias-corrected vbar_c.'
+  why: 'a help defender sprinting along the baseline is lateral to the bearing to the ball and became crossover_run in 60/60 scenes; a 0.45 m/s creep read as backpedal.'
+  evidence: 'crossover_run precision 0.50 / 0.50 / 0.49 -> 1.00 / 1.00 / 0.95, defensive_slide 0.46 / 0.51 / 0.31 -> 0.54 / 0.60 / 0.46, backpedal 0.77 / 0.71 / 0.65 -> 0.91 / 0.91 / 0.85 (recall 1.00 / 0.80 / 1.00; the 0.3 dip is 4 of 20 retreat clips). tests test_t11_rotation_is_not_lateral, test_t11_creep_is_not_backpedal.'
+- id: KIN-T12
+  what: 'class edges read from forward_run.edge_deg / backpedal.edge_deg; artefact_speed_cap applied (frames excluded, attrs.artefact); kin_validity dead-ball tag implemented as attrs.context (dead_candidate / live_or_unknown, new dead_proxy_centroid_speed) with outputs renamed to [coverage, context]; new params brake.next_window_s, curved_run.p_backdate / around_stand_p / alt_sigma_deg / alt_margin_deg, defensive_slide.ball_dist_tol_m, cod.turn_search_s, effort direction_ratio, jump.stationary_discount; detect_brake passes common overrides to the linked cod/burst detectors; defensive_slide confidence line lists P(speed <= speed_max) and coupling; histogram_bin documented as view-only.'
+  why: 'the YAML claims to be the single source of truth, but several thresholds were hard-coded and several params were never read.'
+  evidence: 'test_t12_every_detector_param_is_read scans the module for every YAML param (only histogram_bin, kin_vref and the pose-only items are exempt); test_t12_edge_override_and_context_attrs; test_t12_brake_passes_common_overrides. Plant_step entry_window_s was not added: the approach window (approach_from_s - approach_to_s) now defines it.'
+- id: KIN-T13
+  what: 'start t0 = hinge onset of the 0.2 s mean speed over [gate exit - 0.5 s, first frame >= 2.0 m/s within 0.6 s of the moving run], clamped to [gate exit - 0.3 s, gate exit]; gate exit kept as attrs.t0_gate. New params refine_smooth_s, refine_lookback_s, refine_end_speed, refine_end_max_s, refine_max_lead_s.'
+  why: 'the s2 gate stays satisfied until about 1 m/s, so t0 lagged slow starts by 0.4-0.7 s. Deviation: the tester''s window [last calm - 0.5 s, first v_c >= 1.0 m/s] put 17% of stand-then-jog onsets more than 0.4 s early (median -0.06, p90 0.50 s); the longer window plus the clamp gives median 0.00 with 90-100% within 0.4 s.'
+  evidence: 'start recall 1.00 / 0.87 / 0.78 -> 0.98 / 0.95 / 0.85, precision 1.00 / 0.84 / 0.81 -> 0.98 / 0.92 / 0.91; slow-start median bias +0.27 s -> 0.00 s (test_t13_start_t0_on_slow_start).'
+- id: KIN-T14
+  what: 'hard_stop from the fall time of the 0.2 s mean CA-RTS speed: last frame >= 4.0 m/s to first frame < hard_end_speed 1.0 m/s within hard_fall_s 0.8 s (hard_fall_s_q10 1.1 s); attrs.hard_fall_time_s, hard_speed.'
+  why: 'speed_L falls below 4.0 about 0.65 s before rest and t0 lags rest, so a 7.5 m/s^2 stop read soft. Deviation: the tester''s max of frame speed over [t0 - 0.8 s, t0] still missed 3-7 of 10 stops because t0 lags rest by up to 0.34 s; the fall time does not depend on t0.'
+  evidence: 'stop hard attribute wrong 6/20, 8/19, 13/17 -> 1/19, 3/18, 0/17; a 1.8 s soft stop stays soft (test_t14_hard_and_soft_stops).'
+- id: KIN-T15
+  what: 'forward_run is not emitted for offensive players (forward_run.offense_emit false); offense_emit=True restores the capped view.'
+  why: 'offense facing = heading, so every moving attacker was forward_run (57-60/60 scenes), carrying no information.'
+  evidence: 'test_t15_offense_forward_run_not_emitted; defender forward_run precision / recall unchanged (1.00 / 1.00, 0.95 / 1.00, 0.91 / 0.95).'
+- id: KIN-T16
+  what: 'validation_v1 regenerated on the tester''s harness (80 scenes x 10 seeds x 3 sigma_p) with per-sigma precision / recall before and after, attribute error counts and t0 medians; validation_v0 kept for history and marked superseded; the harness scenes behind each failure added to the test file (loop-1 section).'
+  why: 'validation_v0 claims did not hold on new scenes (plant_step 0.93 at sigma_p 0.5 measured 0.00, curved_run 0.77-0.80 measured 0.28-0.40, burst 1.00 measured 0.71).'
+  evidence: 'validation_v1 below; test_t16_validation_v1_and_changes_recorded.'
+
+changes_loop2:
+# Fix pass 2 (loop 2): the independent confirmer's still-failing items and regressions of loop 1. Every change
+# was measured on the tester / confirmer harness (the two harness.py files are byte-identical: 80 scenes x 10
+# seeds x sigma_p 0.2 / 0.3 / 0.5) before and after, per detector, and kept only when the net result was better.
+# 'before' is the loop-1 state (validation_v1); per-sigma numbers are precision / recall at sigma_p 0.2 | 0.3 | 0.5.
+- id: KIN2-HESI
+  what: 'hesitation emits only sub_type change_of_pace; the near-stop dip (trough below trough_min, no stop inside) is the new item stop_and_go (detect_stop_and_go, same params). hesitation t0 = max(hinge onset, trough - onset_max_before_trough_s 0.8 s). burst and brake hinge_before_t20_s 0.5 -> 0.25 s. hesitation gap_max_s 0.6 -> 0.7 s. New attr t0_hinge keeps the unbounded onset.'
+  why: 'regression 1 and still-failing KIN-HESI: the loop-1 sub_type stop_and_go made a 5 -> 0.3 -> 5 m/s near-stop a hesitation in 10/10 clips per sigma, but the item is a brake then burst WITHOUT stopping (its own name), so the label belongs to a separate item (the confirmer offered either; the separate kind keeps the information without calling a near-stop a hesitation). The hinge onset of a 0.5 s fall led a 5 -> 3 -> 5 dip by 0.4-0.7 s (t0 0.9-1.1 s against 1.5 s) at sigma_p 0.3-0.5, outside the 0.4 s match tolerance. With the 0.25 s hinge bound the burst onset moves later, so a true 0.2 s dwell read up to 0.67 s and the 0.6 s gate dropped it.'
+  evidence: 'hesitation 0.40/0.80 | 0.26/0.55 | 0.07/0.15 -> 0.90/0.90 | 0.62/0.75 | 0.50/0.60; t0 median -0.20 / -0.17 / -0.30 -> -0.17 / -0.17 / -0.17 s. hinge 0.25 alone: brake 0.99/1.00 | 0.93/0.96 | 0.77/0.80 -> 0.99/1.00 | 0.96/1.00 | 0.94/0.97, burst 0.99/0.99 | 0.86/0.85 | 0.80/0.79 -> 1.00/1.00 | 0.96/0.97 | 0.85/0.86 (0.35 and 0.15 / 0.20 measured: 0.35 worse at 0.5, 0.15-0.20 equal for brake / burst). onset bound 0.6 / 0.7 / 0.8 s equal, 1.0 s worse (0.68/0.65, 0.53/0.45): 0.8 kept as the least intrusive. gap 0.7 at sigma_p 0.5 alone: 0.52/0.55 -> 0.50/0.60 (F1 0.53 -> 0.55; a q 10 value of 0.6 was measured and not kept). Not kept: hesitation dv_min 1.3 (0.3: 0.61/0.70 -> 0.52/0.85), sigma_dv from the gain frames (no change). Tests test_kin2_hesi_*, test_kin2_brake_onset_at_q10, test_t07_* (updated).'
+- id: KIN2-STAND
+  what: 'stand run check repeated on the run extended by run_check_ext_s 0.5 s on each side, passing on min(P_run, max(P_left, P_right)) (extension past the clip edge = P 1); run_check_p_min 0.5 -> 0.6 at the q 30 tier (run_check_p_min_q10 0.5); min_s and run_check_p_min read through the tier helper.'
+  why: 'still-failing KIN-STAND-FP: 0.65 and 0.9 m/s walkers produced 0.6-1.4 s stand runs because correlated position noise stalls the track over short spans (v_run read 0.0-0.48 m/s). A walker moves on both sides of such a fragment; a true stand is entered or left on at most one side.'
+  evidence: 'stand (harness truth unchanged) 0.60/1.00 | 0.56/1.00 | 0.55/0.95 -> 0.68/1.00 | 0.58/0.99 | 0.59/0.94; with the 0.45 m/s creep scored as stand-by-spec (see confirmer_disputed) 0.74/1.00 | 0.70/1.00 | 0.68/0.95 -> 0.86/1.00 | 0.76/0.99 | 0.75/0.94. Extension 0.8 / 1.0 s measured worse (recall 0.82-0.90 / 0.71-0.75: the screener stand is entered and left within 0.8 s). run_check_p_min 0.6 at q 10 cut recall at 0.5 to 0.86, hence tiered. min_s 0.8 at q 30 would add 0.86 -> 0.91 | 0.76 -> 0.83 but changes the 0.5 s stand definition, so not applied. Residual: the 0.65 m/s drift sits 0.15 m/s above the stand edge, below the mean-velocity sigma of a 1 s span at sigma_p 0.3 (about 0.3-0.5 m/s). Tests test_kin2_stand_*.'
+- id: KIN2-BAND
+  what: 'sprint min_s 0.5 -> 1.0 s and p_enter 0.7 -> 0.85; high_speed min_s 0.5 -> 1.0 s (p_enter stays 0.7).'
+  why: 'still-failing KIN-BAND-EDGE-FP: the 0.5 s window-mean noise (0.25-0.40 m/s) is larger than the 0.15-0.3 m/s gap of a 5.6 / 4.7 m/s run to the 5.83 / 5.0 edge, so 0.5 s excursions entered the band; the estimate itself is unbiased.'
+  evidence: 'sprint 0.74/1.00 | 0.54/1.00 | 0.51/1.00 -> 1.00/1.00 | 1.00/1.00 | 0.95/1.00; high_speed 0.88/1.00 | 0.68/0.88 | 0.76/0.70 -> 1.00/0.97 | 1.00/0.82 | 0.91/0.70 (F1 0.94 -> 0.98, 0.77 -> 0.90, 0.73 -> 0.79). min_s 0.8 measured weaker (sprint 0.95 / 0.87 at 0.3 / 0.5). run min_s 1.0 measured (0.85/0.93 -> 1.00/0.85 at 0.5) and not applied: recall cost on short run segments. Tests test_kin2_no_sprint_on_5p6_run, test_kin2_no_high_speed_on_4p7_run, test_kin2_sprint_still_found.'
+- id: KIN2-PLANT
+  what: 'plant_step drop_frac 0.25 -> 0.40 at the q 30 tier, drop_frac_q10 0.35; curved_run plant exclusion keeps its own plant_exclusion_drop_frac 0.25.'
+  why: 'regression 2 / still-failing KIN-PLANT-FP: a 65 deg cut at speed with a shallow 4.5 -> 3.5 m/s dip reads a corner-cut drop of 1.2-1.7 m/s (plant ratio 0.63-0.75) and cleared 0.25 x entry. The confirmer measured 0.40 removes every false event at 0.2 / 0.3 but costs recall at 0.5, hence tiered. Raising drop_frac also weakened the arc exclusion (curved_run 0.90 / 0.79 / 0.69 -> 0.86 / 0.76 / 0.63 precision) because planted cuts no longer read planted there, so the arc test keeps 0.25.'
+  evidence: 'plant_step 0.71/1.00 | 0.80/1.00 | 0.74/0.85 -> 1.00/1.00 | 1.00/1.00 | 0.90/0.85 (0.35 everywhere: 0.95 | 0.91 | 0.90; 0.40 / 0.30 tiers: 0.85 at 0.5); curved_run unchanged by this step. Tests test_kin2_no_plant_step_on_shallow_angle_cut, test_kin2_plant_step_recall_at_q10, test_t06 (unchanged).'
+- id: KIN2-CURVE
+  what: 'curved_run drops an arc when a cod >= 45 deg inside it has a concentrated apex (frame-heading change within +-0.25 s >= cut_apex_ratio 0.52 of the arc total turn; the cut side of the uniform-turn test detect_cod already used); p_backdate 0.5 -> 0.2. Shared helper _apex_turn.'
+  why: 'regression 4 / still-failing KIN-CURVE-COD-OVERLAP: a 100 deg planted cut also came out as a 2.0-2.4 m radius arc (0 / 4 / 9 false arcs). The confirmer proposed dropping arcs of radius < 3 m with a cod >= 60 deg inside; that is wrong for curls: measured curl radii 2.0-2.4 m with an inside cod of 95-138 deg in 20/20 clips at sigma_p 0.3 and 0.5, the same as the false arcs (2.0-2.4 m), so the rule would delete every curl (KIN-T04 recall). The apex share separates them: false arcs on the cut 0.45-0.77 (median 0.57), curls and R 5 m bananas 0.28-0.51 over 3 sigma_p x 10 seeds x both sides; cod.arc_uniform_ratio 0.45 removed one curl per sigma, 0.52 none. Banana t0 was late because back-dating stopped where P first reached 0.5.'
+  evidence: 'curved_run 0.90/0.90 | 0.79/0.85 | 0.69/0.78 -> 0.97/0.97 | 0.97/0.95 | 0.92/0.85 (apex exclusion alone 0.90/0.90 | 0.87/0.85 | 0.84/0.78; back-dating 0.2 then removed most banana miss + false pairs; t0 median -0.13 / -0.13 / -0.20 s). cod 0.95 -> 0.97 precision at 0.3 as a side effect. Not kept: reading sub-threshold arcs (emit 0.2-0.3) in the cod suppression (no change: the remaining banana cod events have apex share 0.47 or no arc at all). Tests test_kin2_planted_cut_not_an_arc, test_kin2_curl_survives_cut_apex_exclusion, test_kin2_banana_t0, test_t04_* (unchanged).'
+- id: KIN2-DSLIDE
+  what: 'defensive_slide drops a segment of at most xover_ramp_max_s 1.0 s within xover_ramp_gap_s 0.5 s of a crossover_run segment of the same defender; crossover segments come from a shared _crossover_core (no recursion; crossover_run.preceded_by_slide still reads the emitted slides).'
+  why: 'still-failing KIN-DSLIDE-FP: a defender who opens into a 4 m/s crossover run passes through slide speeds while he accelerates and again while he slows (fragments 0.40-0.84 s touching the crossover segment). A longer slide phase before the opening stays, so preceded_by_slide keeps its meaning (the confirmer''s blanket 0.5 s exclusion would make it always false).'
+  evidence: 'defensive_slide 0.54/1.00 | 0.60/1.00 | 0.46/0.90 -> 1.00/1.00 | 1.00/1.00 | 0.95/0.90; crossover_run unchanged (1.00 | 1.00 | 0.95 / 1.00). Tests test_kin2_no_slide_ramps_around_crossover, test_kin2_real_slide_kept.'
+- id: KIN2-STOP
+  what: 'stop confidence takes the window mean of P_stand over the first conf_window_s 1.0 s of the run (was still_min_s 0.3 s); the event still spans still_min_s.'
+  why: 'regression 6 (stop recall 1.00 -> 0.95 at sigma_p 0.2): after the loop-1 RMS v_c, P_stand right after a 4.5 m/s hard stop sits at 0.4-0.6 for a few tenths of a second (CA-RTS residual), and one clip read conf 0.499.'
+  evidence: 'stop 1.00/0.95 | 0.95/0.90 | 0.94/0.85 -> 1.00/1.00 | 1.00/0.90 | 0.94/0.85 (0.6 s measured: 0.2 only). Test test_kin2_hard_stop_conf_window.'
+changes_loop4:
+# Loop 4 = calibration on real tracking: SportVU, 3 NBA 2015-16 games (private research data; only aggregate rates and
+# anonymised descriptions here). sportvu.py stretches in the attacked-rim frame, 194 built chunks, 6855 s of play, sigma
+# told 0.15 m unless stated. Truth: (a) play-by-play FGA matched on (period, clock) with the same player, jump release
+# clock - PBP clock in [1.0, 4.5] s (the PBP clock lags the release by 2.5 s median, p10 1.6, p90 3.8, measured on the
+# ball apex), 397 FGA inside built chunks; (b) near-truth speed from the raw positions (vendor-smoothed, ~2 mm white
+# noise; 5-frame median against glitches, 0.5 s mean = speed_L), with the item rules applied to it (stand: < 0.5 m/s for
+# >= 0.5 s; start / stop / efforts as the YAML rules; match +-0.5 s or segment overlap). Every change was re-run on the
+# 3 games clean, with added noise 0.3 (and 0.5) and with sigma told 0.05, and on the synthetic harness (80+ scenes x 10
+# seeds x sigma_p 0.2 / 0.3 / 0.5, byte-identical to the loop 1-3 tester / confirmer harness). Per-sigma numbers are
+# precision / recall. Synthetic: no detector moved except jump / landing 1.00/1.00 | 1.00/0.975 | 0.947/0.900 ->
+# 1.00/1.00 | 1.00/1.00 | 0.950/0.950.
+- id: KIN4-JUMP
+  what: >-
+    The jump proxy reads releases from its own ball-control test (_ball_control), not from mvlib.Scene.holder: the
+    nearest player of EITHER team within mvlib.HOLD_R, as a run of the same player of >= control_min_s 0.4 s (gaps of
+    control_bridge_s one frame bridged) in which the ball moves with him (|change of the mean ball-player offset between
+    the first and last control_end_s 0.1 s| / duration <= control_rel_v 1.5 m/s after a control_noise_z 2 sigma noise
+    allowance). A flight ends at the next such control run of anyone. Both rims are tested (the far rim at
+    court_length_m - 2 rim_setback_m up the court); release_min_r, the radial share and the pass-through test are taken
+    against the rim that was reached. New attr rim (attacked / far); the far-rim spot is labelled in that rim's frame.
+  why: >-
+    Real PBP recall of the loop-3 proxy was 0.17 (precision 0.52). Miss causes on the raw positions (328 classified
+    misses): 197 shooters were on the chunk's defence side (SportVU stretches hold possessions of both teams; mvlib's
+    holder is offence-only), 154 shot at the far rim, and the one-frame holder treated fly-overs as catches: shot
+    flights pass within 1 m of contesting defenders and of players under the rim for 0.17 s median (p90 0.35 s), at
+    3-8 m/s relative speed, which ended the flight. A catch holds the ball and moves with it.
+  evidence: >-
+    PBP FGA same player, recall / precision: clean 0.171 / 0.519 -> 0.529 / 0.808; noise 0.3 0.136 / 0.325 ->
+    0.504 / 0.772; noise 0.5 0.146 / 0.322 -> 0.406 / 0.649; sigma told 0.05 0.164 / 0.508 -> 0.537 / 0.813. Rate per
+    48 min (10 players): 55 -> 109 clean, 70 -> 109 at noise 0.3, 76 -> 104 at 0.5 (loop 3 rose x1.37 with noise, now
+    x0.95-1.00). Unmatched jumps after (50 of 260): 29 have the same player's FGA within -1..6 s but outside the match
+    window (pump fake, second attempt), 13 sit at another player's FGA, 3 at a shooting foul on the jumper (no FGA in
+    PBP), 2 at his turnover, 5 with no PBP event nearby. Sweeps on the
+    release candidates (clean, before the detector port): control 0.1 s with no co-moving test recall 0.01 (the
+    nearest-player label flickers in traffic); chord test 1.5 m/s with control 0.3 / 0.4 / 0.5 s 0.486 / 0.489 / 0.484;
+    chord 1.0 / 1.5 / 2.0 / 3.0 m/s at 0.4 s 0.461 / 0.489 / 0.479 / 0.448 (precision 0.753 / 0.822 / 0.826 / 0.836);
+    instantaneous relative speed instead of the chord fails on the noisy ball velocity (q 5000). In the detector:
+    bridge 1 frame / 0.1 / 0.2 s recall at noise 0.3 0.504 / 0.479 / 0.431 (synthetic jump recall at sigma_p 0.5
+    0.95 / 0.925 / 0.90). Not kept: a close-release path (release < 2 m with a
+    rim-dwell test) added recall 0.11 at precision 0.38 on the added events (layups, tips and interior passes are not
+    separable in XY); a rebound proxy (next control after a shot) was as likely a made-shot pickup (85) as a PBP
+    rebound (90). Recall against FGA + rebounds (397 + 234) is 0.33; rebound and block jumps need pose or ball height.
+    Tests test_kin4_jump_*, test_kin4_far_rim_spot_in_the_shot_rim_frame, test_kin4_control_needs_duration_and_comoving_ball
+    (the loop-3 code fails each scene 10/10 times).
+- id: KIN4-EFFORT
+  what: >-
+    hsr_effort / sprint_effort P_cond tests the effort mean against edge - conf_ref_h (0.075 m/s at the q 30 tier,
+    conf_ref_h_q10 0 at q 10) instead of the entry edge: Phi((mean speed_L - (edge - conf_ref_h)) / s_mean - z_sel).
+  why: >-
+    Real recall was 0.78 (hsr) / 0.79 (sprint) at precision 0.99. Of 174 missed HSR efforts (clean), 158 had detector speed_L
+    equal to the near-truth (bias 0.00 m/s) and ran >= 1.0 s above the stay level: they peak at 5.0-5.4 m/s, so the effort
+    mean sits within z_sel x s_mean of the entry edge and P_cond was 0.2-0.4. A rule-conforming effort (enter 5.0, stay
+    5.0 - h_min) can have a true mean down to edge - h_min.
+  evidence: >-
+    near-truth efforts, precision / recall: hsr clean 0.994 / 0.782 -> 0.994 / 0.847, noise 0.3 0.957 / 0.754 ->
+    0.945 / 0.798, told 0.05 0.997 / 0.834 -> 0.996 / 0.903; sprint clean 0.994 / 0.793 -> 0.994 / 0.889, noise 0.3
+    0.973 / 0.727 -> 0.963 / 0.783, told 0.05 1.000 / 0.859 -> 1.000 / 0.899; noise 0.5 unchanged (q 10 tier). Synthetic
+    unchanged. Not kept: conf_ref_h 0.15 (= h_min) at every tier: real hsr clean recall 0.903, but synthetic sprint
+    precision 1.00 -> 0.95 at sigma_p 0.3 and 0.91 -> 0.74 at 0.5, hsr 0.75 -> 0.67 at 0.5 (5.6 and 4.7 m/s near-miss
+    runs); 0.075 at both tiers: sprint 0.91 -> 0.83 at 0.5. Tests test_kin4_effort_hovering_just_above_the_edge (8/10
+    vs 4/10 with the entry edge), test_kin4_no_effort_at_the_stay_level, test_kin4_effort_reference_is_tiered.
+- id: KIN4-NOT-KEPT
+  what: 'Measured on real tracking and reverted (no family file keeps them): KIN4-CORE, KIN4-START, KIN4-STILL.'
+  why: >-
+    KIN4-CORE (from the interrupted first run of this loop): the stand run-level displacement check on the still core of
+    start / stop runs. KIN4-START: stand_min_s measured to the refined onset t0 instead of the s2 gate exit. KIN4-STILL:
+    still / stand time counted on frames meeting the stand enter condition (not the stay band and bridges) for stop,
+    start and stand.
+  evidence: >-
+    KIN4-CORE (guards 0.2 s both ends): start clean 0.546 / 0.923 -> 0.566 / 0.910, noise 0.3 0.355 / 0.760 ->
+    0.362 / 0.702; stop clean 0.595 / 0.892 -> 0.604 / 0.877, noise 0.3 0.319 / 0.673 -> 0.316 / 0.631 (most cores are
+    shorter than the two 0.2 s end windows; F1 down at noise). KIN4-START: start told 0.15 0.546 / 0.923 -> 0.633 / 0.878
+    and noise 0.3 0.355 / 0.760 -> 0.415 / 0.720, but at sigma told 0.05 (matched to the data) 0.891 / 0.870 -> 0.899 /
+    0.698; the rule as written measures the stand to the gate exit, and the gain was the noise artefact (below).
+    KIN4-STILL: stop clean 0.595 -> 0.613 precision, noise 0.3 0.319 -> 0.328, start and stand within 0.02.
+changes_loop5:
+# Loop 5 = finishing pass on the loop-4 open items. Same data and truth as changes_loop4 (SportVU, 3 NBA 2015-16 games,
+# 194 built chunks, 6855 s, aggregates only), but realdata.py now builds chunks with --frame team_ends (offence = the team
+# attacking the chunk's end in this half; the old nearest_player rule mislabelled ~25% of chunks). Jump truth: PBP FGA
+# same player, release clock - PBP clock in [1.0, 4.5] s, one-to-one, 446 FGA whose release window overlaps a built chunk
+# (the loop-4 confirmer's matcher; loop-4 calibrator figures used a stricter 397-FGA count), plus a ball-height check the
+# XY detector never reads (z-shot: apex > 3.4 m and ball > 2.8 m within 1.5 m of the rim; z-recall over 373 rim arrivals
+# released >= 2 m out). Efforts: near-truth from the clean positions (0.25 s moving-average speed, enter 5.0 / 5.83, stay
+# - 0.15, >= 1 s). Every change was re-run clean / noise 0.3 / noise 0.5 with the official runner and on the synthetic
+# harness (75 rows, 80+ scenes x 10 seeds x sigma_p 0.2 / 0.3 / 0.5). Per-sigma numbers are precision / recall.
+- id: KIN5-BALLZ-NAN
+  what: 'The ball-height path is now chosen per release: when Scene.ball_z is present but NaN over a release and its flight, that release uses the XY rules (release_min_r, no apex test) instead of being vetoed.'
+  why: 'Loop-5 confirmer (low): with ball_z_path true, a clip whose ball height is missing (all NaN, or NaN only during the flight) lost every jump, because use_z was decided once per clip from ball_z is not None.'
+  evidence: 'Regression test test_kin5_ball_z_nan_falls_back_to_xy_per_release: with ball_z all NaN or NaN over 1.8-3.2 s, ball_z_path=True returns the same jumps as the XY default on 6 seeds (it returned none before). Default (ball_z_path false) unchanged.'
+- id: KIN5-FRAME-REMEASURE
+  what: 'No code change: the loop-4 real figures re-measured under --frame team_ends (realdata.py default) next to nearest_player.'
+  why: 'The loop-4 figures were measured with the nearest_player offence rule; items that read the offence / defence split had to be checked.'
+  evidence: >-
+    jump, landing, every speed / effort / velocity-change item and cod are identical under both rules (the jump proxy reads
+    control by either team at either rim since KIN4-JUMP; speed items do not read teams): jump PBP clean 0.885 / 0.516,
+    noise 0.3 0.828 / 0.487, noise 0.5 0.699 / 0.386 (z-shot precision 0.935 / 0.901 / 0.821, z-recall 0.775 / 0.729 /
+    0.606); hsr_effort 0.986 / 0.879, 0.951 / 0.831, 0.901 / 0.767; sprint_effort 0.972 / 0.932, 0.915 / 0.800, 0.858 /
+    0.737. Only the defender items move (rates per 48, nearest_player -> team_ends, clean / noise 0.3 / noise 0.5):
+    forward_run 2524.0 -> 2584.5 / 2264.8 -> 2314.4 / 2338.7 -> 2381.2; backpedal 1364.9 -> 1334.3 / 1460.3 -> 1411.1 /
+    1496.0 -> 1442.7; defensive_slide 1400.2 -> 1449.0 / 1154.9 -> 1172.9 / 1267.9 -> 1286.0; crossover_run 611.7 ->
+    652.0 / 636.9 -> 684.4 / 659.1 -> 702.8 (-4% to +7%: the true defence now gets the defender classes; no real truth
+    for those classes yet).
+- id: KIN5-OOB
+  what: >-
+    jump: a release whose shooter position at release, in the frame of the rim that was shot at, lies beyond the
+    named_spots in-bounds gate (|x| < SIDE_X, END_Y < y < FAR_END_Y; spotlib.C, not redefined) by more than oob_z x
+    position sigma is rejected (oob_z 0: the point estimate decides).
+  why: >-
+    Loop-4 confirmer: jumps whose spot is out_of_bounds are always false. Inspection of every release beyond or within
+    0.65 m of the gate (14 beyond: 4 clean, 5 at noise 0.3, 5 at noise 0.5; and the 27 nearest in-bounds ones): all 14
+    beyond are baseline throw-ins to a player under the rim (shooter 0.04-0.52 m behind the end line, ball apex 1.3-2.2 m,
+    none PBP-matched, none z-shot); the nearest true shots are corner and wing threes 0.43-0.65 m inside the side line
+    (all PBP-matched, apex 4.5-5.5 m). The attrs.spot test at the takeoff frame misses half of them (the inbounder steps
+    in by release).
+  evidence: >-
+    Rejected releases by margin: oob_z 0 / 1 / 2 / 3 sigma rejects 14 / 9 / 5 / 3 of the 14, never a PBP-matched or
+    z-shot one. Jump PBP clean 0.885 / 0.516 -> 0.898 / 0.516 (z-shot precision 0.935 -> 0.949), noise 0.3 0.828 / 0.487
+    -> 0.844 / 0.487, noise 0.5 0.699 / 0.386 -> 0.714 / 0.386; jumps with spot out_of_bounds 2 / 3 / 2 -> 0 / 0 / 0.
+    Synthetic: no row moves. Tests test_kin5_oob_inbound_pass_is_not_a_jump (loop-4 code fires 8 / 5 / 4 of 10 at sigma_p
+    0.2 / 0.3 / 0.5), test_kin5_oob_gate_keeps_the_corner_three.
+- id: KIN5-BRIDGE
+  what: >-
+    jump ball control: the bridge is noise-tier aware, control_bridge_s (one frame) at the q 30 tier and
+    control_bridge_s_q10 0.1 s (3 frames) at the q 10 tier (tier = majority of the scene's players, _scene_tier); a
+    bridged control run ends at its last in-disc stretch of >= control_tail_min_s (2 frames).
+  why: >-
+    Loop-4 confirmer: the one-frame bridge was tuned at noise 0.3; 0.15 s was better at 0.5. Inspection of 40 releases
+    gained by the longer bridge at noise 0.5: the shooter's raw ball distance has a median of 0.5-1.8 m over the last 1 s
+    with 3-28 frames outside the 1 m disc (longest gap 1-24 frames), so the held ball's control run fragmented below
+    control_min_s. The bridge alone cost synthetic floaters at sigma_p 0.5 (jump 0.95 -> 0.925): after release the ball
+    and a runner following his floater stay within 1 m for a while, and single noise frames back inside the disc
+    extended the run by up to the bridge, so the release (and takeoff) came 0.4 s late. The tail rule ends the run at the
+    last real in-disc stretch. A relative-speed back-date was tried for the same floaters and not kept (real release
+    timing p90 |error| at noise 0.3 0.37 -> 0.44 s against the clean ball).
+  evidence: >-
+    Noise 0.5 bridge sweep (with KIN5-OOB, before the tail rule), PBP / z-shot precision / z-recall: 1 frame 0.714 / 0.386,
+    0.838, 0.606; 0.1 s 0.762 / 0.410, 0.904, 0.676; 0.15 s 0.767 / 0.406, 0.898, 0.657; 0.2 s 0.779 / 0.372, 0.915,
+    0.601. With the tail rule (final): noise 0.5 0.796 / 0.428, z 0.904 / 0.681 (0.15 s with the tail: 0.789 / 0.419);
+    noise 0.3 (q 30, tail only) 0.844 / 0.487 -> 0.846 / 0.491; clean unchanged 0.898 / 0.516. Synthetic jump / landing
+    1.00/1.00 | 1.00/1.00 | 0.950/0.950 -> 1.00/1.00 | 1.00/1.00 | 1.000/0.975 (t0 p90 0.27 -> 0.24 s); no other row
+    moves. Tests test_kin5_bridge_is_tiered, test_kin5_bridged_run_ends_at_the_last_real_stretch,
+    test_kin5_noisy_held_ball_keeps_control_at_q10 (8 vs 5 of 10 with the one-frame bridge).
+- id: KIN5-FRAME
+  what: >-
+    jump attrs x, y are now in the same frame as attrs.spot: the frame of the rim that was shot at (attrs.frame =
+    shot_rim; far rim = court rotated by 180 deg). landing x, y, spot follow its linked jump (attrs frame, rim).
+  why: 'Loop-4 confirmer: far-rim jumps had spot in the far rim''s frame but x, y in the attacked-rim frame; landing labelled far-rim landings in the wrong frame.'
+  evidence: >-
+    Real data: 101 / 108 / 95 of 256 / 259 / 240 jumps (clean / noise 0.3 / noise 0.5) are far-rim; every jump and landing
+    (1509 events) now has spot == court_region(x, y) except one whose rounded x (0.01 m) crosses the corner line. Rates
+    and matching unchanged. Tests test_kin5_jump_xy_in_the_spot_frame (loop-4 code: x 2.82, y 19.38 in the attacked-rim
+    frame for a shot 6 m from the far rim) and the
+    updated test_kin4_far_rim_spot_in_the_shot_rim_frame.
+- id: KIN5-BALLZ
+  what: >-
+    Optional ball-height path (ball_z_path, default false; XY stays the default): when Scene.ball_z exists the ball must
+    reach z_apex_min_m 3.2 m between release and passthrough_s after rim reach, and releases down to z_close_min_r 0.5 m
+    from the rim are accepted (release_min_r 2.0 m applies on the XY path). Without ball height it is the XY path. attrs
+    path ball_z_apex, apex_z and release_r (both paths) report it.
+  why: >-
+    About 40% of FGA are released within 2 m of the rim, where XY cannot tell a layup from an interior pass (loop 4).
+    Production video has no reliable ball height, so the path is measured as a research option only.
+  evidence: >-
+    PBP precision / recall, XY (final) vs ball_z_path: clean 0.898 / 0.516 vs 0.918 / 0.603; noise 0.3 0.846 / 0.491 vs
+    0.840 / 0.554; noise 0.5 0.796 / 0.428 vs 0.784 / 0.480. Variants: apex veto only (z_close_min_r 2.0) 0.943 / 0.516,
+    0.896 / 0.482, 0.858 / 0.419; z_close_min_r 1.0 0.931 / 0.576, 0.853 / 0.534, 0.795 / 0.462; apex 3.4 m 0.938 / 0.574,
+    0.857 / 0.509, 0.800 / 0.448. Events added by the path (clean / 0.3 / 0.5): 49 / 54 / 55, PBP-matched 39 / 32 / 27
+    (sample of 20 clean: releases 0.75-1.97 m out, apex 3.21-4.07 m; the unmatched ones are restricted-area put-backs and
+    tips); removed 12 / 19 / 22 (PBP-matched 0 / 4 / 4; low passes, apex < 3.2 m in 6 / 12 / 16). Tests
+    test_kin5_ball_z_path_finds_the_close_release_and_is_optional, test_kin5_ball_z_path_vetoes_a_low_pass.
+- id: KIN5-EFFORT-NOT-KEPT
+  what: >-
+    Measured and not kept: a noise-aware stay-level allowance for hsr_effort / sprint_effort, conf_ref_h x min(1,
+    (s0 / s_mean)^p) (s0 0.13-0.17 m/s, p 1 / 2 / 4 / 8). hsr_effort / sprint_effort are unchanged from loop 4.
+  why: >-
+    Loop-4 confirmer: at noise 0.3 the KIN4-EFFORT additions had near-truth precision 0.76 (hsr) / 0.64 (sprint).
+    Reproduced: 50 / 11 added events, 38 / 7 real. The false ones are 1.0-1.05 s AR(1) excursions of 4.9 m/s runs
+    (near-truth mean 4.88-5.01 m/s) with s_mean 0.22 m/s against 0.18 for the real ones; observable features overlap.
+  evidence: >-
+    s0 0.15, p 2 (clean unchanged, -1 hsr event): additions precision 0.76 -> 0.85 (hsr), 0.64 -> 0.71 (sprint), overall
+    noise 0.3 hsr 0.951 / 0.831 -> 0.961 / 0.819 and sprint 0.915 / 0.800 -> 0.925 / 0.789 (F1 0.887 -> 0.884 and 0.853
+    -> 0.852); on the loop-4 calibrator's near-truth sprint 0.944 / 0.773 -> 0.943 / 0.753 (a loss). Every other s0 / p
+    gave the same trade. A precision-for-recall swap with no F1 gain, so the noise-0.3 precision is stated in
+    validation_v1b_real instead; synthetic efforts do not move under any variant (the harness has no near-edge efforts).
+- id: KIN5-KCAL-NOTE
+  what: 'No family change: mvlib K_CAL / stationary_s2 issues are shared (out of scope); family-side compensation considered and not applied.'
+  why: >-
+    sigma_speed is about 10% high on synthetic still players (K_CAL 1.8) and feeds every v_c and P_stand. A family-side
+    factor (for example sigma_speed x 0.9 inside _F) would make kinematics disagree with every other family on the same
+    MP-09 sigma, and the start / stop / stand noise inflation it would touch is a detection-power limit (open finding),
+    not a sigma-scale error. The new KIN5-OOB gate does not depend on K_CAL (oob_z 0).
+  evidence: 'Loop-4 measurement E[v^2] / (2 sigma_speed^2) 0.76-0.83 on synthetic stills; nothing re-measured here.'
+validation_v1b_real:
+  data: 'SportVU, 3 NBA 2015-16 games, 194 chunks, 6855 s (114.3 min) of clock-running play, 1143 player-minutes; truth as changes_loop4'
+  physical_plausibility:
+    distance_per_player_48: 'near-truth 5.49 km (glitch frames > 9 m/s dropped; 5.73 km with them); detector CA-RTS speed 5.49 km clean, 5.66 km at noise 0.3 (Rician floor +3%). D''Amelio 2020 (NBA, SportVU cameras): 106-109 m per minute played = 5.1-5.2 km per 48 (docs/research/load_thresholds.md)'
+    mean_speed: 'near-truth 1.91 m/s (6.9 km/h, 4.3 mph); detector 1.90 m/s clean, 1.96 at noise 0.3; NBA.com Avg Speed 1.63-2.10 m/s (load_thresholds.md section 4.4)'
+    time_share_by_band: 'near-truth speed_L: stand < 0.5 12.3%, walk 48.5%, jog 29.5%, run 7.1%, high_speed 1.8%, sprint 0.9%'
+    efforts_per_player_48: 'near-truth hsr (5.0 m/s, >= 1 s) 33.5, sprint (5.83) 8.3, sprint at 6.69 1.1; detector after loop 4: hsr 29.2 / 28.6 / 27.9 and sprint 7.6 / 6.9 / 6.8 (clean / noise 0.3 / noise 0.5; loop 3 clean 27.0 and 6.8)'
+  rates_per48:
+    note: 'events per 48 min of tracked play, all 10 players, official runner realdata.py (--families kinematics)'
+    clean_sigma_told_0.15: 'stand 2419.4, start 1843.0, stop 300.8, stop_and_go 717.5, hesitation 76.9, burst 1972.4, brake 1600.6, hsr_effort 291.6, sprint_effort 76.0, high_speed 198.3, sprint 53.8, peak_speed 585.6, jump 109.2, landing 109.2, cod 3596.5, walk 5692.9, jog 4374.2, run 1161.2'
+    noise_0.3: 'stand 2574.0, start 2319.4, stop 431.9, stop_and_go 823.8, hesitation 85.3, burst 2323.6, brake 2088.4, hsr_effort 285.7, sprint_effort 69.3, high_speed 179.4, sprint 49.6, peak_speed 571.3, jump 110.1, landing 110.1, cod 4206.1, walk 5863.4, jog 4629.2, run 1265.4'
+    noise_0.5: 'stand 3045.4, start 2132.0, stop 367.6, stop_and_go 1656.5, hesitation 64.7, burst 2516.0, brake 2309.8, hsr_effort 279.0, sprint_effort 68.1, high_speed 0.0, sprint 54.2, peak_speed 543.6, jump 103.3, landing 102.9, cod 4023.4, walk 5717.2, jog 4496.8, run 1132.2'
+    loop5_team_ends: 'changed rates only (clean / noise 0.3 / noise 0.5): jump 107.5 / 108.8 / 100.8, landing 107.5 / 108.8 / 100.4; under team_ends forward_run 2584.5 / 2314.4 / 2381.2, backpedal 1334.3 / 1411.1 / 1442.7, defensive_slide 1449.0 / 1172.9 / 1286.0, crossover_run 652.0 / 684.4 / 702.8; every other rate as above'
+    loop3_clean_sigma_told_0.15: 'stand 2419.4, start 1843.0, stop 300.8, stop_and_go 717.5, hesitation 76.9, burst 1972.4, brake 1600.6, hsr_effort 269.7, sprint_effort 68.1, high_speed 198.3, sprint 53.8, peak_speed 585.6, jump 55.0, landing 55.0, cod 3596.5, walk 5692.9, jog 4374.2, run 1161.2'
+  precision_recall_near_truth:
+    note: 'precision / recall; told 0.05 = sigma told matched to the data (vendor-smoothed, ~2 mm noise)'
+    stand: 'told 0.05 0.931 / 0.932; told 0.15 0.743 / 0.960; noise 0.3 0.647 / 0.872; noise 0.5 0.561 / 0.871'
+    start: 'told 0.05 0.891 / 0.870; told 0.15 0.546 / 0.923; noise 0.3 0.355 / 0.760; noise 0.5 0.323 / 0.639'
+    stop: 'told 0.05 0.901 / 0.830; told 0.15 0.595 / 0.892; noise 0.3 0.319 / 0.673; noise 0.5 0.276 / 0.503'
+    stop_and_go: 'told 0.05 0.935 / 0.644; told 0.15 0.914 / 0.569; noise 0.3 0.593 / 0.410; noise 0.5 0.370 / 0.522 (truth: zig-zag trough < 1.0 m/s, gains >= 1.5 m/s each side, no stop)'
+    burst: 'told 0.05 0.980 / 0.901; told 0.15 0.968 / 0.856; noise 0.3 0.756 / 0.788; noise 0.5 0.680 / 0.777'
+    brake: 'told 0.05 0.935 / 0.907; told 0.15 0.927 / 0.850; noise 0.3 0.660 / 0.784; noise 0.5 0.576 / 0.757'
+    hsr_effort: 'told 0.05 0.996 / 0.903; told 0.15 0.994 / 0.847; noise 0.3 0.945 / 0.798; noise 0.5 0.910 / 0.747'
+    sprint_effort: 'told 0.05 1.000 / 0.899; told 0.15 0.994 / 0.889; noise 0.3 0.963 / 0.783; noise 0.5 0.932 / 0.687'
+    jump_vs_pbp_fga: 'clean 0.808 / 0.529; noise 0.3 0.772 / 0.504 (runner noise draw 0.752 / 0.496); noise 0.5 0.649 / 0.406; FGA + rebounds 0.33 recall clean'
+    jump_vs_pbp_fga_loop5: 'team_ends frame, 446-FGA matcher, precision / recall: loop 4 clean 0.885 / 0.516, noise 0.3 0.828 / 0.487, noise 0.5 0.699 / 0.386 -> loop 5 0.898 / 0.516, 0.846 / 0.491, 0.796 / 0.428 (z-shot precision 0.949 / 0.911 / 0.904, z-recall 0.775 / 0.732 / 0.681); optional ball-height path 0.918 / 0.603, 0.840 / 0.554, 0.784 / 0.480'
+    efforts_noise_0.3_precision: 'stated per the loop-4 confirmer: the KIN4-EFFORT additions at noise 0.3 are 0.76 (hsr) / 0.64 (sprint) precise on near-truth; overall hsr 0.967 -> 0.951 and sprint 0.935 -> 0.915 precision against loop 3 on that truth, for recall +0.05 / +0.04 (KIN5-EFFORT-NOT-KEPT: tightening only traded recall for precision)'
+    runner_noise_draw: 'the noise 0.3 figures above use a per-chunk noise draw shared by before / after; the runner''s sequential draw gives hsr 0.961 / 0.801, sprint 0.944 / 0.773, stand 0.649 / 0.864, start 0.359 / 0.764, stop 0.316 / 0.677'
+  open_findings:
+  - >-
+    start / stop / stand under noise (not fixed): with the told sigma matched to the data the three agree with the
+    near-truth (0.89-0.93 precision); the rate rise under noise (start x2.2, stop x2.3, stand x1.3 at noise 0.3 against
+    told 0.05; x1.26 / x1.44 / x1.06 against told 0.15) is slow walking read as standing: over the 0.5 s before a start the near-truth
+    speed was < 0.5 m/s in 47% of the starts at noise 0.3, 0.5-0.8 in 36%, 0.8-1.2 in 15% (74% / 25% / 0% at told
+    0.15). The 0.5 s window mean of speed has a sigma of about 0.27 m/s at sigma_p 0.3, the same as the gap between the
+    0.5 m/s edge and a slow walk; neither a core displacement check nor stricter duration counting separated them
+    (KIN4-NOT-KEPT). Telling sigma 0.15 on 2 mm data over-corrects the Rician floor (v_c reads 0.6 m/s walks as 0.4),
+    which is why told 0.15 reads more stands than told 0.05.
+  - >-
+    stop_and_go / burst / brake under noise: the extra stop_and_go events at noise 0.5 are dips whose near-truth gain is
+    < 1.5 m/s (47% of events, against 14% clean): q 10 tier dv_min_q10 / trough_min_q10 accept noise dips of walking
+    players. Not changed in this loop (the tier values were set on synthetic attenuation; a real-data trade-off needs
+    labelled film).
+  - 'jump: about 40% of FGA are released within 2 m of the rim (not separable in XY); rebound and block jumps are invisible to the proxy.'
+  - >-
+    high_speed emits nothing at noise 0.5 with sigma told hypot(0.15, 0.5) = 0.52 m (also before this loop; 132 per 48
+    with told 0.50 in the loop-3 rates): the band is 0.83 m/s wide and its best membership 2 Phi(0.415 / sigma_L) - 1
+    stays below p_enter 0.7 once sigma_L >= 0.40 m/s at the q 10 tier. Not changed here (no real truth for the band
+    machine yet); a tier-aware p_enter or reporting the band as unresolvable is the next step.
+confirmer_disputed:
+# Items of the loop-1 confirmer report not changed, with the evidence.
+- id: KIN-STAND-FP (1) creep
+  finding: 'Agreed with the confirmer: the 0.45 m/s creep is below stand_speed 0.5, so stand is the label by spec; the harness truth (stand must not fire) should mark it ambiguous. It accounts for 30 / 36 / 32 of the stand false events per sigma_p; the by-spec view is reported in KIN2-STAND.'
+- id: KIN-CURVE-COD-OVERLAP radius rule
+  finding: 'Not applied: radius < 3 m with a cod >= 60 deg inside also matches every curl (radius 2.0-2.4 m, inside cod 95-138 deg); replaced by the apex-share test (KIN2-CURVE).'
+- id: KIN-BACKPEDAL-CONF
+  finding: 'Not a confidence problem: backpedal emit_min is 0.3 and every retreat clip emits an event (conf 0.44-0.53). The 4 misses at sigma_p 0.3 are coverage misses: the harness truth is the whole 1.0-3.0 s minimum-jerk leg, whose speed is under the 0.8 m/s class floor until about 1.36 s and after 2.64 s, and the 50% rule needs 1.0 s; the detected segments cover 0.87-1.1 s of the 1.28 s above the floor. Lowering emit_min would not change them. Unchanged.'
+- id: 'cod FP on banana / 35 deg redirection'
+  finding: 'Residual 1 / 2 / 5 events: dpsi 45-50 deg with apex share 0.47 (between the 0.45 cod and 0.52 arc edges, so cod carries alternative curved_run) or no arc fit at all at sigma_p 0.5. Left as the documented ambiguity band.'
+
+validation_v2:
+  how: >-
+    Loop-2 regeneration on the same harness as validation_v1 (tester harness, byte-identical to the
+    confirmer's copy): 80 scenes x 10 seeds x sigma_p 0.2 / 0.3 / 0.5, run in parallel by a wrapper that
+    does not change scoring (checked against the harness's own output: identical tp / fp for every kind and
+    sigma_p). stop_and_go is a new kind the harness does not score; its hesitation-scene behaviour is in the
+    tests.
+  precision_recall:
+    # kind: {sigma_p: [precision, recall] after loop 2, before_<sigma>: after loop 1 (validation_v1)}
+    accel_effort: {'0.2': [0.83, 0.85], before_0p2: [0.83, 0.85], '0.3': [0.83, 0.85], before_0p3: [0.83, 0.85], '0.5': [0.64, 0.62], before_0p5: [0.64, 0.62]}
+    backpedal: {'0.2': [0.91, 1.00], before_0p2: [0.91, 1.00], '0.3': [0.91, 0.80], before_0p3: [0.91, 0.80], '0.5': [0.85, 1.00], before_0p5: [0.85, 1.00]}
+    brake: {'0.2': [0.99, 1.00], before_0p2: [0.99, 1.00], '0.3': [0.96, 1.00], before_0p3: [0.93, 0.96], '0.5': [0.94, 0.97], before_0p5: [0.77, 0.80]}
+    burst: {'0.2': [1.00, 1.00], before_0p2: [0.99, 0.99], '0.3': [0.96, 0.97], before_0p3: [0.86, 0.85], '0.5': [0.85, 0.86], before_0p5: [0.80, 0.79]}
+    cod: {'0.2': [0.99, 1.00], before_0p2: [0.99, 1.00], '0.3': [0.97, 0.99], before_0p3: [0.95, 0.99], '0.5': [0.94, 0.93], before_0p5: [0.94, 0.93]}
+    crossover_run: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [1.00, 1.00], before_0p3: [1.00, 1.00], '0.5': [0.95, 1.00], before_0p5: [0.95, 1.00]}
+    curved_run: {'0.2': [0.97, 0.97], before_0p2: [0.90, 0.90], '0.3': [0.97, 0.95], before_0p3: [0.79, 0.85], '0.5': [0.92, 0.85], before_0p5: [0.69, 0.78]}
+    decel_effort: {'0.2': [0.95, 1.00], before_0p2: [0.95, 1.00], '0.3': [0.85, 1.00], before_0p3: [0.85, 1.00], '0.5': [0.84, 0.95], before_0p5: [0.84, 0.95]}
+    defensive_slide: {'0.2': [1.00, 1.00], before_0p2: [0.54, 1.00], '0.3': [1.00, 1.00], before_0p3: [0.60, 1.00], '0.5': [0.95, 0.90], before_0p5: [0.46, 0.90]}
+    forward_run: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [0.95, 1.00], before_0p3: [0.95, 1.00], '0.5': [0.91, 0.95], before_0p5: [0.91, 0.95]}
+    hesitation: {'0.2': [0.90, 0.90], before_0p2: [0.40, 0.80], '0.3': [0.62, 0.75], before_0p3: [0.26, 0.55], '0.5': [0.50, 0.60], before_0p5: [0.07, 0.15]}
+    high_speed: {'0.2': [1.00, 0.97], before_0p2: [0.88, 1.00], '0.3': [1.00, 0.82], before_0p3: [0.68, 0.88], '0.5': [0.91, 0.70], before_0p5: [0.76, 0.70]}
+    hsr_effort: {'0.2': [0.97, 0.97], before_0p2: [0.97, 0.97], '0.3': [0.92, 0.92], before_0p3: [0.92, 0.92], '0.5': [0.75, 0.80], before_0p5: [0.75, 0.80]}
+    jog: {'0.2': [0.96, 1.00], before_0p2: [0.96, 1.00], '0.3': [0.97, 1.00], before_0p3: [0.97, 1.00], '0.5': [0.95, 1.00], before_0p5: [0.95, 1.00]}
+    jump: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [1.00, 0.97], before_0p3: [1.00, 0.97], '0.5': [0.95, 0.90], before_0p5: [0.95, 0.90]}
+    landing: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [1.00, 0.97], before_0p3: [1.00, 0.97], '0.5': [0.95, 0.90], before_0p5: [0.95, 0.90]}
+    peak_speed: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [0.98, 1.00], before_0p3: [0.98, 1.00], '0.5': [0.96, 1.00], before_0p5: [0.96, 1.00]}
+    plant_step: {'0.2': [1.00, 1.00], before_0p2: [0.71, 1.00], '0.3': [1.00, 1.00], before_0p3: [0.80, 1.00], '0.5': [0.90, 0.85], before_0p5: [0.74, 0.85]}
+    run: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [0.95, 1.00], before_0p3: [0.95, 1.00], '0.5': [0.85, 0.93], before_0p5: [0.85, 0.93]}
+    sprint: {'0.2': [1.00, 1.00], before_0p2: [0.74, 1.00], '0.3': [1.00, 1.00], before_0p3: [0.54, 1.00], '0.5': [0.95, 1.00], before_0p5: [0.51, 1.00]}
+    sprint_effort: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [1.00, 1.00], before_0p3: [1.00, 1.00], '0.5': [0.91, 1.00], before_0p5: [0.91, 1.00]}
+    stand: {'0.2': [0.68, 1.00], before_0p2: [0.60, 1.00], '0.3': [0.58, 0.99], before_0p3: [0.56, 1.00], '0.5': [0.59, 0.94], before_0p5: [0.55, 0.95]}
+    start: {'0.2': [0.98, 0.98], before_0p2: [0.98, 0.98], '0.3': [0.92, 0.95], before_0p3: [0.92, 0.95], '0.5': [0.91, 0.85], before_0p5: [0.91, 0.85]}
+    stop: {'0.2': [1.00, 1.00], before_0p2: [1.00, 0.95], '0.3': [1.00, 0.90], before_0p3: [0.95, 0.90], '0.5': [0.94, 0.85], before_0p5: [0.94, 0.85]}
+    walk: {'0.2': [0.96, 0.90], before_0p2: [0.96, 0.90], '0.3': [0.94, 0.80], before_0p3: [0.94, 0.80], '0.5': [0.89, 0.75], before_0p5: [0.89, 0.75]}
+  t0_median_error_s:
+    # kind: [sigma_p 0.2, 0.3, 0.5] median t0 - truth of matched point events (changed kinds only)
+    brake: [-0.06, -0.10, -0.12]
+    burst: [+0.04, +0.04, -0.03]
+    curved_run: [-0.13, -0.13, -0.20]
+    hesitation: [-0.17, -0.17, -0.17]
+  attribute_errors:
+    # wrong attribute / checked events at sigma_p 0.2, 0.3, 0.5 (loop 1 -> loop 2)
+    cod_class_and_side: ['1/60 -> 1/60', '2/59 -> 2/59', '3/54 -> 3/54']
+    curved_run_side: ['0/36 -> 0/39', '0/34 -> 0/38', '0/31 -> 0/34']
+    burst_sub_type: ['6/59 -> 6/60', '5/53 -> 6/59', '9/50 -> 11/56 (more matched bursts; rate 18% -> 20%)']
+    stop_hard: ['1/19 -> 1/20', '3/18 -> 3/18', '0/17 -> 0/17']
+  notes: >-
+    Unchanged within 0.02 everywhere else (walk, jog, run, efforts, peak_speed, start, forward_run,
+    backpedal, crossover_run, jump, landing). Remaining weak spots: stand on slow walkers (0.65 / 0.9 m/s)
+    plus the 0.45 m/s creep that is stand by spec (harness counts it false); hesitation recall at sigma_p
+    0.3-0.5 (attenuated burst delta_v near dv_min); high_speed recall at sigma_p 0.5 (0.70, unchanged); a
+    few 45-50 deg cod events on R 5 m bananas. All rates assume the simulator noise.
+
+validation_v1:
+  superseded_by: validation_v2 (loop 2)
+  how: >-
+    Loop-1 regeneration (KIN-T16) on the independent tester's harness: 80 scenes (40 scenarios, each also
+    mirrored to the left side) with non-zero plant speeds, curls, a 5 -> 3 -> 5 m/s hesitation, near-edge
+    speeds 4.7 / 5.6 / 3.3 m/s and near-miss negatives; 10 seeds x sigma_p 0.2 / 0.3 / 0.5 (2,400 scene runs;
+    sim.py white + AR(1) noise, CA-RTS q 30 / q 10). States are scored against the true speed profile,
+    point events within 0.4 s of hand-set truth times. Harness kept in the session scratchpad
+    (movement/test_kinematics/harness.py); its scenes behind every listed failure are in
+    tests/movement/test_kinematics.py (loop-1 section).
+  precision_recall:
+    # kind: {sigma_p: [precision, recall] after loop 1, before: [precision, recall] at the same sigma_p}
+    accel_effort: {'0.2': [0.83, 0.85], before_0p2: [0.83, 0.85], '0.3': [0.83, 0.85], before_0p3: [0.83, 0.85], '0.5': [0.64, 0.62], before_0p5: [0.64, 0.62]}
+    backpedal: {'0.2': [0.91, 1.00], before_0p2: [0.77, 1.00], '0.3': [0.91, 0.80], before_0p3: [0.71, 1.00], '0.5': [0.85, 1.00], before_0p5: [0.65, 1.00]}
+    brake: {'0.2': [0.99, 1.00], before_0p2: [0.95, 0.96], '0.3': [0.93, 0.96], before_0p3: [0.92, 0.95], '0.5': [0.77, 0.80], before_0p5: [0.70, 0.71]}
+    burst: {'0.2': [0.99, 0.99], before_0p2: [0.97, 0.97], '0.3': [0.86, 0.85], before_0p3: [0.89, 0.88], '0.5': [0.80, 0.79], before_0p5: [0.81, 0.71]}
+    cod: {'0.2': [0.99, 1.00], before_0p2: [1.00, 0.99], '0.3': [0.95, 0.99], before_0p3: [1.00, 0.97], '0.5': [0.94, 0.93], before_0p5: [1.00, 0.80]}
+    crossover_run: {'0.2': [1.00, 1.00], before_0p2: [0.50, 1.00], '0.3': [1.00, 1.00], before_0p3: [0.50, 1.00], '0.5': [0.95, 1.00], before_0p5: [0.49, 1.00]}
+    curved_run: {'0.2': [0.90, 0.90], before_0p2: [0.80, 0.40], '0.3': [0.79, 0.85], before_0p3: [0.74, 0.35], '0.5': [0.69, 0.78], before_0p5: [0.69, 0.28]}
+    decel_effort: {'0.2': [0.95, 1.00], before_0p2: [0.95, 1.00], '0.3': [0.85, 1.00], before_0p3: [0.85, 1.00], '0.5': [0.84, 0.95], before_0p5: [0.84, 0.95]}
+    defensive_slide: {'0.2': [0.54, 1.00], before_0p2: [0.46, 1.00], '0.3': [0.60, 1.00], before_0p3: [0.51, 1.00], '0.5': [0.46, 0.90], before_0p5: [0.31, 0.90]}
+    forward_run: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [0.95, 1.00], before_0p3: [0.95, 1.00], '0.5': [0.91, 0.95], before_0p5: [0.91, 0.95]}
+    hesitation: {'0.2': [0.40, 0.80], before_0p2: [0.67, 0.80], '0.3': [0.26, 0.55], before_0p3: [0.33, 0.55], '0.5': [0.07, 0.15], before_0p5: [0.04, 0.05]}
+    high_speed: {'0.2': [0.88, 1.00], before_0p2: [0.88, 1.00], '0.3': [0.68, 0.88], before_0p3: [0.68, 0.88], '0.5': [0.76, 0.70], before_0p5: [0.58, 0.72]}
+    hsr_effort: {'0.2': [0.97, 0.97], before_0p2: [0.97, 0.97], '0.3': [0.92, 0.92], before_0p3: [0.92, 0.92], '0.5': [0.75, 0.80], before_0p5: [0.64, 0.80]}
+    jog: {'0.2': [0.96, 1.00], before_0p2: [0.96, 1.00], '0.3': [0.97, 1.00], before_0p3: [0.97, 1.00], '0.5': [0.95, 1.00], before_0p5: [0.95, 1.00]}
+    jump: {'0.2': [1.00, 1.00], before_0p2: [0.71, 1.00], '0.3': [1.00, 0.97], before_0p3: [0.70, 0.97], '0.5': [0.95, 0.90], before_0p5: [0.53, 0.90]}
+    landing: {'0.2': [1.00, 1.00], before_0p2: [0.71, 1.00], '0.3': [1.00, 0.97], before_0p3: [0.70, 0.97], '0.5': [0.95, 0.90], before_0p5: [0.53, 0.90]}
+    peak_speed: {'0.2': [1.00, 1.00], before_0p2: [0.99, 1.00], '0.3': [0.98, 1.00], before_0p3: [0.89, 1.00], '0.5': [0.96, 1.00], before_0p5: [0.85, 1.00]}
+    plant_step: {'0.2': [0.71, 1.00], before_0p2: [1.00, 0.85], '0.3': [0.80, 1.00], before_0p3: [1.00, 0.45], '0.5': [0.74, 0.85], before_0p5: [null, 0.00]}
+    run: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [0.95, 1.00], before_0p3: [0.95, 1.00], '0.5': [0.85, 0.93], before_0p5: [0.86, 0.97]}
+    sprint: {'0.2': [0.74, 1.00], before_0p2: [0.74, 1.00], '0.3': [0.54, 1.00], before_0p3: [0.54, 1.00], '0.5': [0.51, 1.00], before_0p5: [0.49, 1.00]}
+    sprint_effort: {'0.2': [1.00, 1.00], before_0p2: [1.00, 1.00], '0.3': [1.00, 1.00], before_0p3: [0.95, 1.00], '0.5': [0.91, 1.00], before_0p5: [0.65, 1.00]}
+    stand: {'0.2': [0.60, 1.00], before_0p2: [0.60, 1.00], '0.3': [0.56, 1.00], before_0p3: [0.54, 1.00], '0.5': [0.55, 0.95], before_0p5: [0.55, 0.93]}
+    start: {'0.2': [0.98, 0.98], before_0p2: [1.00, 1.00], '0.3': [0.92, 0.95], before_0p3: [0.84, 0.87], '0.5': [0.91, 0.85], before_0p5: [0.81, 0.78]}
+    stop: {'0.2': [1.00, 0.95], before_0p2: [1.00, 1.00], '0.3': [0.95, 0.90], before_0p3: [0.95, 0.95], '0.5': [0.94, 0.85], before_0p5: [0.94, 0.85]}
+    walk: {'0.2': [0.96, 0.90], before_0p2: [0.96, 0.90], '0.3': [0.94, 0.80], before_0p3: [0.95, 0.80], '0.5': [0.89, 0.75], before_0p5: [0.91, 0.75]}
+  t0_median_error_s:
+    # kind: [sigma_p 0.2, 0.3, 0.5] median t0 - truth of matched point events
+    accel_effort: [+0.14, +0.12, +0.10]
+    brake: [-0.10, -0.13, -0.18]
+    burst: [-0.03, -0.01, -0.07]
+    cod: [+0.04, +0.00, +0.00]
+    curved_run: [-0.12, -0.13, -0.13]
+    decel_effort: [-0.03, -0.08, -0.13]
+    hesitation: [-0.20, -0.17, -0.30]
+    hsr_effort: [+0.00, +0.00, +0.13]
+    jump: [+0.10, +0.10, +0.10]
+    landing: [+0.10, +0.10, +0.10]
+    plant_step: [+0.04, +0.04, +0.04]
+    sprint_effort: [+0.00, +0.00, +0.10]
+    start: [-0.03, +0.00, -0.13]
+    stop: [+0.10, +0.12, +0.20]
+  attribute_errors:
+    # wrong attribute / checked events at sigma_p 0.2, 0.3, 0.5 (before -> after loop 1)
+    cod_class_and_side: ['20/59 -> 1/60', '20/59 -> 2/59', '20/46 -> 3/54']
+    curved_run_side: ['16/16 -> 0/36', '14/14 -> 0/34', '11/11 -> 0/31']
+    stop_hard: ['6/20 -> 1/19', '8/19 -> 3/18', '13/17 -> 0/17']
+  notes: >-
+    Remaining weak spots, all measured on the harness above: (1) hesitation precision stays low because the
+    harness scores the stop_and_go sub_type (emitted by design, KIN-T07 fix 3) on its 5 -> 0.3 -> 5 m/s
+    scene as false, and because the brake-onset t0 of a 0.5 s fall leads the truth by 0.2-0.5 s, which
+    the 0.4 s tolerance turns into miss + false pairs (detection within +-1 s: 6-8 of 10 clips at every
+    sigma_p); (2) stand counts fragments: a 0.45 m/s creep (below the 0.5 m/s stand edge, so stand is the
+    correct label) and 0.65 / 0.9 m/s walkers dominate its false events; time share labelled stand on the
+    0.9 m/s walker is 0.09 / 0.14 / 0.25 and on the 0.65 m/s drift 0.32 / 0.41 / 0.42 at sigma_p 0.2 / 0.3 /
+    0.5, while true stands keep 0.78-0.95; (3) high_speed / sprint band segments on 4.7 / 5.6 m/s runs at
+    sigma_p <= 0.3 are unchanged (MP-10 band machine; only the q 10 correlation time changed);
+    (4) defensive_slide false events are slide fragments in the acceleration phases of a 4 m/s crossover
+    run; (5) plant_step fires on 2-4 of 10 shallow 65 deg cuts at sigma_p 0.2-0.3 (see plant_step
+    noise_notes); (6) curved_run t0 of a 1.4 s banana is late by 0.4-0.7 s in about a third of the clips
+    (back-dating stops where the window arms are not yet both on the arc). All rates assume the simulator noise.
+
+validation_v0:
+  superseded_by: validation_v1 (loop 1; the scenes below hid the smoothing blur, see KIN-T16)
+  how: >-
+    Synthetic scenes (tools/specgen/movement/sim.py noise: white + AR(1) rho 0.9, CA-RTS q30/q10),
+    30 seeds per positive scene and 15 x 10 s per negative scene, script kept in the session scratchpad
+    (calibration is to be repeated on hand-labelled MSU film, R-ST-01). Positive scenes: stand-sprint-stop
+    profile, change of pace 5 -> 2.5 -> 5 m/s, V-cut through a plant, 1.2 s arc R 4 m at 4.5 m/s,
+    waypoint stand-run-stand, defender slide and backpedal against a held ball.
+  recall_and_t0_error:
+    # kind: [recall within 0.6 s at sigma_p 0.3, median t0 error s, p90 |error| s, recall at 0.5, median, p90]
+    burst: [1.00, +0.05, 0.20, 1.00, +0.05, 0.23]
+    brake: [1.00, -0.03, 0.36, 0.90, -0.06, 0.39]
+    hsr_effort: [1.00, 0.00, 0.13, 1.00, 0.00, 0.10]
+    sprint_effort: [1.00, +0.03, 0.13, 1.00, +0.10, 0.17]
+    stop: [0.97, +0.03, 0.31, 0.90, +0.13, 0.37]
+    start: [0.97, +0.03, 0.17, 0.93, -0.05, 0.28]
+    stand: [0.93, 0.00, 0.29, 0.93, +0.03, 0.44]
+    hesitation: [0.67, -0.08, 0.34, 0.50, -0.30, 0.54]
+    cod: [1.00, 0.00, 0.07, 1.00, +0.04, 0.10]
+    plant_step: [1.00, +0.04, 0.04, 0.93, +0.07, 0.11]
+    curved_run: [0.80, +0.12, 0.29, 0.77, +0.17, 0.37]
+    defensive_slide: [0.97, 0.00, 0.30, 0.97, -0.07, 0.43]
+    backpedal: [1.00, -0.02, 0.17, 1.00, -0.03, 0.27]
+    decel_effort_view: [1.00, +0.02, 0.40, 1.00, 0.00, 0.44]
+  false_events_per_player_minute:
+    # straight constant-speed paths (no true event of these kinds); sigma_p 0.3 / 0.5
+    still: {all: [0, 0]}
+    walk_1p5: {cod: [0, 0], brake: [0.4, 0], start: [0, 0.8], decel_effort_view: [0.8, 1.2]}
+    jog_3p0: {brake: [0.4, 0.4], hesitation: [0.4, 0], curved_run: [0, 0.4], decel_effort_view: [1.2, 2.0]}
+    run_4p5: {brake: [0.4, 0.4], hesitation: [0.4, 0], hsr_effort: [0, 1.6], decel_effort_view: [0.8, 1.6]}
+  notes: >-
+    Before the z_psi gate the cod detector produced 1.6 / 2.8 false cuts per player-minute on straight
+    walks at 1.5 m/s (sigma_dpsi was well calibrated, sd(z) 1.01-1.03, but 45 deg is only 2.4 sigma at
+    that speed). Hesitation recall is limited by smoothing attenuation of a 2.5 m/s change of pace
+    (measured 1.1-2.4 m/s). hsr_effort false efforts at sigma_p 0.5 come from 1 s AR(1) excursions of
+    speed_L above 5.0 at a true 4.5 m/s. A circle of radius 6 m at 4.5 m/s (kappa 0.167, a true curved
+    run) is labelled in fragments because kappa sits one sigma above the 0.15 edge. All rates assume the
+    simulator noise; homography drift and pan bias are not modelled.
+
+review_fixes:
+- {id: KIN-P15, severity: critical, fix: 'curved_run uses geometric chord curvature with sigma_kappa and a z gate'}
+- {id: 'KIN-R01 heading/turn_rate', severity: high, fix: 'heading gate max(0.8, 2.5 sigma_vbar) on 0.3 s mean velocity; turn_rate is not used as a gate; turn_duration tolerance max(15, 2 sigma_psi)'}
+- {id: KIN-P12, severity: high, fix: 'stop uses the s2 stationary gate, not speed_S < 0.8'}
+- {id: 'KIN-R01 artefact screen', severity: high, fix: 'raw screening is MP-03 (before smoothing); c_id uses rejected innovations plus any-team proximity'}
+- {id: 'KIN-P01 / KIN-R03 stand', severity: medium, fix: 's2 gate plus bias-corrected P_stand; strict sub-label noise-scaled'}
+- {id: 'KIN-P14 plant', severity: medium, fix: 'quadratic-fit minimum and drop >= max(0.8, 0.25 entry, 3 sigma)'}
+- {id: 'KIN-R01/KIN-P08 sigma_a', severity: medium, fix: 'one estimator (CA-RTS accel_along) with its own sigma (k_cal sqrt(var_a)); views capped and not released; attenuation stated'}
+- {id: 'KIN-P13 COD false positives', severity: medium, fix: 'MP-13 pre/post with significance dv gate and Phi((dpsi-45)/sigma) confidence; chord method labelled a proposal'}
+- {id: 'KIN-R02 hysteresis vs published edges', severity: medium, fix: 'bands use probability hysteresis on the published edges; efforts use exit-side-only hysteresis; 6.69 view on every sprint effort'}
+- {id: 'KIN-P01/P02 band edge inconsistency', severity: low, fix: 'walk = not-stand and < 2.0'}
+- {id: 'unsupported citations', severity: low, fix: 'Petway and lida dropped; Mod505, Callaway and PMC8309627 described as test / soccer analogies'}
+- {id: 'KIN-R03 dead-ball proxy', severity: low, fix: 'tag-only'}
+missing_items_added:
+- {missing: 'per-primitive false-event budget and recall on synthetic events', where: validation_v0}
+- {missing: 't0 bias table per event with a correction method', where: 'validation_v0.recall_and_t0_error; burst/brake onsets use a change-point (hinge) fit; CA-RTS is non-causal so there is no filter lag to subtract'}
+- {missing: 'turn in place, spin, pivot with the ball', where: 'turn_in_place (needs_data: pose)'}
+- {missing: 'hesitation / stutter / change of pace; jab step', where: 'hesitation (XY action); jab_step (needs_data: pose)'}
+- {missing: 'plausibility caps for backpedal and lateral shuffle', where: 'backpedal.speed_cap and defensive_slide.speed_max marked as unsupported proposals to fit on labelled film'}
+- {missing: 'frame-rate parameterisation', where: 'every window is in seconds and converted with mvlib.frames(); 59.94 fps needs only DT'}
+- {missing: 'occlusion re-entry and ID swaps for bursts', where: 'burst sub_type start_unknown at segment edges; c_id factor; c_gap'}
+- {missing: 'ball-holder bias of the tracked point', where: 'kin_features.noise_notes (open question, no correction yet); has_ball attrs on burst/stop/start/cod/hesitation'}
+- {missing: 'acceleration attenuation statement', where: 'accel_effort.noise_notes'}
+- {missing: 'noise beyond white Gaussian', where: 'simulator is white + AR(1); drift, pan and zoom effects listed in kin_features.noise_notes and validation_v0.notes'}

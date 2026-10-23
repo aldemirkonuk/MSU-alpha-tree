@@ -1,0 +1,2431 @@
+# Movement grammar: DEFENSIVE MOVEMENT family.
+# Detectors: tools/specgen/movement/detectors/defense.py (reads every params value from this file at import).
+# Tests: tests/movement/test_defense.py (synthetic scenarios, validation tier V0).
+family: DEFENSIVE MOVEMENT
+id: defense
+version: 0.3.0
+date: 2026-10-23
+owner: Mac session
+status: proposal
+frame: >-
+  Attacked-rim frame of the offence (named_spots 0.3.2), metres, rim at (0, 0), y up the floor; the defence
+  defends that rim. 29.97 fps, DT = 1001/30000 s; elapsed durations are (n_frames - 1) * DT.
+depends_on:
+  - "tools/specgen/movement/mvlib.py: CA-RTS smoothing (MP-04), validity-gated features (MP-07), K_CAL 1.8 (MP-09),
+    hysteresis (MP-11), window_conf / edge_factor / gap_factor (MP-16), sigma_dist / closing_speed (MP-19)"
+  - "config/named_spots.yaml 0.3.2: every position (relative entries) is read, never redefined"
+summary: >-
+  64 research items plus 8 items added from the check (minor excursion rung, guard-two, press pickup, zone slide,
+  contest verticality, weak coverage, noise model, anchors). 43 items have XY detectors; the rest are rules,
+  composition-engine outputs or need data we do not have (pose, ball z, roster, zone posterior). Every event carries
+  a calibrated-to-be confidence (P_cond x edge x gap, MP-16), reasons with thresholds and units, and class
+  alternatives where classes compete.
+changes_from_research:
+  - "Kinematics: the research's Gaussian sigma_t 5/8 ladder is replaced by the shared CA-RTS (MP-04) so the whole
+    grammar reads one smoother; every speed threshold below is stated against the CA-RTS smoothed speed."
+  - "Check fix (high, DM-RULE-01/03): no sqrt(n/10) window-mean claim. Distance sigmas use sigma_rel =
+    max(sigma_dist, 0.25 m): the RTS covariance x K_CAL under-states AR(1) error (measured on sim.py: per-axis RMSE
+    0.157 m vs K_CAL*sqrt(var_p) 0.124 m at sigma_p 0.3); MP-19 gives 0.24 m pair error."
+  - "Check fix (high, peak-speed bias): CA-RTS cuts short peaks (sim.py: 2.5 m in 0.8 s true 5.86 -> 3.58 m/s;
+    2.5 m in 1.0 s 4.69 -> 3.39). Closeout peak gate 2.5 m/s smoothed, sprint flag 3.5 m/s smoothed; fly-by,
+    hedge recovery and back-pressure speeds recalibrated the same way."
+  - "Check fix (high, closeout profile): profile from the implied mean deceleration a = ((0.8 v_pk)^2 - 1)/(2 d_dec),
+    not from d_dec / t_dec (which grow with v_pk^2). sim.py, 24 seeds: fastest physical minimum-jerk stop 5.4 +- 0.8
+    m/s^2, 1.5x slower approach 3.4 +- 0.8 m/s^2 (d' 2.4); the closeout ends when D is stationary (s2 < 5.99), not at
+    speed <= 1.0 m/s, so choppy closeouts are not cut before their last steps."
+  - "Check fix (high, physics): every trigger-to-movement window obeys t_min = t_react + sqrt(2 d / a_first_step)
+    with t_react 0.25 s and a_first_step 4.5 m/s^2 (proposal): sink 1.5 m within 1.2 s, sink-and-fill 1.2 s,
+    hard switch closing from >= 1.5 m to <= 0.8 m within 0.8 s (no absolute 3 m/s gate), step-release onset <= 0.65
+    s, jump-to-ball onset deadline max(catch, release + 0.62 s) and 1.0 m by catch + 0.6 s."
+  - "Check fix (high, switch timing): switches are timed at the geometric exchange (closest approach of the two
+    defenders), not at the HMM flip; the decoder lag is reported (hmm_flip_lag_s); a very_late class (> 2.5 s) and
+    an unclassified class close the band gap."
+  - "Check fix (medium, ladder): minor_excursion rung added; the trigger (middle dribble) decides step_release vs
+    stunt; dig carries the 1.5 m approach; step-release measured threshold 0.35 m (behavioural 0.5 m reported)."
+  - "Check fix (medium, closeout ownership): one CLOSEOUT event (pass-triggered) with end <= 2.0 m owns all three
+    length classes; RECOVER is the non-pass help-to-man return. Length classes stay soft (tight_p = hard + standard)."
+  - "Check fix (medium, X-ball path): the lambda/s crossing bands of DM-RULE-05 leave THROUGH empty whenever X-big
+    drops below the screen (s(Xbig) ~ s(S)); the path is now classified on the P_s -> X-big axis (through = between
+    the screen point and X-big), the BS-3 segment test made continuous, measured from the fixed screen point because
+    the screener may already be rolling. Off-ball screens keep the research lambda/s test (there the S -> d_scr
+    axis runs parallel to a curl)."
+  - "Check fix (medium, depth frame): drop depth is measured on the named_spots S -> rim axis (canonical positions);
+    the handler-velocity axis is kept only for the lateral 'into the path' offset of shows and for the switch
+    exchange lambda. R-DF-16 bands are kept as event classes; only 1.83-3.05 m is sourced (coaching blog via repo
+    N3), 0.6 and 3.05+ edges are heuristic."
+  - "Check fix (medium, box-out): the named_spots box_out_position hold (>= 0.4 s, start between release and rim
+    contact) is adopted as canonical instead of 0.30 s."
+  - "Check fix (medium, HMM): Franks' emission is applied to half-court frames; frames with the attacker or the
+    defender beyond half court use a 2x wider emission (sigma_fit_transition 3.0 m, proposal); rho 0.985 is a
+    starting value to be refitted by EM, as Franks did."
+  - "Check fix (low, trap): one trapper may be Kalman-carried (interp_short) with conf x 0.8 instead of abstaining."
+  - "Check fix (low, hedge recovery): hard hedge recovery = chord >= 2.0 m within 1.2 s and smoothed peak >= 2.5
+    m/s; soft show retreat >= 1.0 m and peak >= 2.0 m/s."
+globals:
+  params:
+    k_floor: {value: 0.8, unit: "1", note: "pair-distance sigma floor = k_floor x sigma_p (mean of the two tracks, estimated from the RTS covariance); 0.8 x 0.3 = 0.24 m reproduces MP-19 AR(1) at sigma_p 0.3 (loop 1, DEF-T14; replaces the constant sigma_rel_floor 0.25 m)"}
+    sigma_rel_min: {value: 0.10, unit: m, note: "absolute minimum of the pair-distance sigma floor (loop 1, DEF-T14)"}
+    conf_abstain_eps: {value: 1.0e-6, unit: "1", note: "abstain (no event) when P_cond x c_edge x c_gap <= this, e.g. t0 within 5 frames of a segment edge (loop 1, DEF-T21)"}
+    subnoise_abstain_sigma_p: {value: 0.45, unit: m, note: "sub-metre rungs (minor_excursion, step_release) abstain when a track's estimated sigma_p >= this (mvlib high-noise tier, loop 1, DEF-T13)"}
+    backdate_max_s: {value: 0.6, unit: s, note: "hold / trap t0 back-dating over the relaxed stay predicate while the defender is still closing, at most this long before the strict entry (loop 2, DEF-T18)"}
+    backdate_max_s_q10: {value: 0.0, unit: s, note: "q = 10 tier: no relaxed back-dating (loop 2, DEF-T18). At sigma 0.5 a 0.3 s limit moved deny t0 too early (corner deny 14 -> 11, wing deny 12 -> 10 of 20) for face_guard 3 -> 6; 0.6 s: deny 26 -> 21, face_guard 3 -> 7"}
+    high_noise_abstain_kinds: {value: [blitz, hard_hedge, soft_show, post_front, post_three_quarter_high, post_three_quarter_low, post_behind, lob_protection, face_guard, dig, stunt], unit: "-", note: "event kinds that abstain (no event) when any actor track was smoothed in the q = 10 tier (sigma_p >= 0.45), as minor_excursion / step_release already do (loop 2, HIGH-NOISE-TIER). Rule: harness precision at sigma 0.5 below 0.6 after loop 2 (blitz 0.38, show 0.58, post_position 0.33, lob_protection 0.46, face_guard 0.27, dig 0.50, stunt 0.33). Lift a kind from the list once its q10 precision is >= 0.85 on gold labels."}
+    hyst_h_min: {value: 0.25, unit: m, note: "named_spots loader.temporal.defaults.relative h_min"}
+    hyst_k_sigma: {value: 0.75, unit: "1", note: "named_spots relative h_k_sigma"}
+    dwell_frames: {value: 7, unit: frames, note: "named_spots relative dwell 233 ms; bridged exit gap for holds"}
+    stand_s2: {value: 5.99, unit: "1", note: "stationary when s2 = v^T P_v^-1 v < 5.99 (chi-square 2 dof, 95 %; MP-09/MP-12), never raw speed < 0.3"}
+    q_obs_min: {value: 0.6, unit: "1", note: "abstain when the observed share in the critical window is lower"}
+    possession_hold_s: {value: 1.0, unit: s, note: "loop 4 L4-POSSESSION: possession changes to the team whose player is nearest the raw ball within mvlib HOLD_R (1.0 m) on >= possession_share of a 1.0 s window (dated at the window start); make_event abstains (reason dposs) when t0 is in a possession of the labelled defence. Window 0.5 / 1.0 s checked against PBP changes of possession on 3 NBA games (see changes_loop4 L4-POSSESSION)"}
+    rim_ball_r: {value: 0.9, unit: m, note: "loop 4: ball XY within this of either rim centre = ball over the rim (shot, tip, rebound; rim radius 0.23 m + ball 0.12 m + a layup / tip reach): nobody controls or holds it in XY (L4-POSSESSION control frames, L4-TRAP-RIM trap holds). SportVU check: 54 of 96 rim-area trap holds with the ball above 7.5 ft for >= 30 % of the hold had the ball XY within 0.6 m of a rim"}
+    rim_phase_back_s: {value: 1.0, unit: s, note: "loop 4 L4-FLIP-REBOUND: no matchup flip (rotate / switch / x_out) with the ball over a rim (rim_ball_r) from this long before the flip ..."}
+    rim_phase_fwd_s: {value: 0.5, unit: s, note: "loop 4 L4-FLIP-REBOUND: ... to this long after it (shot-to-rebound phase: defenders hit the nearest man)"}
+    possession_margin_min: {value: 0.5, unit: m, note: "loop 4 L4-POSSESSION: a control frame needs the controlling player nearer to the raw ball than every opponent by max(this, possession_margin_k x median track sigma_p). SportVU vs PBP flips precision 0.81 (no margin) -> 0.85 (0.5 m), recall unchanged within 2 rows; harness sigma 0.5 side PnR: with no margin noise gave the tight on-ball defender 0.9 s of 'control' in 1 of 10 seeds"}
+    possession_margin_k: {value: 1.5, unit: "1", note: "loop 4 L4-POSSESSION: noise scaling of the control margin (0.75 m at sigma_p 0.5)"}
+    possession_share: {value: 0.8, unit: "1", note: "loop 4 L4-POSSESSION: share of the possession_hold_s window (control frames) needed for a change; robust to a tightly guarded dribble and to tracker flicker"}
+    emit_p_min: {value: 0.5, unit: "1", note: "emit when P_cond >= 0.5 (DM-RULE-03)"}
+    t_react: {value: 0.25, unit: s, note: "reaction time in every trigger-to-movement window (proposal; check missing item)"}
+    a_first_step: {value: 4.5, unit: m/s^2, note: "defender first-step acceleration (repo M-5 arithmetic, NOT measured; measure on MSU film / LPS)"}
+  confidence_model: >-
+    conf = P_cond x c_edge x c_gap (MP-16), minimum over the actors. P_cond = product of the gate probabilities,
+    each p_above / p_below(value, threshold, sigma) with window-mean values (5-frame means for positions) and
+    sigma = sigma_rel for distances, sigma_speed (RTS x K_CAL x k_edge) for speeds; band classes use
+    Phi(hi) - Phi(lo) renormalised over the competing classes, which are stored as alternatives. Abstain (no
+    event) when the observed share q_obs < 0.6 in the window, or when P_cond x c_edge x c_gap <= conf_abstain_eps.
+    Where existence and label differ (class labels, holds, traps, shows) p_emit (existence) gates emission and conf
+    is the probability of the exact label. sigma_rel = max(sigma_dist, k_floor x sigma_p), sigma_p estimated per track
+    from the RTS covariance (noise_of). Raw conf is mapped to a calibrated probability by isotonic regression on hand
+    labels before release (R-ST-10), fitted per noise tier (sigma_p < 0.45 with q 30 / >= 0.45 with q 10, loop 1
+    DEF-T12d). V0 reliability baseline (tester harness, 164 cases x 10 seeds x 2 mirrors; fraction of emitted labels
+    correct in the conf bins 0.5-0.7 / 0.7-0.9 / >= 0.9): before loop 1 sigma 0.2 0.85 / 0.95 / 0.94, 0.3 0.83 / 0.84
+    / 0.89, 0.5 0.55 / 0.64 / 0.78; after loop 1 sigma 0.2 0.75 / 0.98 / 0.99, 0.3 0.73 / 0.95 / 0.96, 0.5 0.62 /
+    0.80 / 0.84. The 0.5-0.7 bin is now the honest low-confidence bin (most near-edge labels fall there).
+  acceptance_default: >-
+    Per item: >= 50 gold labels from >= 5 games, two coaches, Cohen kappa >= 0.6 on the label; detector precision
+    >= 0.85 and recall >= 0.75 at conf >= 0.5; expected calibration error <= 0.05 after isotonic mapping; t0 error
+    p90 <= 0.2 s against hand timing. Items below may tighten this.
+  window_rule: >-
+    Any 'within T s of a trigger' gate for a movement of d metres must satisfy T >= t_react + sqrt(2 d / a_first_step)
+    (0.25 + 0.67 s for 1.0 m, 0.25 + 0.82 s for 1.5 m, 0.25 + 0.94 s for 2.0 m).
+changes_loop1:
+  # Loop 1: fixes from the independent tester's report (scratchpad movement/synth.json element 5, harness
+  # movement/test_defense/harness.py: 164 new cases x seeds 1-10 x {as written, mirrored} at sigma_p 0.2 / 0.3 / 0.5).
+  # Evidence numbers are hits per 20 runs (sigma 0.2 | 0.3 | 0.5) before -> after, re-measured with the tester's harness.
+  - id: DEF-T01 trap-swallows-dig
+    what: "TRAP commitment test: when both 5-frame-mean distances stay inside enter_dist for < trap_commit_s (1.0 s) and H still holds the ball after the stay, a trapper who retreats >= trap_release_dist (1.0 m, measured from his closest distance) within trap_release_s (0.5 s) makes it a dig, not a trap. _traps_cached uses the same filtered list, so the ladder keeps the dig. The drive-corridor test of the ladder now also needs lane fraction tau > 0 (a digger just behind H sat within the half width of the clamped segment end)."
+    why: "A dig at the fastest physical pace stays within 1.5 m of H for 0.77 s and was published as a TRAP; _ladder then dropped it. The tester's release test (from the distance at the stay end) missed most digs because the stay ends at the 1.8 m exit threshold, already part of the way back."
+    evidence: "XNEG_dig_is_not_a_trap false traps 20 | 20 | 16 -> 0 | 0 | 2; dig recall 0.00 | 0.00 | 0.00 -> 1.00 | 0.85 | 0.15; PLAUS dig with 0.2 s hold 0 | 0 | 0 -> 17 | 13 | 5; corner / press / occluded trap recall unchanged or better (trap P/R 0.67/0.93 | 0.55/0.80 | 0.47/0.57 -> 0.93/0.93 | 0.81/0.78 | 0.67/0.55)."
+  - id: DEF-T02 show-becomes-trap-blitz
+    what: "(a) DEF-T01 commitment. (b) Blitz needs no retreat >= soft_retreat_min within blitz_retreat_s (0.5 s) after the trap while H still holds (soft factor). (c) Trap conf on the entry threshold enter_dist; existence (p_emit) at enter_dist + exit_h / 2. Blitz conf = P(depth) x P(no retreat) x trap P_cond, as the YAML already stated but the code did not apply."
+    why: "A soft show / hard hedge was in TRAP's exit band for >= 0.6 s and became trap + blitz; a big stopping 1.75 m from H made blitzes from noise dips."
+    evidence: "XNEG_soft_show_is_not_a_trap 3 | 7 | 10 -> 0 | 0 | 2; XNEG_soft_show_is_not_a_blitz 3 | 4 | 6 -> 0 | 0 | 1; XNEG_hard_hedge_is_not_a_blitz 1 | 2 | 5 -> 0 | 0 | 0; NEG_big_stops_2m_show blitz 4 | 6 | 7 -> 1 | 5 | 5 (the remaining ones are AR(1) noise dips of the 1.75 m true distance to 1.3-1.4 m for > 0.6 s); blitz precision 0.71 | 0.53 | 0.22 -> 0.95 | 0.72 | 0.38."
+  - id: DEF-T03 rotate-on-excursion-return
+    what: "_flips skips the flip back to the attacker of the run before when the intermediate run was shorter than persist_s (A -> B -> A is a help excursion that returned). persist_s is passed from rotate (1.0 s) and switch (1.5 s)."
+    why: "A help defender who went 2.8 m toward another attacker and came back produced a censored ROTATE back to his own man."
+    evidence: "NEG_brief_excursion_back false rotates 17 | 13 | 12 -> 0 | 0 | 2; rotate precision 0.54 | 0.61 | 0.62 -> 1.00 | 1.00 | 0.91, recall unchanged 1.00."
+  - id: DEF-T04 deny-entry-excludes-raw-faceguard
+    what: "detect_deny excludes only the frames inside emitted FACE_GUARD events of the defender, not every frame meeting the per-frame face_guard predicate."
+    why: "An approach to a tau 0.2 deny passes through the face-guard region; deny entry was blocked for the whole approach (t0 0.9 s late, hold cut)."
+    evidence: "wing_deny_ball_in_corner 15 | 10 | 10 -> 17 | 12 | 12; deny P/R 0.88/0.88 | 0.69/0.68 | 0.75/0.60 -> 1.00/0.93 | 0.85/0.72 | 0.79/0.65. The remaining misses are runs where the AR(1)-biased track sits in the face-guard region for > 1.0 s (a real FACE_GUARD event then owns the frames)."
+  - id: DEF-T05 contain-slowdown-window
+    what: "contain.window_s 1.0 -> 1.5 s; slow_tail_s 0.5 s; vmax = max speed over the window, drop measured from the peak to window_s + slow_tail_s; the hard-coded frames(0.5) is gone."
+    why: "Drives still accelerate for 0.5-0.8 s and the beat-to-the-spot slow-down comes after 1.0 s."
+    evidence: "beat_to_spot_handler_stops 8 | 8 | 6 -> 20 | 19 | 17; both contain negatives stay at 0 | 0 | <= 1."
+  - id: DEF-T06 show-hold-and-gate-product
+    what: "Show hold on 5-frame-mean depth / lateral with relative hysteresis (stay + h) and dwell bridging; hard_hold_max_s 1.5 -> 2.0 s; existence of a show (p_emit) = shape (min depth <= soft_depth_max, lateral >= soft_lat_min) x went back (recovery chord or retreat); P(class | show) from depth, lateral, hold and (hard only) the smoothed recovery peak; the soft-show peak is the quick_recovery attribute."
+    why: "Raw-mask holds broke on 0.25 m lateral noise and included approach / exit frames (a 0.9 s stay measured ~1.6 s > 1.5); five multiplied near-edge gates gave P ~0.45 with no noise."
+    evidence: "side_pnr_soft_show 14 | 7 | 0 -> 19 | 17 | 3; side_pnr_hard_hedge 11 | 9 | 3 -> 14 | 12 | 5; PLAUS hard hedge held 0.9 s 3 | 2 | 2 -> 14 | 11 | 4. Remaining hard-hedge misses: measured max lateral 0.3-0.75 m for a true 1.0 m (handler-velocity axis noise), labelled soft_show / show_unclassified."
+  - id: DEF-T07 drop-deep-r-override
+    what: "r(X-big) <= deep_r_max promotes only a standard drop to deep, softly: P(r <= deep_r_max) x P(depth > high_max) mixed into drop_deep."
+    why: "An elbow PnR high drop (1.1 m below the screen, r 4.2 m) was forced to drop_deep with conf 0.999."
+    evidence: "PLAUS_elbow_pnr_high_drop_1.1m 0 | 0 | 0 (20 | 20 | 19 drop_deep) -> 20 | 20 | 17 drop_high; side_pnr_drop_deep unchanged 20 | 20 | 20."
+  - id: DEF-T08 blitz-depth-at-entry
+    what: "Blitz depth gate on the shallowest 5-frame-mean X-big depth during the trap; depth_at_entry_m reported."
+    why: "A big coming up from a 2 m drop is still arriving at trap entry."
+    evidence: "PLAUS_blitz_big_comes_up_from_2m_drop 8 | 9 | 2 -> 20 | 19 | 12."
+  - id: DEF-T09 top-lock-no-lateral-gate
+    what: "top_lock needs P(mean lead >= lock_lead_min) x P(mean offset toward the screener's side <= lock_lat_tol 0.5 m) >= 0.5, means over the frames within lock distance; otherwise the crossing classifier decides and top_lock is an alternative."
+    why: "A defender shooting the gap under the screen also leads the cutter. The tester's gate as written (offset >= -0.3 m) points the wrong way: in the harness pin-down the under defender's truth offset toward the screener is +0.99 m (min 0.72) over [t0 - 1 s, t0], the top-locker's 0.0 m, so the gate must be an upper bound. 0.3 m cut top-lock recall to 14/20 at sigma 0.3; 0.5 m is the midpoint."
+    evidence: "XNEG_under_is_not_top_lock 3 | 3 | 1 -> 0 | 0 | 0; pin_down_under 17 | 17 | 19 -> 20 | 20 | 20; pin_down_top_lock_0.6m 20 | 19 | 14 -> 20 | 19 | 11; level trailer still trail 18 | 16 | 16 -> 20 | 17 | 17."
+  - id: DEF-T10 xball-crossing-not-debounced
+    what: "_xball_path and _lambda_path cross on the 5-frame-mean side / lambda and accept a crossing only when the new sign holds cross_hold_frames (5); q and s_X from 5-frame means."
+    why: "Single-frame sign flips near the axis set q and t0 from the wrong frame."
+    evidence: "xball_path P/R 0.94 | 0.89 | 0.75 -> 0.95 | 0.89 | 0.74 (side_pnr_over 16 | 15 | 10 -> 16 | 15 | 9). Over is not noise-flip limited: its true crossing q is about -0.5 m against the -0.3 m class margin (estimates -0.05 to -0.99 m), so 'through' wins in ~25 % of runs. The debounce removes the frame-choice error the tester found (unit test test_t10)."
+  - id: DEF-T11 locomotion-on-noise
+    what: "Moving = smoothed speed >= v_min AND stationary_s2 >= stand_s2 (MP-09); P_cond includes the window-mean P(speed >= v_min); a class run needs window-mean P(speed >= v_min) >= p_move_min (0.75)."
+    why: "The tester's per-frame mask p_above(speed, v_min, sigma) >= 0.5 is the same test as speed >= v_min, so it alone does not change anything (measured: NEG_slow_shuffle 2 | 8 | 9 with only the s2 gate and the P(speed) factor). Noise lifts a 0.78 m/s shuffle above 1.0 m/s for ~0.4 s with window-mean P ~0.64; real slides / step-ups score >= 0.9."
+    evidence: "NEG_slow_shuffle_0.8mps 2 | 8 | 23 -> 1 | 1 | 3; def_locomotion P/R 0.93/1.00 | 0.75/0.97 | 0.42/0.88 -> 0.98/1.00 | 0.95/0.97 | 0.78/0.88."
+  - id: DEF-T12 overconfident-conf
+    what: "(a) deny / face_guard conf = window mean P(perp) x P(tau in band) x window-mean matchup posterior (p_emit stays P(perp)). (b) trap conf on the entry threshold (DEF-T02c), blitz conf includes trap P_cond. (d) isotonic map fitted per noise tier; the harness reliability is recorded as the V0 baseline in globals.confidence_model. (c) a t0-uncertainty factor is NOT added: it needs a per-detector entry-gate slope model and a calibration set (deferred to the isotonic fit on gold labels)."
+    why: "Events with conf >= 0.9 were correct 94 / 89 / 78 % of the time."
+    evidence: "Accuracy in the conf >= 0.9 bin 0.94 | 0.89 | 0.78 -> 0.99 | 0.96 | 0.84; 0.7-0.9 bin 0.95 | 0.84 | 0.64 -> 0.98 | 0.95 | 0.80 (all emitted labels, plausibility cases excluded)."
+  - id: DEF-T13 q10-thresholds-not-recalibrated
+    what: "noise_of(k) recovers sigma_p and the smoother tier (q 30 / 10) from the RTS covariance (the Scene keeps no raw sigma_p); tier_param reads <name>_q10 when a track was smoothed with q = 10. Measured q10 values: profile_min_peak_q10 2.3, choppy_max_decel_q10 2.9, sprint_stop_min_decel_q10 3.3, hard_recovery_peak_q10 2.2, soft_recovery_peak_q10 1.6. minor_excursion and step_release abstain when sigma_p >= subnoise_abstain_sigma_p (0.45)."
+    why: "At sigma_p >= 0.45 mvlib smooths with q = 10, which smears decelerations and peaks; the sprint-stop closeout became choppy."
+    evidence: "sim.py via the harness, 60 runs per scene: sprint-stop implied deceleration 5.73 +- 0.70 (q30, sigma 0.3) -> 3.80 +- 0.71 (q10, sigma 0.5); choppy 2.57 -> 2.45; recovery peak hard hedge 5.11 -> 4.47, soft show 2.32 -> 1.85. corner_closeout_sprint_stop at sigma 0.5 6 -> 16 of 20, choppy 18 -> 18; closeout_profile P/R at 0.5 0.67/0.60 -> 0.87/0.85. noise_of: 0.297 at sigma_p 0.3 (q30), 0.477 at 0.5 (q10). Sub-metre rungs at sigma 0.5: minor_excursion P 0.50 -> abstain, step_release recall 0.05 -> abstain."
+  - id: DEF-T14 constant-sigma-rel-floor
+    what: "globals.sigma_rel_floor (0.25 m) replaced by k_floor 0.8 x sigma_p (mean of the two tracks, from noise_of) with sigma_rel_min 0.10 m; safety_back / protect_rim single-track floors use the same rule."
+    why: "A constant 0.25 m floor capped sub-metre rungs on good tracking and under-stated the error at sigma 0.5."
+    evidence: "minor_excursion recall at sigma 0.2 0.60 -> 0.70, step_release 0.45 -> 0.55, stunt 0.90 -> 0.95, dig n/a -> 1.00; at sigma 0.5 the honest wider sigma lowers product-of-gates recall (closeout 0.93 -> 0.82, closeout_length 0.47 -> 0.38) while precision of the high-conf bin rises 0.78 -> 0.84. The length class now comes from the band containing the estimate: with sigma_rel ~0.4 m the argmax of band probabilities never chose the 0.4 m standard band (corner_closeout_standard at 0.5 fell to 4/20; band-of-estimate 8/20; 0.25 m floor baseline 10/20; at sigma 0.3 standard 14 -> 18, hard 17 -> 14, short 12 -> 13 of 20)."
+  - id: DEF-T15 closeout-landing-hard-gate
+    what: "Landing angle removed from the closeout gates and P_cond; attrs landing_side (rim_side / high_side) and p_rim_side."
+    why: "A closeout landing on the high side is a bad closeout, still a closeout."
+    evidence: "PLAUS_closeout_lands_high_side 1 | 3 | 4 -> 20 | 19 | 15; NEG_help_stunt_at_catch_ends_2.6m stays 0 | 0 | 0."
+  - id: DEF-T16 jump-to-ball-side-x-only
+    what: "Side gate = max(P(displacement . pass direction > 0), P(r_D <= r_P - below_passer_min) x P(displacement . (receiver - D) > 0)), soft, instead of sign(dx_D x dx_pass)."
+    why: "A drop toward the ball-side block on a wing -> corner pass moves against the pass dx."
+    evidence: "PLAUS_wing_to_corner_drop_to_ball 1 | 1 | 3 -> 20 | 17 | 7; NEG_moves_0.4m stays 0."
+  - id: DEF-T17 recover-needs-joint-assignment
+    what: "joint_top1: per-frame one-to-one defender -> attacker assignment (minimum total -log posterior, exhaustive over permutations, flicker absorbed). RECOVER (pre and end) and _flips (ROTATE / SWITCH / X-OUT) use it."
+    why: "The per-defender HMM has no one-to-one constraint; a nail helper was matched to the ball handler and his recover to the corner was dropped as a rotation."
+    evidence: "PLAUS_nail_help_recover_to_corner 0 | 0 | 0 -> 20 | 20 | 20; rotate / switch / x_out / guard_two unchanged (switch 18 | 17 | 14, x_out 20 | 20 | 20) with joint flips vs top-1 flips."
+  - id: DEF-T18 hold-t0-lag-and-splits
+    what: "max_gap = dwell_frames in trap, guard_two, back_pressure, press_pickup and set_def; guard_two stays on balance_max + h and between_max + h; deny / face_guard t0 back-dated over the frames where the 5-frame-mean features to the hold's attacker already meet the entry predicate (backdated_s attribute)."
+    why: "Noise split guard-two holds and delayed hold onsets."
+    evidence: "guard_two weak_side_wing_and_corner 20 fp0 | 18 fp5 | 16 fp4 -> 20 fp0 | 20 fp0 | 19 fp1. Not fixed by back-dating: face_guard t0 at sigma 0.3 (11 | 11 of 20 before / after) and corner-trap entries 0.6-1.0 s late - the smoothed defender-attacker distance sits 0.3-0.6 m above truth for > 0.5 s (AR(1) noise, e.g. seed 3: truth 0.60 m, smoothed 1.33 m at the true entry), so no window-mean predicate is met earlier."
+  - id: DEF-T19 overrides-typeerror
+    what: "_setup takes a tuple of item ids (item first wins on shared names); drop_coverage / show / blitz / xball_path / ice / tag / offball_screen_coverage read ball_screen, closeout_length / closeout_profile read closeout, sink reads help_ladder; merged_params replaces the ad-hoc merges."
+    why: "detect_drop_coverage(sc, level_max=0.7) raised TypeError although the docstring promises per-call overrides."
+    evidence: "test_t19_shared_parameters_can_be_overridden."
+  - id: DEF-T20 hardcoded-literals-and-text-mismatches
+    what: "named_spots numbers (deny / face_guard perp, tau, dist; box-out 1.0 / 0.5; protect_rim 1.8; stop_ball 2.0) are parsed from the named_spots expressions (SPOT_NUM, error if absent). New params: trap location constants, ladder span_after_peak_s / rot_persist_s, recover dedupe_s, ball_screen hold_tail_s / no_man_behind_s / pre_screen_s, rotate guard_two_margin_s / move_back_s, jump_to_ball defender_back_s, post bands front_max_deg / behind_min_deg, post_double pre_catch_s, box_out effect_pre_s, tag origin_back_s / corner_angle_max_deg, fly-by span_before_cpa_s, offball defender_back_s / span_after_s, anchors screen_pre_s. Texts fixed: x_out and rotate pair flips with switch.pair_max_s 2.0 (the code's behaviour; a 1.0 s x_out pairing would re-open the HMM-lag misses that set 2.0 s for switch), recover ends at stationary_s2, post_double window starts pre_catch_s before the catch."
+    why: "The docstring promised every numeric parameter comes from the YAML; four rule texts disagreed with the code."
+    evidence: "test_t20_spot_numbers_are_read_from_named_spots; grep of defense.py for frames(<literal>) leaves none."
+  - id: DEF-T21 zero-conf-events
+    what: "make_event abstains (returns None) when P_cond x c_edge x c_gap <= conf_abstain_eps."
+    why: "Events at t0 within 5 frames of a segment edge were emitted with conf 0.0 (phantom labels for counters and chains)."
+    evidence: "test_t21_no_zero_confidence_events."
+  - id: DEF-T22 test-env
+    what: "tests/movement/test_defense.py sets OMP / OPENBLAS / MKL / VECLIB thread counts to 1 before numpy is imported."
+    why: "Under a load average of ~300 multithreaded BLAS made one scene take 16 s. tests/conftest.py, the closed-form 3x3 solve in mvlib.ca_rts and the broken .venv symlink are outside this family's files: not changed here (to do by the mvlib / repo owner)."
+    evidence: "Family suite 133 tests run single-threaded."
+
+changes_loop2:
+  # Loop 2: the independent confirmer's verdict on loop 1 (scratchpad loop2/confirm_defense.json). Measured with the tester's
+  # harness (byte-identical copy in movement/confirm_defense/): 164 cases x seeds 1-10 x {as written, mirrored} at sigma_p
+  # 0.2 / 0.3 / 0.5. Evidence is P/R per detector (sigma 0.2 | 0.3 | 0.5) or hits of 20, before -> after; scripts in
+  # scratchpad movement/fix2_defense/ (run_all.py, pr.py, floor_meas.py, diff_meas.py, peak_meas.py, onset_meas.py).
+  - id: L2-NEW-R1 k_floor-inflates-gate-sigmas-at-0.5
+    what: "k_floor stays 0.8 (no tier value). Each gate now uses the sigma of what it measures: sigma_own(k, a, b) = max(K_CAL sqrt(2 mean var_p), k_floor x sigma_p) for ONE track's displacement (closeout chord, help-ladder excursion peak, sink own r change); sigma_rel for a pair-distance level (sink min dist to H, was sqrt(2) sigma_rel); sqrt(2) sigma_rel kept for pair-distance changes (closeout dist_drop, ladder returns, sink help-depth rise). closeout.peak_speed_min_q10 2.0 m/s."
+    why: "The confirmer's fix (k_floor 0.5) under-states the error: measured pair-distance error of the smoothed 5-frame means is 0.82 / 0.78 / 0.74 sigma_p at sigma 0.2 / 0.3 / 0.5 (k_floor 0.5 gives 0.24 m at 0.5 against a measured 0.354 m). With k_floor_q10 0.5 the sigma 0.5 grid gained 36 TP for 12 FP but the 0.5-0.7 / 0.7-0.9 conf bins fell from 0.62 / 0.80 to 0.55 / 0.73 accuracy. The real defect: one-track displacements were given sqrt(2) x the pair sigma, while their measured error (0.84 / 0.80 / 0.74 sigma_p per axis over 1 s) is the size of the level error; pair-distance changes over >= 1 s measure 1.36-1.44 x the level error, so their sqrt(2) is right (the confirmer's 'drop sqrt(2) on dist_drop' is not applied). The q = 10 smoother lowers a 2.5 m / 1.0 s closeout's smoothed peak from 3.13 +- 0.39 to 2.52 +- 0.41 m/s (60 seeds): 2.5 x 2.52 / 3.13 = 2.0."
+    evidence: "closeout 1.00/1.00 | 1.00/1.00 | 1.00/0.82 -> 1.00/1.00 | 1.00/1.00 | 1.00/0.97 (corner_closeout and derived anchors 16 -> 19, skip closeout 17 -> 20 at 0.5); closeout_length at 0.5 0.57/0.38 -> 0.60/0.47 (short 4 -> 7); closeout_profile 0.87/0.85 -> 0.88/0.88; minor_excursion 0.93/0.70 | 0.64/0.35 -> 0.94/0.75 | 0.67/0.40 with no new FP; no change at 0.2 / 0.3 for the other closeout items, NEG_walk_up_closeout stays 0."
+  - id: L2-NEW-R2 sink_and_fill-double-penalty
+    what: "sink.onset_v_r_q10 1.4 m/s (t0 in the q = 10 tier); sink_and_fill existence p_emit = min(sink P_cond, P(fill)) with conf = their product (unchanged), attr p_fill; detect_sink_and_fill forwards its global overrides to the inner SINK."
+    why: "Half of the misses were t0, not gates: in the q = 10 tier the smoothed v_r crosses 1.0 m/s 4.7 frames early on average (82 % within 0.3 s; 1.4 m/s: -1.2 frames, 97 %; q30 at sigma 0.3 is 100 % with 1.0). The other half: sink 0.7 x fill 0.7 < 0.5 although both parts are more likely than not. The confirmer's 'p_emit = sink P_cond' would emit a sink with no fill (NEG_no_fill), and its 'drop sqrt(2) on the fill shift' contradicts the measured 1.36-1.44 x error of a pair-distance change: neither applied."
+    evidence: "sink 1.00/0.95 | 1.00/0.95 | 0.80/0.40 -> 1.00/0.95 | 1.00/0.95 | 1.00/0.65 (wing_sink 8 fp2 -> 13 fp0 at 0.5); sink_and_fill 1.00/0.95 | 1.00/0.80 | 0.67/0.10 -> 1.00/0.95 | 1.00/0.85 | 1.00/0.50 (corner_fills_wing 2 -> 10 at 0.5); NEG_filler_moves_0.5m and NEG_no_fill stay 0 FP."
+  - id: L2-TAG contact-window-q10
+    what: "tag.contact_to_s_q10 2.0 s (window end in the q = 10 tier)."
+    why: "At sigma 0.5 the smoothed P(d <= 1.0 m) first reaches contact_p 0.7 at frames 95-103 for a true first contact at frame 87 (1.6 s after the screen), past the 1.8 s window end, so most runs had no contact at all. Lowering contact_p (0.5 / 0.6) gave a similar recall with an extra FP; at sigma 0.3 a 2.0 s window changes nothing, so q30 keeps 1.8 s."
+    evidence: "tag 1.00/1.00 | 1.00/0.90 | 0.82/0.45 -> 1.00/1.00 | 1.00/0.90 | 0.88/0.70 (weak_low_man_tags_roller 9 -> 14 at 0.5); both negatives unchanged."
+  - id: L2-DEF-T18 hold-and-trap-t0-backdating
+    what: "_position_hold walks t0 back over the relaxed stay predicate (5-frame means, +h / +tau_hyst) while D is still closing (dA5 non-increasing), at most globals.backdate_max_s 0.6 s (backdate_max_s_q10 0); P_cond / p_emit stay on the strict entry; FACE_GUARD events carry strict_start and DENY excludes face-guard frames from there. detect_trap walks t0 back while both 5-frame-mean distances are within enter_dist + exit_h / 2 (pair_dist + exit_h / 2), H holds and the trappers are closing, at most backdate_max_s; attr backdated_s."
+    why: "face_guard t0 was 0.33-0.6 s late in 9/20 at sigma 0.3 and corner / press trap entries 0.6-1.0 s late. Variants measured: the confirmer's trap band (enter_dist + exit_h) moved blitz t0 (= trap t0) 7-10 frames early (blitz 1.00 -> 0.70 recall at 0.2), the band middle costs blitz one run per tier; conf over the back-dated window dropped two deny emissions (fixed by the strict window); the back-dated face-guard window blocked deny entries (fixed by strict_start); in the q = 10 tier any back-dating moved deny t0 early (0.3 s: deny 26 -> 21 of 40, 0.6 s: 26 -> 21), so it is off there; backdate_max_s 0.4 / 0.5 lost trap hits at 0.3."
+    evidence: "face_guard 0.95/0.95 | 0.55/0.55 -> 1.00/1.00 | 1.00/1.00 (corner_face_guard at 0.3 11 fp9 -> 20 fp0); deny 1.00/0.93 | 0.85/0.72 -> 0.97/0.90 | 0.91/0.78 (one 0.2 run 10 frames early); trap 0.93/0.93 | 0.81/0.78 | 0.67/0.55 -> 0.98/0.98 | 0.88/0.85 | 0.67/0.55; blitz 0.95/1.00 | 0.72/0.90 -> 0.90/0.95 | 0.74/0.85 (blitz t0 mean 3 frames earlier)."
+  - id: L2-SWITCH exchange-search-on-moving-frames
+    what: "detect_switch takes the geometric exchange (closest approach of D1, D2) only over frames where at least one of them moves (MP-09 s2 >= stand_s2); all frames if none."
+    why: "The confirmer blamed a left-censored first HMM run in _flips. Measured: in every failing run the joint flips are at frames 48-52 (truth 46) and the censoring patch it proposed changed nothing (switch 18 | 17 | 14 of 20 before and after). The early t0 (frames 5-15) came from the closest-approach search: the true dip is shallow (2.33 -> 1.77 m) and a 0.25 m AR(1) dip while both defenders still stood won the argmin."
+    evidence: "switch 0.90/0.90 | 0.85/0.85 | 0.74/0.70 -> 1.00/1.00 | 1.00/1.00 | 0.80/0.80 (cross_screen_switch_no_ball_screen 18 fp2 | 17 fp3 | 14 fp5 -> 20 fp0 | 20 fp0 | 16 fp4); rotate / x_out unchanged."
+  - id: L2-SHOW hard-vs-soft-margin
+    what: "ball_screen.class_margin_min 0.2: a show with |P(hard | show) - P(soft | show)| < 0.2 is show_unclassified (abstain, the existing class) instead of the argmax."
+    why: "A coin-flip between hard_hedge and soft_show was labelled. The remaining 0.2 confusions are confident (margin >= 0.2): the measured lateral of a 1.0 m hard hedge is 0.3-0.75 m (handler-velocity axis noise, loop 1); margins 0.3 / 0.4 lost more right labels than wrong ones."
+    evidence: "show P/R 0.87/0.82 | 0.91/0.72 | 0.53/0.20 -> 0.89/0.82 | 0.91/0.72 | 0.58/0.17 (margin 0.3: 0.89/0.82 | 0.91/0.72 | 0.60/0.15 with PLAUS hard hedge held 0.9 s 11 -> 9 at 0.3; 0.4: 0.89/0.82 | 0.90/0.68 | 0.50/0.10)."
+  - id: L2-HIGH-NOISE-TIER abstain-by-default
+    what: "globals.high_noise_abstain_kinds: make_event returns no event for blitz, hard_hedge, soft_show, the four post_position kinds, lob_protection, face_guard, dig and stunt when any actor track was smoothed in the q = 10 tier (sigma_p >= 0.45), as minor_excursion / step_release already did."
+    why: "After the fixes above these labels are still below P 0.6 at sigma 0.5 (blitz 0.38, show 0.58, post_position 0.33 with 47 FP, lob_protection 0.46, face_guard 0.27, dig 0.50, stunt 0.33) and they drove the over-confident top bin (0.84 correct at mean conf 0.97). Tier values were tried for dig / stunt first and rejected: dig_dist_max_q10 1.4 (equal-z boundary of the measured smoothed min distance, dig 1.08 +- 0.27 vs stunt 1.90 +- 0.43) cut stunt 8 -> 5 and doubled dig-scene FP; stunt_return_min_q10 0.4 gave +1 TP for +1 FP. The planned isotonic map is not fitted on this harness: it is the synthetic test set (fitting it there would tune to the test), it needs gold labels per tier."
+    evidence: "sigma 0.5, all core cases: TP 940 -> 868, FP 273 -> 155, precision 0.775 -> 0.848; conf bins 0.5-0.7 / 0.7-0.9 / >= 0.9 accuracy 0.62 / 0.81 / 0.84 -> 0.66 / 0.88 / 0.93 (mean conf 0.60 / 0.80 / 0.97); deny at 0.5 0.79/0.65 -> 0.78/0.72 (face guard no longer owns its frames there). sigma 0.2 / 0.3 unchanged by this rule."
+  - id: L2-DEF-T22 conftest-and-mvlib
+    what: "Not changed: tests/movement/conftest.py and the mvlib.ca_rts solve are outside this family's three files (the family test file keeps setting the BLAS thread variables)."
+    why: "Owner of mvlib / the test tree."
+    evidence: "Family suite runs single-threaded (DEF-T22 loop 1)."
+  - id: L2-not-addressed
+    what: "help_and_recover precision at 0.3 (0.89, 2 FPs on XRUNG_dig_on_elbow_drive), closeout_fly_by NEG_run_by_1.45m_wide 1/20 at 0.3, trap / show recall at sigma 0.5."
+    why: "Low severity or no measured fix that is net better in all three tiers within this pass."
+    evidence: "Unchanged rows of the loop 2 grid."
+
+changes_loop4:
+  # Loop 4: calibration on real tracking (3 NBA 2015-16 SportVU games, private research data, 6855 s of clock-running
+  # play, sigma told 0.15 m). Only aggregate rates per 48 min (both teams) and short anonymised descriptions here.
+  # Rates: before = loop 3 code, after = this file; '/n0.3' / '/n0.5' = the same run with added noise 0.3 / 0.5 m.
+  # Synthetic check: tester harness (164 core cases + cross negatives x seeds 1-10 x {as written, mirrored}) at sigma_p
+  # 0.2 / 0.3 / 0.5: TOTAL core TP / FP 1281 / 30 | 1207 / 87 | 868 / 163 before -> 1281 / 30 | 1207 / 87 | 868 / 162
+  # after (the only changed cell: XNEG_soft_show_is_not_a_trap at 0.5, 2 -> 1 FP). Reference rates: NBA teams trap /
+  # blitz and face-guard rarely (a few per game, coverage reports from Second Spectrum / Synergy describe switching and
+  # drop as the dominant ball-screen coverages); PBP gives ~188 possessions, ~24 turnovers, ~85 rebounds per game.
+  - id: L4-POSSESSION defence-has-the-ball
+    what: "globals possession_hold_s 1.0, possession_share 0.8, possession_margin_min 0.5, possession_margin_k 1.5, rim_ball_r 0.9: per-frame control (nearest player within HOLD_R of the raw ball, nearer than every opponent by the margin, none with the ball over a rim); possession changes on >= 80 % control frames in a 1.0 s window. make_event abstains (reason dposs) when t0 falls in a possession of the labelled defence; detect_all reports it under 'abstained'."
+    why: "SportVU clock-running stretches (and video clips cut across a rebound or steal) contain possessions of the 'defence'; every defensive label there was a false positive (the defence was attacking). The scene contract (offence has the ball) is broken by real data, not by the synthetic scenes."
+    evidence: "Flips vs PBP changes of possession (dreb, steal, made FG, dead-ball turnover): flip precision 0.805 (no margin) -> 0.853 (0.5 m margin), recall dreb 0.87, steal 0.88, made FG 0.89; latency PBP - flip median -0.96 s. Matchup 2680 -> 1644 / 48 with 1036 / 48 reported as abstain_dposs:matchup; synthetic grid unchanged (all scenes are offence possessions)."
+  - id: L4-TRAP-RIM no-trap-over-the-rim
+    what: "detect_trap: no hold frame while the ball XY is within rim_ball_r of a rim or H stands in the restricted area."
+    why: "Putbacks / tip scrambles under the rim put two defenders within 1.5 m of the nearest attacker (holder relation is XY only)."
+    evidence: "SportVU: 54 of 96 rim-area trap holds with the ball above 7.5 ft on >= 30 % of the hold had the ball XY within 0.6 m of a rim. Trap 78.2 -> 17.6 / 48 together with L4-POSSESSION and L4-TRAP-MOVING (cumulative; per-change split not preserved from the interrupted run). Test test_l4_trap_not_at_the_rim."
+  - id: L4-TRAP-MOVING no-trap-on-a-drive
+    what: "trap.handler_v_max 2.0 m/s: no trap when H's median smoothed speed over the stay is above the walk edge."
+    why: "A trap stops the ball; a driver or a transition push with two defenders running alongside was labelled a trap."
+    evidence: "Cumulative trap rate above; synthetic trap 0.98/0.98 | 0.88/0.85 | 0.67/0.55 unchanged. Test test_l4_trap_not_on_a_drive."
+  - id: L4-TRAP-SHOT no-trap-ending-in-the-handlers-shot
+    what: "trap.shot_after_s 1.5 s: no trap when H's own shot reaches a rim (ball XY within rim_ball_r, no other attacker holding in between) within 1.5 s of the stay end."
+    why: "Sample of 15 remaining real traps + full tabulation of 43: 23 were post-area 'traps', 14 of them ended with the handler's shot within 1.5 s (help collapsing on a drive / post move, a contest, not a trap that takes the ball out of his hands). XY-only rule (production has no ball z): the ball reaching the rim."
+    evidence: "Trap 18.1 -> 11.7 / 48 (n0.3 15.5 -> 11.7: stable under noise); post_double (traps on a post catch) 9.7 -> 6.7. Trap vs PBP steals / dead-ball turnovers: no match before or after (traps rarely end in a turnover; not a usable truth). Synthetic grid unchanged. Test test_l4_trap_not_on_a_post_shot."
+  - id: L4-G2-SEP guard-two-needs-separated-attackers
+    what: "guard_two.sep_min 3.0 m: the two attackers' 5-frame-mean distance >= this."
+    why: "A defender next to a screener and the man he screens for (1.5-2.5 m apart) satisfied 'between two attackers' on every screen, hand-off and stack."
+    evidence: "guard_two 369.3 -> 31.1 / 48 together with L4-G2-OUTNUMBERED (n0.3 31.1, n0.5 37.8); 64 of the 74 remaining holds do not end in a shot within 1.5 s. Synthetic guard_two unchanged. Test test_l4_guard_two_needs_separated_attackers."
+  - id: L4-G2-OUTNUMBERED cover-two-is-a-numbers-disadvantage
+    what: "A transition guard-two hold (cover_two) needs D outnumbered on >= half its frames: every other defender farther from the rim than the farther of the two attackers."
+    why: "In real transition the other defenders are usually back; one defender near two attackers with help behind him is no cover-two."
+    evidence: "Cumulative with L4-G2-SEP above. Test test_l4_cover_two_needs_outnumbered_defender."
+  - id: L4-PERIMETER deny-and-face-guard-are-half-court-perimeter
+    what: "deny / face_guard: no entry or stay frame with the ball beyond half court or with the man in the post area (r <= 4.5 m, post_position owns it)."
+    why: "Bigs sealing near the rim with a defender on their ball side, and backcourt pick-ups, matched the face-guard geometry (on the line, within 0.9 m) without being perimeter denial."
+    evidence: "face_guard 100.4 -> 18.0 / 48 (n0.3 14.3; n0.5 0 with 11.8 / 48 reported abstain_q10), deny 98.7 -> 18.5 (n0.3 19.7, n0.5 21.9). Synthetic deny / face_guard unchanged. Tests test_l4_post_area_is_not_face_guard_or_deny, test_l4_no_face_guard_with_ball_in_backcourt."
+  - id: L4-POST post-holds-are-half-court-and-stationary
+    what: "post_position.post_v_max 2.0 m/s and ball in the frontcourt: the post's median smoothed speed over the hold <= the walk edge."
+    why: "Cutters and rollers running through the post area with their defender on the ball side were labelled front / three-quarter holds; transition runs to the rim too."
+    evidence: "post_front 141.2 -> 88.2, 3/4 low 96.6 -> 66.0, 3/4 high 89.9 -> 65.6, behind 41.6 -> 27.3 / 48; lob_protection (one per front / 3/4-high hold) 231.1 -> 153.8; n0.3 within 15 %. Synthetic post_position unchanged. Test test_l4_cutter_is_not_posting."
+  - id: L4-FLIP-HALFCOURT no-rotation-in-transition
+    what: "rotate / switch / x_out: a flip needs the ball in the frontcourt and the old run >= old_min_s of frontcourt frames."
+    why: "Matchups picked up in transition are not rotations of an established half-court assignment."
+    evidence: "rotate 313.8 -> 68.5, switch 121.4 -> 47.9, x_out 11.7 -> 5.1 / 48 together with L4-FLIP-REBOUND and L4-POSSESSION (rotate 109.7 -> 68.5 for the two flip rules alone); n0.3 rotate 66.8, switch 54.6. Synthetic rotate / switch / x_out unchanged. Test test_l4_no_rotation_in_the_backcourt."
+  - id: L4-FLIP-REBOUND no-rotation-in-the-rebound-phase
+    what: "globals rim_phase_back_s 1.0, rim_phase_fwd_s 0.5: no matchup flip with the ball over a rim within [t - 1.0 s, t + 0.5 s]."
+    why: "From a shot to the rebound, defenders hit whoever is nearest; those flips are rebound assignments."
+    evidence: "Cumulative with L4-FLIP-HALFCOURT above. Test test_l4_no_rotation_in_the_rebound_phase."
+  - id: L4-Q10-REPORT abstentions-are-reported
+    what: "make_event records q10 / dposs abstentions; detect_all returns them under 'abstained' as 'abstain_<reason>:<kind>' events (conf 0). detect_lob_protection also reports abstain_q10:lob_protection for every q10-abstained front / three-quarter-high hold >= its min_s."
+    why: "Under noise 0.5 nine coverage kinds abstain to zero (intended, L2-HIGH-NOISE-TIER); an empty list must be distinguishable from 'nothing happened'. lob_protection rides on the post holds and was silently empty."
+    evidence: "n0.5 real run: post_front 0 with 78.5 / 48 abstain_q10, 3/4 high 40.7, 3/4 low 50.8, behind 21.8, face_guard 11.8, stunt 32.8, dig 3.0, hard_hedge 3.4, soft_show 2.1, blitz 0.4, lob_protection 0 -> 119.3 / 48 abstain_q10 reported. Tests test_l4_q10_abstention_is_reported, test_l4_q10_lob_protection_abstention_is_reported."
+  - id: L4-not-addressed
+    what: "post_double grows with added noise (6.7 / 17.2 / 24.0 per 48 at n0 / n0.3 / n0.5); closeout_fly_by (33 -> 65 at n0.3), contain (8 -> 19) and jump_to_ball (148 -> 190) are noise-sensitive; post holds (~250 / 48 summed over four classes) have no real truth here."
+    why: "No PBP truth for these kinds and no measured root-cause fix within this pass; flagged for the next real-data loop (hand labels)."
+    evidence: "Rates above; box_out vs PBP missed FG precision 0.60 -> 0.63, recall 0.24 -> 0.22 (unchanged within noise)."
+
+validation_v0:
+  method: >-
+    tests/movement/test_defense.py scenes (sim.scenario, sigma_p 0.3 m, white + AR(1) rho 0.9, every leg physically
+    timed: minimum-jerk peak acceleration <= 10 m/s^2 and speed <= 9.5 m/s; asymmetric speed profiles for the
+    closeout profile scenes) re-run over seeds 1-12; a pass = kind, actors, t0 within +-0.3 s and conf in range.
+    The committed tests use seed 7. Unphysical legs (e.g. 2.7 m in 0.45 s) make the CA-RTS gate reject
+    observations and overshoot by up to 2 m, so the physics guard is part of the test harness.
+  detection_rate_12_seeds:
+    "12/12": [closeout, closeout_profile sprint_stop, closeout_fly_by, dig, deny,
+              beaten, contain, back_pressure, get_back, safety_back, rotate, switch, x_out, xball_path through,
+              drop_coverage standard / high / deep, blitz, ice, jump_to_ball, set_def, transition_matched,
+              press_pickup, stop_ball, offball trail]
+    "11/12": [closeout_length hard / short, closeout_profile choppy, stunt, step_release, sink, sink_and_fill,
+              box_out, guard_two, post_front, post_behind, lob_protection, protect_rim, hard_hedge, xball_path over /
+              under]
+    "10/12": [recover, face_guard, soft_show, trap, post_double, derived drive + screen anchors]
+    "9/12": [minor_excursion (0.7 m), help_and_recover, at_level, post_three_quarter_high, tag (true contact 0.56 m)]
+    "5/12": [top_lock (0.5 m lead: sub-noise, as the check predicted)]
+  false_positive_rate_12_seeds: "still-defender ladder negatives fire in 1/12 seeds (minor_excursion, step_release); all other negatives 0/12"
+  takeaways:
+    - "Sub-metre gates (top-lock lead, 0.5-0.7 m excursions, 1.0 m contacts) are the weak spot at sigma_p 0.3 AR(1); keep them soft and abstain-by-default at tier C/D until noise_model is measured."
+    - "Closeout profile classes separate with d' ~ 2.4 only; sprint-stop vs choppy is reported with alternatives, never as a hard label."
+    - "The matchup HMM lags geometric exchanges by up to ~1.7 s for a defender lingering between two attackers; switch timing uses the geometric exchange."
+items:
+  # ------------------------------------------------------------------------------------------------ rules
+  - id: kinematics
+    research_id: DM-RULE-01
+    level: rule
+    name: Defensive kinematics on the shared CA-RTS smoother
+    aliases: [kinematic features, smoothing]
+    actors: every player
+    t0: n/a (per-frame features)
+    rule: >-
+      All defensive rules read mvlib Kin features: CA-RTS (MP-04, q_j 30 m^2/s^5, 10 when sigma_p >= 0.45), speed,
+      sigma_speed = K_CAL sqrt(var_v) k_edge, heading valid at speed >= 1.0 m/s, accel_along valid at >= 0.5 m/s,
+      v_r positive toward the rim, stationary by s2 = v^T P_v^-1 v < 5.99 (never raw speed < 0.3, which CA-RTS biases
+      upward at rest: sim.py mean smoothed speed of a still player 0.43 m/s). Direction changes use the MP-13 pre/post
+      mean velocities that skip the plant phase. No defensive rule reads per-frame acceleration; decelerations are
+      measured as implied mean deceleration over a distance (closeout profile) and onsets by displacement.
+    params: {}
+    min_duration_s: null
+    outputs: [x, y, vx, vy, speed, sigma_speed, heading, v_r, stationary_s2]
+    confidence: high (mathematics of the shared smoother); thresholds per item
+    noise: >-
+      Correlated (AR(1) rho 0.9) noise makes RTS sigmas optimistic; K_CAL 1.8 plus the sigma_rel floor compensate
+      until MP-18 measures sigma_p and rho on our footage. Smoothed peaks of short efforts are 15-40 % low.
+    conflicts_resolved:
+      - "Research DM-RULE-01 Gaussian sigma_t 2/5/8 ladder vs MP-04 CA-RTS: CA-RTS adopted so all families share one
+        pipeline; the research's noise gains (white noise only) are superseded by the MP-08 error budget."
+    sources:
+      - {url: "repo:tools/specgen/movement/mvlib.py", supports: "CA-RTS, features, gates"}
+      - {url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC6720027/", supports: "+-2 m/s^2 acceleration cut-offs in basketball LPS (20 Hz); not transferred to CV data without filtering"}
+    status: canonical
+    detectability: rule
+    detector: null
+
+  - id: noise_model
+    research_id: check.missing
+    level: rule
+    name: Measured noise model (prerequisite for releasing soft probabilities)
+    aliases: [noise floor, autocorrelation]
+    actors: tracker output
+    t0: n/a
+    rule: >-
+      Before any defensive label is released for a game: measure sigma_p and the lag-1 autocorrelation of raw floor
+      positions on >= 50 hand-marked stationary windows (MP-18 (1)); the ID-swap rate per player-minute versus
+      inter-player distance (bins 0-0.6, 0.6-1.0, 1.0-1.5 m); then refit k_floor (and sigma_rel_min) so that 95 % intervals of pair
+      distance cover 93-97 %. Until then the sub-noise primitives (moves <= 0.6 m, perp gates <= 0.6 m) carry
+      abstain_by_default = true at tier C/D.
+    params: {}
+    min_duration_s: null
+    outputs: [sigma_p, rho_lag1, id_swap_rate_by_distance, k_floor_fitted]
+    confidence: proposal
+    noise: This item is the noise model.
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:config/named_spots.yaml rule_position_sigma_model", supports: "sigma tiers 0.15/0.30/0.50/1.0 m"}
+    status: proposal
+    detectability: rule
+    detector: null
+
+  - id: matchup
+    research_id: DM-RULE-02
+    level: rule
+    name: Matchup backbone (per-defender HMM, forward-backward)
+    aliases: [matchup posterior, guarding assignment, defensive matchups]
+    actors: each defender x the offensive players
+    t0: first frame of a stable top-1 run
+    rule: >-
+      Emission D ~ N(mu, s2 I): mu = w_o A + w_b B + (1 - w_o - w_b) R with R = rim = (0, 0) (named_spots
+      canonical_defender_point), or mu = w_o_holder A when A holds the ball (a corollary of the same fit when O and B
+      coincide, not a separate fit). s2 = sigma_fit^2 + K_CAL^2 var_p(D) + w_o^2 K_CAL^2 var_p(A); sigma_fit_transition
+      replaces sigma_fit on frames with A or D beyond half court (Franks fitted half court only). Transition: stay
+      rho_stay per 29.97 fps frame, the rest shared equally. Forward-backward offline (forward-only live). Event
+      'matchup' = top-1 run (flicker shorter than flicker_s absorbed) lasting >= min_s.
+    params:
+      w_o: {value: 0.62, unit: "1", note: "Franks et al. weight on the man"}
+      w_b: {value: 0.11, unit: "1", note: "weight on the ball"}
+      w_o_holder: {value: 0.73, unit: "1", note: "weight on the man when he holds the ball"}
+      rho_stay: {value: 0.985, unit: "1/frame", note: "rho25 0.96-0.99 -> rho30 0.966-0.992; refit by EM"}
+      sigma_fit: {value: 1.5, unit: m, note: "emission spread, proposal; refit on ~300 hand-labelled defender-seconds"}
+      sigma_fit_transition: {value: 3.0, unit: m, note: "beyond half court (proposal)"}
+      flicker_s: {value: 0.3, unit: s, note: "top-1 runs shorter than this are absorbed"}
+      min_s: {value: 1.0, unit: s}
+    min_duration_s: 1.0
+    outputs: [defensive_matchups.matchup_prob (per frame internally, per second stored), top1, mean_posterior, censoring flags]
+    confidence: "conf = mean posterior of the top-1 attacker over the run x edge x gap (edge taken at the first interior frame for left-censored runs)"
+    noise: >-
+      Screen overlaps (< 1 m) make the posterior oscillate; persistence gates in rotate / switch absorb it. A
+      defender guarding two players splits the posterior: see guard_two, which suppresses ROTATE between those two.
+    conflicts_resolved:
+      - "rho quoted at 25 fps; converted and set mid-range (0.985) until an EM refit on MSU data."
+      - "Transition: Franks' emission is half-court only; a wider emission is used beyond half court (check fix)."
+    sources:
+      - {url: "https://arxiv.org/pdf/1405.0231", supports: "0.62 O + 0.11 B + 0.27 H; 0.73/0.27 with the ball; rho 0.96-0.99 at 25 fps; half-court fitting"}
+      - {url: "repo:config/named_spots.yaml canonical_defender_point", supports: "same canonical point"}
+      - {url: "repo:docs/requirements_review/proposals_consolidated.yaml R-DF-01", supports: "top-1 >= 85 % on 300 defender-seconds"}
+    acceptance: "top-1 accuracy >= 85 % on 300 hand-labelled defender-seconds (R-DF-01)"
+    status: canonical
+    detectability: xy
+    detector: detect_matchup
+    kinds: [matchup]
+
+  - id: confidence_model
+    research_id: DM-RULE-03
+    level: rule
+    name: Confidence, hysteresis and abstention
+    aliases: [soft labels, event probability]
+    actors: all events
+    t0: per event
+    rule: >-
+      See globals.confidence_model. Spatial holds enter on the named_spots predicate and stay while the relaxed gate
+      (threshold + h, h = max(hyst_h_min, hyst_k_sigma x sigma_rel)) holds, bridging exit gaps of up to dwell_frames.
+      Durations come from mvlib.hysteresis (elapsed (n - 1) DT).
+    params: {}
+    min_duration_s: null
+    outputs: [conf, p_cond, q_obs, alternatives, reasons]
+    confidence: proposal
+    noise: >-
+      Gates near the noise floor (deny perp 0.6 m, box-out seg 0.5 m, step 0.35 m) are soft only; window means do not
+      shrink AR(1) error much (check: 0.92 / 0.87 / 0.80 of sigma for 5 / 9 / 15 frames), so no sqrt(n) credit is taken.
+    conflicts_resolved:
+      - "Research sqrt(n/10) window-mean reduction removed (check, high)."
+    sources:
+      - {url: "repo:config/named_spots.yaml loader.temporal.defaults.relative", supports: "h_min 0.25 m, h_k_sigma 0.75, dwell 233 ms / 467 ms"}
+    status: canonical
+    detectability: rule
+    detector: null
+
+  - id: anchors
+    research_id: DM-RULE-04
+    level: rule
+    name: Event anchors consumed by defensive rules (XY proxies)
+    aliases: [triggers]
+    actors: upstream events
+    t0: see rule
+    rule: >-
+      Real anchors come from other families and are passed as anchors=... (a supplied key replaces the derived list).
+      XY proxies (derive_anchors): holder runs from mvlib (ball within HOLD_R 1.0 m of an attacker), short None
+      flicker (<= holder_merge_gap_frames) bridged. PASS: holder A -> (flight) -> holder B != A; t_rel = last frame of
+      A, t_catch = first frame of B; skip when x_A x_B < 0 and |x| >= skip_abs_x for both. SHOT: a flight after A whose
+      smoothed ball comes within shot_rim_r of the rim; t_rim = frame of minimum ball r (needs ball z for the true
+      rim contact). DRIVE: holder v_r >= drive_v_r for >= drive_min_s with r falling >= drive_min_dr, start back-dated
+      while v_r >= drive_backdate_v_r. MIDDLE DRIBBLE
+      (proxy for dribble start/end): holder moving at >= move_v for >= move_min_s with |x| falling >= middle_dx (a
+      moving holder must be dribbling; pick-up time is the stop, which is a proxy). BALL SCREEN: teammate S within
+      screen_xball_r of the on-ball defender and screen_h_r of the holder, S nearly still (mean speed <=
+      screen_still_v over +-5 frames); t0 = minimum S-to-X-ball distance (defense A0); one screen per screener and
+      handler within screen_merge_s. Change of possession is
+      never derived from XY.
+    params:
+      screen_pre_s: {value: 0.5, unit: s, note: "X-ball / X-big read this long before the derived screen t0 (was a literal, DEF-T20)"}
+      holder_merge_gap_frames: {value: 2, unit: frames}
+      shot_rim_r: {value: 1.0, unit: m}
+      skip_abs_x: {value: 3.0, unit: m}
+      drive_v_r: {value: 2.0, unit: m/s}
+      drive_min_s: {value: 0.3, unit: s}
+      drive_min_dr: {value: 1.0, unit: m}
+      drive_backdate_v_r: {value: 1.0, unit: m/s, note: "drive start back-dated to where v_r first exceeded this"}
+      move_v: {value: 1.0, unit: m/s}
+      move_min_s: {value: 0.2, unit: s}
+      middle_dx: {value: 0.8, unit: m}
+      screen_xball_r: {value: 1.2, unit: m}
+      screen_h_r: {value: 3.0, unit: m}
+      screen_still_v: {value: 1.5, unit: m/s}
+      screen_merge_s: {value: 1.0, unit: s}
+    min_duration_s: null
+    outputs: ["anchor dicts: pass, shot, drive, middle_dribble, screen, cop"]
+    confidence: high for definitions; proxy quality limited (dribble state and rim contact need ball z)
+    noise: Ball occluded at the catch gives +-2-3 frames; sequencing windows allow +-0.2 s (MP-17).
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md A0 header", supports: "screen t0 = minimum screener-to-on-ball-defender distance"}
+      - {url: "repo:schema/tables/reaction_events.yaml", supports: "trigger_type enum"}
+    status: proposal
+    detectability: rule
+    detector: null
+
+  - id: ball_screen
+    research_id: DM-RULE-05
+    level: rule
+    name: Ball-screen measurement frame and coverage classifier
+    aliases: [screen frame, level offset]
+    actors: handler H, screener S, X-ball, X-big
+    t0: screen t0
+    rule: >-
+      P_s = 5-frame mean S(t0). Depth axis e_r = unit(P_s -> rim) (named_spots pnr_big_* frame): depth(p) = (p -
+      P_s).e_r, positive toward the rim. Path axis u = unit of H's mean velocity over [t0 - 0.5, t0] when >=
+      u_min_speed, else the perpendicular to e_r pointing from H toward S; lateral(p) = (p - P_s).u (positive = ahead
+      of the screen in H's path). X-ball path: the first sign change, in [t0 - cross_back_s, t0 + cross_fwd_s], of
+      X-ball's side of the line through S along e = unit(S -> X-big) (or e_r when X-big is within big_near of S); at
+      that frame q = (X - P_s).e (P_s fixed: the screener may already be rolling): over q < -class_margin, through -class_margin..d_big - class_margin, under beyond
+      (no through when X-big is within big_near); no_cross if no sign change. Coverage class (mutually exclusive,
+      priority blitz > hard_hedge > soft_show > flat > at_level > drop bands): blitz = TRAP(X-ball, X-big, H) starting
+      in [t0 - blitz_back_s, t0 + blitz_fwd_s] (see blitz); a show exists (p_emit) when min depth <= soft_depth_max and
+      lateral >= soft_lat_min and the big then goes back (recovery chord >= recovery_chord_min or retreat >=
+      soft_retreat_min within recovery_s); given a show, hard_hedge = min depth over [t0 - show_back_s, t0 +
+      show_fwd_s] <= hard_depth_max, max lateral >= hard_lat_min, hold in [hard_hold_min_s, hard_hold_max_s] and
+      smoothed recovery peak >= hard_recovery_peak; soft_show = not hard and min depth >= soft_depth_min (the soft
+      recovery peak >= soft_recovery_peak is the quick_recovery attribute). The hold is measured on 5-frame means with
+      relative hysteresis (enter depth <= hold_depth and lateral >= hold_lat, stay within + h, dwell_frames bridged)
+      until show_fwd_s + hold_tail_s (loop 1 DEF-T06). Peaks use the *_q10 values when X-big was smoothed with q = 10
+      (loop 1 DEF-T13); flat = depth at t0 + depth_at_s in [0, level_max] with lateral >=
+      flat_lat_min; a depth < -level_max that is no show is show_unclassified (abstain: no label); at_level =
+      |depth| <= level_max; drop_high level_max..high_max, drop_standard high_max..standard_max, drop_deep >
+      standard_max; r(X-big) <= deep_r_max promotes a standard drop to deep with probability P(r <= deep_r_max) x
+      P(depth > high_max), never a high drop (loop 1 DEF-T07). The crossing is accepted on the 5-frame-mean side only
+      when the new sign holds cross_hold_frames (loop 1 DEF-T10). Switches are labelled by detect_switch.
+    params:
+      pre_screen_s: {value: 0.5, unit: s, note: "X-ball / X-big / H velocity read this long before t0 (was a literal, DEF-T20)"}
+      cross_hold_frames: {value: 5, unit: frames, note: "loop 1 DEF-T10: a crossing of the 5-frame-mean side must hold this long"}
+      blitz_retreat_s: {value: 0.5, unit: s, note: "loop 1 DEF-T02: a big retreating >= soft_retreat_min this soon after the trap while H holds showed, not blitzed"}
+      hold_tail_s: {value: 1.0, unit: s, note: "hold searched until show_fwd_s + this (was a literal, DEF-T20)"}
+      no_man_behind_s: {value: 2.0, unit: s, note: "window of no_man_behind_share (was a literal, DEF-T20)"}
+      hard_recovery_peak_q10: {value: 2.2, unit: m/s, note: "loop 1 DEF-T13: q = 10 smoother tier (sigma_p >= 0.45). Harness side_pnr_hard_hedge, 60 runs: smoothed recovery peak 5.11 m/s (q30, sigma 0.3) -> 4.47 (q10, sigma 0.5), ratio 0.875 x 2.5"}
+      soft_recovery_peak_q10: {value: 1.6, unit: m/s, note: "loop 1 DEF-T13: q = 10 tier. Harness side_pnr_soft_show, 60 runs: 2.32 m/s (q30) -> 1.85 (q10), ratio 0.8 x 2.0"}
+      u_min_speed: {value: 1.0, unit: m/s}
+      big_near: {value: 1.0, unit: m}
+      cross_back_s: {value: 0.5, unit: s}
+      cross_fwd_s: {value: 2.0, unit: s, note: "research 1.0 s; an under path of 5-6 m needs >= 1.9 s (min-jerk at <= 10 m/s^2)"}
+      class_margin: {value: 0.3, unit: m}
+      hip_max: {value: 0.8, unit: m, note: "over: X-ball within 0.8 m of S while crossing = hip, else wide"}
+      blitz_back_s: {value: 0.2, unit: s}
+      blitz_fwd_s: {value: 1.5, unit: s}
+      blitz_depth_max: {value: 0.5, unit: m}
+      show_back_s: {value: 0.2, unit: s}
+      show_fwd_s: {value: 0.8, unit: s}
+      hold_depth: {value: -0.6, unit: m, note: "hold = time at the hard-hedge position itself (depth and lateral gates)"}
+      hold_lat: {value: 0.8, unit: m}
+      recovery_s: {value: 1.2, unit: s}
+      hard_depth_max: {value: -0.6, unit: m}
+      hard_lat_min: {value: 0.8, unit: m}
+      hard_hold_min_s: {value: 0.5, unit: s}
+      hard_hold_max_s: {value: 2.0, unit: s, note: "loop 1 DEF-T06: 1.5 -> 2.0 s; the measured hold includes approach / exit frames (a true 0.9 s stay measures ~1.6 s)"}
+      hold_sigma_s: {value: 0.25, unit: s, note: "soft hold window: P(min <= hold <= max) with this sigma (gate-crossing jitter, proposal)"}
+      recovery_chord_min: {value: 2.0, unit: m}
+      hard_recovery_peak: {value: 2.5, unit: m/s, note: "CA-RTS smoothed (research 4.0 m/s true was unreachable)"}
+      soft_depth_max: {value: 0.5, unit: m}
+      soft_depth_min: {value: -1.0, unit: m, note: "research soft show -1.0 <= lambda_min"}
+      soft_lat_min: {value: 0.5, unit: m}
+      soft_retreat_min: {value: 1.0, unit: m}
+      class_margin_min: {value: 0.2, unit: "1", note: "show: hard_hedge / soft_show only when |P(hard | show) - P(soft | show)| >= this, else show_unclassified (abstain; loop 2 SHOW-hard-vs-soft)"}
+      soft_recovery_peak: {value: 2.0, unit: m/s}
+      depth_at_s: {value: 0.3, unit: s}
+      level_max: {value: 0.6, unit: m}
+      flat_lat_min: {value: 0.5, unit: m}
+      high_max: {value: 1.83, unit: m, note: "heuristic edge (R-DF-16)"}
+      standard_max: {value: 3.05, unit: m, note: "1.83-3.05 m sourced from a coaching blog (repo N3); 3.05 edge heuristic"}
+      deep_r_max: {value: 4.5, unit: m}
+    min_duration_s: null
+    outputs: [depth_m, lateral_m, path class + probs, coverage class + probs, frame_dir_source]
+    confidence: medium (geometry repo F3.0; margins proposal)
+    noise: >-
+      Identity swaps between X-ball and S (closer than 0.6 m) flip over/under; require tracker identity confidence >=
+      0.8 in [t0 - 0.5, t0 + 1.0] when available. The 0.3 m margins are below sigma_rel: soft classes only.
+    conflicts_resolved:
+      - "lambda frame (handler velocity) vs named_spots pnr_big_* (S -> rim): depth uses the named_spots axis
+        (canonical positions); the velocity axis is used only for lateral offsets and the switch exchange lambda."
+      - "Research crossing bands left THROUGH empty under a drop; replaced by the S -> X-big axis test (BS-3 segment
+        test made continuous)."
+      - "Depth bands R-DF-16 (0.6/1.83/3.05) vs named_spots pnr_big_* (-0.6/1.0/3.5, r <= 5.5): event classes use
+        R-DF-16 (the live requirement); the per-frame named_spots labels may disagree in 1.0-1.83 and 3.05-3.5 m
+        (open question for named_spots 0.3.3)."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.0, F3.1, F3.2, BS-1, BS-3, BS-4, BS-9", supports: "screen geometry and coverage signatures"}
+      - {url: "repo:config/named_spots.yaml pnr_big_hedge, pnr_big_at_level, pnr_big_high_drop, pnr_big_deep_drop, pnr_big_blitz", supports: "rim-direction depth axis"}
+      - {url: "repo:docs/requirements_review/proposals_consolidated.yaml R-DF-16", supports: "bands 0.6/1.83/3.05 at t0 + 0.3 s"}
+      - {url: "https://www.sloansportsconference.com/research-papers/recognizing-and-analyzing-ball-screen-defense-in-the-nba", supports: "prior automated screen-defense classification of 270,823 NBA screens (classes not verified)"}
+    status: proposal
+    detectability: rule
+    detector: null
+
+  - id: help_ladder
+    research_id: DM-RULE-06
+    level: rule
+    name: Help-excursion ladder (one event, graded commitment)
+    aliases: [help commitment scale]
+    actors: off-ball defender D (matchup A), handler H
+    t0: excursion onset
+    rule: >-
+      Triggers: middle dribble, drive, ball screen, post catch (receiver r <= post_catch_r); one trigger per handler per
+      trigger_merge_s (a middle dribble wins). For every off-ball defender (not H's top defender, matchup A != H): onset
+      = first frame in [t, t + onset_window_s] with v_to(H) >= onset_v_to held >= onset_hold_s. Peak = largest 5-frame
+      mean displacement from the pre-onset baseline (baseline_back_s before the onset) within excursion_max_s; it must point toward H (component >=
+      dir_cos_min x peak), and when the defender never comes within sink_owner_min_dh of H and moved more toward the
+      rim than toward H, SINK owns it. return = drop of dist(D, A) after the peak within return_window_s
+      (stunt_return_s for the stunt). A persistent matchup change at peak + restore_s means ROTATE (no ladder label); a
+      TRAP containing D means a double. Rungs (exactly one, highest met): help_and_recover (dist(D, A) at peak >=
+      har_off_man_min, D inside the 1.5 m drive corridor ahead of H (beside the H -> rim segment with lane fraction tau >
+      0, loop 1: a digger just behind H is not in the corridor), or the nearest defender to H while H's own
+      defender is beaten (r_onb > r_H), for >= har_near_s,
+      return >= har_return_min, matchup A restored at peak + restore_s); dig (not nearest; approach >=
+      dig_approach_min, min dist(D, H) <= dig_dist_max (hard <= hard_dig_max), return >= dig_return_min);
+      step_release (middle-dribble trigger; peak >= step_min, release >= step_release_min, onset <= step_onset_max_s
+      after the dribble start, reversal start (v_to(A) >= onset_v_to held >= onset_hold_s) <= step_release_lag_max_s
+      after the dribble end, never within dig_dist_max);
+      stunt (other triggers; peak >= stunt_min, return >= stunt_return_min within stunt_return_s, min dist > dig_dist_max;
+      fake_trap flag when min dist <= fake_trap_dist); minor_excursion (other triggers; minor_min <= peak < stunt_min,
+      return >= minor_return_min); minor_excursion and step_release abstain when the defender's or handler's estimated
+      sigma_p >= subnoise_abstain_sigma_p (loop 1 DEF-T13). When no rung reaches emit_p_min but the rung probabilities sum to >= emit_p_min (an
+      excursion surely happened, its rung is ambiguous), the most probable rung is emitted with conf = P(rung) and
+      all rung probabilities as alternatives.
+    params:
+      span_after_peak_s: {value: 0.3, unit: s, note: "min dist / help share / trap overlap measured until peak + this (was a literal, DEF-T20)"}
+      rot_persist_s: {value: 0.5, unit: s, note: "a new top-1 at peak + restore_s must hold this long to make the excursion a rotation (was a literal, DEF-T20)"}
+      post_catch_r: {value: 4.5, unit: m}
+      trigger_merge_s: {value: 1.0, unit: s}
+      onset_window_s: {value: 1.5, unit: s}
+      onset_v_to: {value: 0.7, unit: m/s, note: "CA-RTS attenuates 0.5 m out-and-back steps: smoothed peaks ~1.0-1.3 m/s (sim.py)"}
+      onset_hold_s: {value: 0.15, unit: s}
+      baseline_back_s: {value: 0.2, unit: s, note: "displacement baseline = 5-frame mean position this long before the onset (not after it)"}
+      excursion_max_s: {value: 3.0, unit: s}
+      return_window_s: {value: 1.5, unit: s}
+      return_min_frac: {value: 0.4, unit: "1", note: "excursion closes when dist(D, A) has dropped by 40 % of the peak"}
+      stunt_return_s: {value: 1.0, unit: s}
+      corridor_half_width: {value: 0.75, unit: m}
+      restore_s: {value: 2.0, unit: s}
+      dir_cos_min: {value: 0.5, unit: "1"}
+      sink_owner_min_dh: {value: 2.0, unit: m}
+      har_near_s: {value: 0.3, unit: s}
+      har_off_man_min: {value: 2.0, unit: m}
+      har_return_min: {value: 1.0, unit: m}
+      dig_approach_min: {value: 1.5, unit: m}
+      dig_dist_max: {value: 1.2, unit: m}
+      hard_dig_max: {value: 0.8, unit: m}
+      dig_return_min: {value: 1.0, unit: m}
+      step_min: {value: 0.35, unit: m, note: "measured threshold below the 0.5 m behavioural size (check fix); ROC-calibrate"}
+      step_release_min: {value: 0.3, unit: m}
+      step_onset_max_s: {value: 0.65, unit: s, note: "0.4 s + t_react"}
+      step_release_lag_max_s: {value: 0.8, unit: s, note: "0.5 s + proxy dribble-end jitter"}
+      stunt_min: {value: 1.0, unit: m}
+      stunt_return_min: {value: 0.5, unit: m}
+      minor_min: {value: 0.35, unit: m}
+      minor_return_min: {value: 0.3, unit: m}
+      fake_trap_dist: {value: 2.0, unit: m}
+    min_duration_s: 0.2
+    outputs: [rung, peak_disp_m, min_dist_to_handler_m, latency_s, return_censored, hard_dig, fake_trap, alternatives]
+    confidence: "P_cond = product of the rung's gates: distances to H / A sigma_rel, returns (pair-distance changes) sqrt(2) sigma_rel, the excursion peak (ONE track's displacement) sigma_own (loop 2 NEW-R1); all rung probabilities stored as alternatives. dig and stunt abstain in the q = 10 tier (globals.high_noise_abstain_kinds)"
+    noise: Rungs 0-1 are near the noise floor (abstain_by_default at tier C/D until noise_model is measured).
+    conflicts_resolved:
+      - "STEP_RELEASE vs STUNT: the trigger decides (check fix), so no defender-moment carries two labels."
+      - "DIG vs HELP_AND_RECOVER: disjoint by whether D became the nearest defender / corridor defender."
+      - "Unclassified 0.5-1.0 m excursions: minor_excursion rung (check fix)."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4, A0 STEP_RELEASE, F7.3, F6.1", supports: "stunt, step-release, dig, help-and-recover thresholds"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "help-and-recover / stunt distinct from full rotation (concept only, no numbers)"}
+    status: proposal
+    detectability: rule
+    detector: null
+
+  - id: composition
+    research_id: DM-RULE-08
+    level: rule
+    name: Composition grammar for defensive chains
+    aliases: [compositional coverage name]
+    actors: all
+    t0: first event of the chain
+    rule: >-
+      A chain is an ordered list of this family's events sharing one trigger, or linked within 1.5 s (45 frames) where
+      each next event's actors intersect the previous one's. Name = ' -> '.join(kind[class]) in t0 order; stored as
+      set_instances.compositional_name and action_sequence = [{kind, actors, t0, start, end, conf, attrs}]. One
+      'unknown' placeholder of <= 1.5 s keeps a chain alive; a chain ends at a shot, turnover, foul, SET_DEF or a 3.0 s gap.
+      Chain conf = product of member confs (MP-16 sets).
+    params: {}
+    min_duration_s: null
+    outputs: [compositional_name, action_sequence]
+    confidence: proposal
+    noise: a missed middle event splits a chain unless the placeholder bridges it
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:schema/tables/set_instances.yaml (compositional_name, action_sequence)", supports: "name plus full sequence storage (R-ST-06)"}
+    status: proposal
+    detectability: rule
+    detector: null
+
+  # ------------------------------------------------------------------------------------------------ primitives
+  - id: def_locomotion
+    research_id: DM-P01
+    level: primitive
+    name: Defensive locomotion relative to the facing proxy (forward / lateral / backpedal)
+    aliases: [slide (proxy), backpedal, turn and run]
+    actors: any defender
+    t0: first frame of the class run
+    rule: >-
+      Facing proxy (no pose): toward H for the defender whose top-1 is the holder, else toward the midpoint of man and
+      ball. angle = angle between velocity and facing. def_forward <= forward_max_deg, def_lateral between,
+      def_backpedal >= backward_min_deg; only at speed >= v_min (one gate: heading is invalid below 1.0 m/s, check
+      fix) and significantly moving (stationary_s2 >= stand_s2, MP-09); class held >= min_s with exit gaps <=
+      exit_gap_s bridged; the run's window-mean P(speed >= v_min) must reach p_move_min (loop 1 DEF-T11). Slide vs crossover run needs pose (foot order)
+      and is not emitted.
+    params:
+      v_min: {value: 1.0, unit: m/s}
+      min_s: {value: 0.4, unit: s}
+      forward_max_deg: {value: 45, unit: deg}
+      backward_min_deg: {value: 135, unit: deg}
+      exit_gap_s: {value: 0.233, unit: s}
+      proxy_conf_factor: {value: 0.8, unit: "1", note: "proxy facing is not torso facing"}
+      p_move_min: {value: 0.75, unit: "1", note: "loop 1 DEF-T11: window mean of P(smoothed speed >= v_min | sigma_speed) over the class run; harness NEG_slow_shuffle (true 0.78 m/s) runs score ~0.64, real slides / step-ups >= 0.9"}
+    min_duration_s: 0.4
+    outputs: [class, mean_speed, facing_source, alternatives]
+    confidence: "window mean of P(angle in band) with sigma_heading = sigma_speed / speed, x window mean P(speed >= v_min), x proxy_conf_factor"
+    noise: The proxy is wrong when the defender turns his head to the ball off-ball. sim.py heading RMSE jog 8-9 deg.
+    conflicts_resolved:
+      - "Heading gate 0.5 vs 1.0 m/s: 1.0 m/s for every class (check fix)."
+      - "KINEMATICS family owns body-frame backpedal / defensive slide; this item is the ball-relative proxy class."
+    sources:
+      - {url: "repo:config/vocab/actions_extra.yaml:152-163", supports: "movement direction classes, 0.40 s"}
+    status: proposal
+    detectability: xy
+    detector: detect_def_locomotion
+    kinds: [def_forward, def_lateral, def_backpedal]
+
+  - id: closeout
+    research_id: DM-P02
+    level: primitive
+    name: CLOSEOUT (pass-triggered approach to the receiver)
+    aliases: [close out, closeout to shooter]
+    actors: closer D, receiver A
+    t0: t_catch of A
+    rule: >-
+      Window W = [t_rel - pre_release_s, min(t_catch + window_after_catch_s, next pass or shot release)]. For every
+      defender: t_s = first frame in W with v_to(A) >= v_start held >= start_hold_s; t_pk = argmax smoothed speed in
+      [t_s, W_end]; t_e = first frame after t_pk where D is stationary (s2 < stand_s2; else W_end). The defender with the largest
+      distance reduction is the closer. Gates (5-frame means): dist(t_s) >= start_dist_min; chord |D(t_e) - D(t_s)| >=
+      chord_min; dist(t_s) - dist(t_e) >= dist_drop_min; smoothed peak >= peak_speed_min (sprint flag at
+      sprint_flag_speed); end dist <= end_dist_max. The landing angle at A between A->D and A->rim is a quality
+      attribute, not a gate (loop 1 DEF-T15): landing_side rim_side when P(angle <= landing_angle_max) >= 0.5, else
+      high_side (named_spots closeout_landing side test).
+    params:
+      pre_release_s: {value: 0.2, unit: s}
+      window_after_catch_s: {value: 1.5, unit: s}
+      v_start: {value: 1.5, unit: m/s}
+      start_hold_s: {value: 0.2, unit: s}
+      v_end: {value: 1.0, unit: m/s}
+      start_dist_min: {value: 3.0, unit: m}
+      chord_min: {value: 2.5, unit: m}
+      dist_drop_min: {value: 2.0, unit: m}
+      peak_speed_min: {value: 2.5, unit: m/s, note: "CA-RTS smoothed; sim.py 2.5 m chord in 1.0 s peaks 3.39 smoothed"}
+      peak_speed_min_q10: {value: 2.0, unit: m/s, note: "q = 10 smoother tier (loop 2, NEW-R1): sim.py 2.5 m chord in 1.0 s peaks 3.13 +- 0.39 smoothed at sigma 0.3 (q30) and 2.52 +- 0.41 at sigma 0.5 (q10), 60 seeds; 2.5 x 2.52 / 3.13 = 2.0"}
+      sprint_flag_speed: {value: 3.5, unit: m/s, note: "smoothed (research 4.0 m/s true was unreachable)"}
+      end_dist_max: {value: 2.0, unit: m, note: "one event owns hard / standard / short (check fix)"}
+      landing_angle_max: {value: 60, unit: deg}
+    min_duration_s: 0.3
+    outputs: [latency_s, closeout_distance_m, closeout_speed_mps, end_dist_m, angle_deg, landing_side, p_rim_side, sprint, t_s, t_e, gates]
+    confidence: "P_cond = product of the five gate probabilities; conf x edge x gap. Gate sigmas (loop 2 NEW-R1): start / end dist sigma_rel; dist_drop (a pair-distance change) sqrt(2) sigma_rel; chord (ONE track's displacement) sigma_own = max(K_CAL sqrt(2 mean var_p), k_floor sigma_p); peak speed sigma_speed against peak_speed_min, or peak_speed_min_q10 in the q = 10 tier"
+    noise: Chord, not path length (path inflates under noise). End distances 0.8 vs 1.2 m are about 1 sigma_rel apart.
+    conflicts_resolved:
+      - "Peak >= 4 m/s (defense 0.4) unreachable for short closeouts and further cut by smoothing: 2.5 m/s smoothed gate, 3.5 m/s sprint flag."
+      - "End gate 1.5 -> 2.0 m so short closeouts are not split between CLOSEOUT and RECOVER (check fix)."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 CLOSEOUT, A0 RECOVER, F7.5", supports: "2.5 m, 1.5 m, RECOVER 1.5/2.0"}
+      - {url: "repo:config/named_spots.yaml closeout_landing", supports: "landing within 1.5 m, rim side <= 60 deg"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "hard vs short closeouts (concept)"}
+    status: proposal
+    detectability: xy
+    detector: detect_closeout
+    kinds: [closeout]
+
+  - id: closeout_length
+    research_id: DM-P03
+    level: primitive
+    name: Closeout length class (hard / standard / short)
+    aliases: [hard closeout, short closeout, long closeout]
+    actors: D, A
+    t0: t_catch (same event as closeout)
+    rule: >-
+      e = 5-frame mean dist(D, A) at t_e of the CLOSEOUT. closeout_hard e <= hard_max; closeout_standard hard_max < e <=
+      standard_max; closeout_short standard_max < e <= short_max. The class is the band containing e (loop 1: the argmax
+      of the band probabilities never picks the 0.4 m standard band once sigma_rel ~ 0.4 m); soft band probabilities
+      with sigma_rel are the alternatives; tight_p =
+      P(hard) + P(standard) is also stored because the 0.8 m edge sits near the two-body floor.
+    params:
+      hard_max: {value: 0.8, unit: m}
+      standard_max: {value: 1.2, unit: m}
+      short_max: {value: 2.0, unit: m}
+    min_duration_s: null
+    outputs: [length_class, alternatives, tight_p, end_dist_m]
+    confidence: "closeout P_cond x P(class)"
+    noise: Centre-to-centre distance floor about 0.5 m; expect many standard calls; keep probabilities.
+    conflicts_resolved:
+      - "Sprint-stop 0.6-1.0, hard <= 0.8, choppy 0.8-1.2, short 1.2-2.0 overlapped in the repo: length lives on this axis only."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md A0 RECOVER, M-4, M-1(c)", supports: "hard <= 0.8, short 1.2-2.0"}
+      - {url: "repo:config/named_spots.yaml closeout_landing", supports: "length classes listed with the landing spot"}
+    status: proposal
+    detectability: xy
+    detector: detect_closeout_length
+    kinds: [closeout_hard, closeout_standard, closeout_short]
+
+  - id: closeout_profile
+    research_id: DM-P04a/DM-P04b
+    level: primitive
+    name: Closeout deceleration profile (sprint-stop / mixed / choppy)
+    aliases: [sprint and stop, one-two stop, choppy feet, stutter closeout]
+    actors: D
+    t0: t_catch (same event as closeout)
+    rule: >-
+      Only when the smoothed peak >= profile_min_peak. i_l = last frame after the peak with speed >= 0.8 v_pk; i_s =
+      first later frame with speed <= 1.0 m/s; d_dec = 3-frame mean chord i_l -> i_s; implied mean deceleration a_dec =
+      ((0.8 v_pk)^2 - 1.0^2) / (2 d_dec). closeout_sprint_stop a_dec >= sprint_stop_min_decel; closeout_choppy a_dec <=
+      choppy_max_decel; closeout_mixed between. sigma(a_dec) propagated from sigma_speed and sigma_rel (floor 0.3).
+    params:
+      profile_min_peak_q10: {value: 2.3, unit: m/s, note: "loop 1 DEF-T13: q = 10 tier. 60 runs each: choppy peak p10 2.83 -> 2.54, sprint-stop p10 3.82 -> 3.02, walk-up mean 2.28 -> 2.19 (q30 sigma 0.3 -> q10 sigma 0.5)"}
+      choppy_max_decel_q10: {value: 2.9, unit: m/s^2, note: "loop 1 DEF-T13: q = 10 tier. Implied deceleration, 60 runs at sigma 0.5 (q10): choppy 2.45 +- 0.64, sprint-stop 3.80 +- 0.71 (q30 sigma 0.3: 2.57 / 5.73)"}
+      sprint_stop_min_decel_q10: {value: 3.3, unit: m/s^2, note: "loop 1 DEF-T13: q = 10 tier (see choppy_max_decel_q10); d prime ~2.0, reported with alternatives only"}
+      profile_min_peak: {value: 2.5, unit: m/s}
+      choppy_max_decel: {value: 3.5, unit: m/s^2, note: "sim.py (24 seeds): fastest physical min-jerk stop 5.4 +- 0.8, 1.5x slower 3.4 +- 0.8; calibrate on film"}
+      sprint_stop_min_decel: {value: 4.5, unit: m/s^2, note: "class separation d' ~ 2.4 at sigma_p 0.3 AR(1): keep the soft output"}
+    min_duration_s: null
+    outputs: [profile_class, a_dec_mps2, d_dec_m, t_dec_s, alternatives]
+    confidence: "closeout P_cond x P(class)"
+    noise: CA-RTS spreads a sharp stop over about 0.3 s; the implied deceleration uses distance, not peak acceleration.
+    conflicts_resolved:
+      - "Research d_dec <= 0.6 m and t_dec <= 0.4 s scale with v_pk^2 and mislabel long crisp closeouts as choppy (check, high): replaced by a_dec."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.5, M-1(c)", supports: "sprint-stop and choppy signatures (MSU choppy documented)"}
+    status: proposal
+    detectability: xy
+    detector: detect_closeout_profile
+    kinds: [closeout_sprint_stop, closeout_mixed, closeout_choppy]
+
+  - id: closeout_fly_by
+    research_id: DM-P04c
+    level: primitive
+    name: Closeout profile fly-by
+    aliases: [run-by, contest and run past]
+    actors: D, receiver / shooter A
+    t0: closest-approach frame (shot release offset stored)
+    rule: >-
+      After a pass to A, within [t_catch, t_catch + window_after_catch_s]: closest approach of D to A (interior
+      minimum) with 3-frame mean distance <= cpa_max, smoothed speed at the approach >= cpa_speed_min, overshoot =
+      max over [t_cpa, t_cpa + overshoot_window_s] of (D - A(t_cpa)) . u_heading >= overshoot_min, and speed >=
+      keep_speed_min for keep_speed_s after the approach. on_shot = a shot by A within shot_sync_s.
+    params:
+      span_before_cpa_s: {value: 0.5, unit: s, note: "event start before the closest approach (was a literal, DEF-T20)"}
+      window_after_catch_s: {value: 1.5, unit: s}
+      cpa_max: {value: 1.0, unit: m}
+      cpa_speed_min: {value: 2.5, unit: m/s, note: "research 3.0 true; smoothed calibration"}
+      overshoot_window_s: {value: 0.6, unit: s}
+      overshoot_min: {value: 1.0, unit: m}
+      keep_speed_s: {value: 0.3, unit: s}
+      keep_speed_min: {value: 1.75, unit: m/s, note: "research 2.0 true; smoothed calibration"}
+      shot_sync_s: {value: 0.3, unit: s}
+    min_duration_s: null
+    outputs: [min_dist_m, speed_at_cpa_mps, overshoot_m, on_shot]
+    confidence: "product of the four gates"
+    noise: Bodies pass within 1 m; identity swaps likely (require id confidence >= 0.8 when available). No jump flag without z.
+    conflicts_resolved:
+      - "t0 at the closest approach (measurement-defined, MP-17) instead of the shot release, so pump-fake fly-bys are kept."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.5 Fly-by", supports: "within 1 m, continues >= 1 m"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "closeouts that fly past shooters (concept)"}
+    status: proposal
+    detectability: xy
+    detector: detect_closeout_fly_by
+    kinds: [closeout_fly_by]
+
+  - id: closeout_smart
+    research_id: DM-P04d
+    level: primitive
+    name: Smart / fake closeout and zone on-and-off
+    aliases: [fake closeout, stop-and-lunge, bump back]
+    actors: "D, A (zone: D, D2)"
+    t0: stop frame
+    rule: >-
+      SMART: D stops (s2 < 5.99) at dist 1.5-2.5 m from A, then lunges >= 0.5 m toward A within 0.6 s. ZONE_ON_OFF
+      (zone posterior >= 0.6): D closes to <= 1.5 m of the holder, a teammate arrives within 1.5 m, D retreats >= 1.5 m
+      within 1.5 s.
+    params: {}
+    min_duration_s: null
+    outputs: [stop_dist_m, lunge_m]
+    confidence: low
+    noise: The 0.5 m lunge is at the AR(1) noise floor (check DM-RULE-03); zone on-off needs the zone posterior.
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.5 Smart closeout, Zone on and off", supports: "definitions"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["measured noise model (noise_model) or pose for the 0.5 m lunge", "zone posterior (zone family) for zone_on_off"]
+    detector: detect_closeout_smart
+
+  - id: recover
+    research_id: DM-P07
+    level: primitive
+    name: RECOVER (help-to-man return)
+    aliases: [recover, get back to your man]
+    actors: D, matchup A
+    t0: start of the approach (v_to(A) >= v_start held >= start_hold_s)
+    rule: >-
+      Any approach of D to A (v_to(A) >= v_start held >= start_hold_s) with A = D's jointly assigned attacker (one-to-one
+      assignment over all defenders, loop 1 DEF-T17) both pre_matchup_s before the start and at the end (else it is a
+      rotation); chord >= chord_min, distance drop >= dist_drop_min, start dist >= start_dist_min, end dist <=
+      end_dist_max; end as in closeout (first frame after the peak with stationary_s2 < stand_s2) within tail_s after
+      the approach; one recover per defender within dedupe_s.
+      Approaches already labelled CLOSEOUT are excluded (closeout = the pass-triggered case).
+    params:
+      dedupe_s: {value: 1.0, unit: s, note: "one recover per defender within this (was a literal, DEF-T20)"}
+      v_start: {value: 1.5, unit: m/s}
+      start_hold_s: {value: 0.2, unit: s}
+      tail_s: {value: 1.5, unit: s}
+      pre_matchup_s: {value: 1.0, unit: s}
+      chord_min: {value: 1.5, unit: m}
+      dist_drop_min: {value: 1.0, unit: m}
+      start_dist_min: {value: 2.5, unit: m}
+      end_dist_max: {value: 2.0, unit: m}
+    min_duration_s: 0.3
+    outputs: [chord_m, end_dist_m, peak_speed]
+    confidence: "product of four gates"
+    noise: A 1.5 m chord is safe at sigma_p <= 0.5 m.
+    conflicts_resolved:
+      - "RECOVER is no longer a superset of CLOSEOUT; pass-triggered approaches are CLOSEOUT (check fix)."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md A0 RECOVER", supports: "1.5 m / 2.0 m"}
+    status: proposal
+    detectability: xy
+    detector: detect_recover
+    kinds: [recover]
+
+  - id: sink
+    research_id: DM-P08
+    level: primitive
+    name: Sink / sag (dynamic)
+    aliases: [sink, sag, drop to the lane, shrink]
+    actors: off-ball D, matchup A, handler H
+    t0: onset of D's movement toward the rim (v_r >= onset_v_r held >= onset_hold_s); trigger frame stored
+    rule: >-
+      Trigger: drive or post catch. hd = r_A - r_D. SINK if hd rises >= delta_hd_min within window_s of the trigger
+      (5-frame means), D's own r falls >= own_dr_min, and D stays > min_dist_handler from H (else the help ladder owns
+      it). End spot: named_spots sink_sag evaluated at the peak. Team shrink = >= 3 sinks within one trigger (composition).
+    params:
+      window_s: {value: 1.2, unit: s, note: "research 0.7 s unreachable from a stance (check, high): 0.25 + sqrt(2*1.5/4.5) = 1.07 s"}
+      delta_hd_min: {value: 1.5, unit: m}
+      own_dr_min: {value: 1.0, unit: m}
+      min_dist_handler: {value: 2.0, unit: m}
+      onset_v_r: {value: 1.0, unit: m/s}
+      onset_v_r_q10: {value: 1.4, unit: m/s, note: "q = 10 tier (sigma_p >= 0.45, loop 2 NEW-R2): onset frame vs truth (v_r >= 1.0) over wing_sink / corner_fills_wing x 20 seeds x 2 mirrors: threshold 1.0 bias -4.7 frames, 82 % within 0.3 s; 1.4 bias -1.2 frames, 97 % (q30 at sigma 0.3: 1.0 gives 100 %)"}
+      onset_hold_s: {value: 0.2, unit: s}
+    min_duration_s: 0.3
+    outputs: [delta_hd_m, latency_s, end_spot_sink_sag]
+    confidence: "product of three gates: help-depth rise with sqrt(2) sigma_rel, own r change with sigma_own (one track), min dist to H with sigma_rel(D, H) (loop 2 NEW-R1; was sqrt(2) sigma_rel for all three). t0 onset threshold onset_v_r_q10 in the q = 10 tier"
+    noise: If A cuts outward hd rises with no D movement; the own-r gate prevents that.
+    conflicts_resolved:
+      - "F7.3 dynamic sink and named_spots sink_sag agree on 1.5 m; window lengthened by the physics check."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.3", supports: "help depth >= 1.5 m"}
+      - {url: "repo:config/named_spots.yaml sink_sag", supports: "static sink geometry"}
+    status: proposal
+    detectability: xy
+    detector: detect_sink
+    kinds: [sink]
+
+  - id: minor_excursion
+    research_id: check.DM-RULE-06
+    level: primitive
+    name: Minor help excursion (ladder rung 0)
+    aliases: [jab, half step help]
+    actors: off-ball D, H
+    t0: excursion onset
+    rule: help_ladder rung 0 (params in help_ladder).
+    params: {}
+    min_duration_s: 0.2
+    outputs: [peak_disp_m, return, alternatives]
+    confidence: help_ladder
+    noise: At the noise floor; abstain_by_default at tier C/D.
+    conflicts_resolved: ["Fills the ladder gap reported by the check (0.5-1.0 m without a dribble trigger)."]
+    sources:
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "jab / stunt help from the corner (concept)"}
+    status: proposal
+    detectability: xy
+    detector: detect_minor_excursion
+    kinds: [minor_excursion]
+
+  - id: step_release
+    research_id: DM-P09
+    level: primitive
+    name: Step-release (Izzo one-step help)
+    aliases: [step and release]
+    actors: off-ball D, H
+    t0: excursion onset
+    rule: help_ladder rung 1 (middle-dribble trigger decides; params in help_ladder).
+    params: {}
+    min_duration_s: 0.3
+    outputs: [step_m, release, latency_s]
+    confidence: help_ladder
+    noise: 0.35-0.5 m steps are about 1 sigma_rel; dribble start/end are XY proxies (holder moving / stopping).
+    conflicts_resolved: ["STEP_RELEASE replaces STUNT for dribble-triggered help (A0 note); trigger decides (check fix)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md A0 STEP_RELEASE, M-5", supports: "0.5 m / 0.4 s / 0.4 m / 0.5 s"}
+    status: proposal
+    detectability: xy
+    detector: detect_step_release
+    kinds: [step_release]
+
+  - id: stunt
+    research_id: DM-P10
+    level: primitive
+    name: Stunt
+    aliases: [fake help, stunt at the ball]
+    actors: off-ball D, H
+    t0: excursion onset
+    rule: help_ladder rung 2 (params in help_ladder).
+    params: {}
+    min_duration_s: 0.4
+    outputs: [peak_m, fake_trap flag]
+    confidence: help_ladder
+    noise: see help_ladder
+    conflicts_resolved: ["FAKE_TRAP (DM-RULE-07) is a stunt with min dist <= 2.0 m (flag), not a separate event."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 STUNT, F7.3", supports: "1.0 m / 1.0 s"}
+    status: proposal
+    detectability: xy
+    detector: detect_stunt
+    kinds: [stunt]
+
+  - id: dig
+    research_id: DM-P11
+    level: primitive
+    name: Dig / yo-yo
+    aliases: [dig, yo-yo, choke]
+    actors: perimeter D, handler or post holder H
+    t0: excursion onset
+    rule: help_ladder rung 3 (params in help_ladder); a TRAP of >= 0.6 s makes it a double instead.
+    params: {}
+    min_duration_s: 0.3
+    outputs: [approach_m, min_dist_m, hard_dig]
+    confidence: help_ladder
+    noise: Dig vs short double hinges on the 0.6 s TRAP dwell.
+    conflicts_resolved: ["Yo-yo <= 1.2 m (F6.1) vs dig <= 0.8 m (F7.3): one event with a hard flag."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F6.1, F7.3", supports: "yo-yo / dig"}
+    status: proposal
+    detectability: xy
+    detector: detect_dig
+    kinds: [dig]
+
+  - id: help_and_recover
+    research_id: DM-P12
+    level: primitive
+    name: Help and recover / drive help
+    aliases: [help and recover, wall up, show (drive help)]
+    actors: helper D, driver H, matchup A
+    t0: excursion onset
+    rule: help_ladder rung 4 (params in help_ladder).
+    params: {}
+    min_duration_s: 0.3
+    outputs: [depth, recover time]
+    confidence: help_ladder
+    noise: corridor edges noisy; nearest-defender test dominates
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.3", supports: ">= 2 m off his man, restored within 2 s; 1.5 m corridor"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "help-and-recover concept"}
+    status: proposal
+    detectability: xy
+    detector: detect_help_and_recover
+    kinds: [help_and_recover]
+
+  - id: jump_to_ball
+    research_id: DM-P13
+    level: primitive
+    name: Jump to the ball (on a pass)
+    aliases: [jump to the ball, move on the flight]
+    actors: passer's defender D, passer P, receiver
+    t0: pass release
+    rule: >-
+      D = passer's top defender 0.2 s before release. Onset = first frame displaced >= onset_disp from the release
+      position (displacement onset replaces the 1.5 m/s^2 acceleration onset, check fix); it must come by max(t_catch,
+      t_rel + t_react + sqrt(2 onset_disp / a_first_step)) + onset_slack_s (move on the flight, physics-bounded for
+      short passes). Displacement (5-frame means) >= total_min by t_catch + after_catch_s, toward the receiver's side
+      (soft, loop 1 DEF-T16: max of P(projection on the pass direction > 0) and P(r_D <= r_P - below_passer_min) x
+      P(projection on the direction D -> receiver > 0)), ending with r_D <= r_P - below_passer_min. The in-flight displacement is
+      reported (jump_m_in_flight) but not gated: 0.5 m in a 0.5 s flight is unreachable after a 0.25 s reaction.
+    params:
+      defender_back_s: {value: 0.2, unit: s, note: "passer's defender read this long before release (was a literal, DEF-T20)"}
+      after_catch_s: {value: 0.6, unit: s, note: "research 0.4 s; 1.0 m needs 0.25 + sqrt(2/4.5) = 0.92 s after release"}
+      onset_slack_s: {value: 0.1, unit: s}
+      total_min: {value: 1.0, unit: m}
+      below_passer_min: {value: 0.8, unit: m}
+      onset_disp: {value: 0.3, unit: m}
+    min_duration_s: null
+    outputs: [jump_m_in_flight, jump_m_total, latency_s]
+    confidence: "product of gates"
+    noise: Flights shorter than 0.4 s give little time (t_react 0.25 s); expect low in-flight probability then.
+    conflicts_resolved:
+      - "Onset by acceleration (M-1(b) 1.5 m/s^2, about 1 sigma under correlated noise) replaced by a displacement onset."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md M-5, M-1(b)", supports: "0.5 / 1.0 m jump; latency target"}
+    acceptance: "latency within +-80 ms of hand timing on the R-DF-08 gold set (offline)"
+    status: proposal
+    detectability: xy
+    detector: detect_jump_to_ball
+    kinds: [jump_to_ball]
+
+  - id: deny
+    research_id: DM-P14
+    level: primitive
+    name: Deny hold (on the line)
+    aliases: [deny, on the line, ball-you-man denial]
+    actors: D, man A (one pass away), ball
+    t0: first frame of the hold
+    rule: >-
+      Enter on named_spots deny_on_the_line (perp <= 0.6 m, tau 0.05-0.35, within 2.0 m of the man, not two passes
+      away); stay while perp <= 0.6 + h, tau within [0.05 - tau_hyst, 0.35 + tau_hyst] and dist <= 2.0 + h; frames
+      inside an emitted FACE_GUARD event of the defender are excluded (face_guard owns them; a pass through the
+      face-guard region that is no face-guard hold does not block the deny, loop 1 DEF-T04); loop 4 (L4-PERIMETER): no
+      frame with the ball beyond half court or with the man in the named_spots post area (r <= 4.5 m; post_position owns
+      it), neither for entry nor stay; held >= min_s with exit
+      gaps <= dwell_frames; t0 back-dated over the frames where the 5-frame-mean features to the hold's attacker already
+      meet the entry predicate (loop 1 DEF-T18), then further while they meet the relaxed stay predicate (+h,
+      +tau_hyst) and D is still closing on the man (5-frame-mean distance non-increasing), at most backdate_max_s
+      (backdate_max_s_q10 = 0 in the q = 10 tier; loop 2). P_cond / p_emit are measured from the strict entry; FACE_GUARD
+      owns frames from its strict entry (attr strict_start), not its back-dated approach. The 0.6 / 0.05 / 0.35 / 2.0 numbers are read from the named_spots
+      expression, never copied.
+    params:
+      min_s: {value: 1.0, unit: s}
+      tau_hyst: {value: 0.05, unit: "1"}
+    min_duration_s: 1.0
+    outputs: [duration_s, mean_perp_m, mean_tau]
+    confidence: "window mean of P(perp <= 0.6 m) x P(tau in band) x window-mean matchup posterior (loop 1 DEF-T12a); p_emit = window mean of P(perp <= 0.6 m)"
+    noise: perp 0.6 m vs sigma_rel ~0.25-0.42 m; soft only. Tau unstable when man and ball < 3 m apart.
+    conflicts_resolved:
+      - "named_spots bands are priority-resolved, not contiguous (check fix): a defender with perp <= 0.6 and tau in
+        (0.35, 0.75] has no one-away label ('deep on line' hole) - raised for named_spots 0.3.3; F7.1/pack-line use 0.8 m."
+    sources:
+      - {url: "repo:config/named_spots.yaml deny_on_the_line, gap_one_pass, izzo_help_spot", supports: "position gates"}
+      - {url: "repo:docs/taxonomy/defense_full.md F2, M-3", supports: "deny index, dead-ball deny"}
+    status: canonical
+    detectability: xy
+    detector: detect_deny
+    kinds: [deny]
+
+  - id: face_guard
+    research_id: DM-P14
+    level: primitive
+    name: Face guard hold
+    aliases: [face guard]
+    actors: D, man A
+    t0: first frame of the hold
+    rule: Enter on named_spots face_guard (tau 0-0.15, perp <= 0.6 m, within 0.9 m; numbers read from the named_spots expression); stay with relative hysteresis; >= min_s; t0 back-dated as deny (loop 1 DEF-T18, relaxed stay predicate loop 2). Abstains in the q = 10 tier (globals.high_noise_abstain_kinds). Loop 4 (L4-PERIMETER) as deny - half-court perimeter only (ball in the frontcourt, man outside the post area). XY cannot see facing; the label is a tight ball-side hold (<= 0.9 m), a superset of true face-guarding.
+    params:
+      min_s: {value: 1.0, unit: s}
+      tau_hyst: {value: 0.05, unit: "1"}
+    min_duration_s: 1.0
+    outputs: [duration_s, mean_perp_m, mean_tau]
+    confidence: "as deny (loop 1 DEF-T12a)"
+    noise: as deny
+    conflicts_resolved: ["face_guard has priority over deny for the same frames."]
+    sources:
+      - {url: "repo:config/named_spots.yaml face_guard", supports: "position gate"}
+    status: canonical
+    detectability: xy
+    detector: detect_face_guard
+    kinds: [face_guard]
+
+  - id: beaten
+    research_id: DM-P15
+    level: primitive
+    name: Beaten / blow-by
+    aliases: [blow-by, beaten off the dribble]
+    actors: on-ball D, driver H
+    t0: first frame of the beaten run
+    rule: After a drive start, within window_s, r_H < r_D - margin for >= min_s.
+    params:
+      window_s: {value: 2.0, unit: s}
+      margin: {value: 0.3, unit: m}
+      min_s: {value: 0.3, unit: s}
+    min_duration_s: 0.3
+    outputs: [separation_m]
+    confidence: "window mean of P(r_H - r_D < -margin) with sigma_rel"
+    noise: 0.3 m margin is below sigma_rel; soft output and dwell.
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F2 Containment failure", supports: "r_b < r_d - 0.3 for >= 0.3 s"}
+    status: canonical
+    detectability: xy
+    detector: detect_beaten
+    kinds: [beaten]
+
+  - id: contain
+    research_id: DM-P15
+    level: primitive
+    name: Contain (beat to the spot)
+    aliases: [cut off, beat to the spot]
+    actors: on-ball D, driver H
+    t0: drive start
+    rule: >-
+      Not beaten, and during [t, t + window_s] D is between H and the rim (seg_dist(D; H -> rim) <= between_max and r_D <
+      r_H) on >= between_share_min of frames, and H's speed falls >= slow_drop_min from its maximum over the window
+      (measured until window_s + slow_tail_s, loop 1 DEF-T05).
+    params:
+      slow_tail_s: {value: 0.5, unit: s, note: "loop 1 DEF-T05: slow-down measured from the window peak to window_s + this"}
+      window_s: {value: 1.5, unit: s, note: "loop 1 DEF-T05: 1.0 -> 1.5 s; drives still accelerate 0.5-0.8 s and the beat-to-the-spot slow-down comes later"}
+      between_max: {value: 0.6, unit: m}
+      between_share_min: {value: 0.8, unit: "1"}
+      slow_drop_min: {value: 0.3, unit: "1"}
+    min_duration_s: null
+    outputs: [contain flag]
+    confidence: "P(share) x P(slow-down)"
+    noise: share has an assumed sd 0.1
+    conflicts_resolved: ["beaten and contain are exclusive for one drive."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F2", supports: "containment"}
+    status: proposal
+    detectability: xy
+    detector: detect_contain
+    kinds: [contain]
+
+  - id: back_pressure
+    research_id: DM-P16
+    level: primitive
+    name: Back pressure (chase from behind)
+    aliases: [back tip, trail pressure]
+    actors: D, handler H
+    t0: first frame of the closing run
+    rule: >-
+      While H holds the ball, D is behind it (r_D > r_H), smoothed speed >= speed_min and closing speed >= closing_min
+      for >= min_s, and comes within reach_max within reach_window_s after the run.
+    params:
+      speed_min: {value: 4.5, unit: m/s, note: "research 5.0 true; sustained runs lose ~0.3-0.4 m/s in CA-RTS"}
+      closing_min: {value: 1.0, unit: m/s}
+      min_s: {value: 0.5, unit: s}
+      reach_window_s: {value: 1.0, unit: s}
+      reach_max: {value: 1.5, unit: m}
+    min_duration_s: 0.5
+    outputs: [min_dist_m]
+    confidence: "window mean P(closing >= 1.0) x P(min dist <= 1.5)"
+    noise: high speeds are well measured (MP-08 sprint RMSE ~0.4 m/s)
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.4 Back pressure", supports: ">= 5 m/s from behind"}
+    status: proposal
+    detectability: xy
+    detector: detect_back_pressure
+    kinds: [back_pressure]
+
+  - id: inch_up
+    research_id: DM-P17
+    level: primitive
+    name: Inch up on a picked-up dribble
+    aliases: [inch up, swarm the dead ball]
+    actors: on-ball D, H
+    t0: dribble pick-up
+    rule: dist(D, H) drops >= 0.4 m within 0.8 s of the pick-up (window lengthened from 0.5 s by the physics check).
+    params: {}
+    min_duration_s: null
+    outputs: [delta_m, latency_s]
+    confidence: low
+    noise: 0.4 m is ~1 sigma_rel; the pick-up time needs dribble state.
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F2", supports: ">= 0.4 m in 0.5 s"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["dribble pick-up time (ball z / dribble state; a stopped holder may still dribble)", "measured noise model for a 0.4 m move"]
+    detector: detect_inch_up
+
+  - id: box_out
+    research_id: DM-P18
+    level: primitive
+    name: Box-out
+    aliases: [block out, box out, classic box-out]
+    actors: D, target T (non-shooter)
+    t0: contact start
+    rule: >-
+      Enter on named_spots box_out_position (dist <= 1.0 m, seg_dist(D; T -> rim) <= 0.5 m, r_D < r_T); stay while
+      dist <= 1.0 + h, seg_dist <= 0.5 + h, r_D < r_T + rim_side_tol; hold >= min_contact_s; contact must start between
+      shot release and rim contact + start_jitter_s (rim contact from the shot anchor, else release + rim_fallback_s);
+      classic when contact >= classic_s; effect = drop of T's v_r during contact vs the 0.3 s before.
+    params:
+      effect_pre_s: {value: 0.3, unit: s, note: "target's pre-contact v_r window for effect_pct (was a literal, DEF-T20)"}
+      rim_fallback_s: {value: 1.0, unit: s}
+      after_rim_s: {value: 1.5, unit: s}
+      rim_side_tol: {value: 0.1, unit: m}
+      min_contact_s: {value: 0.4, unit: s, note: "named_spots box_out_position hold (canonical) instead of 0.30 s"}
+      start_jitter_s: {value: 0.3, unit: s}
+      classic_s: {value: 0.8, unit: s}
+    min_duration_s: 0.4
+    outputs: [contact_duration_s, classic, effect_pct]
+    confidence: "window mean of P(dist <= 1.0) x P(seg <= 0.5)"
+    noise: Paint merges / ID swaps; abstain on id confidence < 0.8 when available. Centre distance is not proof of contact.
+    conflicts_resolved:
+      - "0.4 s (F13, named_spots) vs 0.30 s (actions_extra): named_spots adopted (check fix); hit-find-fetch keeps its own 0.3-0.8 s contact."
+    sources:
+      - {url: "repo:config/named_spots.yaml box_out_position", supports: "1.0 m / 0.5 m / rim side; hold >= 0.4 s between release and rim contact"}
+      - {url: "repo:docs/taxonomy/defense_full.md F13", supports: "0.4 s, 40 % speed drop"}
+    status: canonical
+    detectability: xy
+    detector: detect_box_out
+    kinds: [box_out]
+
+  - id: hit_find_fetch
+    research_id: DM-P19
+    level: primitive
+    name: Hit-find-fetch (MSU box-out variant)
+    aliases: [hit find fetch, hit and go]
+    actors: D, T
+    t0: contact start
+    rule: Contact 0.3-0.8 s, then >= 2.0 m/s toward the predicted rebound landing point before the ball falls below rim height.
+    params: {}
+    min_duration_s: 0.3
+    outputs: [contact_s, pursuit_speed, reached_ball]
+    confidence: medium
+    noise: Without ball z the landing point and the timing gate are guesses.
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F13.2", supports: "contact 0.3-0.8 s then >= 2 m/s toward the landing point"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["ball z (rebound landing prediction and below-rim timing)"]
+    detector: detect_hit_find_fetch
+
+  - id: rebound_pursuit
+    research_id: DM-P20
+    level: primitive
+    name: Rebound pursuit, run opposite, long-rebound cover, gang rebound
+    aliases: [crash (defensive), pursue, run opposite]
+    actors: each defender; team
+    t0: rim contact
+    rule: PURSUIT ends within 1.5 m of the rim at t_reb or moved >= 1.5 m toward it; RUN_OPPOSITE; LONG_COVER r 4-6 m; GANG all five r < 5 m within 1.0 s.
+    params: {}
+    min_duration_s: null
+    outputs: [per-defender pursuit flags, gang flag]
+    confidence: medium
+    noise: rim contact +-3 frames without z
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F12, F13", supports: "crash, run opposite, long rebounds, 1.07 m chance"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["rebound possession frame t_reb and true rim contact (BALL ACTIONS family, ball z)"]
+    detector: detect_rebound_pursuit
+
+  - id: get_back
+    research_id: DM-P21
+    level: primitive
+    name: Get-back (retreat onset)
+    aliases: [sprint back, retreat, get back]
+    actors: each player of the team that lost possession (the defence of this scene)
+    t0: retreat onset
+    rule: >-
+      After a supplied change-of-possession anchor: onset = first frame within onset_window_s with v_r (toward the
+      defended rim) >= onset_v_r held >= hold_s; sprint_back when smoothed speed > sprint_speed for >= sprint_s.
+    params:
+      onset_window_s: {value: 3.0, unit: s}
+      onset_v_r: {value: 2.0, unit: m/s}
+      hold_s: {value: 0.5, unit: s}
+      sprint_speed: {value: 5.83, unit: m/s, note: "R-PL-11 band read from the kinematics family"}
+      sprint_s: {value: 1.0, unit: s}
+    min_duration_s: 0.5
+    outputs: [onset_delay_s, retreat_speed, sprint_back]
+    confidence: "window mean P(v_r >= 2.0) over the hold"
+    noise: "Off-screen players in transition (broadcast limit): imputed positions get interp_long -> conf 0."
+    conflicts_resolved: ["Sprint band 5.5 / 5.83 / 6.0: R-PL-11 (5.83)."]
+    sources:
+      - {url: "repo:docs/research/transition_full.md 2.3", supports: "retreat onset >= 2.0 m/s"}
+      - {url: "repo:docs/taxonomy/defense_full.md A0 GET_BACK, F12", supports: "clocks and n_back"}
+    status: canonical
+    detectability: xy
+    detector: detect_get_back
+    kinds: [get_back]
+
+  - id: safety_back
+    research_id: DM-P22
+    level: primitive
+    name: Safety back (floor balance of the shooting team)
+    aliases: [one back, two back, shooter back]
+    actors: players of the shooting team
+    t0: shot release
+    rule: At release + check_s, shooting-team players with r > r_min moving away from the attacked rim at >= v_away_min.
+    params:
+      check_s: {value: 1.0, unit: s}
+      r_min: {value: 7.0, unit: m}
+      v_away_min: {value: 2.0, unit: m/s}
+    min_duration_s: null
+    outputs: [player, shooter_back]
+    confidence: "P(r > 7) x P(v_away >= 2)"
+    noise: off-screen as get_back
+    conflicts_resolved: ["safety_repo and safety_wide kept as variants; this detector is safety_repo."]
+    sources:
+      - {url: "repo:docs/research/transition_full.md 2.3", supports: "safety_repo / safety_wide"}
+      - {url: "repo:config/named_spots.yaml transition_safety_back", supports: "position label"}
+    status: proposal
+    detectability: xy
+    detector: detect_safety_back
+    kinds: [safety_back]
+
+  # ------------------------------------------------------------------------------------------------ actions
+  - id: rotate
+    research_id: DM-A01
+    level: action
+    name: ROTATE (single persistent matchup change)
+    aliases: [rotation, pick up]
+    actors: D, A_old -> A_new
+    t0: first frame of the new top-1 run (posterior crossing)
+    rule: >-
+      Top-1 runs (flicker < flicker_s absorbed); flips are taken between consecutive stable runs (>= old_min_s), so a
+      transitional run while D passes another attacker's canonical point is skipped; t0 = first frame after the old
+      run with P(new) > P(old); new run persists >= persist_s (or >=
+      censored_min_s when it reaches the clip end); P(A_new) >= p_new_min at t0 + check_s; not reciprocal within
+      switch.pair_max_s = 2.0 s (SWITCH / X-OUT); not inside a guard_two interval (+- guard_two_margin_s) for the same
+      two attackers. Runs come from the one-to-one joint assignment (joint_top1, loop 1 DEF-T17); a flip back to the
+      attacker of the run before a run shorter than persist_s (A -> B -> A) is a help excursion that returned, not a
+      rotation (loop 1 DEF-T03). Loop 4: a flip needs the ball in the frontcourt and the old run >= old_min_s of
+      frontcourt frames (transition pick-ups are not rotations, L4-FLIP-HALFCOURT), and no ball over a rim within
+      [t - rim_phase_back_s, t + rim_phase_fwd_s] (rebound assignments, L4-FLIP-REBOUND); both apply to switch and x_out
+      through the shared flips. Trigger = latest pass / drive /
+      screen within trigger_lookback_s; latency = first frame D moves toward A_new at >= move_v minus the trigger.
+    params:
+      guard_two_margin_s: {value: 1.0, unit: s, note: "guard-two suppression extends this far around the hold (was a literal, DEF-T20)"}
+      move_back_s: {value: 1.5, unit: s, note: "latency search starts this long before t0 (was a literal, DEF-T20)"}
+      flicker_s: {value: 0.3, unit: s}
+      old_min_s: {value: 0.5, unit: s}
+      persist_s: {value: 1.0, unit: s}
+      censored_min_s: {value: 0.5, unit: s}
+      check_s: {value: 0.5, unit: s}
+      p_new_min: {value: 0.6, unit: "1"}
+      move_v: {value: 1.0, unit: m/s}
+      trigger_lookback_s: {value: 3.0, unit: s}
+    min_duration_s: 1.0
+    outputs: [from, to, trigger, latency_s, chord_m, censored]
+    confidence: "window mean of P(A_new) over the new run"
+    noise: Zone schemes make HMM rotations meaningless; suppress when the zone posterior >= 0.6 (zone family).
+    conflicts_resolved: ["Guard-two (one defender between two unguarded attackers) suppresses ROTATE between them (check missing item)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 ROTATE", supports: "persist >= 1.0 s"}
+    status: canonical
+    detectability: xy
+    detector: detect_rotate
+    kinds: [rotate]
+
+  - id: switch
+    research_id: DM-A02
+    level: action
+    name: SWITCH with timing (pre / on-time / late / very late) and intensity (hard / soft / neutral)
+    aliases: [switch, exchange, hard switch, soft switch, late switch, jump switch]
+    actors: D1, D2 exchanging A1 <-> A2
+    t0: geometric exchange = closest approach of D1 and D2 in [first flip - exchange_back_s, last flip + exchange_fwd_s], over the frames where at least one of them moves (s2 >= stand_s2, loop 2)
+    rule: >-
+      Reciprocal top-1 flips <= pair_max_s apart, both persisting >= persist_s (or censored >= censored_min_s), and not
+      an X-out. Timing vs the nearest screen involving A1 or A2: pre_switch [pre_lo_s, pre_hi_s], on_time (pre_hi_s,
+      on_time_hi_s], late (on_time_hi_s, late_hi_s], very_late > late_hi_s, unclassified otherwise, no_screen without a
+      screen. Intensity of the new defender of the handler (or of the attacker nearer the ball): hard = closes from >=
+      hard_from_min to <= hard_to_max within hard_window_s (no absolute speed gate, check fix) or exchange lambda <= 0 on the
+      handler-velocity axis; soft = cushion >= soft_cushion_min held soft_hold_s and lambda > soft_lambda_min;
+      neutral otherwise. coverage_label when persistence >= coverage_persist_s. Jump switch needs no speed gate: it
+      is a hard switch with lambda <= -0.5 m (attr exchange_lambda_m).
+    params:
+      flicker_s: {value: 0.3, unit: s}
+      old_min_s: {value: 0.5, unit: s}
+      pair_max_s: {value: 2.0, unit: s, note: "research 1.0 s; under the 0.985 stay prior the second flip lags when one defender lingers between the two attackers (sim.py: 1.4-1.75 s apart in 3/12 seeds); t0 comes from the geometric exchange"}
+      persist_s: {value: 1.5, unit: s}
+      censored_min_s: {value: 0.5, unit: s}
+      coverage_persist_s: {value: 2.0, unit: s}
+      exchange_back_s: {value: 1.5, unit: s}
+      exchange_fwd_s: {value: 0.5, unit: s}
+      pre_lo_s: {value: -3.0, unit: s}
+      pre_hi_s: {value: -0.3, unit: s}
+      on_time_hi_s: {value: 1.0, unit: s}
+      late_hi_s: {value: 2.5, unit: s}
+      hard_window_s: {value: 0.8, unit: s, note: "0.25 + sqrt(2*0.7/4.5) = 0.81 s"}
+      hard_from_min: {value: 1.5, unit: m}
+      hard_to_max: {value: 0.8, unit: m}
+      soft_hold_s: {value: 1.0, unit: s}
+      soft_cushion_min: {value: 1.2, unit: m}
+      soft_lambda_min: {value: 0.5, unit: m}
+    min_duration_s: 1.5
+    outputs: [timing, intensity, alternatives (intensity), exchange_lambda_m, hmm_flip_lag_s, persistence_s, coverage_label]
+    confidence: "min over the two flips of the window-mean posterior of the new matchup"
+    noise: Identity swaps among 3-4 bodies at the screen can fake a switch; require id confidence >= 0.8 when available.
+    conflicts_resolved:
+      - "Persistence 1.5 s (event) vs 2.0 s (coverage label) kept as two outputs."
+      - "Timing at the geometric exchange, not the lagging HMM flip (check, high); very_late / unclassified close the band gap."
+      - "Hard switch 3.0 m/s in 0.5 s and jump switch 4 m/s were unreachable (check, high): replaced by closing distance in 0.8 s and lambda."
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 SWITCH, F3.4, BS-6, BS-12", supports: "reciprocal 1.0 s / 1.5 s; late switch; attack / passive numbers"}
+    status: proposal
+    detectability: xy
+    detector: detect_switch
+    kinds: [switch]
+
+  - id: multi_switch
+    research_id: DM-A03
+    level: action
+    name: Multi-player matchup changes (triple / scram / peel / point / pre-switch / cross-match / switch-back / my-ball)
+    aliases: [triple switch, scram, peel switch, point switch, pre-switch]
+    actors: 2-3 defenders
+    t0: first flip of the permutation
+    rule: >-
+      Built from rotate / switch / beaten events: TRIPLE = 3-cycle of flips within 3.0 s; PEEL = beaten then the helper
+      takes H within 0.8 s and the beaten D takes the helper's man within 1.5 s; SCRAM = switch during a pass flight with
+      a size mismatch reduced (roster heights); CROSS_MATCH / SWITCH_BACK need the season's modal home matchups.
+    params: {}
+    min_duration_s: 1.0
+    outputs: [type, participants, permutation]
+    confidence: product of member events
+    noise: all identities needed; abstain if any is predicted > 0.5 s
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.4, F7.4, BS-14, BS-15, OB-1, F12", supports: "rules"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine over rotate / switch / beaten", "roster heights (scram)", "home matchups across possessions (cross-match, switch-back)"]
+    detector: detect_multi_switch
+
+  - id: x_out
+    research_id: DM-A04
+    level: action
+    name: X-out
+    aliases: [X-out, 2i X-out]
+    actors: two weak-side defenders
+    t0: release of the pass (skip or kick-out)
+    rule: >-
+      Reciprocal exchange (flips <= switch.pair_max_s = 2.0 s apart, the same pairing as SWITCH because of the HMM
+      decoder lag; persisting >= persist_s) whose later flip comes <= window_s after a pass
+      release, and whose smoothed path polylines over [t_rel, t_rel + window_s] cross with crossing angle >=
+      cross_angle_min and both chords >= chord_min. Without crossing the exchange is a SWITCH.
+    params:
+      window_s: {value: 2.5, unit: s}
+      cross_angle_min: {value: 20, unit: deg}
+      chord_min: {value: 2.0, unit: m}
+      persist_s: {value: 1.0, unit: s}
+    min_duration_s: 1.0
+    outputs: [skip, crossing_point, crossing_angle_deg]
+    confidence: "min window-mean posterior of the two new matchups"
+    noise: near-parallel paths may cross by noise; angle and chord gates
+    conflicts_resolved: ["named_spots xout_help_the_helper and F7.4 agree: crossing = X-out, no crossing = sink-and-fill."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.4", supports: "crossing within 2.5 s after a skip"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "X-out concept"}
+    status: canonical
+    detectability: xy
+    detector: detect_x_out
+    kinds: [x_out]
+
+  - id: sink_and_fill
+    research_id: DM-A05
+    level: action
+    name: Sink-and-fill
+    aliases: [sink and fill]
+    actors: sinker Da, filler Db
+    t0: Da's sink onset
+    rule: A SINK by Da and another off-ball defender Db shifting >= fill_min toward Da's man within window_s, with no path crossing.
+    params:
+      window_s: {value: 1.2, unit: s, note: "research 0.8 s unreachable (check, high)"}
+      fill_min: {value: 1.0, unit: m}
+    min_duration_s: 0.5
+    outputs: [pair]
+    confidence: "sink P_cond x P(shift >= fill_min) (shift sigma sqrt(2) sigma_rel: a pair-distance change, measured 1.36-1.44 x the level error at >= 1 s). Existence (p_emit) = min(sink P_cond, P(fill)): both parts more likely than not (loop 2 NEW-R2); the inner SINK receives this call's global overrides"
+    noise: as x_out
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md M-4", supports: "1.5 m / 1.0 m"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "sink-and-fill concept"}
+    status: proposal
+    detectability: xy
+    detector: detect_sink_and_fill
+    kinds: [sink_and_fill]
+
+  - id: rotation_policy
+    research_id: DM-A06
+    level: action
+    name: Help-the-helper and rotation policy per drive
+    aliases: [help the helper, full rotation, no rotation, strong-side corner rule]
+    actors: team
+    t0: first rung >= 3 help excursion
+    rule: "Count ROTATE events within 3.0 s: >= 2 sequential (each persisting >= 2.0 s) = help_the_helper; 0 with the helper back <= 2.0 s = rotate_and_recover; strong-corner jab <= 0.5 m."
+    params: {}
+    min_duration_s: null
+    outputs: [policy, n_rotations, corner_rule]
+    confidence: product of member events
+    noise: censored when the possession ends inside 3 s
+    conflicts_resolved: ["F7.4 '>= 3 in 2 s' vs M-4 '>= 2 within 3 s': M-4."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md M-4, F7.4", supports: "policy thresholds"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "low man first, no help from the strong-side corner, help the helper"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine over help_ladder / rotate events"]
+    detector: detect_rotation_policy
+
+  - id: low_man_rotation
+    research_id: DM-A07
+    level: action
+    name: Low-man help (bottom out, top down)
+    aliases: [LMH, bottom out top down]
+    actors: low man L, top-of-I T
+    t0: paint touch / roll
+    rule: >-
+      MEET_ROLLER is the tag detector's meet_roller flag (L = named_spots low_man aggregate); BOTTOM_OUT_TOP_DOWN = L
+      help event + T rotate (r falls >= 1.5 m by t + 1.2 s, physics-adjusted) within one chain.
+    params: {}
+    min_duration_s: 0.5
+    outputs: [L id, T drop]
+    confidence: product of member events
+    noise: low-man identity flips when two defenders have similar r (tie-break min y, 0.3 m hysteresis)
+    conflicts_resolved: ["Low man by min y (F7.1) vs min r: named_spots low_man aggregate (min r, tie-break min y)."]
+    sources:
+      - {url: "repo:config/named_spots.yaml low_man, low_man_home, tag_ready_spot", supports: "definitions"}
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "low man first to help"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine over tag / help_ladder / rotate"]
+    detector: detect_low_man_rotation
+
+  - id: tag
+    research_id: DM-A08
+    level: action
+    name: Tag / gap bump on the roller (meet-roller flag)
+    aliases: [tag, bump the roller, gap bump, meet the roller]
+    actors: tagger D (not X-big, not X-ball), roller S
+    t0: first contact frame (P(dist <= contact_max) >= contact_p)
+    rule: >-
+      Contact in [t0_scr + contact_from_s, t0_scr + contact_to_s] (contact_to_s_q10 in the q = 10 tier, loop 2) with roller r <= roller_r_max; leaves (dist >
+      leave_dist) within leave_s (staying = rotation). Origin: corner (D's man at m <= 12 deg), gap (named_spots
+      gap_occupancy), low_man (named_spots low_man aggregate: min r over away-side candidates), tag_ready_spot.
+    params:
+      origin_back_s: {value: 0.5, unit: s, note: "tagger's matchup read this long before t0 (was a literal, DEF-T20)"}
+      corner_angle_max_deg: {value: 12, unit: deg, note: "origin corner (was a literal, DEF-T20)"}
+      contact_from_s: {value: 0.5, unit: s}
+      contact_to_s: {value: 1.8, unit: s}
+      contact_to_s_q10: {value: 2.0, unit: s, note: "q = 10 tier (loop 2, tag regression at sigma 0.5): the smoothed P(d <= contact_max) first reaches contact_p at frames 95-103 for a true first contact at frame 87 (1.6 s after the screen), past the 1.8 s window end; weak_low_man_tags_roller at sigma 0.5 9 -> 14 of 20, both negatives unchanged; at sigma 0.3 the same change does nothing (18 -> 18), so q30 keeps 1.8 s"}
+      contact_max: {value: 1.0, unit: m, note: "a true 0.56 m contact is detected in 9/12 seeds (smoothed minimum distance biased up ~0.3 m)"}
+      contact_p: {value: 0.7, unit: "1", note: "MP-17 distance-event t0"}
+      roller_r_max: {value: 4.5, unit: m}
+      leave_s: {value: 1.5, unit: s}
+      leave_dist: {value: 1.5, unit: m}
+    min_duration_s: null
+    outputs: [origin, gap_bump, meet_roller, screen_t0]
+    confidence: "window mean of P(dist <= 1.0) over the first contact frames"
+    noise: 1.0 m contacts near the paint suffer ID swaps.
+    conflicts_resolved: ["F7.2 and named_spots tag_ready_spot agree (1.0 m, 0.5-1.8 s, r <= 4.5, leave within 1.5 s)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F7.2", supports: "tag rule"}
+      - {url: "repo:config/named_spots.yaml tag_ready_spot, gap_occupancy", supports: "same rule; origin spots"}
+    status: canonical
+    detectability: xy
+    detector: detect_tag
+    kinds: [tag]
+
+  - id: xball_path
+    research_id: DM-A09
+    level: action
+    name: X-ball path on a ball screen (over / through / under / no_cross)
+    aliases: [over, under, through, go over, chase, slide through]
+    actors: X-ball, H, S, X-big
+    t0: X-ball crossing frame (screen t0 for no_cross)
+    rule: ball_screen crossing classifier; over is split hip (min dist to S <= hip_max while crossing) vs wide.
+    params: {}
+    min_duration_s: null
+    outputs: [class, alternatives, crossing_q_m, over_hip]
+    confidence: "P(class) from the soft bands on q (sigma_rel)"
+    noise: identity swap at the screen flips over / under
+    conflicts_resolved: ["Through needs X-big at least big_near from S (BS-3 0.8-2.0 m depth replaced by the axis test)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.0, F3.5, BS-1, BS-3", supports: "definitions"}
+    status: proposal
+    detectability: xy
+    detector: detect_xball_path
+    kinds: [over, through, under, no_cross]
+
+  - id: drop_coverage
+    research_id: DM-A10
+    level: action
+    name: X-big depth coverage (drop high / standard / deep, at level, flat)
+    aliases: [drop, deep drop, high drop, level, up to touch, flat, catch drop]
+    actors: X-big, S, H
+    t0: screen t0
+    rule: ball_screen coverage classifier, classes at_level / drop_high / drop_standard / drop_deep / flat; no_man_behind_share stored.
+    params: {}
+    min_duration_s: null
+    outputs: [class, alternatives, depth_m, no_man_behind_share]
+    confidence: "P(class) from the depth bands (sigma_rel) x (1 - P(show classes))"
+    noise: sigma_rel blurs 0.6 / 1.83 edges; side screens rotate the rim axis meaning
+    conflicts_resolved: ["See ball_screen (bands, frame)."]
+    sources:
+      - {url: "repo:docs/requirements_review/proposals_consolidated.yaml R-DF-16", supports: "bands at t0 + 0.3 s"}
+      - {url: "repo:docs/taxonomy/defense_full.md F3.1, BS-4, BS-9", supports: "level, flat, no man behind"}
+    status: proposal
+    detectability: xy
+    detector: detect_drop_coverage
+    kinds: [at_level, drop_high, drop_standard, drop_deep, flat]
+
+  - id: show
+    research_id: DM-A11
+    level: action
+    name: Show family (hard hedge, soft show)
+    aliases: [hedge, hard hedge, soft show, show and recover]
+    actors: X-big, X-ball, H, S
+    t0: "entry into the show position in [t0 - show_back_s, t0 + show_fwd_s]: hard_hedge = first frame with depth <= hard_depth_max; soft_show = first frame with lateral >= soft_lat_min"
+    rule: ball_screen coverage classifier, classes hard_hedge / soft_show; when |P(hard | show) - P(soft | show)| < ball_screen.class_margin_min the show is show_unclassified (abstain, loop 2); both kinds abstain in the q = 10 tier (globals.high_noise_abstain_kinds). Hedge-and-plug and hedge-to-switch are compositions with recover / switch.
+    params: {}
+    min_duration_s: null
+    outputs: [class, alternatives, depth_m]
+    confidence: "product of the class gates (sigma_rel, sigma_speed)"
+    noise: hard vs soft overlap for depth -1.0..-0.6 resolved by hold and lateral
+    conflicts_resolved: ["Recovery >= 4.0 m/s (hard) / 3.0 (soft) unreachable after smoothing: chord + 2.5 / 2.0 m/s smoothed (check fix)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.2, BS-5, BS-7, BS-8", supports: "thresholds"}
+      - {url: "repo:config/named_spots.yaml pnr_big_hedge", supports: "per-frame depth <= -0.6 label"}
+    status: proposal
+    detectability: xy
+    detector: detect_show
+    kinds: [hard_hedge, soft_show]
+
+  - id: ice
+    research_id: DM-A12
+    level: action
+    name: Ice / down / blue (side pick-and-roll)
+    aliases: [ice, blue, down, push]
+    actors: X-ball, X-big, H, S
+    t0: screen t0
+    rule: >-
+      Side screen |x_S| >= side_abs_x_min; in [t0 - pre_back_s, t0 - pre_end_s] X-ball within perp_max of segment
+      H -> P_s with tau in [tau_lo, tau_hi] for >= pre_hold_s; H rejects within reject_s (|x| up or y down by >=
+      reject_min); X-ball path no_cross.
+    params:
+      side_abs_x_min: {value: 2.5, unit: m}
+      pre_back_s: {value: 1.0, unit: s}
+      pre_end_s: {value: 0.3, unit: s}
+      perp_max: {value: 0.8, unit: m}
+      tau_lo: {value: 0.05, unit: "1", note: "on the screen side of H (any tau > 0 up to noise)"}
+      tau_hi: {value: 0.9, unit: "1"}
+      pre_hold_s: {value: 0.5, unit: s}
+      reject_s: {value: 1.0, unit: s}
+      reject_min: {value: 0.5, unit: m}
+    min_duration_s: 0.5
+    outputs: [pre_s, h_reject]
+    confidence: "P(pre-position) x P(reject) x [no_cross]"
+    noise: perp 0.8 m needs the 15-frame dwell
+    conflicts_resolved: ["'Down' as a middle-screen option is poa_down metadata, not ice."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.5, BS-11, BS-2", supports: "ice signature"}
+    status: proposal
+    detectability: xy
+    detector: detect_ice
+    kinds: [ice]
+
+  - id: weak_coverage
+    research_id: DM-A12
+    level: action
+    name: Weak (force to the weak hand)
+    aliases: [weak]
+    actors: X-ball, H
+    t0: screen t0
+    rule: X-ball offset toward H's strong hand >= 0.5 s before t0 regardless of screen side.
+    params: {}
+    min_duration_s: 0.5
+    outputs: [weak flag]
+    confidence: low
+    noise: n/a
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.5", supports: "weak"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["handler handedness (roster table; not sourced in the repo)"]
+    detector: detect_weak_coverage
+
+  - id: blitz
+    research_id: DM-A13
+    level: action
+    name: Blitz / trap the ball screen
+    aliases: [blitz, trap, double the PnR, show-trap]
+    actors: X-ball, X-big, H
+    t0: trap start
+    rule: >-
+      ball_screen coverage class blitz: TRAP by X-ball and X-big starting in [t0 - blitz_back_s, t0 + blitz_fwd_s] with
+      the shallowest 5-frame-mean X-big depth during the trap <= blitz_depth_max (a big coming up from a drop is still
+      arriving at trap entry; depth_at_entry_m reported, loop 1 DEF-T08); when H still holds the ball after the trap,
+      a retreat >= soft_retreat_min within blitz_retreat_s means the big showed (loop 1 DEF-T02b).
+    params: {}
+    min_duration_s: 0.6
+    outputs: [depth_m (min during the trap), depth_at_entry_m, trap]
+    confidence: "P(min depth <= 0.5) x P(no retreat) x trap P_cond (now applied in code, loop 1)"
+    noise: see trap
+    conflicts_resolved: ["Blitz-to-switch and fake blitz are compositions (switch + trap; stunt with fake_trap flag)."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.3", supports: "blitz signature"}
+      - {url: "repo:config/named_spots.yaml pnr_big_blitz", supports: "1.5 m to the handler, depth <= 0.5"}
+    status: proposal
+    detectability: xy
+    detector: detect_blitz
+    kinds: [blitz]
+
+  - id: trap
+    research_id: DM-RULE-07
+    level: action
+    name: TRAP (two on the ball)
+    aliases: [double team, blitz core]
+    actors: D1, D2, holder H
+    t0: entry frame
+    rule: >-
+      Enter: dist(D1, H) <= enter_dist and dist(D2, H) <= enter_dist and dist(D1, D2) <= pair_dist while H holds (<= 3
+      frame holder gaps bridged); exit when any distance exceeds its threshold + exit_h (gaps <= dwell_frames bridged);
+      hold >= min_s. Loop 4: no hold while the ball XY is within rim_ball_r of either rim or H is inside the restricted area
+      (shot / tip / rebound scramble, L4-TRAP-RIM); no trap when H's median smoothed speed over the stay > handler_v_max
+      (a drive or a transition push past two defenders, L4-TRAP-MOVING). No trap when H's own shot reaches a rim within shot_after_s of the stay end with no other holder in between (a contested drive / post move, L4-TRAP-SHOT). Commitment (loop 1 DEF-T01): when both 5-frame-mean distances stay inside enter_dist for less than
+      trap_commit_s and H still holds the ball after the stay, a trapper who retreats >= trap_release_dist from his
+      closest distance within trap_release_s makes it a dig / show, not a trap. t0 is back-dated from the entry while
+      both 5-frame-mean distances are inside the middle of the hysteresis band (enter_dist + exit_h / 2, pair_dist +
+      exit_h / 2), H holds and the trappers are still closing, at most backdate_max_s (loop 2, DEF-T18). Existence (p_emit) uses the middle of
+      the hysteresis band (enter_dist + exit_h / 2); conf uses the entry threshold enter_dist (loop 1 DEF-T02c,
+      DEF-T12b). Location: press (y > HALF_Y), corner (m <= corner_angle_max_deg and y <= BREAK_Y), sideline (|x| >=
+      sideline_abs_x_min, y > BREAK_Y), baseline (y <= baseline_y_max), post_area (r <= post_r_max), middle.
+    params:
+      trap_commit_s: {value: 1.0, unit: s, note: "loop 1 DEF-T01: a stay shorter than this that one defender abandons while H keeps the ball is no trap"}
+      trap_release_s: {value: 0.5, unit: s, note: "loop 1 DEF-T01: release window after the stay"}
+      trap_release_dist: {value: 1.0, unit: m, note: "loop 1 DEF-T01: retreat from H within trap_release_s that marks a dig / show"}
+      corner_angle_max_deg: {value: 12, unit: deg, note: "location: corner when the handler is within this angle of the baseline (was a literal, DEF-T20)"}
+      sideline_abs_x_min: {value: 5.5, unit: m, note: "location: sideline (was a literal, DEF-T20)"}
+      baseline_y_max: {value: 1.0, unit: m, note: "location: baseline (was a literal, DEF-T20)"}
+      post_r_max: {value: 4.5, unit: m, note: "location: post area (was a literal, DEF-T20)"}
+      enter_dist: {value: 1.5, unit: m}
+      pair_dist: {value: 2.5, unit: m}
+      exit_h: {value: 0.3, unit: m}
+      min_s: {value: 0.6, unit: s}
+      handler_v_max: {value: 2.0, unit: m/s, note: "loop 4 L4-TRAP-MOVING: median smoothed handler speed over the stay <= the walk edge (kinematics walk < 2.0 m/s, walk-run transition)"}
+      shot_after_s: {value: 1.5, unit: s, note: "loop 4 L4-TRAP-SHOT: no trap when H's own shot reaches a rim (ball XY within globals.rim_ball_r, no other attacker holding in between) within this long after the stay end; a 3-6 m release at 7-10 m/s reaches the rim in < 1 s plus a gather step"}
+    min_duration_s: 0.6
+    outputs: [location, handler_dr_m, duration_s]
+    confidence: "window mean of P(d1 <= enter_dist) x P(d2 <= enter_dist) (entry threshold, loop 1); p_emit at enter_dist + exit_h / 2; interp_short carry x 0.8"
+    noise: three bodies within 1.5 m cause merges; carry one trapper up to the MP-05 short gap
+    conflicts_resolved: ["named_spots pnr_big_blitz uses 1.5 m to the handler: consistent."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 TRAP, A0 FAKE_TRAP, F6.3", supports: "1.5 m / 2.5 m / 0.6 s"}
+    status: canonical
+    detectability: xy
+    detector: detect_trap
+    kinds: [trap]
+
+  - id: next_run_and_jump
+    research_id: DM-A14
+    level: action
+    name: Next / run-and-jump
+    aliases: [next, run and jump]
+    actors: d3, X-ball, X-big
+    t0: screen t0 or drive
+    rule: d3 (neither X-ball nor X-big) becomes H's top-1 within 1.0 s with chord >= 2.0 m and X-ball rotates away within 1.5 s.
+    params: {}
+    min_duration_s: 1.0
+    outputs: [jumper, arrival_s]
+    confidence: product of member events
+    noise: confusable with peel (peel needs beaten first)
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.3 Next, F5", supports: "1 s / 0.8 s"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine over rotate events + screen anchors"]
+    detector: detect_next_run_and_jump
+
+  - id: offball_screen_coverage
+    research_id: DM-A15
+    level: action
+    name: Off-ball screen coverage (top-lock, trail, under)
+    aliases: [lock and trail, chase, top lock, shoot the gap, go under]
+    actors: cutter's defender, cutter C, screener S
+    t0: screen t0 (cutter's closest approach to S)
+    rule: >-
+      Anchor kind 'offball' (screener, cutter). top_lock: in [t0 - lock_back_s, t0] the defender is ahead of C along
+      C's travel direction by >= lock_lead_min and within lock_dist_max (+ relative hysteresis h) for >= lock_min_s,
+      and P(mean lead >= lock_lead_min) x P(mean offset toward the screener's side <= lock_lat_tol) >= 0.5 (means over
+      the frames within lock distance; loop 1 DEF-T09: a defender shooting the gap under the screen also leads the
+      cutter but sits on the screener's side).
+      Otherwise the research lambda/s crossing (DM-RULE-05) with U = C: lambda = (p - P_s).u along C's travel, n
+      toward the side C crosses on; at the defender's first crossing s_X = (X - S).n >= -class_margin -> trail,
+      else under; no_cross. (The ball-screen S -> X-big axis is not used: on curls it runs parallel to the cut.) Jam and step-under need body
+      contact / sub-noise moves and are not emitted.
+    params:
+      lock_lat_tol: {value: 0.5, unit: m, note: "loop 1 DEF-T09: mean offset toward the screener's side of the cutter's path must be <= this. Harness pin-down truth over [t0 - 1 s, t0]: top-lock 0.0 m, under 0.99 m (min 0.72); 0.5 m is the midpoint (0.3 m cut top-lock recall to 14/20 at sigma 0.3)"}
+      defender_back_s: {value: 0.5, unit: s, note: "cutter / screener defenders read this long before t0 (was a literal, DEF-T20)"}
+      span_after_s: {value: 1.0, unit: s, note: "event end after t0 (was a literal, DEF-T20)"}
+      lock_back_s: {value: 1.0, unit: s}
+      lock_lead_min: {value: 0.3, unit: m, note: "sub-noise: a true 0.5 m lead is detected in 5/12 seeds at sigma_p 0.3 AR(1)"}
+      lock_dist_max: {value: 1.0, unit: m}
+      lock_min_s: {value: 0.4, unit: s}
+    min_duration_s: 0.4
+    outputs: [class, alternatives, lock_s]
+    confidence: "P(class)"
+    noise: the 0.3 m lead is sub-noise; soft output
+    conflicts_resolved: ["named_spots offball_top_lock / offball_trail / offball_under_gap are deferred to this event layer."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F5, OB-3", supports: "thresholds"}
+      - {url: "repo:config/named_spots.yaml offball_top_lock", supports: "deferred definition"}
+    status: proposal
+    detectability: xy
+    detector: detect_offball_screen_coverage
+    kinds: [top_lock, trail, under, no_cross]
+
+  - id: screener_defender_technique
+    research_id: DM-A16
+    level: action
+    name: Screener's-defender techniques (bump/show, open-up, jump-out, top-side)
+    aliases: [bump, open up, jump out, invert]
+    actors: d_scr, S, C
+    t0: screen t0
+    rule: BUMP_SHOW >= 0.8 m toward C's path then back within 1.0 m of S in 1.2 s; OPEN_UP >= 0.5 m away from S; JUMP_OUT >= 0.6 m lateral into C's path.
+    params: {}
+    min_duration_s: null
+    outputs: [technique]
+    confidence: low
+    noise: 0.5-0.6 m moves at the AR(1) noise floor
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F5, OB-2, OB-3, F3.6", supports: "thresholds"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["measured noise model or pose for 0.5-0.8 m moves (abstain by default, check DM-RULE-03 fix)"]
+    detector: detect_screener_defender_technique
+
+  - id: post_position
+    research_id: DM-A17
+    level: action
+    name: Post defence positions (front, three-quarter high / low, behind)
+    aliases: [front, 3/4 high, 3/4 low, play behind]
+    actors: post defender, post attacker (r <= 4.5, off-ball)
+    t0: first frame of the hold
+    rule: >-
+      Class per frame from named_spots post_full_front / post_three_quarter_high / post_three_quarter_low / post_behind
+      (defender's top-1 man, holder and ball as context); hold >= min_s with dwell_frames gaps; abstain when the mean
+      distance < abstain_dist (the angle is noise). Flips (front <-> behind routes) are compositions of consecutive holds.
+      Loop 4 (L4-POST): only with the ball in the frontcourt, and the post's median smoothed speed over the hold <=
+      post_v_max (posting, not cutting). The post area (r <= 4.5 m) belongs to these labels: deny and face_guard exclude it.
+    params:
+      front_max_deg: {value: 45, unit: deg, note: "angle at the post between post->defender and post->ball: front band (was a literal, DEF-T20)"}
+      behind_min_deg: {value: 135, unit: deg, note: "behind band (was a literal, DEF-T20)"}
+      min_s: {value: 0.5, unit: s}
+      abstain_dist: {value: 0.4, unit: m}
+      post_v_max: {value: 2.0, unit: m/s, note: "loop 4 L4-POST: the post's median smoothed speed over the hold <= the walk edge (kinematics walk < 2.0 m/s); faster men in the post area are cutting / rolling"}
+    min_duration_s: 0.5
+    outputs: [class, alternatives (front / three_quarter / behind), mean_dist_m]
+    confidence: "window mean of P(angle band) with sigma_phi = sigma_rel / dist x share of frames in the class"
+    noise: bodies in contact swap identities
+    conflicts_resolved: ["F6.1 front (tau, perp <= 0.5) vs named_spots (angle <= 45 deg, <= 1.2 m): named_spots."]
+    sources:
+      - {url: "repo:config/named_spots.yaml post_full_front, post_three_quarter_high, post_three_quarter_low, post_behind", supports: "geometry"}
+      - {url: "repo:docs/taxonomy/defense_full.md F6.1, M-2(c)", supports: "flip trigger"}
+    status: canonical
+    detectability: xy
+    detector: detect_post_position
+    kinds: [post_front, post_three_quarter_high, post_three_quarter_low, post_behind]
+
+  - id: lob_protection
+    research_id: DM-A18
+    level: action
+    name: Lob protection on a fronted post
+    aliases: [low man lob responsibility]
+    actors: weak-side low defender, post defender, post
+    t0: start of the front hold
+    rule: During a post_front or post_three_quarter_high hold >= min_s, the weak-side low defender (min mean r among defenders other than the post and ball defenders) has r <= r_max and |x| <= abs_x_max on >= share_min of frames.
+    params:
+      min_s: {value: 0.5, unit: s}
+      r_max: {value: 2.5, unit: m}
+      abs_x_max: {value: 2.0, unit: m}
+      share_min: {value: 0.8, unit: "1"}
+    min_duration_s: 0.5
+    outputs: [protected, protected_share]
+    confidence: "max(P(protected), P(unprotected)) x front-hold conf"
+    noise: none specific
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F6.5", supports: "r <= 2.5, |x| <= 2"}
+    status: proposal
+    detectability: xy
+    detector: detect_lob_protection
+    kinds: [lob_protection]
+
+  - id: post_double
+    research_id: DM-A19
+    level: action
+    name: Post double-team with origin
+    aliases: [double down, top double, baseline double]
+    actors: doubler, post defender, post
+    t0: trap start
+    rule: A TRAP on a pass receiver at r <= post_r starting in [catch - pre_catch_s, catch + max_after_catch_s]; on_catch if <= on_catch_s; origin by the doubler's catch position (top y > top_y, baseline y < baseline_y, middle |x| < middle_abs_x, else wing).
+    params:
+      pre_catch_s: {value: 0.3, unit: s, note: "a trap starting up to this long before the catch is accepted; post defender read here (was a literal, DEF-T20)"}
+      post_r: {value: 4.5, unit: m}
+      max_after_catch_s: {value: 3.0, unit: s}
+      on_catch_s: {value: 0.8, unit: s}
+      top_y: {value: 5.5, unit: m}
+      baseline_y: {value: 2.0, unit: m}
+      middle_abs_x: {value: 1.5, unit: m}
+    min_duration_s: 0.6
+    outputs: [origin, trigger, latency_s]
+    confidence: trap P_cond
+    noise: post merges (see trap)
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F6.3, F6.4", supports: "origins and triggers"}
+    status: proposal
+    detectability: xy
+    detector: detect_post_double
+    kinds: [post_double]
+
+  - id: protect_rim
+    research_id: DM-A20
+    level: action
+    name: Transition protect the rim (first back)
+    aliases: [first back, basket]
+    actors: retreating defender
+    t0: arrival frame
+    rule: First defender (r > start_r_min at the change of possession) inside named_spots transition_protect_rim (r <= 1.8 m, y >= BOARD_Y) within window_s; loose clock r <= loose_r stored.
+    params:
+      window_s: {value: 6.0, unit: s}
+      start_r_min: {value: 1.8, unit: m}
+      loose_r: {value: 2.5, unit: m}
+    min_duration_s: null
+    outputs: [t_protect_s, t_protect_loose_s]
+    confidence: "P(r <= 1.8) after arrival"
+    noise: off-screen starts imputed
+    conflicts_resolved: ["r <= 1.5 (A0) vs 1.8 (named_spots) vs 2.5 (transition_full): 1.8 canonical, 2.5 loose, 1.5 dropped."]
+    sources:
+      - {url: "repo:config/named_spots.yaml transition_protect_rim", supports: "r <= 1.8"}
+    status: canonical
+    detectability: xy
+    detector: detect_protect_rim
+    kinds: [protect_rim]
+
+  - id: stop_ball
+    research_id: DM-A21
+    level: action
+    name: Transition stop the ball
+    aliases: [stop ball, ball stopper]
+    actors: stopper D, handler H
+    t0: pickup frame
+    rule: First frame after the change of possession with a defender in named_spots transition_stop_ball (<= 2.0 m of H) and closer to the defended rim; stopped if H's speed < stop_speed within stop_window_s; turned if |x_H| >= turned_abs_x.
+    params:
+      window_s: {value: 6.0, unit: s}
+      stop_window_s: {value: 1.5, unit: s}
+      stop_speed: {value: 3.0, unit: m/s}
+      turned_abs_x: {value: 3.0, unit: m}
+    min_duration_s: null
+    outputs: [stopped, alternatives, pickup_y, turned]
+    confidence: "P(pickup) ; stopped / not_stopped as alternatives"
+    noise: as protect_rim
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/research/transition_full.md 2.3", supports: "2.0 m, 3.0 m/s, 1.5 s"}
+      - {url: "repo:config/named_spots.yaml transition_stop_ball", supports: "2.0 m"}
+    status: canonical
+    detectability: xy
+    detector: detect_stop_ball
+    kinds: [stop_ball]
+
+  - id: transition_matched
+    research_id: DM-A22
+    level: action
+    name: Transition match-up on the fly
+    aliases: [match up, find shooters]
+    actors: team
+    t0: first matched frame
+    rule: First time after the change of possession that every attacker has a defender within match_r (match_r_paint when r < 3 m) for >= hold_s. Cover-two = guard_two; jam-the-rebounder needs t_reb (needs_data).
+    params:
+      match_r: {value: 2.5, unit: m}
+      match_r_paint: {value: 1.5, unit: m}
+      hold_s: {value: 1.0, unit: s}
+    min_duration_s: 1.0
+    outputs: [t_matched_s]
+    confidence: "window mean of the product over attackers of max over defenders P(dist <= r)"
+    noise: as protect_rim
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/research/transition_full.md 2.3", supports: "2.5 / 1.5 m, 1.0 s"}
+    status: proposal
+    detectability: xy
+    detector: detect_transition_matched
+    kinds: [transition_matched]
+
+  - id: set_def
+    research_id: DM-A23
+    level: action
+    name: SET_DEF
+    aliases: [defense set]
+    actors: team
+    t0: first qualifying frame
+    rule: All defenders y < HALF_Y and mean defender speed < v_max for >= min_s (first instance; left-censored at clip start conf x 0.5).
+    params:
+      v_max: {value: 2.5, unit: m/s}
+      min_s: {value: 0.5, unit: s}
+    min_duration_s: 0.5
+    outputs: [t_set]
+    confidence: "window mean of P(mean speed < 2.5)"
+    noise: mean speed is robust
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 SET_DEF", supports: "2.5 m/s, 0.5 s"}
+    status: canonical
+    detectability: xy
+    detector: detect_set_def
+    kinds: [set_def]
+
+  - id: guard_two
+    research_id: check.missing
+    level: action
+    name: Guard-two (one defender between two otherwise unguarded attackers)
+    aliases: [zone-in-man, cover two, sag off the non-shooter, tag and stay]
+    actors: D, A1, A2
+    t0: first frame of the hold
+    rule: >-
+      D within between_max of segment A1-A2, |dist(D, A1) - dist(D, A2)| <= balance_max, both <= reach_max, and no other
+      defender within others_min of A1 or A2; stay with balance_max + h and between_max + h (relative hysteresis) and
+      gaps <= dwell_frames bridged (loop 1 DEF-T18); held >= min_s (half court) or >= min_s_transition (transition:
+      cover_two).
+      Loop 4: the attackers are >= sep_min apart (5-frame mean), and a transition hold (cover_two) needs D outnumbered on
+      >= half of its frames: every other defender farther from the rim than the farther of the two attackers.
+      While it holds, ROTATE between A1 and A2 for D is suppressed (the HMM posterior legitimately oscillates).
+    params:
+      balance_max: {value: 1.0, unit: m}
+      reach_max: {value: 5.0, unit: m}
+      between_max: {value: 1.5, unit: m}
+      others_min: {value: 2.5, unit: m}
+      sep_min: {value: 3.0, unit: m, note: "loop 4 L4-G2-SEP: 5-frame-mean distance between the two attackers >= this (twice the 1.5 m between_max: closer attackers are both within reach of one defender, i.e. a screen / hand-off / stack, not two men to guard)"}
+      min_s: {value: 1.0, unit: s}
+      min_s_transition: {value: 0.5, unit: s}
+    min_duration_s: 0.5
+    outputs: [variant, transition]
+    confidence: "window mean of P(|d1 - d2| <= 1.0)"
+    noise: none specific
+    conflicts_resolved: ["Adds the rule the check found missing for defenders guarding two players."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F12", supports: "cover two (one defender between ball and rim runner, 1.0 m, 0.5 s)"}
+    status: proposal
+    detectability: xy
+    detector: detect_guard_two
+    kinds: [guard_two]
+
+  - id: press_pickup
+    research_id: check.missing
+    level: action
+    name: Press pickup (full-court on-ball pressure)
+    aliases: [press, pick up full court]
+    actors: D, handler H
+    t0: first frame of the pickup
+    rule: While H holds the ball beyond half court (y > HALF_Y), D within pickup_r of H and closer to the defended rim (y_D < y_H) for >= min_s.
+    params:
+      pickup_r: {value: 2.0, unit: m}
+      min_s: {value: 1.0, unit: s}
+    min_duration_s: 1.0
+    outputs: [pickup_y]
+    confidence: "window mean P(dist <= 2.0)"
+    noise: backcourt often off-screen on broadcast
+    conflicts_resolved: ["Press traps are trap events with location press_trap."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 TRAP", supports: "press trap context"}
+    status: proposal
+    detectability: xy
+    detector: detect_press_pickup
+    kinds: [press_pickup]
+
+  - id: zone_slide
+    research_id: check.missing
+    level: primitive
+    name: Zone slides
+    aliases: [zone shift]
+    actors: zone defenders
+    t0: pass release
+    rule: Zone-slot movement on each pass; requires the zone posterior and slot assignment from the zone family.
+    params: {}
+    min_duration_s: null
+    outputs: [slot transitions]
+    confidence: n/a
+    noise: n/a
+    conflicts_resolved: ["ROTATE is suppressed when the zone posterior >= 0.6."]
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4 ROTATE", supports: "zone suppression note"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["zone posterior and slot model (zone family, not yet specified)"]
+    detector: detect_zone_slide
+
+  - id: contest_verticality
+    research_id: check.missing
+    level: primitive
+    name: Contest height / verticality (rim protection)
+    aliases: [verticality, high hand]
+    actors: D, shooter
+    t0: shot release
+    rule: Hand height and jump at release; distance-only contests are the named_spots contest_* bands.
+    params: {}
+    min_duration_s: null
+    outputs: [hand_height, jump]
+    confidence: n/a
+    noise: n/a
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:config/named_spots.yaml contest_tight", supports: "distance-only contest bands"}
+    status: proposal
+    detectability: needs_data
+    needs_data: ["pose (hand keypoints) and ball z"]
+    detector: detect_contest_verticality
+
+  # ------------------------------------------------------------------------------------------------ set components
+  - id: ball_screen_chain
+    research_id: DM-S01
+    level: set_component
+    name: Ball-screen coverage chain
+    aliases: [PnR coverage sequence]
+    actors: X-ball, X-big, low man, tagger, helpers
+    t0: screen t0 - 1.0 s
+    rule: "[pre: ice | pre_switch | top_lock] -> [xball_path] -> [drop_coverage | show | blitz | switch(timing, intensity)] -> [tag(origin) | none] -> [recover / closeout] -> [drive-help chain]. Coarse class {contain/drop, show/hedge, two-on-ball, switch} from the X-big slot."
+    params: {}
+    min_duration_s: null
+    outputs: [compositional_name, action_sequence, coarse_class]
+    confidence: product of member confs
+    noise: an empty slot means not detected, not 'none'
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/requirements_review/proposals_consolidated.yaml R-DF-06, R-DF-16", supports: "two-level coverage"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_ball_screen_chain
+
+  - id: drive_help_chain
+    research_id: DM-S02
+    level: set_component
+    name: Drive-help and rotation chain
+    aliases: [help chain]
+    actors: team
+    t0: drive
+    rule: "[contain | beaten] -> [help ladder rung by low man / nail / gap / corner] -> [sink | sink_and_fill | rotate] -> [x_out | closeout(length, profile) | none] -> [rotation_policy]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence]
+    confidence: product of member confs
+    noise: as composition
+    conflicts_resolved: []
+    sources:
+      - {url: "https://cleaningtheglass.com/how-do-nba-defensive-rotations-work/", supports: "sequence logic"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_drive_help_chain
+
+  - id: pass_reaction_chain
+    research_id: DM-S03
+    level: set_component
+    name: Pass-reaction chain (shell movement on every pass)
+    aliases: [move on the pass, shell rotation]
+    actors: all off-ball defenders
+    t0: pass release
+    rule: Per pass, jump_to_ball latency and named_spots relative-entry transitions within 1.0 s; ball-line check (named_spots ball_line_depth) by t_catch + 1.0 s; closeout on the receiver.
+    params: {}
+    min_duration_s: null
+    outputs: [shell score, latencies]
+    confidence: product of member confs
+    noise: pass detection errors propagate
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:config/named_spots.yaml ball_line_depth", supports: "ball-line depth"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_pass_reaction_chain
+
+  - id: offball_screen_chain
+    research_id: DM-S04
+    level: set_component
+    name: Off-ball screen coverage chain
+    aliases: []
+    actors: d_cut, d_scr, helpers
+    t0: screen t0 - 1.0 s
+    rule: "[top_lock | point switch] -> [trail | under | switch] -> [screener-defender technique] -> [closeout | next | tag]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence]
+    confidence: product of member confs
+    noise: as composition
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F5, A4", supports: "components"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_offball_screen_chain
+
+  - id: post_defense_chain
+    research_id: DM-S05
+    level: set_component
+    name: Post-defence chain
+    aliases: []
+    actors: post D, doubler, rotators
+    t0: post-entry threat
+    rule: "[post_position holds and flips] -> [cushion | dig | post_double(origin)] -> [rotation] -> [closeout]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence]
+    confidence: product of member confs
+    noise: as composition
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F6", supports: "components"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_post_defense_chain
+
+  - id: shot_rebound_chain
+    research_id: DM-S06
+    level: set_component
+    name: Shot-to-rebound chain
+    aliases: []
+    actors: all defenders
+    t0: shot release
+    rule: "[contest band / closeout profile] -> [box_out | hit_find_fetch | none per defender] -> [rebound pursuit] -> [result]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence]
+    confidence: product of member confs
+    noise: as composition
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F13", supports: "components"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)", "rebound anchors (BALL ACTIONS family)"]
+    detector: detect_shot_rebound_chain
+
+  - id: transition_defense_chain
+    research_id: DM-S07
+    level: set_component
+    name: Transition-defence chain
+    aliases: [get back sequence]
+    actors: team
+    t0: change of possession
+    rule: "[safety_back] -> [get_back onsets] -> [protect_rim] -> [stop_ball] -> [transition_matched, guard_two] -> [set_def]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence, clocks]
+    confidence: product of member confs
+    noise: off-screen imputation
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/research/transition_full.md 2.3", supports: "components"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_transition_defense_chain
+
+  - id: trap_chain
+    research_id: DM-S08
+    level: set_component
+    name: Trap chain (half court and press)
+    aliases: [trap and rotate]
+    actors: trappers, interceptors
+    t0: trap start
+    rule: "[trap(location)] -> [rotate events within 1.5 s] -> [escape pass within 2.0 s] -> [closeouts]."
+    params: {}
+    min_duration_s: null
+    outputs: [name, sequence]
+    confidence: product of member confs
+    noise: as trap
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md 0.4, A0 SPLIT/JAILBREAK", supports: "components"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine (COMPOSITION family)"]
+    detector: detect_trap_chain
+
+  - id: matchup_change_log
+    research_id: DM-S09
+    level: set_component
+    name: Matchup-change log (possession level)
+    aliases: []
+    actors: team
+    t0: possession start
+    rule: Ordered rotate / switch / x_out events with persistence and the assignment entropy timeline; mismatch-seconds from roster heights.
+    params: {}
+    min_duration_s: null
+    outputs: [n_switches, n_rotations, mismatch_seconds]
+    confidence: product of member confs
+    noise: HMM flicker filtered by persistence gates
+    conflicts_resolved: []
+    sources:
+      - {url: "https://arxiv.org/pdf/1405.0231", supports: "HMM matchup inference"}
+    status: proposal
+    detectability: composition
+    needs_data: ["composition engine", "roster heights"]
+    detector: detect_matchup_change_log
+
+  - id: scheme_fingerprint
+    research_id: DM-S10
+    level: set_component
+    name: MSU scheme fingerprint (team level)
+    aliases: [defensive identity]
+    actors: team over games
+    t0: n/a
+    rule: Per game distributions of help-line offsets, closeout profile shares, X-big depth histogram, hedge recovery, rotation policy shares, box-out shares, safety count; aggression index A = -depth + 1.5 [TRAP] + 0.5 [hedge lateral > 0.8 m].
+    params: {}
+    min_duration_s: null
+    outputs: [fingerprint vector per game]
+    confidence: aggregate with CIs
+    noise: aggregation reduces noise
+    conflicts_resolved: []
+    sources:
+      - {url: "repo:docs/taxonomy/defense_full.md F3.7, F18.4, M-1", supports: "index and MSU usage"}
+    status: proposal
+    detectability: composition
+    needs_data: ["aggregation over games"]
+    detector: detect_scheme_fingerprint
+
+open_questions:
+  - "named_spots 0.3.3: re-band pnr_big_* to R-DF-16 or keep separate per-frame bands? Add a 'deep_on_line' label for the tau hole (perp <= 0.6, tau 0.35-0.75)?"
+  - "Measure a_first_step and t_react on MSU film / LPS; both currently set every physics-adjusted window."
+  - "Measure sigma_p and AR(1) rho of our tracker (noise_model) and refit k_floor, K_CAL, the *_q10 tier values and the sub-noise abstain policy."
+  - "Refit the matchup HMM (weights, sigma_fit, rho) by EM on MSU half-court data; decide the transition emission."
+  - "Hard vs soft switch needs a coach-agreed definition (MSU staff vocabulary)."
+  - "Second Spectrum / Synergy coverage definitions are not public; benchmarking needs licensed access."

@@ -1,0 +1,2027 @@
+family: bigs
+version: 0.3.0
+date: '2026-10-20'
+owner: Mac session
+status: proposal under the build freeze; numbers are V0-sim-checked proposals until fitted on R-ST-10 labels
+scope: screener actions after a screen (roll, short roll, pop mid, pop arc, slip, slip to arc, ghost, replace, seal, crash,
+  move to screen, roll into post) and big-man actions (post seal, duck-in, dive, rim run, dunker relocation, high-low, short-roll
+  playmaking, post-up, offensive-rebound crash)
+frame: named_spots attacked-rim frame, metres, seconds, 29.97 fps (DT = 1001/30000 s); mvlib v_r is positive toward the rim
+implementation: tools/specgen/movement/detectors/bigs.py (reads every param from this file); tests tests/movement/test_bigs.py
+input_contract:
+  screen: |-
+    mvlib.Event(kind='screen', actors={'screener': id, 'user': id, optional 'screener_defender': id, 'user_defender': id}, t0=<frame of the minimum smoothed screener-user distance (McQueen 2014, A3, R-ST-20)>, start, end, conf=<the screen's own probability>, attrs={'screen_class': 'ball' | 'dho' | 'off_ball', optional 'screen_type' ('ghost', 'spain', ...), optional 't_set'}). user = handler (ball), receiver (dho), cutter (off_ball). The screens family (or a hand label) produces it; this module never imports screens code.
+  fga: 'mvlib.Event(kind=''fga'', actors={''shooter'': id}, t0=<release frame>); optional, else the ball-XY proxy'
+  possession_change: mvlib.Event(kind='possession_change', t0=<frame>); optional, for rim_run t0
+  bigs: optional list of player ids treated as bigs (dive, rim_run, offensive_rebound_crash)
+  v_peak: 'optional {player id: m/s}, p95 of the 1 s-mean speed over >= 3 games (rim_run)'
+confidence_model: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+  conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+  (MP-16) x the input screen's conf when there is one. Point and gate tests are read at the extremum inside their window
+  (minimum r, maximum r / displacement, best v_r gate window), never at the first frame that crosses the threshold, where
+  P sits at ~0.5 by construction. A detector never emits an event with conf 0.0 (except screener_post_action's
+  'unknown_post_action'). Loop 1.
+sign_conventions: v_r > 0 toward the rim; outward speed = -v_r; theta = atan2(y, x) deg; m = atan2(y, |x|)
+shared_params:
+  s2_enter: {value: 5.99, unit: chi2_2dof}
+  s2_stay: {value: 9.21, unit: chi2_2dof}
+  stat_bridge_frames: {value: 6, unit: frames}
+  support_long_s: {value: 1.0, unit: s}
+  gate_window_s: {value: 0.5, unit: s}
+  never_set_speed_mps: {value: 1.0, unit: m/s}
+  rim_r: {value: 2.5, unit: m}
+  ra_r: {value: 1.27, unit: m}
+  arc_r: {value: 6.6, unit: m}
+  fga_rim_r: {value: 0.6, unit: m}
+  fga_max_flight_s: {value: 2.5, unit: s}
+  timing_sigma_s: {value: 0.1, unit: s}
+  holder_min_run_s: {value: 0.2, unit: s}
+  merge_gap_s: {value: 0.5, unit: s}
+  merge_shift_m: {value: 0.8, unit: m}
+  stat_sigv_rel: {value: 1.25, unit: '1'}
+  stat_min_edge_frames: {value: 5, unit: frames}
+  stat_enter_speed_mps: {value: 1.0, unit: m/s}
+  # Loop 2 noise tier: a track is 'high' noise when the median smoothed position sigma K_CAL*sqrt(var_p) >= this
+  # (sim 0.088 / 0.124 / 0.16 / 0.18 m at sigma_p 0.2 / 0.3 / 0.4 / 0.5). A param named <name>_low / <name>_high is
+  # read for the track's tier (bigs.tiered).
+  high_noise_sig_p_m: {value: 0.15, unit: m}
+  # L4-1: the screens family writes the screen class as attrs 'kind' (on_ball / off_ball / handoff), not
+  # 'screen_class'; bigs.screen_class maps it (an event with neither is read as a ball screen, as before).
+  screen_kind_map: {value: {on_ball: ball, off_ball: off_ball, handoff: dho}, unit: enum}
+items:
+- id: smoothing_input
+  level: rule
+  name: Smoothing and feature input (shared by every rule in this family)
+  aliases:
+  - P-SMOOTH
+  - kinematics input
+  actors: every tracked player and the ball
+  t0: n/a (per frame)
+  rule: |-
+    Every quantity is read from mvlib (MP rules): CA Kalman + RTS per segment (q = 30 m^2/s^5, 10 when median
+    sigma_p >= 0.45 m), Kin features with validity gates (speed, sigma_speed, heading, accel_along, turn_rate, curvature,
+    r, v_r, stationary_s2), MP-05 gap classes and MP-06 edge warm-up. No gate in this family uses a raw finite
+    difference. v_r follows mvlib: POSITIVE TOWARD THE RIM (the research text writes dr/dt, negative toward the rim);
+    every number below is in the mvlib sign. Speed and v_r gates are window means over gate_window_s (0.5 s, 16 frames)
+    of the smoothed value (E4 fix), never 'every frame of the window'. Decisions are never taken on interp_long or
+    'none' frames (gap_factor 0).
+  params: {}
+  min_duration_s: null
+  outputs: x, y, vx, vy, speed, v_r, stationary_s2, var_p, var_v, state, edge (mvlib.Kin)
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'E3 corrected: at sigma_p 0.5 the 1.5 m/s roll gate is ~1.7 sigma and the 2.0 m/s slip gate ~2.2 sigma of a 0.5 s
+    local-linear velocity (sigma_v 0.90); the CA-RTS window mean is tighter (sim recall below), but confidence is lower there
+    and is reported, not hidden.'
+  conflicts_resolved:
+  - Research P-SMOOTH note claimed 2.8 / 3.7 sigma at sigma_p 0.5; those are the sigma_p 0.3 ratios (E3). Corrected here.
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: CA-RTS smoother, Kin features, hysteresis, window_conf, edge_factor, gap_factor
+  status: canonical
+  detector: null
+- id: stationary_state
+  level: rule
+  name: Shared stationary (held-position) state
+  aliases:
+  - P-STATIONARY
+  - stand
+  - set
+  - held
+  actors: any player (consumed for screeners, seals, posts)
+  t0: run onset frame
+  rule: |-
+    STATIONARY when mvlib stationary_s2 < s2_enter (5.99 = chi-square 2 dof 95%); a run continues while s2 < s2_stay
+    (9.21, 99%) with gaps of <= stat_bridge_frames (6) bridged. A run can only START on a frame with a precise velocity
+    estimate (edge >= stat_min_edge_frames 5 and K_CAL*sqrt(var_v) <= stat_sigv_rel 1.25 x the track median) whose
+    CA-RTS speed is < stat_enter_speed_mps (1.0 m/s): in smoother warm-up var_v is huge and s2 alone called every
+    segment start stationary (loop-1 B10). Runs at the same spot are merged when the gap is
+    <= merge_gap_s (0.5 s) and the mean positions differ by < merge_shift_m (0.8 m): correlated (AR) tracker noise
+    breaks a held screen into pieces. Per-frame probability P(stationary) = Phi((5.99 - s2) / 2). Raw speed is never
+    compared with 0.3 / 0.5 / 0.6 m/s: the CA-RTS speed of a truly stationary player is biased upward (Rayleigh).
+  params: {}
+  min_duration_s: 0.0
+  outputs: mask, runs (a, b), merged runs, p_stationary
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'V0 sim, 200 seeds, stationary player: P(s2 < 5.99) = 0.991 / 0.984 / 0.958 and P(s2 > 9.21) = 0.0014 / 0.0020 /
+    0.0079 per frame at sigma_p 0.2 / 0.3 / 0.5, while the mean CA-RTS speed at rest is 0.34 / 0.45 / 0.50 m/s (p95 0.67 /
+    0.87 / 0.98). A raw ''speed < 0.3'' rule fails at every noise level; ''speed < 0.6'' flickers at sigma 0.5 (E1). The s2
+    test does not.'
+  conflicts_resolved:
+  - 'E1 (stationary flicker at 0.5 s support): replaced by the chi-square statistic, which is normalised by the smoother''s
+    own velocity covariance; enter 0.6 / exit 1.0 m/s and still_strict 0.3 m/s are superseded for this family.'
+  - 'Moving-screen candidate (fouls.yaml > 0.5 m/s at contact): reported by screener_set_state as min CA-RTS speed >= 1.0
+    with dwell < 0.2 s, because 0.5 m/s is inside the at-rest speed distribution.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: stationary_s2 (MP-09), hysteresis (MP-10)
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: temporal hysteresis and slow_speed 1.0 m/s
+  status: proposal
+  detector: null
+- id: screen_frame
+  level: primitive
+  name: Screen reference frame of a screener's post-action (input contract)
+  aliases:
+  - P-SCREEN-FRAME
+  - screen moment frame
+  actors: screener s, user u (handler h for a ball screen, receiver for a DHO, cutter for off-ball)
+  t0: t0 = screen moment = frame of minimum smoothed screener-user distance, supplied by the input screen event
+  rule: |-
+    INPUT: mvlib.Event kind 'screen' (see input_contract). From it:
+    - t_set / set_end: the merged stationary run that contains t0, ends <= set_before_s (0.5 s) before it or starts
+      <= set_after_s (0.3 s) after it; dwell_s = (set_end - t_set) * DT.
+    - never_set: no such run AND the minimum CA-RTS speed in t0 +- never_set_half_s (0.5 s) >= never_set_speed_mps
+      (1.0 m/s). p_never_set = Phi((min_speed - 1.0) / never_set_sigma_mps (0.31)). Without a run but with a slower
+      minimum, t_set = set_end = the speed minimum (touch set).
+    - P_s: mean smoothed position of s over the set run within +-ps_half_s (0.5 s) of t0 (of set_end when the
+      screener left before t0, a slip); a single frame at the speed minimum in [t0 - 1.0, t0 + 0.3] s when never_set
+      or for a touch set. r_s0 = r(P_s).
+    - t_rel: set_end + 1 - release_lag_s (0.1 s, the sim run-end lag), provided s later gets >= release_disp_m (0.5 m)
+      from P_s inside the window; never_set: the speed minimum; otherwise held (null).
+    - t_use: ball/off-ball: first frame >= t0 - use_before_s (1.0 s) with (u - P_s) . u_hat >= 0 and |u - P_s| <=
+      use_radius_m (2.0 m), u_hat = u's mean heading over [t0 - 1.0, t0 - 0.2] s (needs >= 1.0 m/s); DHO: first frame
+      the debounced holder is u. Fallback (handler stopped / rejected): t0 + use_fallback_s (0.2 s), flagged.
+    - release_timing (axis A): never_set | early (t_use - t_rel > early_margin_s: 0.1 s low tier, 0.15 s high tier) |
+      post_use | held.
+      p_early = Phi(margin / timing_sigma_s (0.1 s)). p_slow (slow vs quick slip) = Phi((dwell - 0.4) / 0.13).
+    - first_move (axis B): direction of s - P_s when s first reaches first_move_m (1.0 m) from P_s after t_rel:
+      c = (r - r_s0) / |s - P_s|; rimward c <= -0.5, outward c >= +0.5, else lateral; hold if never 1.0 m.
+    - window W = [t_rel, t0 + window_cap_s (3.0 s)] (a proposal; CTG's 3 s bounds its screen search, not the post-action).
+    - D_s / D_h: event actors, else the nearest defender over [t0 - defender_window_s (0.5), t0] s. drag flag: s's mean -vy over
+      [t0 - 2.0, t0 - 0.5] s >= 3.0 m/s (transition trailer screen).
+  params:
+    set_before_s: {value: 0.5, unit: s}
+    set_after_s: {value: 0.3, unit: s}
+    never_set_half_s: {value: 0.5, unit: s}
+    window_cap_s: {value: 3.0, unit: s}
+    release_lag_s: {value: 0.1, unit: s}
+    never_set_sigma_mps: {value: 0.31, unit: m/s}
+    never_rel_before_s: {value: 1.0, unit: s}
+    never_rel_after_s: {value: 0.3, unit: s}
+    release_disp_m: {value: 0.5, unit: m}
+    use_before_s: {value: 1.0, unit: s}
+    heading_from_s: {value: 1.0, unit: s}
+    heading_to_s: {value: 0.2, unit: s}
+    use_min_speed_mps: {value: 1.0, unit: m/s}
+    use_radius_m: {value: 2.0, unit: m}
+    use_fallback_s: {value: 0.2, unit: s}
+    early_margin_s_low: {value: 0.1, unit: s}
+    early_margin_s_high: {value: 0.15, unit: s}
+    slow_dwell_split_s: {value: 0.4, unit: s}
+    dwell_sigma_s: {value: 0.13, unit: s}
+    first_move_m: {value: 1.0, unit: m}
+    first_move_cos: {value: 0.5, unit: '1'}
+    drag_from_s: {value: 2.0, unit: s}
+    drag_to_s: {value: 0.5, unit: s}
+    drag_speed_mps: {value: 3.0, unit: m/s}
+    ps_half_s: {value: 0.5, unit: s}
+    defender_window_s: {value: 0.5, unit: s}
+  min_duration_s: null
+  outputs: screen_t0, P_s, r_s0, t_set, dwell_s, t_rel, t_use, use_fallback, release_timing, early, p_early, p_slow, p_never_set,
+    min_speed, first_move, drag, screener_defender, user_defender
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'V0 sim (sim.scenario, 60 seeds per cell; approach 2.3 m in 1.0 s, true hold D, rimward exit): measured stationary-run
+    dwell = D + 0.1 s at sigma_p 0.3 (sd 0.12-0.14 s; D 0.2 -> 0.30, D 0.3 -> 0.42, D 0.5 -> 0.62); at sigma_p 0.5 dwell is
+    under-read (D 0.3 -> 0.15, D 0.5 -> 0.44). Minimum CA-RTS speed: pass-through 2.35 +- 0.24 m/s, stop-and-go (D = 0) 1.35
+    +- 0.31, D 0.2 0.64 +- 0.31. Run-end lag after the true departure 0.13 s (sigma 0.3), 0.01 s (sigma 0.5). Quick vs slow
+    is therefore a probability with the split at measured 0.4 s (true 0.3 s) and is unresolvable at sigma_p >= 0.45 (report
+    p_slow but do not branch on it there). If t0 falls on interp_long frames the frame is built but every post-action gets
+    gap_factor 0 (camera_cut_policy).'
+  conflicts_resolved:
+  - 'Screen timestamp: CTG''s ''frame the screen is set'' is stored as t_set; t0 is McQueen et al. 2014 / repo A3 / R-ST-20
+    minimum distance.'
+  - '''Within 1.0 s of the handler passing'' (A11.18) vs ''after t0'' (motion_starts): everything is anchored to t0 with t_use
+    stored separately.'
+  - 'E2 (dwell not resolvable at 0.1 s): never_set uses the minimum CA-RTS speed (sim separates pass-through 2.35 m/s from
+    a 0.2 s stop 0.64 m/s); quick/slow is a probability, not a branch.'
+  - Off-ball screens and DHOs use the same frame (missing items 'DHO post-actions' and 'off-ball screens by bigs'); for a
+    DHO t_use = the handoff frame.
+  sources:
+  - url: https://cdn.prod.website-files.com/68d6be744d7efccc2207f571/68d6be744d7efccc2208061f_2014_SSAC_Recognizing-on-Ball-Screens.pdf
+    supports: screen moment = minimum handler-screener distance; screener within 10 ft and <= 2 ft farther from the basket
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: screening frame, 3 s screen window, roller-behind test, re-screen split
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A3 t0 = minimum handler-screener distance, P_s
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/screens.yaml
+    supports: screener_action_after enum (line 608)
+  status: canonical
+  detector: detect_screen_frame
+- id: screener_set_state
+  level: primitive
+  name: Screener's set at the screen
+  aliases:
+  - set screen
+  - screen set
+  - quick/slow set
+  actors: screener s
+  t0: t_set (onset of the set run)
+  rule: |-
+    For each input screen that is not never_set: emit 'screen_set' over [t_set, set_end] with dwell_s and p_slow.
+    A touch set (no stationary run, speed minimum < 1.0 m/s) is emitted at the speed minimum with
+    conf = P(min speed < 1.0) with never_set_sigma_mps read from screen_frame. moving_screen_candidate: minimum CA-RTS speed >= moving_screen_mps (1.0) and dwell <
+    moving_screen_dwell_s (0.2 s).
+  params:
+    moving_screen_mps: {value: 1.0, unit: m/s}
+    moving_screen_dwell_s: {value: 0.2, unit: s}
+  min_duration_s: 0.0
+  outputs: dwell_s, p_slow, touch_set, moving_screen_candidate
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Set onset fires when the decelerating screener's speed drops below ~1 m/s (s2 < 5.99 at sigma 0.3), ~0.1 s before
+    the true stop; V0 t0 error within +-0.3 s in 30/30 seeds.
+  conflicts_resolved:
+  - Consumes the SCREEN family's set; does not decide screen validity (conflict C7 belongs to the screens family).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: stationary_s2
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: quick vs slow slip by whether the screener set
+  status: proposal
+  detector: detect_screener_set_state
+- id: behind_def
+  level: primitive
+  name: Roller behind his screener's defender
+  aliases:
+  - F-BEHIND-DEF
+  - got behind
+  - rim advantage
+  - did_roller_get_behind_screener_defender
+  actors: roller s rel. screener defender D_s
+  t0: t_rel
+  rule: |-
+    behind(t): lead = (D_s - s) . u >= behind_m (0.76 m = CTG 2.5 ft), u = (x_s, y_s) / r_s the unit vector from the
+    rim through the roller (lead = r(D_s) - r(s) to first order), while the 0.5 s centred mean v_r of s >= rimward_mps
+    (1.0 m/s); evaluated over [t_rel, end of W]. Emitted when it holds for >= min_s (0.2 s). CTG compatibility: the
+    y-axis lead y(D_s) - y(s) is stored as ctg_y_lead_m, and ctg_behind is the y-axis test bounded by the end of the
+    handler's holder run containing t0 (CTG: before the handler's touch ends).
+  params:
+    behind_m: {value: 0.76, unit: m}
+    rimward_mps: {value: 1.0, unit: m/s}
+    min_s: {value: 0.2, unit: s}
+  min_duration_s: 0.2
+  outputs: first_behind_frame, max_lead_m, radial_lead_m (r(D_s) - r(s) at the end), ctg_y_lead_m, ctg_behind, handler_touch_end,
+    frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Pair y-difference sigma = sqrt(sigma_p(s)^2 + sigma_p(D_s)^2) from var_p; correlated tracker bias is the real limit
+    (E8) and is calibrated with free_throw_calibration. Needs D_s (matchup); without defenders it emits nothing.
+  conflicts_resolved:
+  - CTG uses its x axis toward the baseline; mapped to our y. The radial version is stored for wing rolls.
+  - 'E15: CTG bounds the test by the end of the handler''s touch; we evaluate to the end of W and store radial_lead_m; a CTG-compatible
+    value is the subset before the handler''s last holder frame.'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: 'did_roller_get_behind_screener_defender: > 2.5 ft closer to the baseline'
+  status: proposal
+  detector: detect_behind_def
+- id: post_seal
+  level: primitive
+  name: Post seal (positional seal by a big)
+  aliases:
+  - P-POST-SEAL
+  - seal
+  - post seal
+  - deep seal
+  - pin
+  actors: post player o rel. nearest defender d and the ball
+  t0: seal onset (first frame the held state and the geometry are met, walked back over 1-sigma slack frames)
+  rule: |-
+    o is not the holder, inside named_spots post_area with r <= r_max (3.5 m; 3.8 m high tier), in the held (merged
+    stationary) state, nearest defender d at seal_def_min_m (0.4) .. seal_def_m (1.2 m; 1.5 m high tier), and phi = angle at o between o->d and o->ball
+    > phi_partial_deg (90). Frames with d closer than 0.4 m (angle undefined) bridge but cannot start a seal; the
+    onset is walked back <= walk_back_s (1.0 s) over candidate frames (held, in the region, d within seal_def_m +
+    seal_slack_m 0.4 m), intervals closer than seal_merge_gap_s (0.5 s) merge, and only then is min_s (0.8 s) applied (unknown-angle frames
+    count toward it). conf also carries the fraction of strict frames and the window mean of P(r < r_max). seal_type behind if mean phi > 135, else partial. Ball position = ball XY, else the
+    holder (ball above heads). Flags deep_seal (named_spots deep_seal at onset), three_second_risk (> 3 s inside
+    three_second_lane, > three_sec_s 3.0).
+  params:
+    r_max_low: {value: 3.5, unit: m}
+    r_max_high: {value: 3.8, unit: m}
+    min_s: {value: 0.8, unit: s}
+    seal_def_m_low: {value: 1.2, unit: m}
+    seal_def_m_high: {value: 1.5, unit: m}
+    seal_def_min_m: {value: 0.4, unit: m}
+    seal_slack_m: {value: 0.4, unit: m}
+    walk_back_s: {value: 1.0, unit: s}
+    seal_merge_gap_s: {value: 0.5, unit: s}
+    phi_partial_deg: {value: 90, unit: deg}
+    phi_behind_deg: {value: 135, unit: deg}
+    phi_sigma_deg: {value: 20, unit: deg}
+    three_sec_s: {value: 3.0, unit: s}
+  min_duration_s: 0.8
+  outputs: seal_type, phi_mean_deg, r, strict_frac, deep_seal, three_second_risk
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'V0: with the defender truly 0.8 m away, AR tracker noise reads 0.24-0.4 m for long stretches (sigma_p 0.3), which
+    is why near frames bridge instead of breaking the seal. Lob seal (fronted, weak side empty) is not emitted here: it needs
+    reliable fronting geometry and the LOB family.'
+  conflicts_resolved:
+  - 'SEAL r < 2.5 (motion_starts) vs zone block 1.8-3.5 (A1): r <= 3.5 inside post_area, because named_spots low_post reaches
+    r 3.26.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: post_area, post_* geometry (1.2 m), deep_seal, three_second_lane
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md
+    supports: SEAL r < 2.5, >= 0.8 s
+  status: proposal
+  detector: detect_post_seal
+- id: id_swap_risk
+  level: primitive
+  name: Identity-swap risk between an attacker and a defender
+  aliases:
+  - id swap
+  - track swap risk
+  actors: attacker o, defender d
+  t0: start of the approach inside stay_dist_m
+  rule: |-
+    Smoothed |o - d| < swap_dist_m (0.6 m) with r(o) <= r_max (4.5 m) for an enter run (any length; gaps <=
+    bridge_frames 2 bridged) whose window mean of P(|o - d| < 0.6) >= enter_p_min (0.5); the event continues while
+    |o - d| < stay_dist_m (0.9 m) and its onset is walked back over the same condition; the whole stay interval
+    must last >= min_s (0.1 s). Seal, behind_def and high-low events overlapping this interval should be read with
+    their conf multiplied by (1 - this conf) by consumers.
+    L4-7: flip_deg = change of the bearing of d seen from o between flip_pad_s (0.3 s) before the onset and 0.3 s
+    after the end; crossed = flip_deg >= cross_deg (90). Crossing encounters carry the swap geometry; one-sided contact
+    (post defence, box-out, screen contact) is centre overlap. Attributes only; the flag rule is unchanged.
+  params:
+    swap_dist_m: {value: 0.6, unit: m}
+    stay_dist_m: {value: 0.9, unit: m}
+    r_max: {value: 4.5, unit: m}
+    min_s: {value: 0.1, unit: s}
+    enter_p_min: {value: 0.5, unit: '1'}
+    bridge_frames: {value: 2, unit: frames}
+    flip_pad_s: {value: 0.3, unit: s, note: 'L4-7'}
+    cross_deg: {value: 90.0, unit: deg, note: 'L4-7'}
+  min_duration_s: 0.1
+  outputs: min_dist_m, flip_deg, crossed
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'Pure XY proxy: two centres within 0.6 m cannot be told apart by a box-bottom tracker; a tracker ID-confidence feed
+    would replace it.'
+  conflicts_resolved:
+  - Missing item 'identity-swap test for roller vs defender in the paint' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: dist, sigma_dist (MP-19)
+  status: proposal
+  detector: detect_id_swap_risk
+- id: lob_catch_proxy
+  level: primitive
+  name: Lob catch by a big without ball height
+  aliases:
+  - lob
+  - lob to the roller
+  - alley-oop catch
+  actors: passer, receiver
+  t0: catch frame
+  rule: |-
+    A pass (debounced holder runs separated by an observed flight <= max_flight_s 2.0 s) whose receiver is at r <
+    lob_r (1.5 m) within catch_settle_s (0.2 s) after the catch frame and whose mean v_r over the approach_s (0.3 s)
+    before the catch is >= lob_vr_mps (3.0 m/s).
+  params:
+    lob_r: {value: 1.5, unit: m}
+    lob_vr_mps: {value: 3.0, unit: m/s}
+    approach_s: {value: 0.3, unit: s}
+    max_flight_s: {value: 2.0, unit: s}
+    catch_settle_s: {value: 0.2, unit: s}
+  min_duration_s: 0.0
+  outputs: release_frame, mean_v_r, catch_r
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: The holder model assigns the ball within 1.0 m of the hands, so the catch frame is ~0.1 s early; r is tested up to
+    0.2 s later. A true lob (apex height) needs ball z (lob_ball_height).
+  conflicts_resolved:
+  - The LOB family owns lob passes; this proxy only flags catches for roll / high-low / short-roll outputs.
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A0 LOB proxy
+  status: proposal
+  detector: detect_lob_catch_proxy
+- id: roll
+  level: action
+  name: Roll (and deep roll)
+  aliases:
+  - A-ROLL
+  - roll
+  - dive after the screen
+  - rim roll
+  - deep roll
+  - pick-and-roll roller
+  actors: screener s rel. user h (ball screen, DHO giver or off-ball screen)
+  t0: t0 of the screen; roll_start_frame stored
+  rule: |-
+    release_timing = post_use and first_move = rimward. Onset gate: some 0.5 s window starting in [t0 - 0.3, t0 + 1.5]
+    s has mean v_r >= v_r_gate_mps (1.5 m/s). Completion within T_roll of t_rel (the release, not t0), T_roll =
+    clamp(t_base 0.5 + (r_s0 - 2.5) / travel 2.0 m/s, 1.5, 3.5) s: r <= rim_r (2.5 m), or a catch by s at r <= catch_r
+    (3.0) with v_r >= 1.0. Also min r over [t0, completion + dr_eval_after_s 0.3 s] - r_s0 <= -min(dr_min_m 2.0,
+    r_s0 - rim_r). The rim test's confidence is read at the minimum r inside the window, not at the first crossing. Excluded when a held
+    run of >= short_stop_s (0.3 s) starts after the onset at mean r in (2.5, 6.0] (that is a short roll). Flags
+    deep_roll (r_min <= RA_R 1.27), ctg_roll_compat (r_min <= 4.27 m = 14 ft).
+    L4-6 (early_without_slip_gate): release_timing early is also accepted when slip's onset gate fails (no 0.5 s
+    window starting in [t_rel - 0.2, t_rel + 0.5] s with mean v_r >= 2.0 m/s): the screener left a few frames before
+    the use but accelerated like a roller, which is neither a slip nor 'none'.
+  params:
+    v_r_gate_mps: {value: 1.5, unit: m/s}
+    onset_before_s: {value: 0.3, unit: s}
+    onset_after_s: {value: 1.5, unit: s}
+    early_without_slip_gate: {value: true, unit: bool, note: 'L4-6: an early release that fails the slip onset gate is read as a roll'}
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.0, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.5, unit: s}
+    catch_r: {value: 3.0, unit: m}
+    catch_vr_mps: {value: 1.0, unit: m/s}
+    dr_min_m: {value: 2.0, unit: m}
+    dr_eval_after_s: {value: 0.3, unit: s}
+    short_stop_s: {value: 0.3, unit: s}
+    pocket_r_max: {value: 6.0, unit: m}
+    ctg_roll_r: {value: 4.27, unit: m}
+  min_duration_s: 0.5
+  outputs: roll_start_frame, t_complete_s, completion (rim/catch), T_roll_s, r_min, mean_v_r_gate, peak_speed, deep_roll,
+    ctg_roll_compat, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Paint crowding and occlusion are the main real failure; completion during a predicted gap gets gap_factor 0.8 (short)
+    or 0. A roll that ends in a seal also matches seal; precedence picks seal.
+  conflicts_resolved:
+  - 'ROLL radial velocity vs distance, resolved by V0 sim (20 seeds per cell; screens at r_s0 5.5 / 7.0 / 8.5; mean roll speed
+    2.0-3.5 m/s; negatives: hold then late drift at 1.2 m/s, pop then drift): recall at sigma_p 0.3 / 0.5 = distance only,
+    2.0 s (motion_starts) 0.58 / 0.56; A11.18 per-frame v_r held 0.5 s + r < 2.5 in 2.0 s 0.57 / 0.55; this rule 0.76 / 0.77;
+    false positives 0 for all three. The gain is the distance-scaled window: at r_s0 8.5 and 2.5-3.0 m/s the fixed 2.0 s rules
+    score 0.00 and this rule 0.95-1.00. Both tests are kept: the v_r onset gate separates a roll from a late drift, the distance
+    test defines completion.'
+  - 'E4: the per-frame ''held for 0.5 s'' gate is replaced by a window mean (same false-positive rate in sim, better recall).'
+  - 'T_roll travel 3.0 m/s (research) lowered to 2.5 m/s: at 3.0 the r_s0 7.0 / 2.5 m/s cell scored 0.15-0.35, at 2.5 it scores
+    1.00 with no new false positives. Rolls at a 2.0 m/s mean are not labelled roll by any rule (slow drift).'
+  - CTG 14 ft (4.27 m) kept only as ctg_roll_compat because it overlaps our pocket band.
+  - 'Loop 1 (B3): the window is counted from t_rel with travel 2.0 m/s and t_max 3.5 s (onset gate up to t0 + 1.5 s). From t0
+    with 2.5 m/s the tester measured 0/60 wing rolls at 2.2 m/s and 10-15% misses of 3.0 m/s rolls held 0.6 s; after the change
+    roll recall is 1.00 / 1.00 / 0.97 at sigma_p 0.2 / 0.3 / 0.5 on the tester''s 80 runs per sigma, false positives 0.'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: roll = first move toward the basket, within about 14 ft
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A11.18 ROLL; section 5.4 roll / deep roll
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md
+    supports: 0.3 ROLL r <= 2.5 within 2.0 s, dr <= -2 m
+  status: proposal
+  detector: detect_roll
+- id: short_roll
+  level: action
+  name: Short roll
+  aliases:
+  - A-SHORT-ROLL
+  - short roll
+  - pocket
+  - short-roll catch
+  - roll to the nail
+  actors: screener s rel. handler h; defenders for the trap flag
+  t0: t0 of the screen; catch or stop frame stored
+  rule: |-
+    release_timing = post_use (slow slips belong to slip, E6) and first_move = rimward. Within window_s (2.0 s) of
+    t0, either (a) a catch by s at pocket_r_min (2.5) < r <= pocket_r_max (6.0) m and r <= r_s0 - min_sink_m (1.0),
+    any angle, with a deceleration (1.0 s-support speed < 1.5 m/s somewhere in [catch - catch_slow_before_s 0.3, catch +
+    catch_slow_after_s 0.5] s) or without s reaching r <= 2.5 as the holder within catch_after_s (1.0 s): a catch in
+    stride on a full roll is a roll; or (b) a stop: 1.0 s-support speed < stop_speed_mps (1.5) for >= stop_min_s (0.3
+    s) in that band, starting <= stop_by_s (2.0 s) after t0 (the stop may run past the window end). In both, min r over
+    [t0, end + 0.3 s] > 2.5. Flags: in_short_roll_zone and
+    short_roll_pocket (named_spots membership at the catch/stop point), strict (3.0 <= r <= 5.5), trap_context (two
+    defenders within 2.0 m of h for >= 0.5 s in [t0 + 0.3, t0 + 1.0] s).
+  params:
+    window_s: {value: 2.0, unit: s}
+    stop_by_s: {value: 2.0, unit: s}
+    pocket_r_min: {value: 2.5, unit: m}
+    pocket_r_max: {value: 6.0, unit: m}
+    min_sink_m: {value: 1.0, unit: m}
+    stop_speed_mps: {value: 1.5, unit: m/s}
+    stop_min_s: {value: 0.3, unit: s}
+    after_s: {value: 0.3, unit: s}
+    catch_after_s: {value: 1.0, unit: s}
+    catch_slow_before_s: {value: 0.3, unit: s}
+    catch_slow_after_s: {value: 0.5, unit: s}
+    strict_r_min: {value: 3.0, unit: m}
+    strict_r_max: {value: 5.5, unit: m}
+    trap_from_s: {value: 0.3, unit: s}
+    trap_to_s: {value: 1.0, unit: s}
+    trap_dist_m: {value: 2.0, unit: m}
+    trap_min_s: {value: 0.5, unit: s}
+  min_duration_s: 0.3
+  outputs: variant (catch/stop), frame, r, theta, t_minus_t0_s, r_min, in_short_roll_zone, short_roll_pocket, strict, trap_context,
+    frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: The stop test uses the 1.0 s-support speed (Rayleigh bias removed); it lags the true stop by ~0.3 s, so the stop
+    deadline is 2.0 s after t0 (research 1.2 s missed every V0 stop of a 3.7 m roll from a top screen).
+  conflicts_resolved:
+  - 'E5 (band gap 2.5-3.0, overlap with pop_mid, no side-PnR pocket): the band is the exhaustive (2.5, 6.0] at any angle and
+    first_move separates pocket (rimward) from mid pop (outward/lateral); short_roll_zone (m >= 55) is a flag. named_spots
+    ticket: short_roll_zone excludes side pick-and-roll pockets.'
+  - Catch required? Label fires on a stop without a catch (CTG 'stops short'), catch stored as the variant; owner decision
+    still open (R-ST-18 F1 counts).
+  - 'E6: slow_slip removed from the preconditions (slip owns early releases).'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: short_roll = moves toward the rim but stops short or takes the ball early
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: short_roll_zone, short_roll_pocket
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A11.18 SHORT_ROLL; A3 strict 3.0-5.5
+  status: proposal
+  detector: detect_short_roll
+- id: pop_arc
+  level: action
+  name: Pop to the arc (pick-and-pop)
+  aliases:
+  - A-POP-ARC
+  - pop
+  - pick and pop
+  - POP_ARC
+  - screener lift
+  - 4 lift up
+  actors: screener s rel. handler h
+  t0: t0 of the screen; arrival frame stored
+  rule: |-
+    release_timing = post_use, first_move outward or lateral, and t_rel <= t0 + release_within_s (1.0 s). Arrival:
+    first frame in named_spots pop_arc_zone with the screener's OWN displacement from P_s >= disp_m (1.5 m), within
+    T_pop of t_rel, T_pop = clamp(0.5 + d_needed / 2.5 m/s, 1.5, 3.0) s with d_needed = max(0, zone_r_min 6.6 - r_s0); extended
+    by extend_s (0.5 s) while the 0.5 s mean outward speed (-v_r) at the deadline is >= 1.0 m/s. Path: r >= r_s0 -
+    0.75 m throughout [t_rel, arrival] and no 0.3 s window with mean v_r >= 1.0 m/s (rimward run). Flags: pop_fast
+    (arrival <= t0 + 1.5 s), beyond_arc (is_three at arrival), arrival_spots (screener_pop, top/slot/wing/corner_three).
+    The zone test's confidence is read at the maximum r over [arrival, arrival + point_window_s 0.5 s].
+  params:
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.5, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    release_within_s: {value: 1.0, unit: s}
+    extend_s: {value: 0.5, unit: s}
+    outward_mps: {value: 1.0, unit: m/s}
+    disp_m: {value: 1.5, unit: m}
+    r_drop_m: {value: 0.75, unit: m}
+    rimward_run_s: {value: 0.3, unit: s}
+    rimward_mps: {value: 1.0, unit: m/s}
+    fast_s: {value: 1.5, unit: s}
+    zone_r_min: {value: 6.6, unit: m}
+    point_window_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: arrival_frame, arrival_minus_t0_s, T_pop_s, extended, r_end, displacement_m, arrival_spots, pop_fast, beyond_arc,
+    frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'Feet-on-the-line pops flicker between 6.6 and 6.75 m: the zone is 6.6 (0.15 m buffer) and beyond_arc is reported
+    separately from is_three.'
+  conflicts_resolved:
+  - 'POP 1.5 vs 2.0 s, resolved by V0 sim (20 seeds per cell; r_s0 3.6 / 4.8 / 5.5 / 7.0, travel 2.0-3.0 m/s, pivot 0.2 /
+    0.5 s): recall at sigma_p 0.3 / 0.5 = arrival <= t0 + 1.5 s 0.74 / 0.66; <= t0 + 2.0 s 0.95 / 0.91; this rule 0.96 / 0.92
+    (unconditional 2.5 s 0.98 / 0.96). Worst cell (short corner r_s0 3.6, 2.0 m/s, 0.5 s pivot): 1.5 s 0.00, 2.0 s 0.55 /
+    0.25, this rule 0.85 / 0.95. 1.5 s is rejected; 2.0 s is kept as the scale of T_pop, pop_fast keeps 1.5.'
+  - 'E16: the window is distance-scaled and anchored to t_rel like slip_to_arc.'
+  - 'E7 (pop fired on the handler''s motion for top screens): the test uses the screener''s own displacement from P_s; V0
+    ''top screener holds'' scenario gives no pop in 30/30 seeds.'
+  - 'New gate release_within_s 1.0 s: without it ''hold 1.6 s after use then walk out at 1.0 m/s'' was labelled pop in 0.80
+    / 0.60 of seeds; with it 0.00, recall unchanged within 0.01.'
+  - '''Never inside r 5.5'' (motion_starts) replaced by r >= r_s0 - 0.75 (elbow and short-corner pops start inside 5.5).'
+  - Arc radius 6.6 (A11.18, pop_arc_zone) for arrival; 6.75 via is_three for beyond_arc.
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: pop_arc_zone r >= 6.6; screener_pop
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md
+    supports: POP 1.5 s, 6.75, never inside 5.5
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A11.18 POP_ARC 2.0 s
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: pop = first move out toward the perimeter
+  status: proposal
+  detector: detect_pop_arc
+- id: pop_mid
+  level: action
+  name: Pop to mid-range
+  aliases:
+  - A-POP-MID
+  - POP_MID
+  - short pop
+  - elbow pop
+  - short-corner pop
+  actors: screener s rel. handler h
+  t0: t0 of the screen; stop/catch frame stored
+  rule: |-
+    release_timing = post_use, first_move outward or lateral, r_s0 < r0_max (6.1 m). Within window_s (2.0 s) of t0,
+    s stops (1.0 s-support speed < 1.5 m/s for >= 0.3 s) or catches inside named_spots pop_mid_zone (4.0 <= r < 6.6)
+    with displacement from P_s >= disp_m (1.5 m) and r - r_s0 >= dr_min_m (+0.5 m). r >= r_s0 - 0.75 m and no rimward
+    run (0.3 s window mean v_r >= 1.0) from t_rel to the stop. A pop that entered pop_arc_zone first is pop_arc.
+    Displacement and dr are confirmed (and their confidence read) on the mean over [stop/catch, + settle_s 0.5 s].
+  params:
+    window_s: {value: 2.0, unit: s}
+    r0_max: {value: 6.1, unit: m}
+    disp_m: {value: 1.5, unit: m}
+    dr_min_m: {value: 0.5, unit: m}
+    stop_speed_mps: {value: 1.5, unit: m/s}
+    stop_min_s: {value: 0.3, unit: s}
+    r_drop_m: {value: 0.75, unit: m}
+    rimward_run_s: {value: 0.3, unit: s}
+    rimward_mps: {value: 1.0, unit: m/s}
+    settle_s: {value: 0.5, unit: s}
+  min_duration_s: 0.3
+  outputs: variant, frame, r, dr, displacement_m, t_minus_t0_s, spots (elbow, pinch_post, short_corner, high_short_corner,
+    mid_post), frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 1.5 m pops are ~3.5 sigma of a smoothed displacement at sigma_p 0.3 but AR bias makes short pops soft; confidence
+    drops below 2 m.
+  conflicts_resolved:
+  - A11.18 POP_MID adopted with the dr >= +0.5 and r_s0 < 6.1 guards; pocket vs mid split by first_move (E5).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A11.18 POP_MID; A3.8 step-up and short-corner pops
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: pop_mid_zone 4.0 <= r < 6.6
+  status: proposal
+  detector: detect_pop_mid
+- id: slip
+  level: action
+  name: Slip (quick, slow or never-set) to the rim or the pocket
+  aliases:
+  - A-SLIP
+  - slip
+  - slip the screen
+  - early release
+  - touch-and-go
+  - ghost_in
+  actors: screener s rel. handler h (and D_h)
+  t0: t_rel (release)
+  rule: |-
+    release_timing early, or never_set with t_rel before use (ghost_in), and first_move = rimward. Gate: a 0.5 s window
+    starting in [t_rel - 0.2, t_rel + 0.5] s with mean v_r >= v_r_gate_mps (2.0 m/s). Destination rim: r <= 3.0 within
+    t_rel + T_roll (roll formula, travel 3.0 m/s); else pocket: 1.0 s-support speed < 1.5 for >= 0.3 s at 2.5 < r <=
+    6.0. slip_type = ghost_in (never_set), slow (p_slow >= slow_p_min 0.5) or quick. Flags slip_strict (peak speed >= 3.0 m/s),
+    touch (min |s - D_h| <= 1.0 m in the touch_window_s (1.0 s) before t_rel and min speed < 1.0). The pocket stop must
+    start inside the window and may run past its end.
+  params:
+    v_r_gate_mps: {value: 2.0, unit: m/s}
+    onset_before_s: {value: 0.2, unit: s}
+    onset_after_s: {value: 0.5, unit: s}
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 3.0, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    rim_end_r: {value: 3.0, unit: m}
+    pocket_r_max: {value: 6.0, unit: m}
+    stop_speed_mps: {value: 1.5, unit: m/s}
+    stop_min_s: {value: 0.3, unit: s}
+    strict_speed_mps: {value: 3.0, unit: m/s}
+    touch_dist_m: {value: 1.0, unit: m}
+    touch_window_s: {value: 1.0, unit: s}
+    slow_p_min: {value: 0.5, unit: '1'}
+  min_duration_s: 0.5
+  outputs: destination, slip_type, lead_s (t_use - t_rel), mean_v_r_gate, peak_speed, slip_strict, touch, r_min, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Quick vs slow sits at the dwell resolution limit (screen_frame); a 0.2 s stop reads as never_set in ~10% of seeds
+    at sigma_p 0.3, so ghost_in and quick slip are both kept and p_never_set reported.
+  conflicts_resolved:
+  - 'SLIP 2 vs 3 m/s, resolved by V0 sim (20 seeds per cell; screens at r 7.0 and 5.0; exits to the rim, both blocks and both
+    dunker spots, heading offsets 1-32 deg; 2.0-3.0 m/s; negatives: early release jogging to the wing at 1.5 m/s or walking
+    to the dunker at 1.2 m/s): recall at sigma_p 0.3 / 0.5 = peak speed >= 3.0 (motion_starts) 0.81 / 0.68; radial window
+    v_r >= 3.0 0.63 / 0.40; this rule (window v_r >= 2.0) 0.84 / 0.82; false positives 0 for all. For elbow slips to the near
+    dunker (32 deg) radial >= 3 scores 0.00-0.40 and this rule 0.55-1.00. 3.0 m/s is kept as slip_strict; drag slips keep
+    >= 4 m/s as a transition flag (offense F2).'
+  - 'Dwell < 0.5 s vs < 0.3 s: not used as the slip test; CTG''s ''leaves before use'' (t_rel vs t_use) is, with quick/slow
+    reported as p_slow.'
+  - 'E19: touch drops the 0.2 s dwell clause.'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: slip = screener leaves before the handler uses or rejects; quick vs slow
+  - url: https://www.coachesclipboard.net/basketball-ghost-screens.html
+    supports: slip as a back-cut after the ghost fake
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A0 SLIP v_r 2.0; F2 drag slip >= 4 m/s; 5.3 touch
+  status: proposal
+  detector: detect_slip
+- id: slip_to_arc
+  level: action
+  name: Slip to the arc (slip-pop)
+  aliases:
+  - A-SLIP-TO-ARC
+  - slip-pop
+  - early pop
+  actors: screener s rel. handler h
+  t0: t_rel
+  rule: |-
+    release_timing early (or never_set with an early t_rel), first_move = outward, and the pop_arc arrival test from
+    t_rel (T_pop, extension, displacement >= 1.5 m, r >= r_s0 - 0.75, no rimward run). conf includes (1 -
+    p_never_set): the never-set share belongs to ghost (precedence ghost > slip_to_arc).
+  params:
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.5, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    release_within_s: {value: 1.0, unit: s}
+    extend_s: {value: 0.5, unit: s}
+    outward_mps: {value: 1.0, unit: m/s}
+    disp_m: {value: 1.5, unit: m}
+    r_drop_m: {value: 0.75, unit: m}
+    rimward_run_s: {value: 0.3, unit: s}
+    rimward_mps: {value: 1.0, unit: m/s}
+    zone_r_min: {value: 6.6, unit: m}
+    point_window_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: t_arrival_minus_t_rel_s, arrival spots, displacement, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'The ghost vs slip_to_arc split is the minimum-speed test; at sigma_p >= 0.4 it is soft and both labels are reported
+    with probabilities (open question: merge).'
+  conflicts_resolved:
+  - 'A3.14 vs A0 GHOST overlap: split by whether the screener slowed below 1.0 m/s near the closest approach (p_never_set),
+    reported jointly.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A3.14 slip-to-arc (MSU Kohler)
+  status: proposal
+  detector: detect_slip_to_arc
+- id: ghost
+  level: action
+  name: Ghost screen (fake screen, never set)
+  aliases:
+  - A-GHOST
+  - ghost
+  - fake screen
+  - ghost out
+  - ghost slip
+  - ghost flare
+  actors: screener s rel. holder h and h's defender D_h
+  t0: t_closest = local minimum of smoothed |s - h|
+  rule: |-
+    No screen event needed. h is the debounced holder for >= hold_frac (80%) of t_closest +- 0.5 s. Approach: |s - h|
+    <= approach_h_m (2.0; 2.5 high tier) or |s - D_h| <= approach_dh_m (1.5; 1.8 high tier) at t_closest; mean
+    closing speed over the 0.5 s before >= closing_mps (1.5; 1.0 high tier); r(s) <= r(h) + 0.61 m (McQueen geometry). Never
+    set: no run of CA-RTS speed < never_set_speed_mps (1.0 m/s) longer than never_set_slow_frames (4 low / 2 high tier)
+    touches t_closest +- 0.5 s (never_set_half_s read from screen_frame; a run is counted with its full length). Exit within 1.5 s: in =
+    0.5 s window mean v_r >= 2.0 starting >= in_lead_s (0.2 s) before t_closest, then r <= 3.0 within 2.0 s; out =
+    moves away from h to the arc: 0.5 s mean outward speed (-v_r) OR separation speed from h (-closing speed) >= 1.0
+    m/s, then pop_arc_zone with >= 1.5 m displacement within 2.0 s; mid = stop (< 1.5 m/s) in pop_mid_zone. D_h =
+    nearest defender of h over the dh_window_s (0.17 s) before t_closest. One event per (s, h) per 2.0 s.
+    L4-3: half court only (neither h nor s in named_spots backcourt at t_closest), and the screener's own velocity
+    component toward h supplies >= screener_share_min (0.5) of that mean closing speed (a handler driving past a standing
+    or drifting teammate closes the gap too).
+    L4-8: the path turns near t_closest: for some u within +-turn_search_s (0.3 s) of t_closest the heading of the
+    displacement over [u - turn_pre_s (0.5 s), u] and over [u, u + turn_post_s (0.7 s)] differs by >= turn_min_deg
+    (20 deg). A run straight past the handler is a cut or a transition run, not a fake set.
+  params:
+    hold_frac: {value: 0.8, unit: '1'}
+    screener_share_min: {value: 0.5, unit: '1'}
+    turn_pre_s: {value: 0.5, unit: s, note: 'L4-8'}
+    turn_post_s: {value: 0.7, unit: s, note: 'L4-8'}
+    turn_search_s: {value: 0.3, unit: s, note: 'L4-8'}
+    turn_min_deg: {value: 20.0, unit: deg, note: 'L4-8'}
+    approach_h_m_low: {value: 2.0, unit: m}
+    approach_h_m_high: {value: 2.5, unit: m}
+    approach_dh_m_low: {value: 1.5, unit: m}
+    approach_dh_m_high: {value: 1.8, unit: m}
+    approach_s: {value: 0.5, unit: s}
+    closing_mps_low: {value: 1.5, unit: m/s}
+    closing_mps_high: {value: 1.0, unit: m/s}
+    farther_m: {value: 0.61, unit: m}
+    exit_s: {value: 1.5, unit: s}
+    arrive_s: {value: 2.0, unit: s}
+    in_v_r_mps: {value: 2.0, unit: m/s}
+    in_r: {value: 3.0, unit: m}
+    out_mps: {value: 1.0, unit: m/s}
+    disp_m: {value: 1.5, unit: m}
+    stop_speed_mps: {value: 1.5, unit: m/s}
+    dedupe_s: {value: 2.0, unit: s}
+    in_lead_s: {value: 0.2, unit: s}
+    dh_window_s: {value: 0.17, unit: s}
+    never_set_slow_frames_low: {value: 4, unit: frames}
+    never_set_slow_frames_high: {value: 2, unit: frames}
+    never_set_slow_sigma_frames: {value: 1.5, unit: frames}
+  min_duration_s: 1.0
+  outputs: subtype (in/out/mid), d_min_to_h, d_min_to_Dh, min_speed, arrival_frame
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Minimum speed is Rayleigh-biased upward at rest, which pushes brief real stops toward 'never set'; the sim numbers
+    in screen_frame set the 1.0 m/s cut between a 0.2 s stop (0.64 m/s) and a pass-through (2.35 m/s).
+  conflicts_resolved:
+  - 'Approach 1.5 m (A0) vs 2 m (offense 5.4): <= 2.0 m to h OR <= 1.5 m to D_h.'
+  - 'Exit: A0 r >= 6.6 vs coaching back-cuts: subtypes out / mid / in (in is also emitted by slip as ghost_in).'
+  sources:
+  - url: https://www.coachesclipboard.net/basketball-ghost-screens.html
+    supports: fake screen without contact, then flare or back-cut
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A0 GHOST; 5.4 within 2 m
+  - url: https://cdn.prod.website-files.com/68d6be744d7efccc2207f571/68d6be744d7efccc2208061f_2014_SSAC_Recognizing-on-Ball-Screens.pdf
+    supports: screener <= 2 ft farther from the basket than the handler
+  status: proposal
+  detector: detect_ghost
+- id: seal
+  level: action
+  name: Hostage / Gortat seal after the roll
+  aliases:
+  - A-SEAL-HOSTAGE
+  - seal
+  - Gortat
+  - hostage
+  - roll and seal
+  actors: roller s rel. sealed defender d and beneficiary (h or a cutter)
+  t0: seal onset
+  rule: |-
+    A roll onset (roll gate) after the screen; within T_seal + min_s of the onset, T_seal = clamp(t_base 0.5 + (r_s0 -
+    r_max 3.5) / travel 2.5 m/s, 1.5, 3.0) s (distance-scaled like T_roll), a merged held run of >= min_s (0.3 s)
+    starts at mean r in [1.5, 3.5] m; the nearest defender d over the run is within def_m (1.2 m); a
+    beneficiary (h first, then other attackers) comes within ben_m (2.0 m) of the seal point at r < ben_r (3.0) within
+    ben_s (2.0 s) of onset; and d is pinned: mean speed < 1.5 m/s or the d-beneficiary distance does not shrink by >
+    pin_shrink_m (0.3 m).
+  params:
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.5, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    min_s: {value: 0.3, unit: s}
+    r_min: {value: 1.5, unit: m}
+    r_max: {value: 3.5, unit: m}
+    def_m: {value: 1.2, unit: m}
+    ben_s: {value: 2.0, unit: s}
+    ben_m: {value: 2.0, unit: m}
+    ben_r: {value: 3.0, unit: m}
+    def_speed_mps: {value: 1.5, unit: m/s}
+    pin_shrink_m: {value: 0.3, unit: m}
+  min_duration_s: 0.3
+  outputs: seal_spot, r, seal_dwell_s, seal_window_s, defender_role (screener_defender/help), roll_start_frame, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'Body contact is invisible in XY; 1.2 m centre-to-centre is the proxy. Defender identity in a crowded paint: see
+    id_swap_risk.'
+  conflicts_resolved:
+  - r 1.5-3.0 (offense 5.4, A3.27) widened to 3.5 (named_spots low_post reaches 3.26).
+  - 'Within 1.5 s of roll start (A3.27) widened to 2.0 s: V0 seals from r_s0 8 at a 3.3 m/s roll start the held run 1.5-1.6
+    s after the gate window start (the run onset needs s2 < 5.99).'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: 5.4 Seal / Gortat; F3; A3.27 roll-and-seal
+  status: proposal
+  detector: detect_seal
+- id: crash
+  level: action
+  name: Crash (screener holds, then goes to the rim on the shot)
+  aliases:
+  - A-CRASH
+  - crash
+  - screener crash
+  actors: screener s rel. FGA shooter
+  t0: FGA release frame
+  rule: |-
+    Net movement of s from P_s at the FGA < held_m (1.0 m); an FGA by a teammate within fga_within_s (3.0 s) of t0;
+    a 0.5 s window starting in [t_FGA, t_FGA + 1.0 s] with mean v_r >= 1.5 m/s. FGA from 'fga' events, else the
+    ball-XY proxy (release = end of the shooter's holder run; the ball reaches r <= 0.6 m with no holder within 2.5
+    s), with conf x proxy_factor (0.8).
+  params:
+    fga_within_s: {value: 3.0, unit: s}
+    held_m: {value: 1.0, unit: m}
+    v_r_gate_mps: {value: 1.5, unit: m/s}
+    after_s: {value: 1.0, unit: s}
+    proxy_factor: {value: 0.8, unit: '1'}
+  min_duration_s: 0.3
+  outputs: fga_source, t_fga_minus_t0_s, r_at_fga, r_min_after, mean_v_r, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Without ball tracking the proxy fails; a PBP shot anchored +-1 s is the fallback (lower conf).
+  conflicts_resolved:
+  - CTG category adopted; no numeric conflict.
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: crash = little movement, then to the rim on the shot
+  status: proposal
+  detector: detect_crash
+- id: move_to_screen
+  level: action
+  name: Move to screen (re-screen, veer, twist)
+  aliases:
+  - A-MOVE-TO-SCREEN
+  - re-screen
+  - veer
+  - flip
+  - second screen
+  actors: screener s rel. first and second users
+  t0: t0 of the second screen
+  rule: |-
+    The same screener's next input screen whose set (t_set, else t0) starts <= within_s (2.0 s) after the first
+    screen's t_rel. Same user and P_s moved <= rescreen_split_m (1.22 m = CTG 4 ft): same screen, no event. Subtypes:
+    veer (second is off_ball), twist (same user, P_s on the other side of x = 0), re_screen (same user), new_user.
+    Same user: P(moved > 1.22 m) with sigma = sqrt(sigma_p(t0_a)^2 + sigma_p(t0_b)^2) must be >= rescreen_p_min (0.5)
+    and multiplies conf. Timing conf = Phi((within_s - gap) / gap_sigma_s 0.2 s).
+  params:
+    within_s: {value: 2.0, unit: s}
+    rescreen_split_m: {value: 1.22, unit: m}
+    gap_sigma_s: {value: 0.2, unit: s}
+    rescreen_p_min: {value: 0.5, unit: '1'}
+  min_duration_s: null
+  outputs: subtype, gap_s, moved_m, first_screen_t0
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Inherits screens-family errors; 1.22 m vs smoothed displacement noise is soft.
+  conflicts_resolved:
+  - 'Re-screen <= 3 s (5.2) vs veer <= 2 s (5.4): 2.0 s from release for this label; longer chains belong to the sequence
+    layer.'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: move_to_screen; re-screen split > 4 ft or > 10 ft
+  status: proposal
+  detector: detect_move_to_screen
+- id: roll_into_post
+  level: action
+  name: Roll into a post-up / mid-post seal
+  aliases:
+  - A-ROLL-INTO-POST
+  - roll into post
+  - mid_post
+  - post the switch
+  actors: screener s rel. sealing defender
+  t0: seal onset
+  rule: |-
+    first_move rimward or lateral, then within T + min_s of t_rel, T = clamp(t_base 0.5 + (r_s0 - deep_r 3.5) / travel
+    2.5 m/s, 1.5, 3.0) s, a post seal by s (post_seal geometry: held,
+    defender 0.4-1.2 m (1.5 m high tier), phi > 90 deg, onset walk-back) of >= 0.8 s: deep_post if r <= 3.5 inside post_area, mid_post
+    if 3.5 < r <= 5.0 inside mid_post, elbow or pinch_post. switch_flag: sealing defender != D_s.
+  params:
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.5, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    deep_r: {value: 3.5, unit: m}
+    mid_r: {value: 5.0, unit: m}
+    min_s: {value: 0.8, unit: s}
+    seal_def_m_low: {value: 1.2, unit: m}
+    seal_def_m_high: {value: 1.5, unit: m}
+    seal_def_min_m: {value: 0.4, unit: m}
+    seal_slack_m: {value: 0.4, unit: m}
+    walk_back_s: {value: 1.0, unit: s}
+    phi_partial_deg: {value: 90, unit: deg}
+    phi_sigma_deg: {value: 20, unit: deg}
+  min_duration_s: 0.8
+  outputs: subtype, r, switch_flag, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: The switch flag inherits matchup errors.
+  conflicts_resolved:
+  - 'CTG separates mid_post from a roll into a deep post-up: split at r 3.5.'
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: mid_post vs roll into a post-up
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: post_area, mid_post, elbow, pinch_post
+  status: proposal
+  detector: detect_roll_into_post
+- id: spain_pop
+  level: action
+  name: Spain back-screener's pop
+  aliases:
+  - spain pop
+  - back-screener pop
+  - screen-the-screener pop
+  actors: back-screener s2 rel. roller (screen user)
+  t0: t0 of the spain back screen
+  rule: |-
+    Input screen with attrs.screen_type = 'spain' (off_ball; user = the roller). first_move outward or lateral, then the
+    pop_arc arrival test from t_rel with named_spots spain_pop_spot (is_three, m >= 70, r <= 8.5) as the zone.
+  params:
+    t_base_s: {value: 0.5, unit: s}
+    travel_mps: {value: 2.5, unit: m/s}
+    t_min_s: {value: 1.5, unit: s}
+    t_max_s: {value: 3.0, unit: s}
+    release_within_s: {value: 1.0, unit: s}
+    extend_s: {value: 0.5, unit: s}
+    outward_mps: {value: 1.0, unit: m/s}
+    disp_m: {value: 1.5, unit: m}
+    r_drop_m: {value: 0.75, unit: m}
+    rimward_run_s: {value: 0.3, unit: s}
+    rimward_mps: {value: 1.0, unit: m/s}
+    zone_r_min: {value: 6.75, unit: m}
+    point_window_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: arrival attrs, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Depends on the screens family labelling the spain back screen.
+  conflicts_resolved:
+  - Missing item 'Spain pick-and-roll back-screener action' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: spain_pop_spot
+  status: proposal
+  detector: detect_spain_pop
+- id: dive
+  level: action
+  name: Dive (big to the rim without a ball-screen roll)
+  aliases:
+  - A-DIVE
+  - dive
+  - basket dive
+  - post dive
+  - dive after handoff
+  - Horns dive
+  actors: big b
+  t0: onset of the rimward run (first frame of the per-frame v_r >= 1.0 run containing the gate window)
+  rule: |-
+    b (in `bigs` when given) without the ball after onset + handoff_grace_s (0.3 s); a 0.5 s window with mean v_r >=
+    2.0 m/s; start r >= 3.5; reaches r <= end_r (2.0) within max(2.0 s, T_roll(r_start)); displacement >= 2.0 m and
+    the angle between the start->end vector and the start->rim direction <= 30 deg. Context (required, else it is a
+    CUT): dho_dive (b gave a DHO within [-0.5, +1.0] s), screen_dive (b set an off-ball screen), horns_dive (another
+    player's ball screen, or a catch by another player whose mean position over the first catch_mean_s (0.3 s) of
+    the holder run is in context_spots: elbow, pinch_post or high_post_area). b's own ball screen in [-1.0,
+    +exclude_after_s 1.5] s excludes it (that is roll/slip).
+  params:
+    v_r_gate_mps: {value: 2.0, unit: m/s}
+    onset_v_r_mps: {value: 1.0, unit: m/s}
+    start_r: {value: 3.5, unit: m}
+    end_r: {value: 2.0, unit: m}
+    disp_m: {value: 2.0, unit: m}
+    angle_deg: {value: 30, unit: deg}
+    window_s: {value: 2.0, unit: s}
+    context_s: {value: 1.0, unit: s}
+    context_before_s: {value: 0.5, unit: s}
+    handoff_grace_s: {value: 0.3, unit: s}
+    exclude_after_s: {value: 1.5, unit: s}
+    catch_mean_s: {value: 0.3, unit: s}
+    context_spots: {value: [elbow, pinch_post, high_post_area], unit: named_spots}
+  min_duration_s: 0.5
+  outputs: subtype, start_r, end_r, t_to_arrival_s, angle_deg, peak_speed
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Handoff contact keeps the ball within 1 m of the giver for ~0.2 s, hence the grace period.
+  conflicts_resolved:
+  - 'E14: heading-at-entry (20 deg) replaced by the displacement-vector angle (30 deg).'
+  - Dive end r <= 2.0; RA flag uses RA_R 1.27 (1.22 superseded).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: Horns dive; dive-and-replace
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: RA_R 1.27
+  status: proposal
+  detector: detect_dive
+- id: rim_run
+  level: action
+  name: Rim run (first big down)
+  aliases:
+  - A-RIM-RUN
+  - rim run
+  - rim-to-rim
+  - first big down
+  actors: big b
+  t0: possession-change frame when supplied, else the departure frame
+  rule: |-
+    Departure = last frame within start_r_own (4.0 m) of the own rim (0, 25.4508) before arrival at r <= 2.5. Path on
+    SMOOTHED positions: net -dy >= 18 m (E18), mean |x| <= 3.0 m. Speed: the best 1.5 s window-mean speed >= v_frac
+    (0.80) x v_peak, v_peak = the player's own value from the caller (p95 of 1 s-mean speed over >= 3 games, E9) else
+    the prior 6.23 m/s (conf x prior_factor 0.8). Ball (if tracked) first reaches r < 6.75 no more than 1.0 s before
+    arrival. rim_run_repo flag: a 2.0 s window mean >= 5.5 m/s.
+  params:
+    start_r_own: {value: 4.0, unit: m}
+    end_r: {value: 2.5, unit: m}
+    net_dy_m: {value: 18.0, unit: m}
+    mean_abs_x_m: {value: 3.0, unit: m}
+    v_frac: {value: 0.8, unit: '1'}
+    v_peak_prior_mps: {value: 6.23, unit: m/s}
+    speed_window_s: {value: 1.5, unit: s}
+    repo_speed_mps: {value: 5.5, unit: m/s}
+    repo_window_s: {value: 2.0, unit: s}
+    ball_arc_r: {value: 6.75, unit: m}
+    after_ball_s: {value: 1.0, unit: s}
+    pc_before_s: {value: 2.0, unit: s}
+    prior_factor: {value: 0.8, unit: '1'}
+    skip_s: {value: 1.0, unit: s}
+    dedupe_s: {value: 2.0, unit: s}
+  min_duration_s: 1.5
+  outputs: net_dy_m, path_m, mean_abs_x, t_to_arrival_s, best_1p5s_speed, frac_of_peak, v_peak_source, rim_run_repo, before_ball,
+    departure_frame
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'Broadcast cameras lag the leading runner: off-screen segments are interp gaps (gap_factor). A raw per-frame path
+    of a 25 m sprint measures ~81 m at sigma_p 0.3, hence net dy.'
+  conflicts_resolved:
+  - '5.5 m/s for 2 s (F1.3) vs path test: path test + relative speed, repo flag kept.'
+  - 'E9/E10: v_peak from 1 s-mean speed, not the per-frame max (sim: a true 5.0 m/s run reads 6.15 / 6.97 m/s max at sigma
+    0.3 / 0.5); the Stone et al. prior is weak (n = 4 centres, one team, 20 Hz IMU) and lowers conf.'
+  sources:
+  - url: https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full
+    supports: NCAA D-I centre max speed 6.23 +- 0.33 m/s (IMU, 20 Hz)
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: rim_run_lane path test
+  status: proposal
+  detector: detect_rim_run
+- id: dunker_relocation
+  level: action
+  name: Dunker relocation
+  aliases:
+  - A-DUNKER-RELOCATION
+  - dunker
+  - slide
+  - Hoiberg roll
+  - angle short
+  actors: dunker k rel. the attacker entering the paint
+  t0: 't_trig = paint entry by a teammate (angle_short: t0 of the ball screen)'
+  rule: |-
+    Trigger: a teammate enters named_spots paint (out for >= 80% of the previous 0.5 s) with mean v_r >= 1.0 m/s. k in
+    dunker_spot for >= 80% of [t_trig - 0.8, t_trig - 0.3] s. Within [t_trig - 0.3, t_trig + 1.5] s k moves >= 1.2 m
+    from the start mean; end = first held frame within 1.0 s after that, else +1.0 s. Subtypes by the end label: slide
+    (opposite side dunker_spot or low_post, lane crossed at y < 1.0), up_lane (duck_in, restricted_area, lane_middle),
+    to_short_corner, to_baseline_hide (upper -> baseline dunker), lift_to_corner (corner_three). angle_short: k entered
+    the same-side dunker_spot <= 1.0 s before a ball screen's t0 and stayed >= 0.5 s.
+  params:
+    dwell_s: {value: 0.5, unit: s}
+    pre_s: {value: 0.3, unit: s}
+    post_s: {value: 1.5, unit: s}
+    move_m: {value: 1.2, unit: m}
+    settle_s: {value: 1.0, unit: s}
+    slide_cross_y: {value: 1.0, unit: m}
+    out_before_s: {value: 0.5, unit: s}
+    entry_v_r_mps: {value: 1.0, unit: m/s}
+    angle_short_before_s: {value: 1.0, unit: s}
+    angle_short_lookback_s: {value: 1.0, unit: s}
+    entry_vr_window_s: {value: 0.3, unit: s}
+    out_frac: {value: 0.8, unit: '1'}
+    dwell_frac: {value: 0.8, unit: '1'}
+    dedupe_s: {value: 2.0, unit: s}
+    slide_x_m: {value: 0.5, unit: m}
+  min_duration_s: 0.5
+  outputs: subtype, start, end, moved_m, t_minus_trig_s, trigger_kind
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Baseline occlusion and stanchions; 1.2 m is ~2.9 sigma at sigma_p 0.3 but soft at 0.5. Help-defender trigger (d_k
+    moves >= 1.5 m toward the ball) is not implemented (needs matchups).
+  conflicts_resolved:
+  - 'Dunker spot: named_spots dunker_spot (1.8288 < |x| <= 3.5, y < 0.5334) supersedes offense 0.1, vocab and A3.11.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: dunker_spot, baseline_dunker, upper_dunker, short_corner, paint
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A1.10 MSU dunker; A3.11; 5.6 Slide
+  status: proposal
+  detector: detect_dunker_relocation
+- id: duck_in
+  level: action
+  name: Duck-in on a reversal
+  aliases:
+  - A-DUCK-IN
+  - duck-in
+  - step-through
+  actors: post o rel. defender and the ball
+  t0: t_trig (ball enters |x| < 2.0 m at y >= 4.0)
+  rule: |-
+    Trigger: the ball (or holder) crosses into |x| < 2.0 m at y >= 4.0 after being at |x| >= 2.0 within 1.5 s. o starts
+    (at t_trig - 0.5 s) in low_post, block_zone, dunker_spot, mid_post or deep_seal with r <= 4.5 (E11), not holding.
+    Within [t_trig - 0.5, t_trig + 1.0] s o reaches duck_in or lane_middle with displacement >= 1.0 m, d|x| <= -0.6 m
+    and dy <= +0.5 m. Seal: within 1.0 s of arrival the nearest defender is within 1.2 m with angle defender-o-ball >=
+    120 deg for >= 0.3 s.
+  params:
+    reversal_x_m: {value: 2.0, unit: m}
+    reversal_from_s: {value: 1.5, unit: s}
+    ball_min_y: {value: 4.0, unit: m}
+    before_s: {value: 0.5, unit: s}
+    after_s: {value: 1.0, unit: s}
+    start_r: {value: 4.5, unit: m}
+    move_m: {value: 1.0, unit: m}
+    dx_m: {value: 0.6, unit: m}
+    dy_max_m: {value: 0.5, unit: m}
+    seal_check_s: {value: 1.0, unit: s}
+    seal_def_m: {value: 1.2, unit: m}
+    phi_deg: {value: 120, unit: deg}
+    seal_s: {value: 0.3, unit: s}
+  min_duration_s: 0.3
+  outputs: start_spot, arrival_frame, t_arrive_minus_trig_s, dx
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Short 1.0 m moves in the most crowded area; without the trigger a lane step is not labelled.
+  conflicts_resolved:
+  - 'E11: short_corner dropped from the start set (it is r > 3.5) and the start gate raised to 4.5 m for mid_post.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: duck_in, lane_middle, low_post, block_zone
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: F1, A3.27 Motion Go Duck-In
+  status: proposal
+  detector: detect_duck_in
+- id: high_low
+  level: action
+  name: High-low pass
+  aliases:
+  - A-HIGH-LOW
+  - high-low
+  - hi-lo
+  - big-to-big
+  actors: passer a, receiver b
+  t0: pass release frame
+  rule: |-
+    A pass (debounced holder runs + observed flight <= 2.0 s) from high_post_area, elbow, pinch_post, short_roll_zone or
+    top_three with r <= 7.5, to a receiver at r <= 3.0 or in low_post, duck_in, lane_middle, restricted_area,
+    dunker_spot or deep_seal, with receiver y - passer y <= -1.5 m. prior_action = a post_seal or duck_in by b
+    overlapping the 2.0 s before release (conf x 0.8 when none). lob flag: catch r < 1.5 with v_r >= 3.0.
+  params:
+    max_flight_s: {value: 2.0, unit: s}
+    top_r_max: {value: 7.5, unit: m}
+    receiver_r: {value: 3.0, unit: m}
+    dy_m: {value: 1.5, unit: m}
+    prior_s: {value: 2.0, unit: s}
+    lob_r: {value: 1.5, unit: m}
+    lob_vr_mps: {value: 3.0, unit: m/s}
+    no_prior_factor: {value: 0.8, unit: '1'}
+    lob_window_s: {value: 0.3, unit: s}
+  min_duration_s: null
+  outputs: passer_spot, receiver_spot, receiver_r, flight_s, prior_action, lob
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Needs the possession model; high-post ball occlusion is common.
+  conflicts_resolved:
+  - 'High region r 3.8-5.2 (A11.20) vs F7 3.8-5: named_spots union; receiver r <= 3.0 (low_post reaches 3.26).'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: F7 high-low; Horns high-low
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: high_post_area, elbow, pinch_post
+  status: proposal
+  detector: detect_high_low
+- id: short_roll_playmaking
+  level: action
+  name: Short-roll decision (4-on-3)
+  aliases:
+  - A-SHORT-ROLL-PLAYMAKING
+  - 4-on-3
+  - short roll read
+  actors: short roller s, handler h, receiver
+  t0: catch frame of the short roll
+  rule: |-
+    After a short_roll catch at t_c, the first event by s within 1.5 s: FGA (finish if r < 4.3, else jumper); pass
+    (receiver r < 1.5 lob, < 3.0 dump_off, = h or r >= 6.6 and more than 1.0 m behind s in y: reset, r >= 6.6: kick,
+    else pass_other); drive (holding, r drops >= 1.5 m); else hold. four_on_three: exactly four_on_three_free (3) defenders farther than 2.0 m
+    from h and 1.5 m from s at t_c (E17).
+  params:
+    decide_s: {value: 1.5, unit: s}
+    finish_r: {value: 4.3, unit: m}
+    lob_r: {value: 1.5, unit: m}
+    dump_r: {value: 3.0, unit: m}
+    behind_m: {value: 1.0, unit: m}
+    drive_m: {value: 1.5, unit: m}
+    trap_dist_m: {value: 2.0, unit: m}
+    near_roller_m: {value: 1.5, unit: m}
+    four_on_three_free: {value: 3, unit: defenders}
+  min_duration_s: null
+  outputs: decision, time_to_decision_s, four_on_three, receiver_open_m, trap_context
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Turnovers need possession-change events (not emitted).
+  conflicts_resolved:
+  - 'E17: reset takes precedence over kick; the always-true attacker clause is dropped.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A3.10 short-roll 4-on-3
+  - url: https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/
+    supports: Synergy credits the final action only
+  status: proposal
+  detector: detect_short_roll_playmaking
+- id: replace
+  level: action
+  name: Replace (third-player fill or screener sink-and-pop)
+  aliases:
+  - A-REPLACE
+  - replace
+  - roll/replace
+  - leak
+  - fill behind
+  actors: replacer p rel. roller s and handler h
+  t0: roll_start_frame of the paired roll
+  rule: |-
+    Third player p != s, h: move start = onset of a 0.5 s window with mean speed >= 1.5 m/s in [roll_start - 0.5,
+    roll_start + 1.0] s. lift_from_dunker: start r < 4.5, reaches pop_arc_zone within 2.5 s. fill_behind /
+    perimeter_fill (start r >= 6.6): start >= 3.0 m from P_s, ends within 2.5 m of P_s. Same-frame distance to the
+    roller >= 1.5 m throughout (E12 space-time crossing). Screener-level (enum 'replace'): s sinks to r <= min(r_s0 -
+    1.0, 4.5) within 1.5 s of t_rel, then reaches pop_arc_zone within 3.0 s of t0 while another teammate rolls (roll
+    gate + r <= 2.5).
+  params:
+    start_before_s: {value: 0.5, unit: s}
+    start_after_s: {value: 1.0, unit: s}
+    move_speed_mps: {value: 1.5, unit: m/s}
+    onset_speed_mps: {value: 1.0, unit: m/s}
+    move_s: {value: 2.5, unit: s}
+    lift_start_r: {value: 4.5, unit: m}
+    fill_start_m: {value: 3.0, unit: m}
+    end_near_ps_m: {value: 2.5, unit: m}
+    min_sep_m: {value: 1.5, unit: m}
+    sink_within_s: {value: 1.5, unit: s}
+    sink_m: {value: 1.0, unit: m}
+    sink_r: {value: 4.5, unit: m}
+    pop_within_s: {value: 3.0, unit: s}
+  min_duration_s: 1.0
+  outputs: subtype, start, end, t_start_minus_roll_start_s, min_sep_m, end_dist_to_Ps
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: r < 4.5 is met by every dunker; the timing link to a roll carries specificity.
+  conflicts_resolved:
+  - 'E12: fill_behind and perimeter_fill added for elbow/top fills (H03, H05).'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A3 REPLACE; A3.1-A3.4
+  status: proposal
+  detector: detect_replace
+- id: roll_and_replace
+  level: set_component
+  name: Roll and replace (4-around-1)
+  aliases:
+  - SC-ROLL-AND-REPLACE
+  - roll and replace
+  - High Roll Replace
+  actors: handler h, roller s, replacer p
+  t0: t0 of the ball screen
+  rule: |-
+    A roll from a screen with |theta - theta_center_deg 90| <= 30 deg and 6.0 <= r_s0 <= 8.5 m, plus a third-player replace of that
+    roller. Shape check over [completion + shape_after_completion_s (0.0), completion + shape_len_s (0.4)] s, completion
+    = the roll's first frame at r <= rim_r, >= 70% of frames: excluding h, the only attacker at r < 3.0 is
+    the roller (dunker_spot occupants ignored), and >= 2 non-handlers at r >= 6.6.
+  params:
+    theta_center_deg: {value: 90, unit: deg}
+    theta_dev_deg: {value: 30, unit: deg}
+    r0_min: {value: 6.0, unit: m}
+    r0_max: {value: 8.5, unit: m}
+    shape_after_completion_s: {value: 0.0, unit: s}
+    shape_len_s: {value: 0.4, unit: s}
+    inside_r: {value: 3.0, unit: m}
+    min_arc_players: {value: 2, unit: players}
+    shape_frac: {value: 0.7, unit: '1'}
+  min_duration_s: 2.0
+  outputs: compositional_name, action_sequence, shape_frac, replace_subtype
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Single-frame shape checks are fragile, hence the 70% window.
+  conflicts_resolved:
+  - 'E13: handler excluded; dunker variant allowed.'
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A3.1 signature
+  status: proposal
+  detector: detect_roll_and_replace
+- id: offensive_rebound_crash
+  level: action
+  name: Offensive-rebound crash after any FGA
+  aliases:
+  - crash the glass
+  - offensive rebound pursuit
+  actors: crasher o rel. shooter
+  t0: FGA release frame
+  rule: |-
+    For each FGA (events or proxy), every non-shooter attacker (in `bigs` when given) with a 0.5 s window starting in
+    [t_FGA, t_FGA + 1.0 s] of mean v_r >= 1.5 m/s that reaches r <= 3.0 within 2.0 s of the FGA.
+  params:
+    v_r_gate_mps: {value: 1.5, unit: m/s}
+    after_s: {value: 1.0, unit: s}
+    end_r: {value: 3.0, unit: m}
+    arrive_s: {value: 2.0, unit: s}
+    proxy_factor: {value: 0.8, unit: '1'}
+  min_duration_s: 0.5
+  outputs: fga_source, onset_frame, r_at_fga, mean_v_r
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Box-out and tip-out need contact / orientation (box_out, needs_data).
+  conflicts_resolved:
+  - Missing item 'offensive rebound positioning' (check).
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: crash definition (generalised beyond screeners)
+  status: proposal
+  detector: detect_offensive_rebound_crash
+- id: post_up
+  level: action
+  name: Post-up after a post catch
+  aliases:
+  - post-up
+  - back down
+  - post touch
+  actors: post o rel. defender
+  t0: catch frame
+  rule: |-
+    A holder run of >= 0.5 s starting with a catch (a pass reception from a teammate, require_pass) inside post_area at
+    catch_r_min (1.27 m, outside the restricted area) <= r <= 4.5 with the nearest defender within 1.5 m over the first
+    0.5 s, a mean CA-RTS speed <= catch_speed_max_mps (2.0 m/s) over the catch_speed_window_s (0.3 s) before the catch,
+    and no ball XY within fga_rim_r (0.6 m) of the rim from rim_visit_before_s (1.5 s) before to rim_visit_after_s
+    (1.0 s) after the catch (L4-2).
+    Subtype: back_down (r drops >= 1.0 m while holding), shot (FGA at the run end), pass_out, hold. Face-up and turn
+    need body orientation (not emitted). conf carries P(speed <= catch_speed_max_mps).
+  params:
+    catch_r: {value: 4.5, unit: m}
+    catch_r_min: {value: 1.27, unit: m, note: 'L4-2: = shared ra_r (restricted-area arc radius)'}
+    require_pass: {value: true, unit: bool}
+    rim_visit_before_s: {value: 1.5, unit: s}
+    rim_visit_after_s: {value: 1.0, unit: s}
+    catch_speed_window_s: {value: 0.3, unit: s}
+    catch_speed_max_mps: {value: 2.0, unit: m/s}
+    min_hold_s: {value: 0.5, unit: s}
+    def_m: {value: 1.5, unit: m}
+    back_down_m: {value: 1.0, unit: m}
+    def_window_s: {value: 0.5, unit: s}
+    shot_tol_s: {value: 0.07, unit: s}
+  min_duration_s: 0.5
+  outputs: subtype, catch_r, hold_s, dr
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Dribbles are not visible from XY; back_down is a displacement proxy.
+  conflicts_resolved:
+  - Missing item 'post-up action after a seal' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml
+    supports: post_area
+  status: proposal
+  detector: detect_post_up
+- id: screener_post_action
+  level: rule
+  name: Factorised screener post-action label (fills screens.screener_action_after)
+  aliases:
+  - R-SCREENER-POST-ACTION
+  - screener action after
+  actors: screener s (+ h, D_s)
+  t0: t0 of the screen
+  rule: |-
+    For each input screen: run the label detectors on that screen alone and take each label's conf. Precedence:
+    move_to_screen > ghost (never_set) > slip > slip_to_arc > seal > roll > short_roll > pop_arc > pop_mid > replace
+    (screener sink-pop) > crash > roll_into_post > none. p_none = product of (1 - conf) over fired labels; all
+    probabilities renormalised. Output the fired label with the highest probability; precedence only breaks near-ties
+    (within precedence_margin 0.15), and ghost outranks slip only when p_never_set >= ghost_never_set_min (0.5). The
+    pure-precedence winner is stored as precedence_label. Ghost events match a screen within ghost_match_s (1.0 s) of
+    t0; a ghost 'in' does not compete with a fired slip (it is slip_type ghost_in). Output label, probability, label_2 and margin; 'ambiguous:<a>|<b>' when p < ambiguous_below (0.5).
+    L4-5 (label_given_screen): the label detectors are run on the screen with its conf set to 1, so the probabilities
+    are P(label | screen); the event conf is p_label x the screen's conf (stored as p_screen).
+    camera_cut_policy: gap_factor 0 over [t0 - gap_check_before_s 0.5 s, end of W] ->
+    'unknown_post_action'. Compatibility: ctg_compat_label (roll, short_roll, pop, mid_post, move_to_screen, crash,
+    none; slips map to roll/pop by destination) and synergy_compat (roll_man for roll, short roll, pops, slips, seal).
+  params:
+    ambiguous_below: {value: 0.5, unit: '1'}
+    label_given_screen: {value: true, unit: bool, note: 'L4-5: label probabilities conditional on the screen (screen conf 1 inside), output conf = p_label x screen conf'}
+    precedence_margin: {value: 0.15, unit: '1'}
+    ghost_never_set_min: {value: 0.5, unit: '1'}
+    gap_check_before_s: {value: 0.5, unit: s}
+    ghost_match_s: {value: 1.0, unit: s}
+  min_duration_s: null
+  outputs: label, top1, precedence_label, p_label, label_2, p_label_2, margin, probs, ctg_compat_label, synergy_compat, frame attrs
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Labels flip near band edges and timing edges; these show up as low margins, not hard errors.
+  conflicts_resolved:
+  - 'E6: slip owns every early release; short_roll and pop_arc need post_use, so no branch is unreachable.'
+  - screens.yaml enum extended with slip_to_arc, crash, move_to_screen, roll_into_post (owner decision open); 'replace' pinned
+    to the screener-level sink-then-pop.
+  sources:
+  - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
+    supports: screener action categories
+  - url: https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/
+    supports: Roll Man pools rolls, pops and slips
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/screens.yaml
+    supports: enum at line 608
+  status: proposal
+  detector: detect_screener_post_action
+- id: double_screen_assignment
+  level: rule
+  name: Double / stack screens
+  aliases:
+  - double screen
+  - stack
+  - twin screen
+  actors: two screeners s1, s2 on one user
+  t0: each screener's own t0
+  rule: |-
+    Each screener of a double or stack screen gets its own input screen event and its own frame (P_s, t0 = that
+    screener's minimum distance to the user). The screener whose post-action reaches the rim first is the roller; the
+    other's sink-then-pop or fill is labelled replace (screener-level when it sank, fill_behind otherwise).
+  params: {}
+  min_duration_s: null
+  outputs: per-screener frames
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Two screeners within 1.2 m of each other can swap identities (id_swap_risk).
+  conflicts_resolved:
+  - Missing item 'double-big and stack screens' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: F8.1 double < 1.2 m
+  status: proposal
+  detector: null
+- id: transition_trailer_context
+  level: rule
+  name: Transition trailer screens
+  aliases:
+  - drag screen
+  - trailer
+  - drag slip
+  - trailer pop
+  actors: trailer screener
+  t0: t0 of the drag screen
+  rule: |-
+    screen_frame.drag is true when the screener's mean -vy over [t0 - 2.0, t0 - 0.5] s is >= 3.0 m/s. The post-action
+    labels are unchanged; drag + slip is a drag slip (flag drag_slip when peak speed >= 4.0 m/s), drag + pop_arc is a
+    trailer pop.
+  params: {}
+  min_duration_s: null
+  outputs: drag flag on every post-action
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Camera lag in transition (see rim_run).
+  conflicts_resolved:
+  - Missing item 'transition trailer actions' (check); drag slip >= 4 m/s (offense F2) kept as a flag.
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: F2 drag slip
+  status: proposal
+  detector: null
+- id: camera_cut_policy
+  level: rule
+  name: Camera cuts and long gaps inside a post-action
+  aliases:
+  - unknown_post_action
+  actors: screener s
+  t0: t0 of the screen
+  rule: |-
+    If any frame of [t0 - 0.5 s, end of W] is interp_long or 'none' (mvlib MP-05), gap_factor is 0, the post-action
+    label is 'unknown_post_action' with reason cut_or_long_gap and conf 0. interp_short frames multiply conf by 0.8.
+  params: {}
+  min_duration_s: null
+  outputs: label unknown_post_action
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: A cut that ends before t0 - 0.5 s does not block the label.
+  conflicts_resolved:
+  - Missing item 'camera cuts mid-action' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: gap_factor, MP-05
+  status: proposal
+  detector: null
+- id: acceptance_targets
+  level: rule
+  name: Per-label acceptance targets
+  aliases:
+  - R-ST-18
+  - R-ST-10 targets
+  actors: labeller
+  t0: n/a
+  rule: |-
+    Before any status becomes canonical: >= 50 hand-labelled instances per label on MSU/UConn film (R-ST-10); per-label
+    F1 >= 0.80 (R-ST-18) with precision >= 0.85 for roll, pop_arc, slip and short_roll; a confusion matrix against
+    ctg_compat_label and synergy_compat; McQueen-comparable screens reported with and without the paint exclusion and the
+    12 ft on-ball defender condition (E20). Confidence calibration: reliability curve per label, expected calibration
+    error <= 0.05.
+  params: {}
+  min_duration_s: null
+  outputs: evaluation report
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: 'V0 synthetic pass rates (30 seeds, sigma_p 0.3): every scenario 30/30 except duck_in, id_swap_risk and seal 29/30.'
+  conflicts_resolved:
+  - Missing item 'per-label precision/recall targets' (check).
+  sources:
+  - url: https://cdn.prod.website-files.com/68d6be744d7efccc2207f571/68d6be744d7efccc2208061f_2014_SSAC_Recognizing-on-Ball-Screens.pdf
+    supports: sensitivity 82%, PPV 80% (NBA 2012-13, 25 fps)
+  status: proposal
+  detector: null
+- id: free_throw_calibration
+  level: rule
+  name: Free-throw noise calibration
+  aliases:
+  - calibration
+  - sigma_v calibration
+  actors: all lane and perimeter players during free throws
+  t0: n/a
+  rule: |-
+    During free throws the 8 lane / perimeter players are stationary by rule between the ball's release and the rim
+    contact. Per game and camera: collect their smoothed tracks, estimate per-axis white and AR(1) noise (lag-1
+    autocorrelation of residuals), the s2 distribution (target P(s2 < 5.99) >= 0.95) and a correlated-bias term for
+    pair distances. Refit K_CAL, s2_enter and the dwell calibration (slow_dwell_split_s, release_lag_s) from it.
+  params: {}
+  min_duration_s: null
+  outputs: 'per game x camera: sigma_white, sigma_ar, rho, K_CAL, s2 quantiles'
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Needs free-throw events (game state / PBP) and real tracks.
+  conflicts_resolved:
+  - Missing item 'free-throw calibration protocol' (check); E8 correlated-bias term.
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py
+    supports: K_CAL (MP-09)
+  status: proposal
+  detector: detect_free_throw_calibration
+  needs_data: free-throw event times (game state / PBP) and real broadcast tracks
+- id: coverage_context
+  level: rule
+  name: Defender coverage context for screener labels
+  aliases:
+  - drop
+  - hedge
+  - switch
+  - blitz
+  - ice
+  actors: D_s, D_h
+  t0: t0 of the screen
+  rule: |-
+    Each post-action carries the coverage of the screen (drop / hedge / switch / blitz / ice / show) read from the
+    defense family's screen-coverage event; short roll and pop rates are reported per coverage.
+  params: {}
+  min_duration_s: null
+  outputs: coverage
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Owned by the defense family.
+  conflicts_resolved:
+  - Missing item 'defender coverage context' (check).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/screens.yaml
+    supports: coverage field (line 654)
+  status: proposal
+  detector: detect_coverage_context
+  needs_data: defense family coverage events (not produced from this module)
+- id: box_out
+  level: action
+  name: Box-out / tip-out by a big
+  aliases:
+  - box out
+  - tip out
+  actors: big o rel. defender
+  t0: FGA release frame
+  rule: |-
+    Back-to-chest contact and body orientation decide a box-out; a tip needs ball height. Not detectable from floor XY.
+  params: {}
+  min_duration_s: null
+  outputs: n/a
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: XY cannot see contact or orientation.
+  conflicts_resolved:
+  - Missing item 'box-out or tip-out' (check).
+  sources: []
+  status: proposal
+  detector: detect_box_out
+  needs_data: pose keypoints (orientation, contact) and ball height
+- id: lob_ball_height
+  level: action
+  name: Lob with ball height
+  aliases:
+  - true lob
+  - alley-oop
+  actors: passer, receiver
+  t0: pass release frame
+  rule: |-
+    A lob is a pass whose apex is >= 3.5 m. Needs ball z; lob_catch_proxy is the XY substitute.
+  params: {}
+  min_duration_s: null
+  outputs: apex_m
+  confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
+    conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
+    (MP-16) x the input screen's conf when there is one.
+  noise: Monocular broadcast gives no reliable ball z.
+  conflicts_resolved:
+  - Open question 'ball-z estimator' (research).
+  sources:
+  - url: file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md
+    supports: A0 LOB
+  status: proposal
+  detector: detect_lob_ball_height
+  needs_data: ball height (z)
+open_questions:
+- Short roll without a catch (stop variant) counts as short_roll here; A11.18 requires a catch.
+- 'Ghost vs slip_to_arc: kept separate with p_never_set; merge into one early-release-to-arc label?'
+- 'screens.yaml enum: add slip_to_arc, crash, move_to_screen, roll_into_post or keep them as sub-labels.'
+- T_roll / T_pop travel speeds (2.5 m/s) need fitting on MSU/UConn film; no published NCAA roll-speed distribution found.
+- Dwell calibration (split 0.4 s measured, lag 0.1 s) is for sigma_p 0.3; at 0.5 quick/slow is unresolvable in sim.
+- Defender-relative outputs (behind_def, seal, 4-on-3) need the matchup model; they use nearest-defender proxies here.
+changes_loop1:
+- id: B1
+  what: roll_and_replace shape window anchored to the roll's completion (first frame r <= rim_r) for shape_len_s 0.4 s;
+    shape_from_s / shape_to_s replaced by shape_after_completion_s 0.0 and shape_len_s 0.4.
+  why: The fixed [t0 + 1.8, t0 + 2.2] s window came before a normal top roll reached r < 3 m (r 3.7 at t0 + 1.8 s), while
+    the roll item itself allows completion up to T_roll.
+  evidence: 'Tester harness (10 seeds x 2 sides): recall 0/40 at every sigma before; 40/40, 40/40, 35/40 at sigma_p 0.2 /
+    0.3 / 0.5 after, no false positives. Tests test_b1_*.'
+- id: B2
+  what: seal window distance-scaled, T_seal = clamp(0.5 + (r_s0 - r_max) / 2.5, 1.5, 3.0) s + min_s from the roll onset;
+    within_s removed; params t_base_s, travel_mps, t_min_s, t_max_s; pin_shrink_m (0.3) moved to the YAML.
+  why: A wing / top roller needs ~2.2-2.3 s to reach the seal band, so the fixed 2.0 s made seals after those screens
+    unreachable.
+  evidence: 'Recall 0.00 / 0.03 / 0.03 before; 0.93 / 0.82 / 0.62 after (precision 1.00). test_b2_seal_after_wing_roll
+    (>= 4 of 5 seeds), test_b2_seal_negative_roll_through.'
+- id: B3
+  what: roll completion window counted from t_rel; travel_mps 2.0 (was 2.5), t_max_s 3.5 (was 3.0), onset_after_s 1.5 (was
+    1.0). roll_into_post window = t_rel + clamp(0.5 + (r_s0 - deep_r) / 2.5, 1.5, 3.0) + min_s (within_s removed).
+  why: Anchoring at t0 left 0.5 s for the hold and pivot; held or 2.0-2.5 m/s rolls ran out of window (E16 already anchors
+    T_pop to t_rel).
+  evidence: 'roll recall 0.72 / 0.70 / 0.62 before; 1.00 / 1.00 / 0.97 after, precision 1.00 (late-drift and early-slip
+    negatives still 0/20). roll_into_post recall 0.82 / 0.82 / 0.53 before; 1.00 / 0.97 / 0.72 after. test_b3_*.'
+- id: B4
+  what: Point and gate tests read at the extremum inside their window (roll min r over [onset, end]; pop_arc / slip_to_arc
+    max r and max displacement over [arrival, + point_window_s 0.5]; spain_pop max displacement; roll / slip / crash /
+    dive / offensive_rebound_crash best 0.5 s v_r window via gate_conf; pop_mid settled displacement, see B12).
+  why: At the first crossing the tested value equals the threshold, so P ~ 0.5 by construction; correct rolls averaged conf
+    0.33-0.39 and confidence did not rank events.
+  evidence: 'Wing roll conf 1.00 in 5/5 seeds (was 0.33-0.39); wing pop_arc conf >= 0.7 mean. Over all 3,700 emitted
+    harness events wrongly fired events now average 0.68 against 0.90 for correct ones (loop 0: 0.75 vs 0.73); precision
+    per conf bin <0.3 0.86, 0.3-0.5 0.81, 0.5-0.7 0.91, 0.7-0.9 0.94, >=0.9 0.99. The tester''s strict reliability test
+    (|precision - mean conf| < 0.1 per bin) is NOT met below 0.9: low-conf events are still mostly right; calibration needs
+    labelled film (open). Tests test_b4_confidence_not_capped, test_b4_conf_ranks_pop_mid_false_positives_below_true_ones.'
+- id: B5
+  what: short_roll stop (and slip pocket stop) may start by the window end / stop_by_s and run past it for stop_min_s plus
+    half the 1.0 s speed support.
+  why: The slow-in-band condition was cut at t0 + 2.0 s, so a side pick-and-roll stop first seen at t0 + 1.8-1.9 s could not
+    last 0.3 s; the YAML only bounds the START of the stop.
+  evidence: 'short_roll recall 0.78 / 0.72 / 0.68 before; 1.00 / 1.00 / 0.95 after; screener_post_action side short-roll
+    label errors 45-55% before, 0/20 after. test_b5_side_short_roll_stop.'
+- id: B6
+  what: roll drop test = min r over [t0, completion + dr_eval_after_s 0.3] - r_s0 <= -min(dr_min_m, r_s0 - rim_r);
+    dr_floor_r removed.
+  why: With completion at the first r <= 2.5 frame, screens at r_s0 < 4.5 could never show a 2.0 m drop.
+  evidence: 'Elbow roll (r_s0 4.8) 5/5 seeds at sigma 0.3 and >= 4/5 at 0.5 (loop 0: 0.75 at 0.5). test_b6_elbow_roll.'
+- id: B7
+  what: ghost 'out' exit passes on the 0.5 s mean outward speed OR the separation speed from h (-closing speed) >= out_mps,
+    then pop_arc_zone with >= 1.5 m displacement.
+  why: A fade along the arc is mostly lateral; its outward v_r is ~1.0 m/s or less.
+  evidence: 'Tester scenario ghost_at_handler_defender_then_wing_three: the exit now passes in 20/20 runs per sigma (separation
+    3.2-4.1 m/s). Its recall stays 0.15-0.25 because the scenario reverses 150 deg at a constant 3 m/s at the closest approach:
+    the smoothed minimum speed there is 0.76 m/s (a real 0.2 s stop reads 0.64), so the never-set gate rejects it in 14-17 of
+    20 runs; not changed (physically a player must decelerate to reverse 150 deg; loosening never_set would merge ghosts with
+    slips). New test test_b7_ghost_out_along_the_arc uses a 60 deg turn whose outward v_r is 0.3-0.8 m/s.'
+- id: B8
+  what: behind_def gates on the lead along the roller's rim direction, (D_s - s) . (x_s, y_s) / r_s (= r(D_s) - r(s) to
+    first order); CTG y lead stored as ctg_y_lead_m.
+  why: The y-only test cannot see a baseline roll where the defender trails laterally.
+  evidence: 'Baseline-roll scenario 0/60 before, 60/60 after. The tester''s fix text writes u = -(x_s, y_s) / r_s, which
+    points toward the rim and would flip the sign; the implemented u points away from the rim (a defender farther from
+    the rim has positive lead). Tester negative wing_defender_runs_level_0p3m_ahead_in_y now fires 20/20 by design: its
+    true radial lead is 0.86 m for the whole roll (>= 0.76), so under the radial definition the tester asked for it is
+    a positive. test_b8_behind_def_baseline_roll.'
+- id: B9
+  what: short_roll catch variant needs a deceleration (1.0 s-support speed < 1.5 m/s in [catch - 0.3, catch + 0.5] s) or no
+    holder frame at r <= 2.5 within catch_after_s (1.0 s).
+  why: A full roll caught in stride at the free-throw line was a short roll with conf 1.0.
+  evidence: 'short_roll_playmaking negative NEG_catch_at_rim_r1p5_full_roll 20/20 false positives before, 0/20 after;
+    pocket-catch positives unchanged. test_b9_catch_in_stride_is_not_short_roll.'
+- id: B10
+  what: A stationary run can only START on a frame with edge >= stat_min_edge_frames (5), K_CAL*sqrt(var_v) <= stat_sigv_rel
+    (1.25) x the track median, and CA-RTS speed < stat_enter_speed_mps (1.0). Every detector drops conf 0.0 events
+    (_nonzero; unknown_post_action kept).
+  why: In smoother warm-up var_v is huge so s2 called the first frames stationary and the stay test carried a 3 m/s
+    approach into the run (t_set = 0, conf 0 events).
+  evidence: 'The tester''s absolute cap 0.35 m/s was not adopted: measured K_CAL*sqrt(var_v) mid-segment is 0.33 / 0.40 /
+    0.40 m/s (p99 0.35 / 0.43 / 0.43) at sigma_p 0.2 / 0.3 / 0.5, so 0.35 would disable stationarity everywhere at 0.3
+    and 0.5; the relative gate plus the speed condition fixes the warm-up run (seed 1002: run (0, 63) before). The precision
+    gate alone did not help: at sigma 0.5 the approach reads 1.1-1.7 m/s with s2 < 9.21, hence the speed condition.
+    screener_set_state recall 1.00 / 0.95 / 0.63 before, 1.00 / 0.97 / 0.90 after. Tests test_b10_*.'
+- id: B11
+  what: screener_post_action label = argmax of the renormalised probabilities over fired labels; PRECEDENCE breaks ties
+    within precedence_margin (0.15); ghost outranks slip only with p_never_set >= ghost_never_set_min (0.5); a ghost 'in'
+    does not compete with a fired slip (slip_type ghost_in carries it); precedence winner stored as precedence_label.
+  why: First-by-precedence picked low-probability labels; quick slips whose 0.2 s stop is invisible in the smoothed speed
+    (min speed 1.02-1.63 m/s, p_never_set 0.53-0.98) were labelled ghost, so the p_never_set rule alone could not fix them.
+  evidence: 'Label top-1 errors over the six label scenarios: 22 / 24 / 27 of 120 before, 1 / 3 / 7 after (slip read as ghost
+    25-45% -> 0; side short roll read as none 45-55% -> 0). test_b11_label_is_argmax.'
+- id: B12
+  what: P_s = mean smoothed position over the set run within +-ps_half_s (0.5 s) of t0 (single frame only for never_set /
+    touch sets); move_to_screen same-user re-screens need P(moved > 1.22 m) >= rescreen_p_min (0.5), multiplied into conf;
+    pop_mid confirms displacement and dr on the mean over [stop, + settle_s 0.5 s].
+  why: One AR-noisy frame moved P_s by 0.3-0.6 m (E8).
+  evidence: 'move_to_screen same-user 0.8 m negative: 0 false positives (was conf 1.0 events). pop_mid lateral 1.22 m slide
+    false positives 5/20 and 8/20 before, 5/20 and 7/20 after: P_s still carries 0.2-0.7 m of correlated (AR 0.9) tracker
+    bias and the settled displacement reads 1.5-1.7 m, which needs the free_throw_calibration bias model (open). The false
+    events now carry conf 0.5-0.7 against 0.9-1.0 for true mid pops. test_b12_*.'
+- id: B13
+  what: seal_intervals walks the onset back over candidate frames (held, in region, defender within seal_def_m +
+    seal_slack_m), merges touching intervals and applies min_s after; post_seal conf x strict-frame fraction x window mean
+    P(r < r_max); roll_into_post conf x strict-frame fraction; three_sec_s param.
+  why: Unknown-angle frames could only bridge, so onsets were late and short pieces dropped; conf overstated precision.
+  evidence: 'post_seal 0.95/1.00, 0.95/0.93, 0.67/0.55 (P/R) before; 1.00/1.00, 0.90/0.93, 0.71/0.68 after. Remaining
+    sigma 0.5 misses are measurement limits (post r reads 3.5-3.7 vs r_max 3.5, true 3.12; pair distance reads 1.4-1.6 vs
+    1.2, true 0.89). test_b13_seal_intervals_unit.'
+- id: B14
+  what: id_swap_risk enter run (d < 0.6, gaps <= bridge_frames 2) must have window mean P(d < 0.6) >= enter_p_min (0.5);
+    min_s kept at 0.1 s.
+  why: Tester proposed min_s 0.3 s plus the probability gate against a 0.8 m standoff.
+  evidence: 'min_s 0.3 NOT adopted: lane crossings (the tester''s own positive paths_cross_in_lane) have enter runs of
+    0.07-0.17 s and fell to recall 0/60. The 0.8 m standoff negative is read under 0.6 m for up to 1.7-1.9 s with mean
+    P(d < 0.6) 0.78-0.88, the same range as the 0.45 m bodying positive (0.33-1.57 s, 0.54-0.94): no duration or probability
+    gate separates them, and since this item flags tracker identity risk from measured positions, firing there is
+    correct. Precision 0.85 / 0.79 / 0.76 before, 0.83 / 0.77 / 0.73 after; recall 1.00 / 0.95 / 0.88 -> 0.88 / 0.85 /
+    0.75. test_b14_paths_cross_in_lane.'
+- id: B15
+  what: horns_dive context uses the mean position over the first catch_mean_s (0.3 s) of the catch's holder run and accepts
+    context_spots elbow, pinch_post, high_post_area.
+  why: One noisy catch frame fell outside the elbow.
+  evidence: 'dive recall 0.90 / 0.80 / 0.60 before (horns); 1.00 / 1.00 / 0.90 after; >= 6 of 8 seeds at sigma 0.5 in
+    test_b15_horns_dive_sigma_0p5.'
+- id: B16
+  what: 'Hard-coded thresholds moved to params: dive.exclude_after_s, seal.pin_shrink_m, slip.touch_window_s / slow_p_min,
+    ghost.in_lead_s / dh_window_s, dunker_relocation entry_vr_window_s / out_frac / dwell_frac / dedupe_s / slide_x_m /
+    angle_short_lookback_s, high_low.lob_window_s, post_up.shot_tol_s / def_window_s, post_seal.three_sec_s,
+    screen_frame.defender_window_s, screener_post_action gap_check_before_s / ghost_match_s, rim_run skip_s / dedupe_s,
+    short_roll_playmaking.four_on_three_free, roll_and_replace.theta_center_deg.'
+  why: The module claims every numeric threshold is read from this file.
+  evidence: test_b16_no_numeric_literals_in_detectors (AST scan; allowed 0, 1, 2, -1, sentinels, round() digits).
+- id: B17
+  what: _pop uses zone_r_min for every zone; never_set_half_s / never_set_sigma_mps only under screen_frame (removed from
+    ghost and screener_set_state, read via params('screen_frame')); move_to_screen timing_sigma_s renamed gap_sigma_s
+    (it shadowed the shared 0.1); detector kwargs passed through to screen_frame.
+  why: Dead params, duplicated values and silently ignored overrides.
+  evidence: test_b17_params_single_place_and_overrides_reach_screen_frame. Rare-branch scenarios were added only where cheap
+    (catch-in-stride, ghost out); trap / slip touch / angle_short / high-low lob remain without dedicated tests.
+- id: B18
+  what: Per-scene memo (holder_seq, passes, screen_frame keyed by event signature and overrides); fga_events hoists
+    holder_seq; high_low runs post_seal / duck_in once; screener_post_action runs move_to_screen and ghost once.
+  why: One clip took 2-10 s; 7,500 runs took 51 min on 10 workers.
+  evidence: 'Same 7,500-run harness: 86 s at 5 seeds, about 3 min at 10 seeds (was 51 min). test_b18_memo_and_speed.'
+- id: B19
+  what: behind_def stores ctg_behind (y-axis CTG test bounded by the end of the handler's holder run containing t0) and
+    handler_touch_end.
+  why: E15, CTG bounds the test by the end of the handler's touch.
+  evidence: test_b8_behind_def_baseline_roll checks the fields.
+changes_loop2:
+- id: L2-B14
+  what: id_swap_risk applies min_s to the whole stay interval (d < stay_dist_m) instead of the enter run (d < swap_dist_m);
+    enter runs of any length qualify when their mean P(d < swap_dist_m) >= enter_p_min. Confidence unchanged.
+  why: 'Loop-1 regression R2: hysteresis measures (last - a) * DT, so min_s 0.1 s needs 4 frames below 0.6 m and a 5 m/s
+    lane crossing has 3. The 0.8 m standoff false positive is noise-limited: on the tester harness its smoothed distance
+    reads mean 0.33-0.75 m over 1-2 s (sigma_p 0.2-0.5), inside the 0.30-0.69 m range of the true 0.45 m bodying
+    positive, so no distance, duration or centred-mean gate separates them. The confirmer''s proposed conf multiplier
+    P(min 0.3 s centred-mean d < 0.6) was measured and rejected: it lowers the AUC of conf (true events vs standoff
+    events) from 0.975 / 0.844 / 0.562 to 0.644 / 0.534 / 0.338 at sigma_p 0.2 / 0.3 / 0.5, because the fast crossing
+    has the highest centred mean of all. Sub-0.2 m pair-distance splits are not resolvable at sigma_p >= 0.2 from XY; a
+    tracker ID-confidence feed is needed.'
+  evidence: 'Harness (10 seeds x 2 sides): id_swap_risk P/R 0.83/0.88, 0.77/0.85, 0.73/0.75 -> 0.85/1.00, 0.80/0.97,
+    0.74/0.88 at sigma_p 0.2 / 0.3 / 0.5; paths_cross_in_lane 15/15/14 -> 20/20/19 of 20; standoff false positives
+    7/10/9 -> 7/10/10 (noise-limited; the extra one at 0.5 had a 3-frame enter run, conf mean 0.34/0.44/0.54 vs 0.63/0.60/0.56 for true events). Tests
+    test_l2_b14_fast_crossing_enter_run_under_min_s, test_b14_paths_cross_in_lane.'
+- id: L2-B7
+  what: 'ghost never-set test replaced: no run of CA-RTS speed < never_set_speed_mps longer than never_set_slow_frames (4
+    low / 2 high tier) may touch t_closest +- never_set_half_s (each run counted with its full length); the stationary-run
+    test and the min-speed test are gone; psp = Phi((max + 1 - longest) / never_set_slow_sigma_frames 1.5). approach_h_m,
+    approach_dh_m and closing_mps are tier-aware (2.0/2.5 m, 1.5/1.8 m, 1.5/1.0 m/s). New shared helpers noise_tier,
+    tiered, run_lengths.'
+  why: 'The smoother rounds a 150 deg reversal at 3 m/s into a 0.26-0.97 m/s minimum and an s2-stationary blip, the same
+    reading as a real stop, so min speed and the stationary run rejected 17/16/19 of 20 ghosts on the tester''s
+    wing-three scenario. The DURATION of the slow reading separates them: longest run below 1.0 m/s 0-0.20 s (median
+    0.13) for the reversal vs 0.17-0.37 s for the real ~0.3 s set at sigma 0.2-0.3. The confirmer''s proposals were
+    measured and not adopted: the minimum chord speed over a sliding 0.3-0.4 s window overlaps (reversal 0.30-1.34
+    vs set 0.05-0.78 m/s at sigma 0.3), and exempting mask_stat inside +-0.2 s of t_closest removes the only stationary evidence of the real
+    set (on almost every run its stationary frames fall inside +-0.2 s). At sigma 0.5 (q = 10) the smoother cuts the corner by 0.7-1.0
+    m (true 1.35 m to h reads 2.0-2.4 m) and the closing speed reads 1.0-1.45 m/s, hence the tier-aware approach. The
+    slow-run cap at the high tier is 2 (3 let 2 of 20 real sets through). A set that ends just before the window
+    (the family test: 1.2 s set, then walks past h) is rejected because runs count in full.'
+  evidence: 'Harness: ghost P/R 1.00/0.53, 1.00/0.50, 1.00/0.30 -> 1.00/0.85, 1.00/0.70, 1.00/0.60 at sigma_p 0.2 / 0.3 /
+    0.5 (wing three 3/4/1 -> 14/9/6 of 20; ghost_in 18/16/11 -> 20/19/18); all three ghost negatives 0 FP at every
+    sigma; screener_post_action label errors unchanged (1/3/7 of 120). Residual: at sigma 0.3 a 150 deg constant-speed
+    reversal reads slow for 5-8 frames on 11 of 20 runs, overlapping the real set (>= 5 frames); not separable from XY.
+    Tests test_l2_b7_*, test_ghost, test_b7_ghost_out_along_the_arc.'
+- id: L2-B13
+  what: post_seal and roll_into_post read seal_def_m per noise tier (1.2 m low, 1.5 m high); post_seal r_max per tier (3.5 m
+    low, 3.8 m high; also used in P(r < r_max)).
+  why: 'At sigma_p 0.5 the measured geometry is biased: a true 0.89 m post-defender gap reads 1.2-1.9 m and a true r 3.12 m
+    post reads 3.5-3.9 m for most of the seal, so the strict frames started 0.6-1.1 s late (fn + fp) or never. The
+    confirmer''s angle-agnostic walk-back was already in place (cand ignores the angle); the binding limits were the
+    distance and r cuts, not the angle class. The roll-arrival onset proposal was not needed after this.'
+  evidence: 'Harness: post_seal 0.71/0.68 -> 0.90/0.90 and roll_into_post 0.83/0.72 -> 0.92/0.88 at sigma_p 0.5; sigma 0.2
+    / 0.3 unchanged by construction (low tier); negatives (three-quarter front, moving cut, fronts ballside, roll through)
+    0 FP. Tests test_l2_b13_post_seal_sigma_0p5 (16 seeds: loop 1 12, now >= 15), test_l2_b13_post_seal_negatives_sigma_0p5.'
+- id: L2-R5
+  what: post_seal intervals closer than seal_merge_gap_s (0.5 s) merge before min_s (seal_intervals merge_gap).
+  why: A noise break of 2-11 frames split one post seal into two events (the second one an extra event = fp).
+  evidence: 'Harness: post_seal sigma 0.3 P/R 0.90/0.93 -> 1.00/0.97; sigma 0.5 fp 6 -> 4 (with L2-B13). Test
+    test_l2_r5_seal_intervals_merge_gap.'
+- id: L2-R3
+  what: screen_frame early_margin_s per noise tier (0.1 s low, 0.15 s high).
+  why: 'Loop-1 regression R3: at sigma_p 0.5 the smoothed roll start leads the true release by up to 0.3 s on some seeds, so
+    a post-use top roll read t_use - t_rel = 3 frames = 0.1001 s against the 0.1 s cut and was called early (slip), which
+    removed roll, replace and roll_and_replace on that seed.'
+  evidence: 'Harness at sigma_p 0.5: replace R 0.88 -> 0.98, roll_and_replace 0.88 -> 0.97, short_roll 0.95 -> 1.00,
+    short_roll_playmaking 0.85 -> 0.90; slip, slip_to_arc, screen_frame and screener_post_action totals unchanged; low
+    tier unchanged. Test test_l2_r3_top_roll_post_use_at_sigma_0p5 (the harness seed 1004 path).'
+- id: L2-R1
+  what: No detector change (behind_def negative wing_defender_runs_level_0p3m_ahead_in_y).
+  why: 'Harness label, not a detector bug: with the B8 rim-direction definition the defender''s radial lead during the roll
+    reads 0.68-1.02 m at sigma 0.2 (true ~0.86 m) >= behind_m 0.76, so the scenario is a positive. The tester should use
+    a defender offset of about (+0.5, +0.3) m (radial lead ~0.55 m) to keep it a near-miss negative.'
+  evidence: diag_bd3 (confirm_bigs) and fix2_bigs re-run; behind_def precision is 1.00 at every sigma without this scenario.
+- id: L2-B11
+  what: No change (pop_mid_baseline labelled pop_arc / none / ghost 4-5 of 20 at sigma 0.5).
+  why: 'A tier-aware never_set_speed_mps (1.0 / 1.3 m/s) in screen_frame was tried: it fixed one label and gained pop_arc +1
+    and pop_mid +1 but cost move_to_screen recall 0.78 -> 0.72 and slip_to_arc recall 0.82 -> 0.80 at sigma 0.5, so it was
+    reverted (no metric may be traded for a worse one).'
+  evidence: fix2_bigs/run3_05.txt vs run4_05.txt (all detectors at sigma 0.5).
+changes_loop4:
+- id: L4-1
+  what: bigs.screen_class reads the input screen's class from attrs screen_class, else from the screens family's attrs kind
+    via shared screen_kind_map (on_ball -> ball, off_ball -> off_ball, handoff -> dho), else ball.
+  why: 'Real SportVU (3 NBA 2015-16 games, screens -> bigs): the screens family writes kind and no screen_class, so every
+    off-ball screen was read as a ball screen; a screener drifting out after a down screen became pop_arc / pop_mid (19 of
+    64 off-ball screens in the first real run).'
+  evidence: 'Real, clean, sigma told 0.15: pop_arc 9.3 -> 1.2 /48, pop_mid 2.9 -> 0 /48; the 114 off-ball screens now label
+    none 108, roll 3, move_to_screen 2, slip 1. Synthetic harness (7,500 runs, sigma_p 0.2/0.3/0.5) unchanged. Test
+    test_l4_1_screens_family_kind_is_the_screen_class.'
+- id: L4-2
+  what: 'post_up: the run must start with a pass reception from a teammate (require_pass), catch_r_min 1.27 m (outside
+    the restricted area), mean speed <= 2.0 m/s over the 0.3 s before the catch, and no ball XY within fga_rim_r of the rim
+    from 1.5 s before to 1.0 s after the catch.'
+  why: 'Real post_up 78.6 /48 against about 16-20 /48 expected (NBA 2015-16 post-ups about 8-10 per team per game, and
+    those include mid-post catches outside this rule-book post_area). Inspection of the 111 candidates the loop-3 rule
+    accepts on the current loader (48.7 /48, every L4-2 gate off): 17 are tips / put-backs under the rim (r < 1.27 and the
+    ball at the rim < 1 s later), 9 fail only the rim-before test and all had the ball 11-16 ft high in the 1.5 s before
+    (rebounds; ball height used for diagnosis only), 14 fail only the speed test and 10 of them moved >= 2.4 m/s straight
+    through the catch (cuts, drives, handoffs from 1.5-3.7 m), 6 fail only the pass test and all 6 had no holder for 0.3-2 s
+    before with the ball 0.2-4 ft high (dribble pickups).'
+  evidence: 'Real: post_up 78.6 -> 4.6 /48 (noise 0.3: 3.8). Funnel on the current loader: pass catches by an attacker
+    held >= 0.5 s 479 /48 -> r in [1.27, 4.5] 65 -> no rim visit 35 -> slow 18 -> inside post_area 9.7 -> defender within
+    1.5 m 4.6; the shortfall against NBA post-up rates is the rule-book post_area (|x| <= 2.74 m, below the FT line),
+    not a gate. A dribble-chain bridge was measured and rejected (L4-4). Harness post_up sigma 0.5 P 0.93 -> 0.97, R
+    unchanged. Tests test_l4_2_*.'
+- id: L4-3
+  what: 'ghost: half court only (neither h nor s in named_spots backcourt at t_closest) and the screener''s own velocity
+    toward h supplies >= screener_share_min (0.5) of the mean closing speed.'
+  why: Real ghosts included teammates sprinting past the handler in transition and handlers driving past a standing or
+    drifting teammate (the closing speed was the handler's).
+  evidence: 'Real ghost 23.9 -> 9.7 /48. Harness ghost TP 34 / 28 / 24 of 40 at sigma_p 0.2 / 0.3 / 0.5, P 1.00 (unchanged
+    from loop 3). Tests test_l4_3_ghost_real_failure_modes, test_l4_3_ghost_closing_is_the_screeners_own_speed.'
+- id: L4-4
+  what: No change (a dribble-chain bridge for post_up was tried and reverted).
+  why: 'Hypothesis: a post catch followed by back-down dribbles splits into short holder runs, and require_pass rejects
+    every run after the first. Joining same-player runs across holder-less gaps <= 0.8 s with the ball within 1.5 m was
+    implemented and measured.'
+  evidence: 'Real post_up 4.6 /48 with gap 0, 0.5, 0.8 and 1.2 s alike: the holder model (HOLD_R 1.0 m) keeps the
+    dribbler as holder through most bounces (about 39 same-player gaps per game, none of them at a post catch). Reverted
+    (no measured benefit).'
+- id: L4-5
+  what: 'screener_post_action: the label detectors run on the screen with conf 1 (label_given_screen), so the label
+    probabilities are P(label | screen); event conf = p_label x screen conf (attr p_screen).'
+  why: 'Each label''s standalone conf multiplies the screen''s conf in. Real screens-family screens have median conf 0.63
+    (25% < 0.45), so a sure roll (r 6.7 -> 0.4 m at 3-4 m/s) behind a conf-0.45 screen read roll 0.45 vs none 0.55 and was
+    stored as ambiguous:roll|none (inspected: all 6 on-ball ambiguous:roll|none cases went from r 4.8-7.7 m to
+    0.4-2.1 m at 2-4 m/s).'
+  evidence: 'Real: ambiguous labels 19 -> 2 of 161 screens (noise 0.3: 8 of 146); on-ball top labels roll 11 -> 18 of 45,
+    none 12 unchanged. Standalone rates unchanged. Harness unchanged (hand-labelled screens have conf 1). Test
+    test_l4_5_label_given_screen.'
+- id: L4-6
+  what: 'roll accepts release_timing early when slip''s onset gate fails (early_without_slip_gate): no 0.5 s window
+    starting in [t_rel - 0.2, t_rel + 0.5] s with mean v_r >= 2.0 m/s.'
+  why: 'Real on-ball screens labelled none although the screener went from r 6.9 to 1.8 m: he left 0.1-0.2 s before the
+    use (early) but reached v_r 2 m/s only about 0.8 s after the release, so roll (post_use only) and slip (gate) both
+    refused it. A late-accelerating early release is a roll.'
+  evidence: 'Real roll 9.7 -> 10.9 /48 (noise 0.3: 9.7); slip unchanged (1.2). Harness roll / slip / screener_post_action
+    unchanged at sigma_p 0.2 / 0.3 / 0.5. Synthetic reproduction: the release of EARLY_ROLL_WP reads early on 6 of 12
+    noisy runs (sigma_p 0.2-0.5) and the old rule lost the roll on each; tests test_l4_6_early_release_slow_start_is_a_roll,
+    test_l4_6_quick_slip_is_still_a_slip.'
+- id: L4-7
+  what: id_swap_risk outputs flip_deg (bearing change of d around o from 0.3 s before the onset to 0.3 s after the end)
+    and crossed (flip_deg >= 90). The flag rule is unchanged.
+  why: 'The real rate (420.9 /48) is not a false-positive rate: on SportVU (centre noise ~2 mm) every flag is a true
+    centre encounter below 0.6 m (median min distance 0.44 m, median 1.1 s, 40% with the attacker holding the ball), and
+    vendor IDs cannot swap, so swap truth needs the production tracker. A two-target alpha-beta NN tracker run on the
+    real encounter trajectories with sim.py noise swapped in about 25% of encounters at sigma_p 0.5 regardless of
+    duration, distance, crossing or relative speed, i.e. the flag is not over-firing for an XY-only tracker. Consumers
+    can now separate crossings (the classic swap geometry) from one-sided contact (post defence, box-outs, screens).'
+  evidence: 'Real: 52% of flags crossed (noise 0.3: 52%); rate 420.9 /48 clean, 469.7 /48 at noise 0.3. Harness
+    unchanged. Test test_l4_7_id_swap_crossed_attr. Real swap truth needs a tracker ID-confidence feed (upstream).'
+- id: L4-8
+  what: 'ghost: the path must turn near t_closest: for some u within +-0.3 s of it the heading of the displacement over
+    [u - 0.5 s, u] and over [u, u + 0.7 s] differs by >= turn_min_deg (20). Unit-test GHOST_S now turns at the fake set;
+    the old straight path is kept as a negative (GHOST_S_STRAIGHT).'
+  why: 'Inspected all 23 real ghosts after L4-3: most were runs straight past the handler at 4-5 m/s (cuts to the rim,
+    baseline runs, transition runs); turn measured 1-30 deg on 13 of them. Every harness ghost turns 82-151 deg and the
+    60 deg arc-fade unit ghost reads >= 26 deg at sigma_p 0.5 (16 seeds).'
+  evidence: 'Real ghost 9.7 -> 6.3 /48 (noise 0.3: 6.7). Harness ghost unchanged (TP 34 / 28 / 24, P 1.00). Tests
+    test_l4_8_ghost_straight_run_past_is_a_cut, test_l4_8_turning_ghost_sigma_0p5, test_b7_ghost_out_along_the_arc.'

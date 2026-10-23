@@ -1,0 +1,2311 @@
+family: transition
+title: Transition, restarts and special situations (TRN)
+version: 0.1.4
+date: '2026-10-22'
+owner: Mac session (msu-colab) for Aldemir
+status: proposal under the build freeze
+detectors: tools/specgen/movement/detectors/transition.py (reads every params block below at import; this file is the single source of truth)
+tests: tests/movement/test_transition.py (V0 synthetic scenarios, sigma_p 0.3, fixed seeds)
+frame: >-
+  Attacked-rim frame of the scene's offense, metres, 29.97 fps (DT = 1001/30000 s). A scene that contains a possession
+  change is built in the frame of the team that GAINS the ball (scene.offense); before t0 that team defends, so the
+  losing team (scene.defense) attacks the far rim at (0, FAR_RIM_Y = 25.4508) and defends the origin. Every transition
+  run is therefore toward the origin (offense upcourt and defense retreat alike), which is the research's own_frame
+  without a per-player flip. Restart scenes (BLOB, SLOB, press, FT) use the frame of the team in control. Spot ids are
+  named_spots 0.3.2 ids, evaluated with spotlib; no spot is redefined here.
+conventions:
+  durations: >-
+    elapsed time; n frames span (n - 1) * DT; every frame count is generated from seconds with mvlib.frames() (fix
+    TRN-R00/frame-rounding: 0.5 s = 15 intervals, 1.0 s = 30, 3 frames = 0.100 s).
+  stationary: stationary_s2 < 5.99 (chi-square 2 dof, MP-09) or net displacement on the smoothed track, never raw
+    speed below a small threshold (CA-RTS speed is biased upward at rest).
+  window_speed: vbar(W) = |p(t + W/2) - p(t - W/2)| / W on the CA-RTS SMOOTHED track (fix TRN-R00/vbar-source);
+    sigma_vbar = K_CAL * sqrt(var_p(t - W/2) + var_p(t + W/2)) / W.
+  direction_change: pre / post mean velocities that skip the plant phase (MP-13).
+  confidence: >-
+    conf = window_conf(p, a, b) x q_obj, where p is the per-frame probability that the rule's binding condition holds
+    (p_below / p_above with the feature's own sigma, MP-10) and q_obj = geometric mean over the involved objects of
+    edge_factor(k, t0) x gap_factor(k, a, b) (MP-16). The geometric mean replaces the research's product over objects
+    (fix TRN-R04/confidence-collapse). Emission tiers: conf >= 0.5 label, 0.3-0.5 candidate, < 0.3 dropped; the tiers
+    are provisional until isotonic calibration on gold labels (TRN-R08). Raw margins are stored in attrs.
+  status: canonical = the threshold comes from a repo requirement / rule book / named_spots canon and the detector is
+    validated on V0 scenarios; proposal = a number chosen here or by the research that needs gold-label tuning.
+changes_loop1:
+  # Loop 1 = the independent tester's report (synth.json element 6, failures TRN-T01..T17). Evidence numbers are
+  # precision/recall at label tier (conf >= 0.5) from the tester's harness (scratchpad test_transition/harness.py,
+  # copied unchanged to scratchpad trn_eval/), 28 scenarios + x-mirrors, 3 seeds, sigma_p 0.3 | 0.5, before -> after.
+- id: TRN-T01
+  what: 'A hold is out of bounds when it ENDS out of bounds (_oob_start): its last >= hold_min_frames run with boundary distance < oob_tol_m reaches the release within throw_in.oob_release_slack_frames; t_disposal / count_s start at that run; the same predicate decides made_fg / dead_ball_to; possession links to its throw-in by run index.'
+  why: 'An inbounder catching the ball as it drops through the net (in bounds) and stepping out lost the whole restart chain (no throw_in, start_type dreb).'
+  evidence: 'throw_in R 0.79 | 0.90 -> 1.00 | 0.92; run_endline R 0.25 | 0.25 -> 0.67 | 0.67; push_after_make R 0.58 | 0.58 -> 0.92 | 1.00; inbounder_step_in R 0.79 | 0.96 -> 1.00 | 1.00; home_run_inbound R 0.17 | 0.33 -> 1.00 | 0.67. Test test_loop1_t01.'
+- id: TRN-T02
+  what: 'Holder hysteresis (_hold_state): onset at hold_enter_r_m (or hold_r_m for a moving / settled ball), kept to hold_r_m + hold_stay_hyst_m, switch only after hold_min_frames frames of being hold_switch_m nearer (or nearer and co-moving while the holder is not); control ends at the last frame the ball is still with the player; touch lengths counted on core-control frames (relative speed <= hold_core_v_mps); same-team brushes next to the catcher dropped.'
+  why: 'The nearest player within 0.9 m took the hold: screeners, trappers and a 0.15 s deflection became holders / steals.'
+  evidence: 'possession_change P/R 0.89/0.88 | 0.88/0.79 -> 1.00/0.94 | 0.96/0.89; deflection scenario: false possession_change, protect_rim, early_offense_sequence, matchup, numbers_advantage all gone (0 label FPs); trapped handler keeps the ball at sigma 0.5 (test). Not fixed: press_trap recall (see TRN-T10) and the 0.6 m contact strip in wall_and_sink at sigma 0.5 (t0 0.2-0.4 s late), both at the XY noise floor. Tests test_loop1_t02, t03.'
+- id: TRN-T03
+  what: 'Scrum touch: a touch shorter than control_min_s (core frames) after a shot proxy of the previous holder''s team and followed by a hold of the other team is dropped and stored as touched_by; the change is dreb with loser = shooter.'
+  why: 'A crasher''s 3-frame touch between the shot and the defensive rebound turned a dreb into a steal (false run_out, missed outlet).'
+  evidence: 'run_out P 0.86 | 0.86 -> 1.00 | 1.00 (secondary_drag_pop FPs gone); outlet_pass P/R 0.97/0.78 | 0.96/0.67 -> 1.00/1.00 | 1.00/0.86. Test test_loop1_t03.'
+- id: TRN-T04
+  what: 'Shot proxy only at the rim the holder''s team attacks and only when the ball closes on it within shot_closing_frames of the release; a short other-team touch with < hold_min_frames core frames while the ball keeps closing on that rim is a pass-through (dropped).'
+  why: 'A rebound secured at the far rim became an offense shot; a defender near the rim under a free throw took the ball in flight and the FT release proxy was lost.'
+  evidence: 'ft_alignment R 0.67 | 0.67 -> 1.00 | 1.00; ft_box_out R 0.67 | 0.67 -> 0.83 | 0.67; rim_rebound_outlet outlet_pass found, no O shot (test test_loop1_t04). Not applied: the tester''s release-distance gate (>= shot_rim_r_m + 0.5 m) - every layup / put-back is released within 1.5 m of the rim (V0 break: o4 releases 1.1 m from the rim, the hold ends with the ball 0.2 m from it), so the closing test replaces it.'
+- id: TRN-T05
+  what: 'primary_break via run_out only when the shot follows within runout_shot_s (3.0 s) of the run-out end and no pull_back of the possession precedes the shot.'
+  why: 'A run-out pulled back and shot 10 s later was a primary break in 60/60 runs.'
+  evidence: 'primary_break P 0.67 | 0.67 -> 1.00 | 1.00 with R 1.00 | 1.00 kept. Test test_loop1_t05.'
+- id: TRN-T06
+  what: 'passed_up_break opportunity anchored on the ball: an advantage starting no later than opp_s after t_cross_half (t0 when the ball never crosses).'
+  why: 'After a far-rim rebound the advantage forms 2-3 s after t0, outside the old t0 + 1.5 s window.'
+  evidence: 'passed_up_break P/R nan/0.00 | 0.50/0.17 -> 1.00/1.00 | 0.83/0.83. The tester''s expected category declined is not adopted: in its scenario d2 stands 0.9 m from the rebounder for 1 s, which is a jam_rebounder by definition, so the YAML rule gives denied. Test test_loop1_t06.'
+- id: TRN-T07
+  what: 'Trailer ranks over ALL attackers by crossing: trailer_1 = 4th across, trailer_2 = 5th; the handler at his crossing gets no event and the 3rd is never promoted, except a crossing tie (handler 4th, 3rd within tie_s 0.2 s, stored tie_with_handler). Drag screeners may also be late_runner (3rd-5th across, not the handler).'
+  why: 'The code ranked non-handlers, so with the handler last a wing heading to the corner became trailer_1 (rank right 0/60).'
+  evidence: 'trailer rank attribute 0.00 -> 1.00 at both sigmas; drag_screen P 0.84 | 0.78 -> 0.94 | 0.82, double_drag kept 1.00/1.00 | 1.00/0.83 (late_runner role; without it double_drag fell to 0). Test test_loop1_t07.'
+- id: TRN-T08
+  what: 'block_to_break needs block_shooter_r_m 5.0 (was 8.0), block_dist_m 1.5 (was 3.0) and a gather (stationary on >= block_gather_share of the last block_gather_s); the same geometry without a gather is steal with alt_start_type block_to_break.'
+  why: 'A steal of a forward pass was labelled block_to_break (90/120 runs).'
+  evidence: 'possession_change start_type attribute in wall_and_sink / spread_back_nearmiss: block_to_break in 18/24 base runs -> steal in all runs. Test test_loop1_t08.'
+- id: TRN-T09
+  what: 'run_out: the open-lane run is split by handler and kept only when that handler''s window radial speed toward the rim reaches move_mps (3.0 m/s) inside it; t0 stays the open-lane start; conf x p_above(v_back, move_mps).'
+  why: 'A standing rebounder or stealer was a run-out (conf 0.94-0.98).'
+  evidence: 'run_out P/R 0.86/1.00 | 0.86/1.00 -> 1.00/1.00 | 1.00/1.00. The V0 leak test now expects o3 (the leaker who takes the hit-ahead to the rim), not the standing stealer o1. Tests test_run_out, test_loop1_t09.'
+- id: TRN-T10
+  what: 'press_trap uses the holder hysteresis and the overridable parameters (trap_m, pair_m, hyst_m, gap_s); the joint entry probability is stored as p_enter. NOT applied: entry on p_below(d1) x p_below(d2) x p_below(pair) >= 0.5.'
+  why: 'The tester attributed the sigma-0.5 recall loss to the hard three-distance conjunction; the joint-probability gate cannot help: P(all three) >= 0.5 needs every factor >= 0.5, i.e. every estimate already under its threshold, so it only removes entries (press_trap_break sigma 0.3 seed 102: estimates 1.14-1.28 / 1.25-1.40 / 2.48-2.49 m all under thresholds, joint 0.37-0.44).'
+  evidence: 'With the gate press_trap R fell to 0.33 | 0.00 (loop-1 run l1a) as before; holder flips inside the trap are gone (test test_loop1_t02: 5 of 5 seeds keep o1; the V0 press trap is found at sigma 0.5 in >= 4 of 5 seeds). The tester''s press_trap_break scenario stays at R 0.33 | 0.00: its pair distance is 2.33 m against 2.5 m and the smoothed defenders lag their stop by up to 0.5 m (d2 reads 1.63 m at true 1.14 m), a smoothing limit of mvlib, not a trap-rule defect.'
+- id: TRN-T11
+  what: 'Overrides reach the shared anchors: possession_change params thread through _hold_state, _hold_runs, _shots, _passes, _throw_ins, _possessions (memo keyed on the merged params via _pkey); _traps, _trailers and _upcourt_runs take their item''s merged params.'
+  why: 'detect_possession_change(scene, hold_r_m=0.05) returned the default output.'
+  evidence: 'test_loop1_t11: hold_r_m / hold_enter_r_m 0.05 -> no change found; trap_m 0.5 -> no trap; trailer window_s 0.5 -> no trailer; upcourt enter_vy -9 -> fewer runs; defaults still served from the memo afterwards.'
+- id: TRN-T12
+  what: 'Control onset at hold_enter_r_m 0.6 m for a resting ball; hold_r_m 0.9 m only for a moving ball (pass arriving, dribble) or a ball that moves with the player and no longer closes on him.'
+  why: 'A player walking to a ball on the floor held it from 0.9 m (run_endline t0 median -0.25 s).'
+  evidence: 'run_endline R 0.25 | 0.25 -> 0.67 | 0.67 (made_oob_pickup and made_runendline_push together). Test test_loop1_t12.'
+- id: TRN-T13
+  what: 'wing_lane_run conf = upcourt conf x Phi((median |x| - LANE_X) / sigma_x); p_sideline stored, lane = argmax.'
+  why: 'The sideline / lane-line sub-class edge penalised the wing-run label itself.'
+  evidence: 'Test test_loop1_t13 (wing conf >= 0.95 x upcourt conf).'
+- id: TRN-T14
+  what: 'VS / VL from vbar_short_s / vbar_long_s everywhere; _v_peak by shrinkage from Kin.extra position and v_peak_games; identity-swap gate (swap_speed_mps over swap_window_s of smoothed displacement) acts as a segment edge in q_obj.'
+  why: 'These family_kinematics parameters were never read.'
+  evidence: 'Test test_loop1_t14; a zero-conf gate was rejected because the V0 pitch scenario scripts a 13 m/s run (o1), which a whole-event zero would have killed; the edge semantics matches the YAML ''segment split''.'
+- id: TRN-T15
+  what: 'Every item min_duration_s is read through MIN_DUR (transition_phase, early_offense_window, upcourt / wing / middle lane runs, leak_out, outlet_release, push, diagonal_dribble, run_endline, inbound_get_open, ft_release_runner, press_flash_middle, build_wall, sink_to_paint, jam_rebounder, matchup, tandem_stack, run_out, ft_box_out, press_active, press_fall_back, corner_fill); rim_run 2.5 s enforced on departure-to-arrival.'
+  why: 'Literals duplicated the YAML; rim_run 2.5 s was never enforced.'
+  evidence: 'Test test_loop1_t15 (MIN_DUR raised -> rim_run / push / leak_out / run_out disappear). Onset-to-arrival was rejected: the V0 rim run o4 (21 m in 4.3 s) reads 2.47 s from the 4 m/s onset.'
+- id: TRN-T16
+  what: 'hold_merge_gap_s and pass_max_flight_s in YAML; press_break sigma_fit from the measured sigma; blob / slob conf x throw_in conf; outlet_pass q_obj includes the ball; after_make flag on backcourt_endline throw-ins (instead of a never-produced restart type); passed_up_break category failed; leak_out cherry_pick alternative (cherry_far_m); hold confidences use the stay radius.'
+  why: 'Spec / code drift listed by the tester.'
+  evidence: 'Test test_loop1_t16 (after_make, blob conf <= throw_in conf, failed category on a stolen-back held break).'
+- id: TRN-T17
+  what: 'early_entry_candidate: sigma_move = sqrt(sigma_ref^2 / n_eff + sigma_t^2) (corr_s 0.3); the entry must start before the release and its size is read over [entry, entry + hold_s + ref_to_s]; the release proxy no longer runs late (hold end trim).'
+  why: 'The flag missed a clear 0.8 m early step.'
+  evidence: 'The tester''s diagnosis (gate about 0.9 m at sigma 0.3) is not what the code did: 3 sqrt(2) sigma_p = 0.52 m < early_m 0.6 m at sigma 0.3. The misses came from a late t_ft (+0.15-0.24 s; now +0.07 s at sigma 0.3, 0.0 at sigma 0.1) and the smoother trailing the step by about 0.2 m. ft_lane_entry early_entry_candidate accuracy 0.75 | 0.33 -> 0.92 | 0.83 (sigma 0.2: 1.00); ft_lane_entry recall at sigma 0.5 stays 0.50 (noise floor). Test test_loop1_t17.'
+changes_loop2:
+  # Loop 2 = the independent confirmer's verdict on loop 1 (still_failing + regressions). Evidence: precision /
+  # recall at label tier (conf >= 0.5), harness copied unchanged from scratchpad confirm_transition/ (byte-identical to
+  # the tester's test_transition/ harness), 28 scenarios + x-mirrors, sigma_p 0.2 | 0.3 | 0.5, two seed sets (A =
+  # 101-110, the confirmer's seeds; B = 201-210, held out) plus the oracle (sigma 0.05); totals TP / FP / FN over A, B.
+  # Every change was kept only when the net (dTP - dFP) improved on BOTH seed sets and the oracle did not regress.
+- id: TRN-T12
+  what: 'Control onset (_hold_state): the bare moving-ball branch is removed. Onset is distance <= hold_enter_r_m, or <= hold_r_m once the ball is settled with the player (relative speed <= hold_core_v_mps and closing speed <= hold_settle_v_mps). The confirmer''s alternative (moving & core & CL <= settle) is the settle branch itself, so the two proposals are the same change.'
+  why: 'A ball dropping from the rim (or a pass still closing) counted as controlled within 0.9 m: run_endline t0 0.2-0.4 s early in made_runendline_push, and a defender beside an inbound receiver could take the first hold.'
+  evidence: 'run_endline R A 0.70 | 0.80 | 0.80 -> 0.85 | 0.88 | 0.80, B 0.90 | 0.95 | 0.90 -> 0.93 | 0.97 | 0.90; push_after_make R A 0.95 | 0.97 -> 1.00 | 1.00; shot_rebound_decision cls accuracy +4-6 runs; throw_in FP at 0.5 2 -> 1 (A and B). Not fixed: the oracle run_endline (made_runendline_push, made_oob_pickup): in the truth path o5 runs alongside the dropping ball 0.5-0.6 m away with relative speed 1.4-2.6 m/s for 0.3 s before the scripted catch, so every XY onset (0.6 m, settle, or the confirmer''s rule) fires 0.3-0.4 s early; tried a closing-speed gate on the 0.6 m branch (net A +6, B -29: hit_ahead / primary_break catches delayed) and a core-speed gate (net A -59, B -55): both rejected. Needs ball z. Test test_loop2_t12.'
+- id: TRN-T02
+  what: 'Holder switch is backdated: when a switch fires, the new holder''s control starts at the first frame of the unbroken run on which he was nearer than the current holder, with the ball moving with him (relative speed <= hold_core_v_mps), ok relative speed and within hold_r_m; never before the current holder''s run.'
+  why: 'At 0.6-0.8 m contact distance the 0.3 m switch margin is reached late on smoothed tracks (wall_and_sink: possession t0 1.30-1.37 s vs truth 0.95 s).'
+  evidence: 'possession_change R A 0.98 | 0.96 | 0.88 -> 1.00 | 0.98 | 0.88, B 0.99 | 0.97 | 0.90 -> 1.00 | 1.00 | 0.94; possession FP at 0.3 B 1 -> 0; start_type accuracy A 234/236 -> 240/240 at 0.2. Part (b) of the confirmer''s fix (re-attributing the leading part of a run by median distance over control_min_s) does not move secondary_drag_pop: there the crasher d2 IS nearer on the smoothed tracks for the first 0.3 s (0.2-0.4 m vs o5 0.5-0.7 m at sigma 0.3 seed 104) and only later is o5 nearer by < 0.3 m. A persistence switch (nearer for control_min_s, no margin) fixed it at 0.3 but added 5-7 false possession changes per seed set at 0.5 (net A -20, B -21): rejected. Residual at the XY noise floor (sigma 0.5). Test test_loop2_t02.'
+- id: TRN-T04
+  what: 'Shot proxy: a release within shot_at_rim_r_m (0.9 m = rim_contact_r_m + 0.3) of the attacked rim, after the ball was carried in toward it over the last shot_closing_frames, is a shot without the closing test; t_rim = the frame of minimum rim distance (>= release + 1).'
+  why: 'Loop 1 closing test rejected layups and dunks (the ball moves away from the rim after a release at the rim): steal_breakaway lost its shot proxy and primary_break.'
+  evidence: 'primary_break R A 0.97 | 0.97 | 0.90 -> 1.00 | 1.00 | 0.93, B 1.00 | 0.97 | 0.78 -> 1.00 | 0.95 | 0.85 (P 1.00 throughout; the -1 run at B 0.3 is dreb_hitahead, unrelated to the layup branch); the rim-rebound outlet (rim_rebound_outlet) stays without an O shot. Test test_loop2_t04.'
+- id: TRN-T01
+  what: 'Out-of-bounds test (_oob_start): SIDELINE distance counts as out while < oob_tol_m + oob_side_noise_z (1.28) x sigma_p, i.e. in bounds only when p_in >= 0.9 (noise-tier aware: 0.25 + 0.09 m at sigma_p 0.1, 0.25 + 0.22 m at 0.5). End lines keep oob_tol_m.'
+  why: 'A sideline thrower 0.28 m out read in bounds for 1-1.5 s on smoothed noise at sigma 0.5, so the last OOB run started at 2.1-2.4 s (slob_stack).'
+  evidence: 'slob_alignment R at 0.5 A 0.85 -> 0.95, B 0.85 -> 0.95; throw_in R at 0.5 B 0.97 -> 0.99; inbound_get_open B 0.95 -> 1.00; nothing else moved. The confirmer''s 0.5 s gap bridge changed nothing (the noisy in-bounds stretches last 1-1.5 s); the same z on ALL boundaries broke run_endline and home_run_inbound (inbounders running along / stepping in over the end line; net A -21, B -21), so end lines are excluded. Test test_loop2_t01.'
+- id: TRN-T10
+  what: 'press_trap entry on window statistics: over the last entry_window_s (0.27 s = 9 frames) with the same holder, the median handler-defender distances <= trap_m + entry_sigma_k x sigma_dist and the median pair distance <= pair_m + entry_sigma_k x sigma_dist (sigma_dist = window-median MP-19 pair sigma, so the margin scales with the noise tier and is < 0.1 m on clean tracks); t0 = window centre; stay on the same window medians with hyst_m + the same margin.'
+  why: 'The per-frame hard conjunction of three smoothed distances failed on noise alone; the trap t0 also ran 0.3-0.5 s late (smoother lag), outside the +-0.4 s tolerance.'
+  evidence: 'press_trap R A 0.95 | 0.75 | 0.35 -> 0.95 | 0.90 | 0.55, B 1.00 | 0.80 | 0.25 -> 1.00 | 0.90 | 0.45; trap_breaker_pass R A 0.80 | 0.50 -> 0.90 | 0.60 at 0.3 | 0.5, B 0.85 | 0.40 -> 0.90 | 0.45; FP on the press_break_80 negative 0; press_trap FP B 1 -> 0. A 0.30 s (10-frame) window measured 2 TP worse at 0.5. Target R >= 0.8 at sigma 0.5 is NOT reached: at sigma_p 0.5 the smoother (q 10) brings d2 within 1.5 m of the handler only 0.6 s after the truth (truth 1.14 m at 2.9 s; smoothed 1.95 m at 3.17 s, 1.49 m at 3.57 s), leaving < 0.6 s of trap before the pass at 4.0 s; that is an mvlib smoothing limit outside this family. Test test_loop2_t10.'
+- id: TRN-R-confirmer-disputed
+  what: 'Not changed: slob_alignment conf 0.4999 (TRN-T16 multiply) and the leak_out / numbers_advantage regressions.'
+  why: 'The 0.4999 case is slob_stack_M seed 109 labelled spread (margin 0, phi = 0.5) when the truth is stack: before loop 1 it counted as a TP only because P / R ignore the attribute; a wrong-attribute label falling to the candidate tier is the intended effect of multiplying by the throw_in conf. The leak_out FP (secondary_drag_pop_M) and numbers_advantage gainer o1 follow from the crasher keeping the rebound at sigma 0.5 (see TRN-T02 residual).'
+  evidence: 'Harness report: slob_stack mir=True sig=0.3 seed=109 best_conf 0.49988, alignment spread vs expected stack. leak_out P A 1.00 | 0.95 | 0.87 unchanged; all its FPs are secondary_drag_pop(_M) at 0.3 / 0.5.'
+changes_loop3:
+  # Loop 3 = fix pass 3 on the confirmer's pass-2 verdict. Evidence: same harness (scratchpad confirm2_transition/B,
+  # copied to fix3_transition/h with an env hook for parameter sweeps), 28 scenarios + x-mirrors, sigma_p 0.2 | 0.3 |
+  # 0.5, seed sets A = 101-110 and B = 201-210, plus the oracle (sigma 0.05); P / R at label tier; totals TP / FN / FP.
+  # A change is kept only when the net (dTP - dFP) improves with no detector losing P or R on either seed set.
+  # Pass 2 -> loop 3 overall: A 5930 / 190 / 43 -> 5940 / 180 / 42 (net +11), B 5891 / 229 / 56 -> 5896 / 224 / 56
+  # (net +5), oracle 201 / 3 / 0 unchanged; no detector lost P or R at any sigma on A or B.
+- id: TRN-T12-catch
+  what: 'Fresh-hold onset backdated to the ball''s arrival (_hold_state.catch_onset): when a hold starts with no holder on the frame before, walk back over at most catch_backdate_s (0.4) + catch_backdate_k_s_per_m (2.0) x sigma_dist (MP-19 player-ball sigma; 0.48 / 0.66 / 0.77 / 0.95 s at sigma_p 0.05 / 0.2 / 0.3 / 0.5) while the player is the nearest, nobody else holds and the ball stays within hold_r_m + hold_stay_hyst_m + catch_chain_sigma_k (1.0) x sigma_dist; control starts at the first frame of that chain where the distance stops shrinking, within hold_r_m, with the ball more than shot_rim_r_m from both rims.'
+  why: 'Loop 2 removed the moving-ball onset, so a pass caught on the run started control only after the smoothed ball stopped ringing (0.35-0.5 s late; pitch_back seed 108 o5 8.01 s vs 7.6 s, dreb_hitahead seed 101 o3 4.74 s vs 4.3 s), costing trailer_pitch_back, hit_ahead, primary_break and possession_change runs.'
+  evidence: 'A net +7, B +5, oracle 0. A at sigma 0.5: possession_change R 0.88 -> 0.90, hit_ahead 0.85 -> 0.90, primary_break 0.93 -> 0.95, trailer_pitch_back 0.95 -> 1.00; B at 0.5: possession_change 0.94 -> 0.95, push 0.96 -> 0.99, outlet_pass 0.88 -> 0.89. Hold audit (9240 scripted holds >= 0.4 s, both seed sets): onsets > 0.3 s late 12 / 13 / 110 -> 8 / 12 / 93 at sigma 0.2 / 0.3 / 0.5, missed holds at 0.5 39 -> 38, early onsets unchanged (54 / 51 / 51), 0 holds worse and 23 better. Variants measured: without the rim guard A +7 but B -1 (rim_rebound_outlet_M seeds 205 / 207 lost possession_change and outlet_pass: the ball AT the rim is 0.64 m from the rebounder in XY, so the onset jumped to 1.47 s vs 1.85 s); fixed windows 0.5 / 0.7 / 1.0 s gave B +3 / +4 / +5 (the tier-aware window gets the 1.0 s result while keeping 0.48 s on clean tracks); chain margin k 0 lost steal_breakaway push (B +1 only); an extra closing-speed requirement at the arrival changed nothing on A and cost one B run. The confirmer''s sandbox backdate (earliest frame with D <= hold_r_m, CL <= settle, ok_v) differs: it requires a settled, slow ball at the arrival frame, which the ringing smoothed ball is not (pitch_back seed 108: relative speed 8-10 m/s at the 0.17 m arrival). Tests test_loop3_t12_fresh_hold_is_backdated_to_the_ball_arrival.'
+- id: TRN-T12-limit
+  what: 'Not changed (known limitation, pinned): catches where the smoothed ball never comes within hold_r_m of the catcher.'
+  why: 'The ball smoother overshoots after a fast pass is caught by a fast runner: dreb_hitahead_M seed 205 at sigma 0.3 keeps the smoothed ball 2.2-2.5 m from o3 during the whole 0.6 s scripted hold (missed; costs hit_ahead and primary_break); dreb_hitahead seed 110 at sigma 0.2 arrives 1.08 m away (> hold_r_m), onset 0.54 s late; pitch_back seed 102 at sigma 0.5 keeps the ball 1.27-1.31 m from the stationary rebounder o5 for the whole rebound hold, so o1 is the first offensive holder (the secondary_break gainer regression).'
+  evidence: 'Noise-tier-aware radii (hold_r_m + k x sigma_dist on the settle onset, the stay radius and / or the release test) were measured and rejected: k 2 on all three A -35, B -14 (primary_break at 0.5 0.95 -> 0.72, ft items -0.05 to -0.10); stay only -2 / -6; settle onset only -3 / -5; k 1 on all three A -8 (primary_break 0.95 -> 0.82), B +10. Needs a catch-aware ball smoother or ball z (outside this family). Test test_loop3_t12_known_limit_ball_smoother_ringing_is_pinned.'
+- id: TRN-T02-cap
+  what: 'Not changed: the holder-switch backdate stays uncapped (the confirmer asked for a cap at frames(control_min_s) or 0.3 s plus a stop where the current holder still has core control within hold_enter_r_m).'
+  why: 'The confirmer is wrong on the cause and the cure. wall_and_sink_M / spread_back_nearmiss_M seed 105 at sigma 0.3: the switch fires at 0.70 s and the backdate moves the start by ONE frame (0.67 -> 0.63 s, 0.02 s outside the 0.95 +- 0.3 tolerance); a slow 2.3 m/s pass is smoothed through the crossover. rimrun_hit seed 207 at 0.5: d1 takes the hold by being nearer (0.41 vs 0.53 m) while the ball moves with him and not with o1; the backdate only adds about 0.2 s, enough to make the d1 touch longer than control_min_s. rimrun_hit_M seed 109: the crasher d2 holds from the first rebound frame, no switch involved.'
+  evidence: 'Cap 0.3 s: A -4 (possession_change at 0.5 0.90 -> 0.86), B 0. Cap 0.1 s: A -8, B -3 (rim_runner_hit seed 207 fixed, but wall_and_sink / spread_back_nearmiss lost 8 runs on A and 4 on B). Confirmer''s cap + core stop: it does recover its three named runs (wall_and_sink_M and spread_back_nearmiss_M seed 105 at 0.3, rim_runner_hit seed 207 at 0.5) but loses 12 wall_and_sink / spread_back_nearmiss runs on A and 14 on B; A -13 (possession_change 0.98 -> 0.97 at 0.3, five new false positives in halfcourt_oreb_deflect seed 107 at 0.5), B -15 (possession_change 1.00 / 1.00 -> 0.99 / 0.97), so it fails the confirmer''s own acceptance test (>= 1.00 / 0.98 at 0.2 / 0.3). No backdate at all: A -19, B -21. Test test_loop3_t02_switch_backdate_stays_uncapped.'
+- id: TRN-T11-oobz
+  what: '_oob_start takes z from the caller: _throw_ins passes its merged throw_in.oob_side_noise_z, _possessions keeps the YAML default; _throw_ins with overrides bypasses the memo, so the override reaches every throw-in anchor.'
+  why: 'detect_throw_in(scene, oob_side_noise_z=0.0) returned the default output (slob_stack_M seed 106, sigma 0.5: conf 0.804 both ways), a break of the TRN-T11 override contract.'
+  evidence: 'Same scene: default conf 0.804, t_disposal frame 12; with oob_side_noise_z 0.0 conf 0.875, t_disposal frame 73 (pass-2 code: 0.804 / 12 for both). Default outputs and harness totals unchanged. slob_alignment still has no oob_side_noise_z key (its throw_in dependency is tuned through detect_throw_in). Test test_loop3_t11_oob_side_noise_z_override_reaches_the_sideline_test.'
+- id: TRN-T10-k2
+  what: 'press_trap.entry_sigma_k 1.0 -> 2.0 (margin = 2 x window-median MP-19 pair sigma: about 0.14 m at sigma_p 0.1, 0.48 m at 0.5).'
+  why: 'TRN-T10 target (R >= 0.8 at sigma 0.5) was still missed; a wider noise-tier margin admits more of the lagging entries without touching clean tracks much.'
+  evidence: 'k 1.5: A +1, B -1 (rejected). k 2.0: A net +4 (press_trap R 0.95 -> 1.00 at 0.2, 0.55 -> 0.60 at 0.5, P at 0.5 0.92 -> 1.00; trap_breaker_pass R 0.95 -> 1.00 at 0.2), B 0 (one run lost, one gained; still 0.45); press_break_80 and half-court negatives still empty. The target is still NOT reached: at sigma 0.5 (seed 101) the smoothed d2 reaches 1.5 m of the handler at 3.57 s against the truth 2.9 s and the handler releases at 3.94 s, so the trap lasts 0.37 s < min_duration_s 0.6 s; widening further would need about 0.8 m of margin (trap_m 2.3 m). This is the mvlib smoother lag (q 10 at sigma_p >= 0.45), outside this family. Also fixed: the garbled _hold_state docstring. Tests test_loop2_t10 (k updated), test_loop3_t10_trap_margin_two_sigma.'
+changes_loop4:
+  # Loop 4 = calibration on real tracking (3 NBA 2015-16 SportVU games, 6855 s of clock-running play, 224 chunks,
+  # sigma told 0.15) against private play-by-play. Only aggregate rates and counts appear here. Possession truth =
+  # PBP possession ends whose gainer attacks the chunk's chosen rim (made FG, defensive rebound, steal, last made FT,
+  # dead-ball turnover) placed inside a chunk. Windows: strict = loop-3 windows; lag = dreb / steal windows 2 s
+  # later (PBP stamps live-ball events 1-4 s after the tracking, mode 2-3 s, measured on matched rebounds and on every
+  # far-rim field-goal attempt). Shots = shot proxies of the far-rim team against PBP far-rim FGA (window -1 / +4.5 s).
+  # Every change was also run on the synthetic harnesses (confirm-3 base sets A / B / oracle with x-mirrors, sigma_p
+  # 0.2 | 0.3 | 0.5, and the confirm-3 adversarial set; totals TP / FN / FP) and kept only without a regression
+  # beyond one noise run. Loop-4 start -> end: real possession_change 90.3 -> 66.0 per 48 min, strict P / R
+  # 0.651 / 0.952 -> 0.847 / 0.905, lag P / R 0.670 / 0.980 -> 0.879 / 0.939; synthetic A 5940 / 180 / 42 -> 5941 /
+  # 179 / 30, B 5896 / 224 / 56 -> 5897 / 223 / 25, oracle 201 / 3 / 0 unchanged, adversarial A 524 / 76 / 53 -> 530
+  # / 70 / 23, B 536 / 64 / 51 -> 544 / 56 / 15. With --noise 0.3 on the real tracks the rates move by <= 10 %.
+- id: TRN-L4-rimtouch
+  what: 'A hold whose ball never leaves rim_touch_r_m (0.6 m = rim_contact_r_m) of the rim the holder defends, is still there rim_touch_after_s after the hold (or when the next hold starts) and lasts <= rim_touch_max_s is dropped (touched_by reason rim_touch).'
+  why: 'Real tracks: in XY a ball at rim height (layup rising, ball on the rim, make dropping through the net) is "held" by the defender standing under the basket; those touches cut the shot gap, so the make or the miss became a steal dated 1-4 s before the rebound or the inbound.'
+  evidence: 'Together with TRN-L4-sandwich at deflect_max_s 1.0 (both from the interrupted first loop-4 run): possession_change 90.3 -> 72.3 per 48, strict P 0.651 -> 0.802, R 0.952 -> 0.939 (138 vs 140 of 147 truths); adversarial possession_change FP 44 / 43 -> 20 / 11; base A / B possession_change FP 10 / 13 -> 6 / 4.'
+- id: TRN-L4-sandwich
+  what: 'An other-team hold shorter than deflect_max_s that gives the ball straight back (the next hold, by the previous team, starts within deflect_max_s) is a deflection, not two changes. deflect_max_s 1.0 s (first run) -> 1.5 s (this run).'
+  why: 'Real tracks: an on-ball defender at contact distance of a dribbler, or a loose-ball scramble, takes the XY hold for 0.1-1.5 s and gives it back; 23 of the 34 possession FPs left after the rim-touch fix started as steal.'
+  evidence: '1.0 -> 1.5 s: real detections 164 -> 155, strict TP 137 -> 135 (both lost truths were tip-battle / steal-within-2-s cases), FP 27 -> 20; adversarial possession_change FP 20 -> 13 (A) and 11 -> 7 (B); base: one sigma-0.5 run lost (shot_shooter_back seed 104, jam_rebounder). Test test_loop4_contact_misread_is_a_deflection.'
+- id: TRN-L4-rimscrum
+  what: 'The rim-touch test with the wider rim_scrum_r_m (1.5 m) when the NEXT hold is the other team''s, iterated until stable (dropping one scrum touch can leave the touch before it followed by the other team).'
+  why: 'Sampled 34 remaining possession FPs: 9 were missed shot -> defender "hold" with the ball at rim height 0.4-1.5 m from the rim -> shooting team offensive rebound (PBP: missed FG + OREB, no change). A rebounder who secures the ball passes to a teammate or keeps it, so the rule never applies to him (the 1.5 m radius on every hold lost rim_rebound_outlet at sigma 0.3 / 0.5: rejected).'
+  evidence: 'Real: detections 172 -> 164, strict TP 138 -> 137, P 0.802 -> 0.835 (one lost truth: a defensive rebound stripped back within 2 s). Synthetic identical on A / B / oracle / adversarial. rim_scrum_r_m 2.0 / 2.5 measured no further gain (166 / 165 detections, same TP). Test test_loop4_rim_scrum_is_not_a_change.'
+- id: TRN-L4-press
+  what: 'press_active only inside an offense possession that started with a throw-in (t_disposal to the next defense hold), counting only backcourt defenders whose window speed toward their own rim is below max_back_mps (2.0 = retreat.onset_mps).'
+  why: 'press_active ran at 53.8 per 48 min (press_fall_back 45.0): every live-ball change in the backcourt has 3 defenders behind the ball near the handler (the shooter, the crashers, the player who lost it). Full-court pressure in the NBA is applied against an inbound and is rare; after a live rebound or steal those defenders are transition defense (stop_ball, jam_rebounder).'
+  evidence: 'Real press_active 53.8 -> 0.4 per 48, press_fall_back 45.0 -> 0.4, press_flash_middle 5.5 -> 0, press_safety 2.9 -> 0 (stable at --noise 0.3). Synthetic press scenarios unchanged (press_trap_break, press_break_80 keep press_active). Test test_loop4_live_ball_backcourt_crowd_is_not_a_press.'
+- id: TRN-L4-trapzone
+  what: 'press_trap entry only in press territory: the handler in the backcourt farther than rim_clear_m (4.2 m, free-throw-line distance) from the far rim, or inside a TRAP_SPOTS location.'
+  why: 'press_trap ran at 83.6 per 48 min after TRN-L4-press. Of 199 real traps, 153 had the handler within 5 m of the attacked rim (help, post doubles, ball-screen shows: defense-family actions), 24 at the arc, 7 deeper in the frontcourt, 15 in the backcourt and all of those at the far rim (a crowd around a rebounder); only 4 were in a named trap spot.'
+  evidence: 'Real press_trap 83.6 -> 1.7 per 48 (remaining: baseline-corner and frontcourt-corner traps), trap_breaker_pass 22.7 -> 1.3; synthetic identical (all scripted press traps are backcourt traps). Test test_loop4_trap_only_in_press_territory.'
+- id: TRN-L4-rimfree
+  what: 'hold_rim_free: no player holds a ball inside rim_contact_r_m (XY) of the rim his team ATTACKS, so the shooter''s control ends where the ball reaches the rim and leaves the unheld gap the shot proxy needs.'
+  why: 'Sampled 16 of 49 PBP far-rim FGA without a shot proxy: in most the shooter''s XY hold ran on into the rim footprint (layup, dunk, put-back) and the defender under the basket took over on the next frame, so there was no unheld gap. Applying it to both rims removed rebounds caught at the rebounder''s own rim (adversarial rim-catch rebound -19 runs, rim_rebound_outlet -16): rejected; a separate at-rim release test for gap-less holds found 0 extra shots (the ball had already passed the rim): rejected.'
+  evidence: 'Real far-rim shots TP 98 -> 107 of 147 (R 0.667 -> 0.728), P 0.817 -> 0.793 before TRN-L4-tipdup; possession_change lag TP 137 -> 138, P 0.884 -> 0.879. Synthetic identical. Test test_loop4_layup_hold_into_the_rim_leaves_a_shot_gap.'
+- id: TRN-L4-tipdup
+  what: 'A shot by the same team at the same rim from a hold that starts within shot_merge_s (1.0 s) of the previous shot''s t_rim, with the ball never leaving rim_scrum_r_m of the rim, is flagged same_attempt; _far_shots (shot_rebound_decision, safety, defensive_transition_scheme) skips it. The possession logic still sees it.'
+  why: 'After TRN-L4-rimfree 7 new shot FPs were re-releases of one attempt (ball rolling on the rim, tip battles, a make dropping to the shooter''s teammate under the net); PBP counts one FGA.'
+  evidence: 'Real shot groups 135 -> 130, TP 107 unchanged, P 0.793 -> 0.823 (loop-4 start 0.845 / R 0.633 -> end 0.823 / 0.728). Synthetic identical. Test test_loop4_same_attempt_tip_is_flagged.'
+- id: NEW-T12-catch-rimguard-bypass
+  what: 'catch_onset: the backdate chain stops at the first frame with the ball within shot_rim_r_m of either rim.'
+  why: 'Confirm-3: the chain ran back into a shot still in flight (adv_rim_catch_rebound, dreb became steal, outlet_pass lost).'
+  evidence: 'Adversarial outlet_pass +8 runs (A 4, B 4), base identical (as validated by the confirmer in sandbox NX).'
+- id: NEW-T10-k2-conf-dilution
+  what: 'press_trap stay test uses stay_sigma_k (1.0) instead of entry_sigma_k (2.0).'
+  why: 'Confirm-3: the k = 2 stay margin ran the trap window past the defenders leaving trap_m and diluted conf below 0.5.'
+  evidence: 'Adversarial press_trap / trap_breaker_pass +7 runs (adv_press_trap_13 at 0.3 / 0.5), base identical.'
+- id: NEW-T12-catch-loose-ball-early
+  what: 'catch_onset skips a closing minimum after which the ball recedes by more than hold_stay_hyst_m + catch_recede_sigma_k (0.5) x sigma_dist before the hold (a loose ball rolling past the player who then chases it).'
+  why: 'Confirm-3: the backdate took the fly-by minimum of a loose ball (adv_loose_ball_chase, 0.6-0.75 s early).'
+  evidence: 'Adversarial A +3 (seeds 102 / 103 / 105 at sigma 0.5), base and oracle identical, real identical. k 0 lost 8 base runs at 0.5, k 0.25 lost 4, k 1.0 gained only 1. Still open: 5 of 10 non-mirrored seeds at sigma 0.5 still start 0.4-0.8 s early (the smoothed ball passes within hold_r_m and the receding part is inside the noise). Test test_loop4_loose_ball_pickup_is_not_backdated_to_the_fly_by.'
+- id: TRN-L4-open
+  what: 'Not fixed (recorded): (1) made vs missed at the rim: 19 of 55 matched made FGs start as dreb (the ball through the net is picked up like a rebound; XY only). (2) Tip battles: several seconds of ball at rim height produce early or extra changes. (3) Far-rim shot recall 0.73 (0.67 at --noise 0.3): blocked / air-balled shots never come within shot_rim_r_m. (4) Steal recall 12 / 14 after the deflection window. (5) possession_change counts only changes to the chunk''s chosen-rim team, so about half of all possessions per 48 min by construction (66 vs ~188 both directions; the per-direction truth rate is 147 in 6855 s = 62 per 48).'
+  why: 'Each needs ball height or a contact model; the evaluation conventions are documented so later loops compare like with like.'
+  evidence: 'Real loop-4 end, lag windows: recall by kind made_fg 55 / 59, dreb 66 / 69, steal 12 / 14, last FT 4 / 4; start_type correct made_fg 30 (+4 dead_ball_to), dreb 57, steal 10.'
+items:
+# ======================================================================================================== rules
+- id: family_kinematics
+  ref: TRN-R00
+  level: rule
+  name: Family kinematics, frames, window speeds and speed bands
+  aliases: []
+  actors: every tracked object
+  t0: n/a (per frame)
+  rule: >-
+    Positions and velocities are the mvlib CA-RTS smoothed state (MP-04, q 30 m^2/s^5, 10 at sigma_p >= 0.45), never
+    smoothed across a camera cut or a gap longer than 2.0 s (MP-05). Window speeds vbar(0.5) and vbar(1.0) are
+    computed on the smoothed positions (see conventions). Speed bands (R-PL-11): stand_walk < 2.0, jog 2.0-4.0, run
+    4.0-5.0, high 5.0-5.83, sprint > 5.83 m/s, hysteresis +-0.3 m/s, dwell >= 0.33 s. Relative intensity v_rel =
+    vbar(1.0) / v_peak. v_peak is ONE statistic for prior and data (fix TRN-R00/v_peak-prior): the per-game maximum
+    of vbar(1.0) on the smoothed track, median over the player's tracked games, blended with the prior by shrinkage
+    v_peak = (k_prior * prior + n * median_games) / (k_prior + n), k_prior = 3 games. Prior (Stone et al. 2022: NCAA
+    D-I men, 20 Hz Kinexon IMU, small n of about 10 players, mean of game maxima of instantaneous speed, which is
+    higher than a 1-s window speed): G 7.04, F 6.63, C 6.23 m/s; with no roster position the C value is used (the
+    most lenient). Spec tooling (loop 1, TRN-T14): Kin.extra 'position' and 'v_peak_games' feed the shrinkage (an
+    explicit extra 'v_peak' is taken as already blended). Identity-swap gate (fix TRN-R00/identity-gate): implied
+    speed > swap_speed_mps over swap_window_s of SMOOTHED displacement, or a re-ID / appearance discontinuity; no
+    per-frame acceleration gate. In the spec tooling a swap frame acts as a segment edge for q_obj (edge_factor 0
+    within 5 frames, K_EDGE inside 15), as a split would. Coordinates are used only when the homography tier is <=
+    C; tier D suppresses every speed label. Ball noise is modelled separately (the ball Kin carries its own var_p;
+    V0 simulates ball sigma = 0.7 sigma_p); real ball noise and occlusion must be measured before t_dreb and pass
+    timing are frozen.
+  params:
+    half_y: {value: 12.70, unit: m, note: named_spots HALF_Y, frontcourt edge of the division line}
+    scoring_zone_y: {value: 10.2616, unit: m, note: named_spots long_outlet_zone, 8 ft past HALF_Y}
+    three_r: {value: 6.75, unit: m}
+    far_rim_y: {value: 25.4508, unit: m}
+    vbar_short_s: {value: 0.5, unit: s}
+    vbar_long_s: {value: 1.0, unit: s}
+    v_peak_default_mps: {value: 6.23, unit: m/s, note: Stone 2022 C prior}
+    v_peak_prior_g_mps: {value: 7.04, unit: m/s}
+    v_peak_prior_f_mps: {value: 6.63, unit: m/s}
+    v_peak_shrink_games: {value: 3, unit: games}
+    stationary_chi2: {value: 5.99, unit: chi2 2 dof}
+    swap_speed_mps: {value: 10.5, unit: m/s}
+    swap_window_s: {value: 0.33, unit: s}
+  min_duration_s: null
+  outputs: per object per frame vbar05, vbar10, v_rel, speed_band, heading, sigma_vbar; flags estimated / predicted
+  confidence: n/a (feature layer); sigma_vbar feeds every rule below
+  noise: >-
+    The research's 0.29 / 0.43 / 0.72 m/s figures hold for white noise only; the skeptic simulation gives about 0.86
+    m/s per component with AR(1) rho 0.8 noise at sigma 0.3. V0 uses the sim's white + AR(1) mix. The tracker's own
+    noise spectrum must be measured on static players (warm-ups, free throws) before thresholds below 1 m/s are used
+    anywhere; this family uses none.
+  conflicts_resolved:
+  - 'Velocity filter: the research proposed a derivative-of-Gaussian sigma_t 4 filter; the movement core already
+    fixes CA-RTS (MP-04), so window speeds on the smoothed track replace both.'
+  - 'Speed bands: R-PL-11 2.0/4.0/5.0/5.83 over R-PL-01 and the offense A5 bands (literature-based Shall requirement).'
+  sources:
+  - {url: 'https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.795897/full', supports: 'NCAA D-I men max speed priors G 7.04, F 6.63, C 6.23 m/s (20 Hz IMU, small n)'}
+  - {url: 'repo:docs/requirements_review/proposals_consolidated.yaml:8377 (R-PL-11)', supports: speed bands}
+  status: proposal
+  detector: none (feature layer)
+
+- id: possession_change
+  ref: TRN-R01
+  level: rule
+  name: Possession-change anchors and start type (rebound / steal / made-basket proxies)
+  aliases: [change of possession, t0]
+  actors: gainer (new offense), loser (last holder of the other team)
+  t0: first frame of the gainer's sustained hold (t_dreb | t_steal | t_first_touch after a made basket or dead ball)
+  rule: >-
+    has_ball(P) (fix TRN-R01/has_ball-3D; holder hysteresis loop 1): horizontal distance ball-P on the smoothed
+    tracks and smoothed relative speed |v_ball - v_P| <= hold_rel_v_mps (a pass flying past a player is not his: a
+    fly-by reads 15-25 m/s relative), ball frames used only while observed. Onset (TRN-T12, loop 2): distance <=
+    hold_enter_r_m, or <= hold_r_m once the ball moves with the player and no longer closes on him (relative speed
+    <= hold_core_v_mps and closing speed <= hold_settle_v_mps); a ball that merely moves (dropping from the rim,
+    a pass still closing) no longer starts control inside hold_r_m. The
+    current holder is kept while the ball stays within hold_r_m + hold_stay_hyst_m (TRN-T02); another player within
+    hold_r_m takes over only after hold_min_frames consecutive frames on which he is >= hold_switch_m nearer, or
+    nearer while the ball moves with him (relative speed <= hold_core_v_mps) and not with the current holder; his
+    control is then backdated to the start of the unbroken run of frames on which he was nearer than the holder with
+    the ball moving with him (loop 2, TRN-T02; not capped, loop 3). A FRESH hold (no holder on the frame before) is
+    backdated to the ball's arrival (loop 3): walking back from the onset over at most catch_backdate_s +
+    catch_backdate_k_s_per_m x sigma_dist (MP-19 player-ball sigma, so the window grows with the noise tier as the
+    smoother lag does) while the player is the nearest, nobody else holds and the ball stays within hold_r_m +
+    hold_stay_hyst_m + catch_chain_sigma_k x sigma_dist, control starts at the first frame of that chain on which
+    the ball stops closing on him (local minimum of the distance) within hold_r_m and more than shot_rim_r_m from
+    both rims (a ball at the rim is at rim height, so XY proximity there is no catch).
+    Control ends at the last frame the ball is still with the player (within hold_enter_r_m, or within hold_r_m
+    while moving with him; the stay hysteresis keeps identity, it does not delay the release). Runs shorter than
+    hold_min_frames (3 frames = 0.100 s) are dropped; holds of one player split by <= hold_merge_gap_s are merged.
+    Touch length is counted on core-control frames (relative speed <= hold_core_v_mps). Dropped as non-control: a
+    pass-through (a short touch by the other team with fewer than hold_min_frames core frames while the ball keeps
+    closing on the rim the previous holder's team attacks, TRN-T04), a deflection (shorter than control_min_s, other
+    team, between two holds of the same team), a scrum touch (shorter than control_min_s, after a shot proxy of the
+    previous holder's team, followed by a hold of the other team, TRN-T03; stored as touched_by) and a brush
+    (shorter than control_min_s and followed within hold_merge_gap_s by the hold of a teammate standing within
+    hold_r_m + hold_stay_hyst_m of him: the ball reached the catcher past him). A possession change is the first
+    sustained hold by a scene.offense player after a sustained hold by a scene.defense player. Shot proxy (TRN-T04):
+    after a hold, the observed ball comes within shot_rim_r_m of the rim the holder's team ATTACKS (offense the
+    origin, defense the far rim (0, 25.4508)) before anyone holds it, and its distance to that rim drops within
+    shot_closing_frames of the release (a ball secured at the rim and moved out is not a shot), or the release is
+    within shot_at_rim_r_m of that rim after the ball was carried in toward it (layup / dunk, loop 2); t_rel = last frame
+    of the shooter's hold, t_rim = first frame within rim_contact_r_m. A hold is out of bounds when it ENDS out of
+    bounds (TRN-T01): its last run of >= hold_min_frames frames with boundary distance < oob_tol_m (sideline: <
+    oob_tol_m + throw_in.oob_side_noise_z x sigma_p, loop 2) reaches the
+    release within throw_in.oob_release_slack_frames; t_disposal = the first frame of that run (an inbounder who
+    catches the ball under the net and steps out). Start type: made_fg when a shot proxy is followed by an
+    out-of-bounds gainer hold, with t_net proxy = t_rim (ball z is needed for the true t_net,
+    rule_ball_z_basket_cylinder); dreb when a shot proxy is followed by an in-bounds hold; block_to_break (TRN-T08)
+    when the loser's last hold ended within block_shooter_r_m of the far rim after a gather (stationary on >=
+    block_gather_share of the last block_gather_s), the ball's first block_heading_s of flight closes on the far rim
+    (cos angle >= 0.7) and the gainer holds it within block_dist_m of the shooter; the same geometry without a
+    gather is a steal with alt_start_type block_to_break (a steal of a forward pass) until ball z exists;
+    dead_ball_to when the gainer's hold is out of bounds with no shot proxy; steal otherwise (interception or strip,
+    including a live-ball deflection; a live-ball OOB deflection needs the whistle and is relabelled from PBP). When
+    the gainer's hold is out of bounds (made_fg, dead_ball_to) t0 is the throw-in's first legal touch (CTG
+    convention) and t_disposal is stored. Also stored when reached: t_cross_half (ball y first <= half_y),
+    t_scoring_zone (ball y <= 10.2616), t_three_zone (ball r <= 6.75). PBP sync (production): match each anchor to
+    the CBBD event of the same type within +-2.0 s; anchor_source = tracking_only otherwise.
+  params:
+    hold_r_m: {value: 0.9, unit: m, note: stay radius (and the settle-entry radius)}
+    hold_enter_r_m: {value: 0.6, unit: m, note: 'control onset radius (loop 1, TRN-T12)'}
+    hold_settle_v_mps: {value: 1.0, unit: m/s, note: 'onset inside hold_r_m once the ball no longer closes on the player faster than this (TRN-T12)'}
+    hold_stay_hyst_m: {value: 0.3, unit: m, note: 'current holder kept to hold_r_m + this (TRN-T02)'}
+    hold_core_v_mps: {value: 3.0, unit: m/s, note: 'core-control relative speed (TRN-T02)'}
+    hold_switch_m: {value: 0.3, unit: m, note: 'a new holder must be this much nearer (TRN-T02)'}
+    hold_merge_gap_s: {value: 0.2, unit: s, note: 'holds of one player split by <= this are merged (TRN-T16)'}
+    hold_min_frames: {value: 3, unit: frames}
+    shot_rim_r_m: {value: 1.0, unit: m}
+    shot_closing_frames: {value: 3, unit: frames, note: 'the ball must close on the rim within this many frames of the release (TRN-T04)'}
+    shot_at_rim_r_m: {value: 0.9, unit: m, note: 'loop 2 TRN-T04: a release this close to the attacked rim, carried in toward it, is a shot without the closing test (layup, dunk, put-back)'}
+    rim_contact_r_m: {value: 0.6, unit: m}
+    catch_recede_sigma_k: {value: 0.5, unit: sigma_dist, note: 'loop 4 (confirm-3 NEW-T12-catch-loose-ball-early): catch_onset skips a closing minimum after which the ball recedes by more than hold_stay_hyst_m + this x sigma_dist before the hold (a loose ball rolling past the player who then chases it)'}
+    shot_merge_s: {value: 1.0, unit: s, note: 'loop 4 (TRN-L4-tipdup): a re-release by the same team at the same rim from a hold starting within this of the previous shot''s t_rim, with the ball never leaving rim_scrum_r_m of the rim, is the same attempt (flag same_attempt; per-shot reads skip it)'}
+    hold_rim_free: {value: true, unit: bool, note: 'loop 4 (TRN-L4-rimfree, real SportVU): no player holds a ball inside rim_contact_r_m (XY) of the rim his team attacks (ball at rim height: the shooter''s control ends there and leaves the unheld shot gap)'}
+    oob_tol_m: {value: 0.25, unit: m}
+    block_dist_m: {value: 1.5, unit: m, note: 'was 3.0 (TRN-T08)'}
+    block_shooter_r_m: {value: 5.0, unit: m, note: 'was 8.0 (TRN-T08)'}
+    block_heading_s: {value: 0.2, unit: s}
+    block_gather_s: {value: 0.3, unit: s, note: 'gather window before the blocked release (TRN-T08)'}
+    block_gather_share: {value: 0.6, unit: share of frames}
+    conf_window_s: {value: 0.2, unit: s}
+    hold_rel_v_mps: {value: 8.0, unit: m/s}
+    control_min_s: {value: 0.3, unit: s, note: measured on core-control frames}
+    pass_max_flight_s: {value: 3.0, unit: s, note: 'a longer unheld gap is not a pass (TRN-T16)'}
+    catch_backdate_s: {value: 0.4, unit: s, note: 'loop 3: base look-back for the arrival of a fresh hold'}
+    catch_backdate_k_s_per_m: {value: 2.0, unit: s per m of sigma_dist, note: 'loop 3: look-back grows with the noise tier (0.48 s at sigma_p 0.05, 0.66 s at 0.2, 0.77 s at 0.3, 0.95 s at 0.5; median player-ball sigma_dist 0.04 / 0.13 / 0.19 / 0.27 m)'}
+    catch_chain_sigma_k: {value: 1.0, unit: sigma_dist, note: 'loop 3: the ball stays within hold_r_m + hold_stay_hyst_m + this x sigma_dist between arrival and onset'}
+    deflect_max_s: {value: 1.5, unit: s, note: 'loop 4 (real data): an other-team hold shorter than this, followed within this by a hold of the previous team, is a deflection (D-O-D sandwich), not two changes'}
+    rim_touch_r_m: {value: 0.6, unit: m, note: 'loop 4 (real data): a hold whose ball never leaves this radius of the rim the holder defends (= rim_contact_r_m: the ball is on or over the rim) ...'}
+    rim_touch_after_s: {value: 0.2, unit: s, note: 'loop 4: ... and whose ball is still within rim_touch_r_m this long after the hold ends (or when the next hold starts) ...'}
+    rim_touch_max_s: {value: 2.0, unit: s, note: '... and that lasts at most this long is a rim touch, not control (ball at rim height in XY)'}
+    rim_scrum_r_m: {value: 1.5, unit: m, note: 'loop 4 (TRN-L4-rimscrum, real SportVU): the same rim-touch test with this wider radius when the NEXT hold is by the other team (contested layup or rebound off the rim passing over the defender under the basket, the shooting team keeps the ball; restricted-area radius 1.22 m + ball radius and smoothing). Not applied when a teammate takes the ball next (rebound and outlet)'}
+  min_duration_s: 0.1
+  outputs: t0, gainer, loser, start_type, alt_start_type, touched_by, t_rel, t_rim, t_net_proxy, t_cross_half, t_scoring_zone, t_three_zone, gain_xy, anchor_source
+  confidence: 'window_conf(p_below(dist(ball, gainer), hold_r_m + hold_stay_hyst_m, sigma_dist)) over [t0, t0 + conf_window_s] x q_obj(gainer, ball); every hold probability in the family (receiver holds of passes and throw-ins) uses the same stay radius (loop 1)'
+  noise: >-
+    Rebound scrums hide the ball and delay t_dreb; the PBP rebound time is the fallback (q_anchor 0.7). An overhead
+    hold puts the ball 1.0-1.3 m from the body centre in 3-D; the horizontal test avoids most of that. made_fg is a
+    proxy without ball z.
+  conflicts_resolved:
+  - 'has_ball: research 3-D 0.6 m with |v_ball - v_P| < 2.0 m/s was at the noise floor; horizontal 0.9 m on smoothed tracks for 3 frames.'
+  - 'Half court 12.70 (HALF_Y, rule edge) over 12.73 (line centre); scoring zone 10.2616 over 10.29.'
+  - 'Start types block_to_break and live_ball_oob_deflection added (skeptic missing list).'
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities', supports: 'scoring zone 8 ft past half court; live-ball TO from the first possession touch'}
+  - {url: 'repo:docs/research/transition_full.md §1.4, §3.2', supports: anchor list}
+  status: canonical
+  detector: detect_possession_change
+
+- id: transition_phase
+  ref: TRN-R02
+  level: rule
+  name: Transition phase gate and scheme-aware defense set
+  aliases: [transition window, defense set]
+  actors: team (offense) and all defenders
+  t0: possession_change t0
+  rule: >-
+    phase = transition from t0 until ALL hold (named_spots rule_transition_window): ball y <= half_y, >= 4 attackers
+    at y <= half_y, and the handler's vbar(0.5) < handler_slow_mps for >= handler_slow_s; at the latest t0 + max_s.
+    defense_set (fix TRN-R02/defense_set_rtr08-unreachable) is stored beside it: every attacker is guarded (a
+    defender within guard_r_m and nearer the rim) or helped (a defender within help_r_m, nearer the rim than the
+    attacker and within help_lateral_m of the attacker-to-rim segment), with all 10 at y <= half_y, held for >=
+    set_dwell_s; defense_set_reason in {rtr08_guarded, help_covered, timeout_12s}. If never set, the reported end is
+    t0 + 12.0 s (reason timeout_12s).
+  params:
+    handler_slow_mps: {value: 3.0, unit: m/s}
+    handler_slow_s: {value: 0.33, unit: s}
+    min_attackers_front: {value: 4, unit: players}
+    max_s: {value: 8.0, unit: s}
+    guard_r_m: {value: 2.0, unit: m}
+    help_r_m: {value: 4.5, unit: m}
+    help_lateral_m: {value: 1.5, unit: m}
+    set_dwell_s: {value: 1.0, unit: s}
+    set_timeout_s: {value: 12.0, unit: s}
+  min_duration_s: 1.0
+  outputs: transition interval, end_reason (settled | cap), defense_set_t, defense_set_reason
+  confidence: 'possession_change conf x window_conf(p of ball y <= half_y) over the last handler_slow_s of the phase (1 for a cap end)'
+  noise: The handler slow test uses vbar(0.5) on smoothed positions; stationary handlers read about 0.4 m/s.
+  conflicts_resolved:
+  - 'Labeller gate = rule_transition_window (canonical, causal); reported end = defense_set; R-TR-08 (2.0 m goal-side for every attacker) is unreachable against pack-line or zone help, so the help-covered alternative and the 12-s timeout are added and the reason is stored.'
+  sources:
+  - {url: 'repo:config/named_spots.yaml#rule_transition_window', supports: gate}
+  - {url: 'repo:docs/requirements_review/proposals_consolidated.yaml:4420 (R-TR-08)', supports: defense set}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities', supports: 'defenders back / low average speed (no threshold published)'}
+  status: canonical
+  detector: detect_transition_phase
+
+- id: early_offense_window
+  ref: TRN-R02b
+  level: rule
+  name: Early-offense window
+  aliases: [early offense, secondary window]
+  actors: team
+  t0: end of transition_phase
+  rule: >-
+    phase = early_offense from the end of transition_phase until the first of t0 + end_s (shot clock <= 18 of 30) or
+    a shot proxy; the formation-template and half-court ball-screen ends of rule_early_offense_phase are applied by
+    the set family, which owns those detectors.
+  params:
+    end_s: {value: 12.0, unit: s, note: named_spots rule_early_offense_phase (a)}
+  min_duration_s: 0.5
+  outputs: interval, end_reason (clock_12s | shot)
+  confidence: transition_phase conf
+  noise: inherits transition_phase
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#rule_early_offense_phase', supports: window ends}
+  status: canonical
+  detector: detect_early_offense_window
+
+- id: numbers_advantage
+  ref: TRN-R03
+  level: rule
+  name: Numbers-state engine (A_play vs D_back) and advantage episodes
+  aliases: [numbers, outnumber, 2-on-1, 3-on-2]
+  actors: all 10
+  t0: first frame of the advantage episode
+  rule: >-
+    From t0 to t0 + max_s. Symmetric bins (fix TRN-R03/asymmetric-bins): a player of either team is counted (A_play
+    for attackers, D_back for defenders) when y <= y_ball + margin_m (attackers also need y <= half_y + 3.0); a
+    counted player stays counted until y > y_ball + margin_m + hyst_m (per-player hysteresis). An on-ball defender
+    who has picked the handler up is therefore D_back. y_ball = smoothed ball y, or the receiver's y while the ball
+    is unobserved. Episode: enter when A_play - D_back >= 1 for >= enter_s; exit when A_play - D_back <= 0 for >=
+    exit_s. Configuration '<A>v<D>' and Conte typology (primary 1v0 1v1 2v1 2v2 3v1 3v2 3v3 4v2; secondary 4v3 4v4
+    5v4) are taken at the episode start. Margins 0.5 and 1.5 m are stored for sensitivity; reports use 1.0 m
+    (R-TR-21).
+  params:
+    margin_m: {value: 1.0, unit: m}
+    hyst_m: {value: 0.3, unit: m}
+    enter_s: {value: 0.3, unit: s}
+    exit_s: {value: 0.5, unit: s}
+    max_s: {value: 8.0, unit: s}
+  min_duration_s: 0.3
+  outputs: interval, config at start, max advantage, conte typology, A_play / D_back series
+  confidence: >-
+    Per player p_in = Phi(margin / sigma_rel), sigma_rel = hypot(sigma_player, sigma_ball) (fix TRN-R03/margin-sigma:
+    1.0 m is 1.41 sigma at sigma_p 0.5, 2.36 sigma at 0.3); expected difference E = sum p_att - sum p_def with
+    variance sum p(1 - p); per-frame p = Phi((E - 0.5) / sd); window_conf over the episode x q_obj(ball).
+  noise: Bin flips near y_ball +- m are absorbed by the 0.3 m hysteresis and the 0.3 s enter dwell.
+  conflicts_resolved:
+  - 'Margin 1.0 m (R-TR-21) over transition_full 1.5 m; the research''s asymmetric bins manufactured a +1 on every stopped ball.'
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §3.4', supports: bins and typologies}
+  - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5424458/', supports: 'Conte et al. primary / secondary configurations (opened by the review)'}
+  status: canonical
+  detector: detect_numbers_advantage
+
+- id: confidence_model
+  ref: TRN-R04
+  level: rule
+  name: Family confidence model
+  aliases: []
+  actors: n/a
+  t0: n/a
+  rule: >-
+    See conventions.confidence. Estimated (off-screen, interpolated) stretches enter through gap_factor (0.8 for
+    interp_short, 0 for interp_long); a label from an estimated track can reach the label tier when its margin
+    supports it. q_anchor (1.0 tracking + PBP, 0.8 tracking only, 0.6 PBP only) and q_context (clock OCR) are stored
+    in attrs and applied after isotonic calibration, not multiplied in raw (the raw product made off-screen labels
+    unreachable).
+  params: {}
+  min_duration_s: null
+  outputs: conf plus margins in attrs
+  confidence: n/a
+  noise: Phi assumes independent errors; tracking errors are time-correlated, so long windows are over-confident until calibrated.
+  conflicts_resolved: ['Product over objects -> geometric mean over objects (fix TRN-R04/confidence-collapse).']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#rule_probabilistic_membership', supports: P_in = Phi(d / sigma)}
+  status: proposal
+  detector: none (shared helper _conf / _qobj)
+
+- id: throw_in
+  ref: TRN-R05 + TRN-A12
+  level: action
+  name: Throw-in state machine (disposal, count, release, first legal touch) and inbound pass
+  aliases: [inbound, inbounds pass, restart]
+  actors: thrower, receiver
+  t0: t_release (last frame of the thrower's out-of-bounds hold)
+  rule: >-
+    t_disposal = first frame of the out-of-bounds part of a sustained hold that ENDS out of bounds (|x| >= SIDE_X -
+    oob_tol_m - oob_side_noise_z x sigma_p (loop 2: noise-aware sideline) or y <= END_Y + oob_tol_m or y >= FAR_END_Y - oob_tol_m; the part must reach the release within
+    oob_release_slack_frames, loop 1 TRN-T01: a pickup under the net in bounds followed by a step out counts from
+    the step out, t_pickup stored). t_release = last frame of that hold. t_first_touch = first sustained hold by an
+    in-bounds player after t_release; a hold by a second out-of-bounds teammate first is endline_relay (Rule
+    7-4.6.b) and the relay thrower's release is used. count_s = t_release - t_disposal (release is required within
+    5.0 s, Rule 7-6.6); near_5s when count_s >= near_5s_s; burned_inbound (proposal) when count_s >= burned_s.
+    restart_type: blob (y <= END_Y), backcourt_endline (y >= FAR_END_Y; after_make flag when a made-basket proxy
+    lies within made_window_s before t_disposal, loop 1 TRN-T16, replacing the never-produced after_make_endline
+    type), slob_frontcourt (|x| >= SIDE_X, y <= half_y), slob_backcourt. Pass length = |catch - release point|;
+    long_inbound >= long_m; receiver_contested when the nearest defender is within contested_m at the touch. Pass
+    type (lob / bounce) needs ball z.
+  params:
+    oob_tol_m: {value: 0.25, unit: m}
+    near_5s_s: {value: 4.0, unit: s}
+    burned_s: {value: 4.5, unit: s}
+    long_m: {value: 15.0, unit: m}
+    contested_m: {value: 1.0, unit: m}
+    max_flight_s: {value: 3.0, unit: s}
+    oob_release_slack_frames: {value: 2, unit: frames, note: 'the out-of-bounds part must reach the release within this (TRN-T01)'}
+    oob_side_noise_z: {value: 1.28, unit: sigma_p, note: 'loop 2 TRN-T01: a holder counts as in bounds of a SIDELINE only beyond oob_tol_m + this x sigma_p (p_in >= 0.9); end lines keep oob_tol_m'}
+    made_window_s: {value: 8.0, unit: s, note: 'after_make flag: a made-basket proxy this long before t_disposal (TRN-T16)'}
+  min_duration_s: 0.1
+  outputs: thrower, receiver, t_disposal, t_release, t_first_touch, count_s, restart_type, after_make, pass_length_m, long_inbound, endline_relay, near_5s, burned_inbound, receiver_contested
+  confidence: 'window_conf(p of thrower out of bounds by its boundary distance and sigma) over the hold x window_conf(p hold of the receiver) x q_obj(thrower, receiver, ball)'
+  noise: Referee hand-over can look like disposal (needs the referee track > 1.0 m from the ball); the ball is often hidden by the thrower.
+  conflicts_resolved: ['burned_inbound has no repo definition; the >= 4.5 s release proposal needs confirmation (R-ST-23).']
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 7-6.3 to 7-6.8; 7-4.6.a/b)', supports: 'throw-in count, release, first touch, end-line relay'}
+  - {url: 'repo:docs/requirements_review/proposals_consolidated.yaml:5773 (R-ST-23)', supports: special-situation layer}
+  status: canonical
+  detector: detect_throw_in
+
+- id: clock_buckets
+  ref: TRN-R06
+  level: rule
+  name: Clock-context buckets for special situations
+  aliases: [end of period, end of game, late clock]
+  actors: possession
+  t0: t0 / t_disposal
+  rule: >-
+    From game_clock_s and shot_clock_s (rule_shot_clock_sync): end_of_period game clock <= 60.0 s; end_of_game 2nd
+    half or OT, game clock <= 120.0 s, |margin| <= 8; inbound buckets on time left at t_disposal as half-open
+    intervals (0, 0.3], (0.3, 2.0], (2.0, 5.0], (5.0, 10.0], (10.0, 30.0], (30.0, 120.0] s (fix
+    TRN-R06/bucket-gaps); tip_only when min(game_clock, shot_clock) <= 0.3 s at a throw-in or FT restart with tenths
+    displayed (Rule 5 art. 19; fix TRN-R06/tip-only-rule); late_clock shot clock <= 10.0 s (sub-flag <= 5.0);
+    two_for_one_window possession gained at game clock 40-60 s; hold_for_one_eligible game clock <= shot clock;
+    coach_live_ball_timeout_window = last 2:00 of the 2nd half or any OT (player live-ball timeouts are ungated).
+  params:
+    end_period_s: {value: 60.0, unit: s}
+    end_game_s: {value: 120.0, unit: s}
+    tip_only_s: {value: 0.3, unit: s}
+    late_clock_s: {value: 10.0, unit: s}
+  min_duration_s: null
+  outputs: buckets{}, clocks at t0, clock_conf
+  confidence: clock OCR confidence
+  noise: Tenths are shown only under 5 s; never infer clocks from frame counts across stoppages.
+  conflicts_resolved: ['Late clock 10.0 s with a 5.0 s sub-flag (offense F13.5 gives 7-12 s).']
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 5 art. 19; art. 3, 14.1.a)', supports: tip-only and live-ball timeouts}
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.4-13.5', supports: 2-for-1 window and late clock}
+  status: proposal
+  needs_data: true
+  detector: none (needs game and shot clock)
+
+- id: camera_cut_reset
+  ref: TRN-R07
+  level: rule
+  name: Camera cuts and replays during live transition
+  aliases: []
+  actors: all
+  t0: n/a
+  rule: >-
+    A camera cut (Track.cut) or a replay / close-up with an invalid homography ends every smoothing segment (MP-05);
+    no window speed, crossing time or anchor is computed across it. An anchor whose frame falls inside a cut gap
+    takes the PBP time (anchor_source = pbp, q_anchor 0.6) and every event spanning the gap gets gap_factor 0
+    (candidate at best). Off-screen runners are interpolated only inside one segment (gap <= 2.0 s, MP-05) and
+    flagged estimated.
+  params: {}
+  min_duration_s: null
+  outputs: estimated flags
+  confidence: n/a
+  noise: Replays are rare in live transition but occur on dunks.
+  conflicts_resolved: ['Research interpolation limit 3.0 s -> MP-05 2.0 s (core rule).']
+  sources: []
+  status: proposal
+  detector: none (enforced by mvlib segments and gap_factor)
+
+- id: validation_plan
+  ref: TRN-R08
+  level: rule
+  name: Validation plan, off-screen measurement and vendor baseline
+  aliases: []
+  actors: n/a
+  t0: n/a
+  rule: >-
+    Per canonical item: >= 50 gold instances from >= 5 games (R-ST-10), target precision >= 0.85, recall >= 0.80,
+    |t0 error| <= 0.3 s; per proposal item: >= 30 instances before promotion. Measure per game the share of
+    transition frames in which each actor class (leaker, rim runner, safety, trailer) is off-screen; the confidence
+    tiers are fixed only after that. Vendor baseline: one transition play type per possession (Synergy-style) and
+    CTG transition opportunities are mapped to possession_change start_type x primary_break / secondary_break /
+    passed_up_break; the mapping table is filled when the vendor pages are opened (only the CTG pages have been).
+  params:
+    gold_per_item: {value: 50, unit: instances}
+    precision_target: {value: 0.85, unit: ratio}
+    recall_target: {value: 0.80, unit: ratio}
+    t0_tolerance_s: {value: 0.3, unit: s}
+  min_duration_s: null
+  outputs: validation report
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities', supports: CTG transition opportunity fields}
+  status: proposal
+  detector: none
+# =================================================================================================== primitives
+- id: upcourt_run
+  ref: TRN-P01
+  level: primitive
+  name: Upcourt run (generic full-court run)
+  aliases: [run the floor, sprint up court]
+  actors: 1 attacker
+  t0: onset (first frame of the enter condition)
+  rule: >-
+    Window [t0_poss - pre_s, t0_poss + post_s]. Enter when vy_bar(0.5) <= enter_vy_mps (vy_bar = y component of the
+    window velocity; negative = toward the attacked rim); stay while vy_bar <= exit_vy_mps, bridging exit dips
+    shorter than exit_dwell_s. Accept when net delta y <= min_dy_m and duration >= min_duration_s. Start area (CTG
+    player_start_area, in the frame of the rim he leaves, y_l = FAR_RIM_Y - y): below_ft_extended y_l <= 4.191,
+    between_ft_and_arc_extended y_l <= 6.75, beyond_arc_extended otherwise. Parent of rim_run, wing_lane_run,
+    middle_lane_run, leak_out and trailer.
+  params:
+    pre_s: {value: 1.5, unit: s}
+    post_s: {value: 8.0, unit: s}
+    enter_vy_mps: {value: -4.0, unit: m/s}
+    exit_vy_mps: {value: -3.0, unit: m/s}
+    exit_dwell_s: {value: 0.3, unit: s}
+    min_dy_m: {value: -8.0, unit: m}
+  min_duration_s: 1.5
+  outputs: start/end frames and xy, delta_y, mean/peak vbar, start_area, t_cross_half, lane class
+  confidence: 'window_conf(p_below(vy_bar, exit_vy_mps, sigma_vbar)) over the run x q_obj(player)'
+  noise: A 4 m/s jog flickers at the enter edge; the -4.0 / -3.0 hysteresis absorbs it. Off-screen stretches are interpolated within one segment.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities-player', supports: 'player_start_area, seconds_to_scoring_zone'}
+  status: canonical
+  detector: detect_upcourt_run
+
+- id: rim_run
+  ref: TRN-P02
+  level: primitive
+  name: Rim run (rim-to-rim)
+  aliases: [rim runner, basket-to-basket, sprint the middle, first big down]
+  actors: 1 attacker
+  t0: onset of the parent upcourt_run
+  rule: >-
+    An upcourt_run that was within start_r_far_m of the rim it leaves (r_far) in the 1.0 s before onset, that
+    reaches r <= end_r_m (t_rim_arrive), with path length on the SMOOTHED track from departure (last frame within
+    start_r_far_m) to arrival >= min_path_m (fix TRN-P02/path-length; the straight-line minimum from the start and
+    end radii is 18.95 m), mean |x| <= max_mean_abs_x_m, mean vbar(1.0) >= max(min_speed_mps, rel_mean * v_peak) and
+    peak vbar(1.0) >= rel_peak * v_peak, arriving no later than arrive_after_ball_s after the ball first reaches r <
+    6.75, with departure-to-arrival time >= min_duration_s (loop 1, TRN-T15: enforced; the rim-to-rim time, not
+    onset-to-arrival, because the onset is the 4 m/s crossing of a run already under way). first_big_down = earliest
+    arrival. Variant flag rim_run_repo: vbar >= 5.5 m/s for >= 2.0 s.
+  params:
+    start_r_far_m: {value: 4.0, unit: m}
+    end_r_m: {value: 2.5, unit: m}
+    min_path_m: {value: 18.0, unit: m}
+    max_mean_abs_x_m: {value: 3.0, unit: m}
+    min_speed_mps: {value: 4.0, unit: m/s}
+    rel_mean: {value: 0.70, unit: ratio of v_peak}
+    rel_peak: {value: 0.80, unit: ratio of v_peak}
+    arrive_after_ball_s: {value: 1.0, unit: s}
+    repo_speed_mps: {value: 5.5, unit: m/s}
+    repo_dur_s: {value: 2.0, unit: s}
+  min_duration_s: 2.5
+  outputs: arrival frame, path length, mean |x|, mean/peak vbar, v_rel, ahead_of_ball_s, rim_run_repo flag
+  confidence: 'upcourt_run conf x window_conf(p_below(r, end_r_m, sigma_r)) over [arrival, arrival + 0.2 s] x p_below(mean |x|, 3.0, sigma)'
+  noise: Rim runners are ahead of the ball and often off-screen; interpolation inside a segment only.
+  conflicts_resolved:
+  - 'Speed: relative test replaces 5.5 m/s for 2 s (NCAA centres max 6.23 m/s); repo flag kept.'
+  - 'Path length 20 m -> 18 m on the smoothed track (geometry minimum 18.95 m from r_def 4.0 to r 2.5).'
+  sources:
+  - {url: 'repo:config/named_spots.yaml#rim_run_lane', supports: path test}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities-player', supports: rim runner ahead / trailer split}
+  - {url: 'https://www.coachesclipboard.net/HoibergTransition-DragScreen.html', supports: non-rebounding post rim-runs}
+  status: canonical
+  detector: detect_rim_run
+
+- id: wing_lane_run
+  ref: TRN-P03a
+  level: primitive
+  name: Wing lane run (sideline and lane-line lanes)
+  aliases: [fill the lanes, run wide]
+  actors: 1 attacker (non-handler)
+  t0: onset of the parent upcourt_run
+  rule: >-
+    A non-handler upcourt_run classified on the samples with 6.0 <= y <= 22.0 (zone_scheme transition_lanes_5):
+    sideline when median |x| >= sideline_x_m (lane5_sideline), laneline when LANE_X <= median |x| < sideline_x_m
+    (lane5_laneline); a middle lane (< LANE_X) is middle_lane_run. Side = sign of median x. Lane stability = median
+    |vx| < stable_vx_mps before half_y. Variants stored: wing_lane_thirds |x| >= 2.54, msu_wing_lane_v2 |x| >= 6.0
+    while y drops from 12 to 3.
+  params:
+    sideline_x_m: {value: 5.3, unit: m}
+    stable_vx_mps: {value: 1.0, unit: m/s}
+    min_lane_samples: {value: 10, unit: frames}
+  min_duration_s: 1.5
+  outputs: lane, side, median |x|, stable flag, variant flags
+  confidence: 'upcourt_run conf x Phi((median |x| - LANE_X) / sigma_x); p_sideline = Phi((median |x| - sideline_x_m) / sigma_x) stored and lane = argmax (loop 1, TRN-T13)'
+  noise: Far-sideline homography error (tier C, 0.5 m) puts the 5.3 m edge at about 1 sigma; P_in stored.
+  conflicts_resolved: ['Wing lane: lane5_sideline 5.3 m canonical; thirds 2.54 m and MSU 6.0 m kept as variants.']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#lane5_sideline', supports: lane bins}
+  - {url: 'https://www.coachesclipboard.net/HoibergTransition-DragScreen.html', supports: wings run wide}
+  status: canonical
+  detector: detect_wing_lane_run
+
+- id: corner_fill
+  ref: TRN-P03b
+  level: primitive
+  name: Corner fill (sprint to the corner)
+  aliases: [sprint to the corner, corner sprint]
+  actors: 1 attacker
+  t0: arrival frame in transition_corner_arrival
+  rule: >-
+    A wing_lane_run (or any upcourt_run) that ends in transition_corner_arrival (6.60 <= r <= 7.3, theta <= 12 or >=
+    168, in bounds) within arrive_max_s of t0_poss OR no later than after_ball_s after the ball first reaches r <=
+    6.75 (fix TRN-P03/corner-5s), and then occupies it: stationary (stationary_s2 < 5.99) for >= dwell_s, or catches
+    a pass there.
+  params:
+    arrive_max_s: {value: 7.0, unit: s}
+    after_ball_s: {value: 2.0, unit: s}
+    dwell_s: {value: 0.5, unit: s}
+  min_duration_s: 0.5
+  outputs: arrival frame, arrival - t0, side, caught flag
+  confidence: 'window_conf(p_in corner region by the nearest r edge, sigma_r) over the dwell x q_obj(player)'
+  noise: A wing who appears in the corner after an off-screen stretch is accepted if the track is one segment.
+  conflicts_resolved: ['5.0 s window had no evidence and fails legitimate fills; 7.0 s or ball-in-arc + 2.0 s.']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#transition_corner_arrival', supports: region}
+  - {url: 'https://www.coachesclipboard.net/HoibergTransition-DragScreen.html', supports: wings run to the corners}
+  status: canonical
+  detector: detect_corner_fill
+
+- id: middle_lane_run
+  ref: TRN-P04
+  level: primitive
+  name: Middle lane run and middle-to-side runner
+  aliases: [sprint the middle]
+  actors: 1 attacker (non-handler)
+  t0: onset of the parent upcourt_run
+  rule: >-
+    A non-handler upcourt_run with |x| < LANE_X on >= min_share of its samples with 6.0 <= y <= 22.0.
+    middle_to_side: starts with |x| < LANE_X at y >= 15 and ends with |x| >= 5.3 at y <= 6 (CTG middle_to_left /
+    right runner). A handler meeting the test is a middle-lane push (push.lane).
+  params:
+    min_share: {value: 0.6, unit: ratio}
+  min_duration_s: 1.5
+  outputs: share, middle_to_side, side
+  confidence: 'upcourt_run conf x share-weighted Phi(|LANE_X - |x|| / sigma_x)'
+  noise: A middle runner who becomes the rim runner gets both labels; rim_run wins role assignment.
+  conflicts_resolved: []
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities-player', supports: middle_to_left / right runner}
+  status: canonical
+  detector: detect_middle_lane_run
+
+- id: leak_out
+  ref: TRN-P05
+  level: primitive
+  name: Leak-out (early leak, cherry-pick)
+  aliases: [release, early release, cherry-pick, hit-ahead target]
+  actors: 1 attacker (player of the team about to gain the ball)
+  t0: onset (first frame of vy_bar <= enter_vy_mps)
+  rule: >-
+    vy_bar(0.5) <= enter_vy_mps with onset <= t0_poss + max_after_t0_s, sustained >= min_duration_s (exit when
+    vy_bar > exit_vy_mps for >= exit_dwell_s), and the player is the first attacker to reach y <= half_y. Sub-types:
+    early_leak onset < t0_poss; cherry_pick onset < t_rel (or > 4.0 m from the shooter moving away at t_rel);
+    ft_leak (see ft_release_runner). lead = his y minus the deepest defender's y at his crossing (negative = ahead).
+    Offline labels are assigned after t0; a live labeller emits with a 0.5 s delay.
+  params:
+    enter_vy_mps: {value: -3.0, unit: m/s}
+    exit_vy_mps: {value: -2.0, unit: m/s}
+    exit_dwell_s: {value: 0.3, unit: s}
+    max_after_t0_s: {value: 0.5, unit: s}
+    search_before_t0_s: {value: 3.0, unit: s}
+    cherry_far_m: {value: 4.0, unit: m, note: 'cherry_pick alternative, distance from the shooter at t_rel (was text only)'}
+  min_duration_s: 0.5
+  outputs: onset - t0, onset - t_rel, sub-type, lead at crossing
+  confidence: 'window_conf(p_below(vy_bar, enter_vy_mps, sigma_vbar)) over [onset, onset + 0.5 s] x q_obj(player)'
+  noise: Cherry-pick before t_rel is causal-ambiguous (who gains the ball is known only after t0); offline only.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#leak_out_runner', supports: 'v_y <= -3.0, onset <= t0 + 0.5, first across HALF_Y'}
+  status: canonical
+  detector: detect_leak_out
+
+- id: trailer
+  ref: TRN-P06
+  level: primitive
+  name: Trailer (first / second trailer) and trail arrival
+  aliases: [trail, trail big, 4-man trail]
+  actors: 1 attacker (ranking uses all 5)
+  t0: the trailer's half_y crossing frame
+  rule: >-
+    Rank ALL attackers by their first frame at y <= half_y after t0_poss - 1.5 s (loop 1, TRN-T07): trailer_1 = 4th
+    across, trailer_2 = 5th. A player holding the ball at his crossing is never a trailer: his rank gets no event,
+    and the 3rd across is never promoted, except that when the handler is the 4th across and the 3rd crossed within
+    tie_s of him (an order the noise cannot resolve) the 3rd is trailer_1 with tie_with_handler = true. A player not
+    across by the first shot or the window end is trailer_censored (fix TRN-P06/trailer-undefined) and gets no
+    event. delay = t_cross(trailer) - t_cross(ball); trailer_ctg when he reaches the scoring zone > ctg_delay_s
+    after the ball. trail_arrival: within arrival_max_s of t0_poss, vbar(0.5) < arrive_vbar_mps inside trail_spot
+    (is_three, m >= 70, r <= 8.5).
+  params:
+    ctg_delay_s: {value: 1.5, unit: s, note: CTG 'about 1.5 s'}
+    arrival_max_s: {value: 8.0, unit: s}
+    arrive_vbar_mps: {value: 1.5, unit: m/s}
+    window_s: {value: 10.0, unit: s}
+    tie_s: {value: 0.2, unit: s, note: 'handler crossing tie (loop 1, TRN-T07)'}
+  min_duration_s: null
+  outputs: rank, delay_s, trailer_ctg, trail_arrival frame, order margin, tie_with_handler
+  confidence: 'window_conf(p_below(y, half_y, sigma_y)) over [cross, cross + 0.3 s] x Phi(order margin / 0.1 s) x q_obj(player)'
+  noise: Two players crossing within 0.2 s make the order uncertain; the order margin is stored.
+  conflicts_resolved: ['Arrival region trail_spot (beyond the arc) over trailer_spot (r >= 6.5).']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#trail_spot', supports: arrival region}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities-player', supports: 'trailer about 1.5 s behind or drag screener'}
+  status: canonical
+  detector: detect_trailer
+
+- id: outlet_release
+  ref: TRN-P07
+  level: primitive
+  name: Outlet release (outlet receiver gets open)
+  aliases: [outlet, get to the outlet]
+  actors: receiver (rebounder as reference)
+  t0: first frame of the release movement
+  rule: >-
+    After a dreb possession change, a teammate of the rebounder in [t_rel, t_dreb + arrive_s]: |x| increasing at >=
+    move_mps (d|x|/dt) OR moving toward the ball at >= move_mps, for >= min_duration_s, arriving by t_dreb +
+    arrive_s inside outlet_ballside / outlet_middle or at |x| >= arrive_abs_x_m with y > half_y. ballside = sign(x)
+    equals the sign of the rebound x.
+  params:
+    move_mps: {value: 1.0, unit: m/s}
+    arrive_s: {value: 1.5, unit: s}
+    arrive_abs_x_m: {value: 5.0, unit: m}
+  min_duration_s: 0.3
+  outputs: arrival spot, arrival - t_dreb, ballside, caught flag
+  confidence: 'window_conf(p_above(lateral / ball-ward speed, move_mps, sigma_v)) over the move x q_obj(receiver)'
+  noise: Body orientation (back to the sideline) needs pose.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#outlet_ballside, #outlet_middle', supports: outlet spots}
+  - {url: 'https://www.coachesclipboard.net/HoibergTransition-DragScreen.html', supports: outlet catch above the FT line extended}
+  status: canonical
+  detector: detect_outlet_release
+
+- id: push
+  ref: TRN-P08
+  level: primitive
+  name: Push (speed-dribble advance)
+  aliases: [speed dribble, push it, bust out]
+  actors: handler
+  t0: onset of the sustained fast interval while holding the ball
+  rule: >-
+    Between the handler's first touch after t0_poss and the ball's first arrival at r <= 6.75 (t_three_zone; it runs
+    past t_scoring_zone so an outlet caught near half court still has room for a push; the half-court line is
+    ignored, fix TRN-P08/push-backcourt-only): vbar(1.0) >= min_speed_mps for >= min_duration_s while he holds the
+    ball (hold continuity is the dribbling proxy until dribble detection exists), and the ball crosses half_y within
+    max_cross_s of t0_poss. high_push when vbar >= high_speed_mps for >= high_dur_s. backcourt_share = share of the
+    fast interval at y > half_y. advance_mode at t_cross_half: pass when the ball is unheld at the crossing, else
+    dribble.
+  params:
+    min_speed_mps: {value: 4.0, unit: m/s}
+    max_cross_s: {value: 4.0, unit: s}
+    high_speed_mps: {value: 5.0, unit: m/s}
+    high_dur_s: {value: 1.0, unit: s}
+  min_duration_s: 1.5
+  outputs: mean/peak vbar, high_push, backcourt_share, t_cross_half - t0, advance_mode, lane at crossing
+  confidence: 'window_conf(p_above(vbar10, min_speed_mps, sigma_vbar)) over the interval x q_obj(handler, ball)'
+  noise: Handler is almost always on camera.
+  conflicts_resolved: ['Backcourt-only requirement dropped (missed outlets caught near half court).']
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.2 Push', supports: '>= 4.0 m/s for >= 1.5 s, crossing <= 4 s'}
+  status: canonical
+  detector: detect_push
+
+- id: diagonal_dribble
+  ref: TRN-P09
+  level: primitive
+  name: Diagonal dribble (handler path angle)
+  aliases: [diagonal push]
+  actors: handler
+  t0: segment start
+  rule: >-
+    In [t0_poss, t_cross_half + 2.0 s], contiguous intervals where the handler holds the ball with speed >= 2.0 m/s
+    for >= min_duration_s; chord length >= min_len_m; angle = atan2(|dx|, |dy|) off the long axis. diagonal when
+    min_deg <= angle <= max_deg; straight (< min_deg, the turnover-risk path of the MSU rule) is stored as
+    attrs.class on no event.
+  params:
+    min_speed_mps: {value: 2.0, unit: m/s}
+    min_len_m: {value: 10.0, unit: m}
+    min_deg: {value: 20.0, unit: deg}
+    max_deg: {value: 45.0, unit: deg}
+  min_duration_s: 1.0
+  outputs: angle, length, class
+  confidence: 'window_conf(p_above(speed, 2.0, sigma_speed)) x Phi(angle margin / sigma_angle), sigma_angle = degrees(sigma_p_chord / length)'
+  noise: Heading is undefined at low speed; the speed gate handles it.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §9.3', supports: 'diagonal 20-45 deg over >= 10 m'}
+  status: proposal
+  detector: detect_diagonal_dribble
+
+- id: pull_back
+  ref: TRN-P10
+  level: primitive
+  name: Pull-back / reset
+  aliases: [pull it out, flatten out, reset]
+  actors: handler
+  t0: t_pull
+  rule: >-
+    After t_scoring_zone while phase = transition (or within after_phase_s after it ends), either (a) the ball's y
+    rises >= rise_m above its minimum since t_scoring_zone within rise_window_s, or (b) the handler holds at r >=
+    hold_r_m with vbar(0.5) < hold_vbar_mps for >= hold_s; no shot proxy in the window. pull_back_with_advantage
+    when numbers_advantage is active at t_pull.
+  params:
+    rise_m: {value: 2.0, unit: m}
+    rise_window_s: {value: 3.0, unit: s}
+    hold_r_m: {value: 7.5, unit: m}
+    hold_vbar_mps: {value: 1.5, unit: m/s}
+    hold_s: {value: 1.5, unit: s}
+    after_phase_s: {value: 2.0, unit: s}
+  min_duration_s: null
+  outputs: trigger (a | b), t_pull - t0, with_advantage
+  confidence: '(a) Phi((rise - rise_m) / sigma_dy); (b) window_conf(p_below(vbar05, 1.5)) x q_obj(handler, ball)'
+  noise: A retreat dribble away from a trap is not a reset (exclude while press_trap is active).
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.2 Pull back', supports: thresholds}
+  status: proposal
+  detector: detect_pull_back
+
+- id: retreat
+  ref: TRN-P11
+  level: primitive
+  name: Retreat (get back / sprint back)
+  aliases: [get back, sprint back, floor balance]
+  actors: 1 player of the team losing the ball
+  t0: retreat onset
+  rule: >-
+    In [t_rel, t_rel + window_s] (shot) or [t0_poss, t0_poss + window_s] (turnover): v_back = radial window velocity
+    toward the rim the player defends (the origin) >= onset_mps, sustained >= min_duration_s (exit when < exit_mps
+    for >= exit_dwell_s). reaction_delay = onset - anchor; late_retreat when onset > t0_poss + late_s;
+    behind_ball_at_cross (y < y_ball when the ball crosses half_y).
+  params:
+    window_s: {value: 6.0, unit: s}
+    onset_mps: {value: 2.0, unit: m/s}
+    exit_mps: {value: 1.0, unit: m/s}
+    exit_dwell_s: {value: 0.5, unit: s}
+    late_s: {value: 1.0, unit: s}
+  min_duration_s: 0.5
+  outputs: onset, reaction_delay_s, late_retreat, peak v_back, behind_ball_at_cross
+  confidence: 'window_conf(p_above(v_back, onset_mps, sigma_vbar)) over [onset, onset + 0.5 s] x q_obj(player)'
+  noise: A shooter landing produces a velocity spike; the airborne freeze (rule_airborne_freeze) removes it in production.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.3 Get back', supports: onset >= 2.0 m/s}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities-player', supports: is_back_before_ball_crosses_scoring_zone}
+  status: canonical
+  detector: detect_retreat
+
+- id: shot_rebound_decision
+  ref: TRN-P12
+  level: primitive
+  name: Crash / retreat / hold / watch at the shot
+  aliases: [crash the glass, send, watch]
+  actors: each non-shooter of the shooting team
+  t0: t_rel
+  rule: >-
+    For a shot proxy by scene.defense at the far rim: at t_rel PI when r_far <= pi_r_m, PO when r_far >= po_r_m;
+    otherwise the change in r_far from t_rel to the end of the window (rebound control, or t_rim + 1.0 s) classifies
+    crash (<= -delta_r_m), retreat (>= +delta_r_m), else hold; watch = hold with smoothed path length < watch_len_m.
+    CI = PI + n_crash, RI = PO + n_retreat are stored on every event.
+  params:
+    pi_r_m: {value: 2.44, unit: m}
+    po_r_m: {value: 10.06, unit: m}
+    delta_r_m: {value: 1.52, unit: m}
+    watch_len_m: {value: 1.0, unit: m}
+  min_duration_s: null
+  outputs: class, delta_r, CI, RI
+  confidence: 'Phi(|delta_r - edge| / sigma), sigma = sqrt(2) x K_CAL x sqrt(var_p) (fix TRN-P12/sigma-claim: 1.52 m is 3.6 sigma at sigma_p 0.3, 2.1 at 0.5) x q_obj(player)'
+  noise: Putback windows under 0.5 s are inconclusive (class unknown).
+  conflicts_resolved: ['Radii 2.44 / 10.06 / 1.52 m are the repo reading of Wiens et al.; only the abstract was opened (unverified).']
+  sources:
+  - {url: 'https://www.sloansportsconference.com/research-papers/to-crash-or-not-to-crash', supports: crash vs retreat concept (abstract only)}
+  - {url: 'repo:docs/research/transition_full.md §2.3', supports: radii}
+  status: proposal
+  detector: detect_shot_rebound_decision
+
+- id: safety
+  ref: TRN-P13
+  level: primitive
+  name: Safety (one back)
+  aliases: [one back, back man]
+  actors: shooting-team player
+  t0: t_rel + at_s
+  rule: >-
+    At t_rel + at_s: a shooting-team player with r_far > safety_r_m (transition_safety_back) and v_back (toward the
+    origin rim he defends) >= v_mps = safety_repo; safety_wide also accepts r_far >= 6.75 with y <= FAR_RIM_Y -
+    wide_dy_m. count and ids stored; shooter_back when the shooter is a safety.
+  params:
+    at_s: {value: 1.0, unit: s}
+    safety_r_m: {value: 7.0, unit: m}
+    v_mps: {value: 2.0, unit: m/s}
+    wide_dy_m: {value: 9.0, unit: m}
+  min_duration_s: null
+  outputs: variant (repo | wide), count, shooter_back
+  confidence: 'window_conf(min(p_above(r_far, 7.0), p_above(v_back, 2.0))) over t +- 0.15 s x q_obj(player)'
+  noise: Usually off-screen near half court; unknown rather than 0 when not tracked.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#transition_safety_back', supports: 'r > 7.0 at release + 1.0 s, >= 2 m/s'}
+  status: canonical
+  detector: detect_safety
+
+- id: protect_rim
+  ref: TRN-P14
+  level: primitive
+  name: Protect the rim (first back)
+  aliases: [first back, full back, basket]
+  actors: first defender back
+  t0: t_rim_protect
+  rule: >-
+    After t0_poss (window_s): t_rim_protect = first frame a defender has r <= arrive_r_m after being at r >
+    from_r_m; a defender already at r <= from_r_m at t0 is already_back (t = t0). Zone occupancy
+    transition_protect_rim (r <= 1.8, y >= BOARD_Y). flag_25 time = first defender at r <= 2.5.
+  params:
+    arrive_r_m: {value: 1.5, unit: m}
+    from_r_m: {value: 3.0, unit: m}
+    window_s: {value: 8.0, unit: s}
+  min_duration_s: null
+  outputs: t - t0, before_cross flag, already_back, flag_25 frame
+  confidence: 'window_conf(p_below(r, arrive_r_m, sigma_r)) over [t, t + 0.2 s] x q_obj(defender)'
+  noise: After an offensive rebound the team is attacking; skipped (only D -> O changes are scanned).
+  conflicts_resolved: ['Rim radius: named_spots zone 1.8 / arrival 1.5 over 2.5 (kept as flag_25).']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#transition_protect_rim', supports: 'r <= 1.8 zone, arrival r <= 1.5'}
+  status: canonical
+  detector: detect_protect_rim
+
+- id: inbounder_step_in
+  ref: TRN-P15
+  level: primitive
+  name: Inbounder step-in (return after the throw-in)
+  aliases: [inbounder return]
+  actors: thrower
+  t0: t_step_in
+  rule: >-
+    Within window_s after t_release, the thrower's smoothed position is inside every boundary by >= d_in_m with an
+    inward window velocity >= v_in_mps; return_catch when he holds the ball again within return_s of t_release.
+  params:
+    window_s: {value: 2.0, unit: s}
+    d_in_m: {value: 0.25, unit: m}
+    v_in_mps: {value: 1.0, unit: m/s}
+    return_s: {value: 3.0, unit: s}
+  min_duration_s: null
+  outputs: t_step_in - t_release, return_catch
+  confidence: 'window_conf(p_above(boundary distance, d_in_m, sigma)) over [t, t + 0.2 s] x q_obj(thrower)'
+  noise: Sideline homography error (tier C); hysteresis 0.25 m.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#pb_inbounder_return', supports: return band within 2 s}
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 7-6.8.d)', supports: thrower stays until the ball crosses the plane}
+  status: canonical
+  detector: detect_inbounder_step_in
+
+- id: run_endline
+  ref: TRN-P16
+  level: primitive
+  name: Run the end line after a made goal
+  aliases: [run the baseline]
+  actors: thrower
+  t0: t_disposal
+  rule: >-
+    Throw-in from behind the far end line (y >= FAR_END_Y): between t_disposal and t_release the thrower's |delta x|
+    >= min_dx_m at mean speed >= min_speed_mps. violation_candidate when the restart is not after a made goal (the
+    designated-spot thrower may not leave the 3-ft spot, Rule 7-6.8.c).
+  params:
+    min_dx_m: {value: 2.0, unit: m}
+    min_speed_mps: {value: 1.0, unit: m/s}
+  min_duration_s: 0.3
+  outputs: delta_x, mean speed, after_make, violation_candidate, endline_relay
+  confidence: 'Phi((|dx| - min_dx_m) / sigma_dx) x q_obj(thrower)'
+  noise: The far end line is often out of view after a make (unknown).
+  conflicts_resolved: []
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 7-4.6.a/b, 7-6.8.c)', supports: run the end line after a goal}
+  status: canonical
+  detector: detect_run_endline
+
+- id: inbound_get_open
+  ref: TRN-P17
+  level: primitive
+  name: Throw-in receiver get-open (V-cut, flash, pop, basket cut)
+  aliases: [V-cut, flash to the ball, pop]
+  actors: in-bounds attacker (+ thrower as the ball)
+  t0: plant frame (v_cut) or start of the final leg
+  rule: >-
+    In [t_disposal - pre_s, t_first_touch]. v_cut: find the last run of frames passing an MP-13 reversal test (pre /
+    post mean displacements over pre_post_s that skip skip_s on each side, both legs >= leg_min_disp_m, turn >=
+    vcut_deg; fix TRN-P17/heading-reversal: heading is undefined at the plant, so it is never read there); the plant
+    p is the frame farthest from the thrower within [run start - 0.2 s, run end + 0.3 s] (the run itself is biased
+    toward the longer leg); the player moved >= leg_m away from the thrower in the second before p and >= leg_m back
+    toward him after p (to the catch + 0.3 s) with peak speed >= vcut_speed_mps; t0 = p. Otherwise the final leg =
+    last run of smoothed speed >= move_mps (gaps <= 2 frames bridged, chord >= 0.5 m) starting before the touch:
+    flash when it closes >= flash_m on the thrower at peak >= flash_speed_mps; basket_cut when it ends at r <= 2.0
+    with peak v_r >= 2.5 m/s; pop when it increases r by >= pop_m; t0 = leg start. receives = the first touch is
+    his.
+  params:
+    pre_s: {value: 1.0, unit: s}
+    move_mps: {value: 1.0, unit: m/s}
+    leg_m: {value: 1.5, unit: m}
+    vcut_speed_mps: {value: 2.0, unit: m/s}
+    vcut_deg: {value: 120.0, unit: deg}
+    pre_post_s: {value: 0.4, unit: s}
+    skip_s: {value: 0.15, unit: s}
+    leg_min_disp_m: {value: 0.5, unit: m}
+    flash_m: {value: 2.0, unit: m}
+    flash_speed_mps: {value: 2.5, unit: m/s}
+    pop_m: {value: 1.5, unit: m}
+  min_duration_s: 0.3
+  outputs: class, receives, angle, leg lengths
+  confidence: 'window_conf(p_above(speed, move_mps, sigma_speed)) over the final leg x Phi(primary margin / sigma) x q_obj(player)'
+  noise: BLOB boxes are tight clusters; require re-ID confidence >= 0.7 in production.
+  conflicts_resolved: ['Reversal window 0.6 s (motion_starts) over 0.4 s (offense A5).']
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.2/F13.3', supports: BLOB/SLOB cuts}
+  status: proposal
+  detector: detect_inbound_get_open
+
+- id: ft_lane_entry
+  ref: TRN-P18
+  level: primitive
+  name: Free-throw lane entry and early-entry candidate
+  aliases: [FT crash, lane violation candidate]
+  actors: lane-space occupants
+  t0: entry frame
+  rule: >-
+    FT release proxy: the ball leaves a holder standing in ft_shooter (stationary) and comes within 1.0 m of the
+    origin rim. Reference position = mean over [t_ft - ref_from_s, t_ft - ref_to_s] for each player in
+    ft_lane_space_1..3 (either side). entry = first frame after t_ft - 0.5 s at which |x| is below the reference by
+    >= enter_m, held >= hold_s. early_entry_candidate when entry < t_ft and the inward move exceeds max(early_m, 3
+    sigma_move) on >= 2 frames of [entry, entry + hold_s + ref_to_s] (the smoothed track trails a fast 0.8 m step by
+    about 0.2 m, so a step ending at the release reads about 0.5 m by then), sigma_move = sqrt(sigma_ref^2 / n_eff +
+    sigma_t^2) with n_eff = reference length / corr_s (the reference is a window mean, the current position one
+    frame; loop 1, TRN-T17) (only a candidate: feet decide violations). ft_crash when an attacker reaches r <= 1.5
+    within 1.0 s of t_rim.
+  params:
+    ref_from_s: {value: 1.0, unit: s}
+    ref_to_s: {value: 0.3, unit: s}
+    enter_m: {value: 0.5, unit: m}
+    hold_s: {value: 0.2, unit: s}
+    early_m: {value: 0.6, unit: m}
+    window_s: {value: 1.5, unit: s}
+    corr_s: {value: 0.3, unit: s, note: 'smoothed-track correlation time for the reference-mean sigma (loop 1, TRN-T17)'}
+  min_duration_s: null
+  outputs: space id, entry - t_ft, early_entry_candidate, ft_crash
+  confidence: 'window_conf(p_above(inward move, enter_m, sigma_move)) over [entry, entry + 0.2 s] x q_obj(player)'
+  noise: Lane-space marks are thin; centroids cannot decide a violation.
+  conflicts_resolved:
+  - 'Lane counts per named_spots ft_lane_occupancy_rule (NCAA Rule 8-5).'
+  - 'Entry threshold 0.25 m (research) is about 2 sigma of the smoothed centroid at sigma_p 0.3 and fired on static V0 lanes; 0.5 m held 0.2 s.'
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 8-5.1, 8-5.2)', supports: no lane entry before release}
+  - {url: 'repo:config/named_spots.yaml#ft_lane_space_1', supports: spaces}
+  status: proposal
+  detector: detect_ft_lane_entry
+
+- id: ft_release_runner
+  ref: TRN-P19
+  level: primitive
+  name: Free-throw release runner (leak or safety retreat off an FT)
+  aliases: [FT leak, FT break runner]
+  actors: 1 player
+  t0: run onset
+  rule: >-
+    At the FT release proxy, a player inside ft_leak_out or ft_perimeter_* starts a run away from the shooting rim
+    (vy_bar >= run_vy_mps, sustained >= min_duration_s, exit below run_vy_mps - 1.0 m/s for 0.3 s) with onset in
+    [t_ft
+    - pre_s, t_rim + post_s]. The shooter's team = ft_safety_retreat, the opponent = ft_leak.
+  params:
+    run_vy_mps: {value: 3.0, unit: m/s}
+    pre_s: {value: 0.5, unit: s}
+    post_s: {value: 1.0, unit: s}
+  min_duration_s: 0.5
+  outputs: role (ft_leak | ft_safety_retreat), onset - t_ft
+  confidence: 'window_conf(p_above(vy_bar, run_vy_mps, sigma_vbar)) over [onset, onset + 0.5 s] x q_obj(player)'
+  noise: Usually off-screen (the camera frames the lane).
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#ft_leak_out', supports: region and team semantics}
+  status: proposal
+  detector: detect_ft_release_runner
+
+- id: jump_ball_release
+  ref: TRN-P20
+  level: primitive
+  name: Jump-ball release and jumper hold
+  aliases: [tip streak]
+  actors: all 10
+  t0: t_toss
+  rule: >-
+    t_toss (ball rises above the official's head + 0.3 m) and t_tap (ball-velocity change >= 2 m/s at z > 2.5 m)
+    need ball z. Pre-move candidate (fix TRN-P20/pre-move): smoothed mean position over [t_toss - 1.0, t_toss - 0.3]
+    vs [t_toss - 0.3, t_toss] differs by > 3 sigma_mean_diff. release: a non-jumper upcourt run onset in [t_tap -
+    0.2, t_tap + 1.0] reaching y <= 5.0 within 2.0 s.
+  params: {}
+  min_duration_s: null
+  outputs: t_toss, t_tap, releasers, candidates
+  confidence: needs ball z
+  noise: Officials among the players at the circle.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 9-8)', supports: jump-ball restrictions}
+  status: proposal
+  needs_data: true
+  detector: detect_jump_ball_release (returns [])
+
+- id: hold_for_one
+  ref: TRN-P21
+  level: primitive
+  name: Hold for one / clock-kill dribble
+  aliases: [hold for the last shot]
+  actors: handler + team
+  t0: hold start
+  rule: >-
+    Gate hold_for_one_eligible (clock_buckets) or end_of_game leading. The handler stays at r >= 8.0 with vbar(1.0)
+    < 2.0 m/s for >= 3.0 s while >= 3 teammates are at r >= 6.75 and slow. Without the clock gate a slow half-court
+    handler is not a hold, so the label needs the clock.
+  params: {}
+  min_duration_s: 3.0
+  outputs: hold duration, clocks
+  confidence: needs clock
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.4', supports: hold for one}
+  status: proposal
+  needs_data: true
+  detector: detect_hold_for_one (returns [])
+
+- id: press_flash_middle
+  ref: TRN-P22
+  level: primitive
+  name: Press-break flash to the middle
+  aliases: ['60 flasher', middle first]
+  actors: 1 attacker
+  t0: entry into pb_middle
+  rule: >-
+    While press_active: a receiver enters pb_middle (and stays >= 0.3 s) (|x| < LANE_X, 13.0 <= y <= 21.2598)
+    closing on the ball at >= close_mps for >= min_duration_s; middle_catch when he holds the ball within catch_s of
+    the entry.
+  params:
+    close_mps: {value: 1.0, unit: m/s}
+    catch_s: {value: 1.5, unit: s}
+  min_duration_s: 0.3
+  outputs: entry frame, middle_catch
+  confidence: 'window_conf(p_above(closing speed, close_mps, sigma)) over the approach x q_obj(player, ball)'
+  noise: Interceptors crowd the middle; identity swaps.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#pb_middle', supports: region}
+  - {url: 'repo:docs/taxonomy/offense_full.md F12.1-12.2', supports: middle first}
+  status: proposal
+  detector: detect_press_flash_middle
+
+- id: sideline_release
+  ref: TRN-P23
+  level: primitive
+  name: Press-break sideline receiver / streak
+  aliases: [sideline outlet]
+  actors: 1 attacker
+  t0: t_first_touch of the backcourt inbound (receiver) or streak onset
+  rule: >-
+    For a backcourt throw-in (y >= FAR_END_Y) with press_present_loose: an attacker inside pb_sideline_halfcourt
+    (5.0 <= |x| <= 7.62, 11.0 <= y <= 16.0) at t_first_touch is sideline_receiver.
+  params:
+    zone_min_abs_x: {value: 5.0, unit: m}
+  min_duration_s: null
+  outputs: type (sideline_receiver), side
+  confidence: 'Phi(distance inside pb_sideline_halfcourt / sigma_p) at t_first_touch x q_obj(player)'
+  noise: Near-sideline tier C error.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#pb_sideline_halfcourt', supports: region}
+  status: proposal
+  detector: detect_sideline_release
+
+- id: press_safety
+  ref: TRN-P24
+  level: primitive
+  name: Press-break safety behind the ball
+  aliases: [trailing outlet, safety valve]
+  actors: 1 attacker
+  t0: first frame of the press interval
+  rule: >-
+    During a press_active interval (ball y > half_y), from the inbound's first touch when the interval contains a
+    throw-in (nobody can be behind an out-of-bounds thrower): the attacker (not the holder) with y > y_ball +
+    behind_m and distance to the ball <= near_m on the largest share of frames; label when the share >= min_share
+    and the interval >= min_duration_s.
+  params:
+    behind_m: {value: 1.0, unit: m}
+    near_m: {value: 8.0, unit: m}
+    min_share: {value: 0.8, unit: ratio}
+  min_duration_s: 1.0
+  outputs: share, safety id
+  confidence: 'window_conf(p_above(y - y_ball, behind_m, sigma_rel)) over the interval x q_obj(player)'
+  noise: The trailing player is often behind the camera.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F12.1', supports: one player behind the ball}
+  status: proposal
+  detector: detect_press_safety
+
+- id: build_wall
+  ref: TRN-P25 (new, skeptic missing list)
+  level: primitive
+  name: Load to the ball / build a wall
+  aliases: [load to the ball, wall up]
+  actors: 3 or more defenders
+  t0: first frame of the wall
+  rule: >-
+    During transition with the ball at y > 6.75: >= min_defenders defenders between the ball and the rim (y_ball -
+    depth_m <= y <= y_ball - 1.0) within lateral_m of the ball's x, for >= min_duration_s.
+  params:
+    min_defenders: {value: 3, unit: players}
+    depth_m: {value: 6.0, unit: m}
+    lateral_m: {value: 4.0, unit: m}
+  min_duration_s: 0.5
+  outputs: defender ids, mean depth
+  confidence: 'window_conf(p that the count >= min_defenders, Poisson-binomial normal approximation) x q_obj(ball)'
+  noise: Same as numbers_advantage.
+  conflicts_resolved: []
+  sources: []
+  status: proposal
+  detector: detect_build_wall
+
+- id: sink_to_paint
+  ref: TRN-P26 (new, skeptic missing list)
+  level: primitive
+  name: Sink to the paint
+  aliases: [load the paint]
+  actors: 2 or more defenders
+  t0: first frame with the paint loaded
+  rule: >-
+    During transition, before the ball first reaches r <= 6.75: >= min_defenders defenders in the lane (|x| <
+    LANE_X, END_Y < y <= FT_Y) for >= min_duration_s.
+  params:
+    min_defenders: {value: 2, unit: players}
+  min_duration_s: 0.5
+  outputs: defender ids
+  confidence: 'window_conf(min over the counted defenders of P_in lane) x q_obj(defenders)'
+  noise: Lane edges at tier B are about 0.2 m.
+  conflicts_resolved: []
+  sources: []
+  status: proposal
+  detector: detect_sink_to_paint
+# ====================================================================================================== actions
+- id: outlet_pass
+  ref: TRN-A01
+  level: action
+  name: Outlet pass (ball-side, middle, long) or dribble-out
+  aliases: [first pass, kick-ahead, touchdown pass]
+  actors: rebounder, receiver
+  t0: pass release
+  rule: >-
+    After a dreb possession change, the first pass by the rebounder. delay = t_release - t_dreb (quick when <=
+    quick_s). Catch spot: outlet_ballside, outlet_middle, long_outlet_zone (catch y <= 10.2616); long_len15 when
+    length >= long_len_m; ballside = sign(x_catch) == sign(x_rebound); outlet_height_m = FAR_END_Y - y_catch for
+    every outlet, ctg_compatible flag when the receiver is the primary initiator (he then holds the ball across
+    half_y) (fix TRN-A01/outlet_height; CTG gives feet, 47 ft = 14.33 m). dribble_out (kind) when the rebounder
+    dribbles >= dribble_m before any pass. Pass vs handoff: length < 1.0 m goes to the DHO family.
+  params:
+    quick_s: {value: 1.5, unit: s}
+    long_len_m: {value: 15.0, unit: m}
+    dribble_m: {value: 3.0, unit: m}
+    min_len_m: {value: 1.0, unit: m}
+  min_duration_s: null
+  outputs: delay, length, spot class, ballside, outlet_height_m, ctg_compatible, quick, long flags
+  confidence: 'window_conf(p hold of the receiver) over [catch, catch + 0.2 s] x q_obj(rebounder, receiver, ball)'
+  noise: A long outlet can leave the frame; catch-side continuity.
+  conflicts_resolved: ['Outlet delay <= 1.5 s (offense F1 and transition_full agree).']
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md:110', supports: ball-side outlet <= 1.5 s}
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities', supports: outlet_height}
+  status: canonical
+  detector: detect_outlet_pass
+
+- id: hit_ahead
+  ref: TRN-A02
+  level: action
+  name: Hit-ahead / pitch-ahead pass
+  aliases: [pitch ahead, pass ahead]
+  actors: passer, receiver
+  t0: pass release
+  rule: >-
+    Within window_s of t0_poss, a pass between attackers with delta y <= max_dy_m, released before the passer
+    crosses half_y or <= after_cross_s after his crossing; passed_before_timeline when the passer is at y > half_y.
+  params:
+    max_dy_m: {value: -8.0, unit: m}
+    after_cross_s: {value: 1.5, unit: s}
+    window_s: {value: 8.0, unit: s}
+  min_duration_s: null
+  outputs: delta_y, length, passed_before_timeline, receiver separation
+  confidence: 'Phi((max_dy_m - dy) / sigma_dy) x window_conf(p hold of the receiver) x q_obj(passer, receiver, ball)'
+  noise: Same as outlet_pass.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.2 Hit-ahead', supports: delta_y <= -8 m}
+  status: canonical
+  detector: detect_hit_ahead
+
+- id: drag_screen
+  ref: TRN-A03
+  level: action
+  name: Drag screen (transition ball screen)
+  aliases: [drag, '7', transition ball screen, drag flare, drag slip, inverted drag]
+  actors: handler, screener
+  t0: screen contact (first frame of the stationary screener within contact_m of the handler)
+  rule: >-
+    Within window_s of t0_poss and during transition or <= after_phase_s after it: a non-handler attacker who had
+    vy_bar <= run_vy_mps in the run_back_s before contact, stays set from contact (stationary_s2 < 5.99 on >= 60% of
+    [contact, contact + 0.3 s] and within contact_m + 0.25 m of the handler throughout; fix
+    TRN-A06/A03-stationary-at-noise-floor), within contact_m of the ball handler (fix TRN-A03/drag-geometry: no
+    absolute screener radius), with the handler at r > handler_r_m and y <= half_y + 2.0 (drag_screen_spot).
+    Screener role: trailer, rim runner who came back, or late_runner (3rd to 5th across half court and not the
+    handler at his crossing; loop 1: trailer ranks now count the handler, TRN-T07, and a big crossing 3rd just ahead
+    of the handler keeps his drag eligibility). Screener action within action_s: roll (r < roll_r_m, or r drops by
+    >= roll_dr_m: a drag near half court cannot reach r < 3 in 1.5 s), pop (r >= 6.75 and moving away), else none.
+    drag_at_arc flag: screener 6.0 <= r <= 8.5. moving_screen_candidate only when the screener's speed at contact >
+    1.0 m/s.
+  params:
+    window_s: {value: 8.0, unit: s}
+    after_phase_s: {value: 2.0, unit: s}
+    run_vy_mps: {value: -3.0, unit: m/s}
+    run_back_s: {value: 1.5, unit: s}
+    contact_m: {value: 1.5, unit: m}
+    handler_r_m: {value: 7.5, unit: m}
+    action_s: {value: 1.5, unit: s}
+    roll_r_m: {value: 3.0, unit: m}
+    roll_dr_m: {value: 3.0, unit: m}
+  min_duration_s: null
+  outputs: screener role, contact r / theta, drag_at_arc, screener action, side
+  confidence: 'window_conf(p_below(dist, contact_m, sigma_dist)) over contact +- 0.15 s x q_obj(handler, screener)'
+  noise: A jogging trailer can fail strict stationarity; the screen family's loose rule is inherited.
+  conflicts_resolved: ['Time gate: transition or <= 2.0 s after, and <= 8.0 s after t0.', 'Screen rule C7 inherited from the screen family.']
+  sources:
+  - {url: 'https://www.coachesclipboard.net/HoibergTransition-DragScreen.html', supports: trailing rebounder sets the drag and rolls}
+  - {url: 'repo:config/named_spots.yaml#drag_screen_spot', supports: handler region}
+  status: canonical
+  detector: detect_drag_screen
+
+- id: double_drag
+  ref: TRN-A04
+  level: action
+  name: Double drag ('77')
+  aliases: ['77', double stagger ball screen]
+  actors: handler, 2 screeners
+  t0: first contact
+  rule: >-
+    Two drag_screen contacts on the same handler <= gap_s apart, with the screeners at the second contact (both set;
+    the second is still arriving at the first) separated by min_sep_m < separation <= max_sep_m (fix TRN-A04/gap:
+    bands contiguous; > max_sep_m is a stagger ball screen of the screen family). second_pops when the second
+    screener reaches r >= 6.75 within 1.5 s.
+  params:
+    gap_s: {value: 1.5, unit: s}
+    min_sep_m: {value: 0.5, unit: m}
+    max_sep_m: {value: 1.75, unit: m}
+  min_duration_s: null
+  outputs: gap_s, separation_m, screeners
+  confidence: 'min of the two drag confs x Phi((max_sep_m - sep) / sigma_dist)'
+  noise: Two screeners close together can merge into one detection.
+  conflicts_resolved: ['0.7-1.5 m (double drag) vs 2-5 m (stagger) left a gap; contiguous at 1.75 m.']
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.2', supports: double drag}
+  status: proposal
+  detector: detect_double_drag
+
+- id: trailer_pitch_back
+  ref: TRN-A05
+  level: action
+  name: Trailer pitch-back (pass back to the trailer)
+  aliases: [pitch-back, trailer three]
+  actors: handler, trailer
+  t0: catch
+  rule: >-
+    A pass from an attacker to a trailer (trailer event) caught at r_min_m <= r <= r_max_m, theta in [70, 110] (m >=
+    70), within window_s of t0_poss, with y_catch >= y_release - flat_tol_m (backward or flat).
+  params:
+    r_min_m: {value: 6.75, unit: m}
+    r_max_m: {value: 8.5, unit: m}
+    window_s: {value: 8.0, unit: s}
+    flat_tol_m: {value: 0.5, unit: m}
+  min_duration_s: null
+  outputs: catch spot, delay after t0
+  confidence: 'window_conf(p hold) x Phi(r margin / sigma_r) x q_obj(passer, trailer, ball)'
+  noise: Trailer usually on camera once the ball returns.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §9.3', supports: pitch-back region}
+  status: canonical
+  detector: detect_trailer_pitch_back
+
+- id: rim_runner_hit
+  ref: TRN-A06
+  level: action
+  name: Rim-runner hit (seal pass, big-to-big, lob)
+  aliases: [hit the rim runner, seal pass, big-to-big]
+  actors: passer, rim runner
+  t0: catch
+  rule: >-
+    A pass caught by a rim_run actor at r <= catch_r_m within after_arrive_s of his arrival and window_s of t0_poss.
+    seal_pass when his net displacement over seal_s before the catch < seal_disp_m (displacement test, fix
+    TRN-A06/A03-stationary-at-noise-floor) at r < 2.5; big_to_big when the passer is a trailer; lob needs ball z.
+  params:
+    catch_r_m: {value: 3.0, unit: m}
+    after_arrive_s: {value: 2.0, unit: s}
+    window_s: {value: 8.0, unit: s}
+    seal_s: {value: 0.8, unit: s}
+    seal_disp_m: {value: 0.4, unit: m}
+  min_duration_s: null
+  outputs: sub-type, catch r, delay after arrival
+  confidence: 'window_conf(p hold) x Phi((catch_r_m - r) / sigma_r) x q_obj(passer, runner, ball)'
+  noise: Lob sub-type unknown without ball z.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §9.7', supports: big-to-big within 6 s at r < 3}
+  status: canonical
+  detector: detect_rim_runner_hit
+
+- id: stop_ball
+  ref: TRN-A07
+  level: action
+  name: Stop the ball (defensive pickup of the handler)
+  aliases: [stop ball, pick up the ball, half back]
+  actors: handler, defender
+  t0: first contact frame
+  rule: >-
+    After t0_poss (window_s): the first defender within pickup_m of the ball handler (hysteresis +0.25 m) AND
+    goal-side (defender y < handler y), with the handler in the open court (y <= FAR_RIM_Y - open_court_dy_m; nearer
+    his own rim it is a jam_rebounder) and the handler's vbar(0.5) < slow_mps within slow_within_s of the contact.
+    turned_to_side when the handler's |x| >= 3.0 within 2.0 s.
+  params:
+    pickup_m: {value: 2.0, unit: m}
+    hyst_m: {value: 0.25, unit: m}
+    slow_mps: {value: 3.0, unit: m/s}
+    slow_within_s: {value: 1.5, unit: s}
+    window_s: {value: 8.0, unit: s}
+    open_court_dy_m: {value: 6.75, unit: m}
+  min_duration_s: null
+  outputs: t_stop - t0, pickup y (backcourt flag), turned_to_side
+  confidence: 'window_conf(p_below(dist, pickup_m, sigma_dist)) over [t, t + 0.3 s] x p_below(vbar05, slow_mps) x q_obj(handler, defender)'
+  noise: 2.0 m radius sigma about 0.42 m at sigma_p 0.3 raw; smoothed tracks are better.
+  conflicts_resolved: ['Goal-side test kept (otherwise a trailing defender counts).']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#transition_stop_ball', supports: 'within 2.0 m, handler < 3.0 m/s'}
+  status: canonical
+  detector: detect_stop_ball
+
+- id: jam_rebounder
+  ref: TRN-A08
+  level: action
+  name: Jam the rebounder
+  aliases: [tag the rebounder]
+  actors: rebounder, defender
+  t0: first frame of the jam
+  rule: >-
+    In [t_dreb, t_dreb + window_s], a scene.defense player within jam_m of the rebounder and his nearest opponent
+    for >= min_duration_s.
+  params:
+    jam_m: {value: 1.5, unit: m}
+    window_s: {value: 2.0, unit: s}
+  min_duration_s: 0.5
+  outputs: jam duration, outlet delay
+  confidence: 'window_conf(p_below(dist, jam_m, sigma_dist)) over the jam x q_obj(rebounder, defender)'
+  noise: Rebound scrums; nearest-opponent requirement.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.3 Jam', supports: within 1.5 m for >= 0.5 s}
+  status: canonical
+  detector: detect_jam_rebounder
+
+- id: matchup
+  ref: TRN-A09
+  level: action
+  name: Match-up on the fly / cross-match / automatic pickup
+  aliases: [match up, cross-match, find your man]
+  actors: 10 players
+  t0: t_matched
+  rule: >-
+    After t0_poss: t_matched = first frame from which every attacker has a defender within near_m (attacker r >= 3)
+    or close_m (r < 3) for >= min_duration_s. Assignment = minimum-cost one-to-one matching on distance at
+    t_matched; pre-change pairing = the same matching at t0_poss - pre_s (each defender of the new offense to his
+    man). cross_matches = number of pairs that differ; automatic_pickup when 0.
+  params:
+    near_m: {value: 2.5, unit: m}
+    close_m: {value: 1.5, unit: m}
+    pre_s: {value: 1.0, unit: s}
+    window_s: {value: 12.0, unit: s}
+  min_duration_s: 1.0
+  outputs: t_matched - t0, assignment, cross_matches, automatic_pickup
+  confidence: 'window_conf(min over attackers of p_below(nearest defender distance, radius, sigma_dist)) x q_obj(all)'
+  noise: Off-screen weak-side pairs are unknown.
+  conflicts_resolved: ['t_matched radii 2.5 / 1.5 m kept beside the defense-set test.']
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.3 Match up', supports: radii}
+  status: proposal
+  detector: detect_matchup
+
+- id: tandem_stack
+  ref: TRN-A10
+  level: action
+  name: Tandem 3v2 stack (outnumbered defense)
+  aliases: [tandem, stack, I-formation]
+  actors: 2 defenders
+  t0: first frame of the stack
+  rule: >-
+    While numbers_advantage is active: two defenders with |dx| <= max_dx_m and |dy| >= min_dy_m for >=
+    min_duration_s, both nearer the rim than the ball. top = larger y (ball stopper), bottom = first pass; top_drop
+    when the top defender reaches r <= 2.5 within 1.5 s of the first pass. cover_two is a proposal not detected
+    here.
+  params:
+    max_dx_m: {value: 1.5, unit: m}
+    min_dy_m: {value: 2.0, unit: m}
+  min_duration_s: 0.5
+  outputs: top, bottom
+  confidence: 'window_conf(min(p_below(|dx|, max_dx_m), p_above(|dy|, min_dy_m))) x q_obj(top, bottom)'
+  noise: Fast motion; the 0.5 s dwell.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §9.8', supports: 3v2 stack}
+  status: proposal
+  detector: detect_tandem_stack
+
+- id: run_out
+  ref: TRN-A11
+  level: action
+  name: Run-out / breakaway
+  aliases: [breakaway, runout, coast-to-coast]
+  actors: attacker (handler)
+  t0: first frame of the open lane
+  rule: >-
+    Start type steal or block_to_break, or a dreb with the rebound at r_far >= long_reb_m. Within within_s of t0,
+    the handler is at y > 2.0, moves toward the rim (window radial speed vbar_back(0.5) >= move_mps, loop 1 TRN-T09:
+    a standing rebounder or stealer is not a run-out) and no defender with y < y_att lies within seg_m of the
+    attacker-to-rim segment (segment geometry; the triangle geometry is stored), for >= min_duration_s.
+  params:
+    long_reb_m: {value: 6.0, unit: m}
+    within_s: {value: 3.0, unit: s}
+    seg_m: {value: 1.5, unit: m}
+    move_mps: {value: 3.0, unit: m/s, note: 'handler window speed toward the rim (loop 1, TRN-T09)'}
+  min_duration_s: 0.3
+  outputs: variant, t - t0, chase defender (nearest behind)
+  confidence: 'window_conf(min of p_above(vbar_back, move_mps, sigma) and, over defenders ahead, p_above(segment distance, seg_m, sigma_dist)) x q_obj(handler)'
+  noise: Needs all five defenders; estimated defenders cap conf in production.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.2 Run-out', supports: proposed signature}
+  status: proposal
+  detector: detect_run_out
+
+- id: screen_the_inbounder
+  ref: TRN-A13
+  level: action
+  name: Screen the inbounder
+  aliases: [inbounder screen]
+  actors: inbounder, screener
+  t0: screen contact
+  rule: >-
+    After an inbounder_step_in: within contact_after_s of t_step_in a stationary teammate (stationary_s2 < 5.99) is
+    within contact_m of the inbounder, and the inbounder catches within catch_s of the contact or reaches r <= 2.0 /
+    r >= 6.75.
+  params:
+    contact_after_s: {value: 2.0, unit: s}
+    contact_m: {value: 1.2, unit: m}
+    catch_s: {value: 1.5, unit: s}
+  min_duration_s: null
+  outputs: timings, catch flag
+  confidence: 'window_conf(p_below(dist, contact_m, sigma_dist)) over contact +- 0.15 s x q_obj(inbounder, screener)'
+  noise: Tight clusters near the end line.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.2', supports: MSU Screen the Inbounder}
+  status: proposal
+  detector: detect_screen_the_inbounder
+
+- id: press_trap
+  ref: TRN-A14a
+  level: action
+  name: Press trap
+  aliases: [trap, double team]
+  actors: handler, 2 defenders
+  t0: t_trap_on (second defender within trap_m)
+  rule: >-
+    Enter when, over the last entry_window_s with the same holder throughout, the MEDIAN distances of the handler to
+    his two nearest defenders are within trap_m and their median pair distance within pair_m, each threshold widened
+    by entry_sigma_k x the window-median MP-19 pair sigma (loop 2 TRN-T10: noise-tier aware, a hard per-frame
+    conjunction of three smoothed distances failed on noise alone); t0 = the window centre. Stay while the same
+    holder (holder hysteresis, loop 1 TRN-T02) keeps the window medians within trap_m + hyst_m and pair_m + hyst_m
+    plus the same sigma margin (gaps <= gap_s bridged), for >= min_duration_s. The joint entry probability p_enter
+    = p_below(d1, trap_m) x p_below(d2, trap_m) x p_below(pair, pair_m) is stored, not gated on (a >= 0.5 gate would
+    only remove entries, see changes_loop1 TRN-T10). Location (ball at the middle of the trap) from named_spots
+    traps (backcourt_corner_trap, trap_backcourt_corner, backcourt_sideline_trap, trap_halfcourt_backcourt_corner,
+    trap_coffin_corner, frontcourt_halfcourt_corner_trap, baseline_corner_trap). Loop 4 (TRN-L4-trapzone): entry only
+    in press territory, i.e. the handler in the backcourt outside rim_clear_m of the far rim, or inside one of those
+    trap spots; two defenders around a handler in the paint or at the arc are help, a post double or a ball-screen
+    show (defense family), not a press trap.
+  params:
+    trap_m: {value: 1.5, unit: m}
+    pair_m: {value: 2.5, unit: m}
+    hyst_m: {value: 0.25, unit: m}
+    gap_s: {value: 0.2, unit: s, note: 'bridged gap (was a code literal)'}
+    entry_window_s: {value: 0.27, unit: s, note: 'loop 2 TRN-T10: entry and stay use window medians of the three distances over this window (8 intervals = 9 frames; 0.30 s = 10 frames measured slightly worse at sigma_p 0.5); t0 = window centre'}
+    entry_sigma_k: {value: 2.0, unit: sigma_dist, note: 'loop 2 TRN-T10: thresholds widened by this x the median MP-19 pair sigma over the window (noise-tier aware: about 0.14 m at sigma_p 0.1, 0.48 m at sigma_p 0.5); loop 3: 1.0 -> 2.0'}
+    stay_sigma_k: {value: 1.0, unit: sigma_dist, note: 'loop 4 (confirm-3 NEW-T10): the STAY test uses this margin instead of entry_sigma_k, so the window does not run past the defenders leaving trap_m and dilute conf below 0.5'}
+    rim_clear_m: {value: 4.2, unit: m, note: 'loop 4 (TRN-L4-trapzone): entry only in press territory: handler in the backcourt farther than this from the far rim (NBA free-throw line: 19 ft from the baseline - 5.25 ft rim centre = 13.75 ft = 4.19 m), or inside a TRAP_SPOTS location'}
+  min_duration_s: 0.6
+  outputs: location ids, duration, defenders, p_enter
+  confidence: 'window_conf(min of the two p_below(dist, trap_m, sigma_dist)) over the trap x q_obj(handler, d1, d2)'
+  noise: The 1.5 m radius is sensitive; 0.6 s dwell.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/defense_full.md:58 (TRAP)', supports: thresholds}
+  - {url: 'repo:config/named_spots.yaml#backcourt_corner_trap', supports: locations}
+  status: canonical
+  detector: detect_press_trap
+
+- id: trap_breaker_pass
+  ref: TRN-A14b
+  level: action
+  name: Trap-breaker pass
+  aliases: [beat the trap]
+  actors: passer, receiver
+  t0: pass release
+  rule: >-
+    A pass released at t >= t_trap_on - lead_s while the trap holds (or within hold_after_s of its end). delay =
+    t_release - t_trap_on; target class middle (|x_catch| < 3.0), reversal (dy >= 1.0), sideline (|x| >= 5.0),
+    over_the_top (dy <= -8.0).
+  params:
+    lead_s: {value: 0.2, unit: s}
+    hold_after_s: {value: 0.2, unit: s}
+  min_duration_s: null
+  outputs: delay, target class
+  confidence: 'press_trap conf x window_conf(p hold of the receiver) x q_obj(receiver, ball)'
+  noise: Same as press_trap.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/requirements_review/proposals_consolidated.yaml:5793 (R-ST-24)', supports: pass after the second defender arrives}
+  status: canonical
+  detector: detect_trap_breaker_pass
+
+- id: press_reversal
+  ref: TRN-A15
+  level: action
+  name: Press reversal (pass back or across)
+  aliases: [reverse it]
+  actors: passer, receiver
+  t0: pass release
+  rule: >-
+    Ball in the backcourt and a press_trap active or started <= recent_s before: a pass with dy >= back_dy_m, or
+    |dx| >= across_dx_m with dy >= -1.0.
+  params:
+    recent_s: {value: 1.0, unit: s}
+    back_dy_m: {value: 1.0, unit: m}
+    across_dx_m: {value: 6.0, unit: m}
+  min_duration_s: null
+  outputs: direction, length
+  confidence: 'window_conf(p hold of the receiver) x q_obj(receiver, ball)'
+  noise: Same as press_trap.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F12.1', supports: reverse when trapped}
+  status: proposal
+  detector: detect_press_reversal
+
+- id: home_run_inbound
+  ref: TRN-A16
+  level: action
+  name: Home-run inbound (full-court long pass)
+  aliases: [baseball pass, long inbound]
+  actors: thrower, receiver
+  t0: t_release
+  rule: >-
+    A throw_in from behind the far end line (y >= FAR_END_Y) with pass length >= min_len_m and catch y <= half_y;
+    pb_home_run_target when the catch is at |x| <= 3.0 and 2.0 <= y <= 6.5.
+  params:
+    min_len_m: {value: 15.0, unit: m}
+  min_duration_s: null
+  outputs: length, catch spot, target flag
+  confidence: 'throw_in conf x Phi((len - min_len_m) / sigma_dist)'
+  noise: The ball can leave the frame mid-flight.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#pb_home_run_target', supports: 'target, >= 15 m'}
+  status: canonical
+  detector: detect_home_run_inbound
+
+- id: jump_ball_tip
+  ref: TRN-A17
+  level: action
+  name: Jump-ball tip (control and direction)
+  aliases: [tip]
+  actors: jumpers, receivers
+  t0: t_tap
+  rule: Needs t_tap from ball z (jump_ball_release); tip_controlled_by = team of the first has_ball after t_tap.
+  params: {}
+  min_duration_s: null
+  outputs: winner, direction, controller
+  confidence: needs ball z
+  noise: The tap may fall between frames at 29.97 fps.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.7', supports: tip play}
+  status: proposal
+  needs_data: true
+  detector: detect_jump_ball_tip (returns [])
+
+- id: ft_box_out
+  ref: TRN-A18
+  level: action
+  name: Free-throw box-out
+  aliases: [block out on the FT]
+  actors: defender, attacker
+  t0: first frame of the box-out
+  rule: >-
+    From the FT release proxy to t_rim + after_rim_s: a defender within lateral_m of an attacker's attacker-to-rim
+    segment, nearer the rim, with separation sep_min_m-sep_max_m, for >= min_duration_s, starting after the release
+    (the static lane alignment already has that geometry) while the attacker goes for the rim (his 7-frame mean r
+    drops by >= attacker_move_m in the window; nothing is boxed out if nobody crashes; a speed test sits at the
+    noise floor).
+  params:
+    after_rim_s: {value: 1.0, unit: s}
+    lateral_m: {value: 1.5, unit: m}
+    sep_min_m: {value: 0.3, unit: m}
+    sep_max_m: {value: 1.2, unit: m}
+    attacker_move_m: {value: 0.8, unit: m}
+  min_duration_s: 0.5
+  outputs: pairs, duration
+  confidence: 'window_conf(min(p sep in band, p nearer the rim)) x q_obj(defender, attacker)'
+  noise: Contact clusters and centroid swaps.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.6', supports: FT roles}
+  status: proposal
+  detector: detect_ft_box_out
+
+- id: take_foul
+  ref: TRN-A19
+  level: action
+  name: Take foul / foul to stop the clock / foul up 3 / stop-the-break foul
+  aliases: [take foul, intentional foul to stop the break]
+  actors: defender, handler
+  t0: foul time (PBP)
+  rule: >-
+    A PBP personal foul on the defense with a tracked approach (closing speed >= 2.0 m/s, distance <= 1.0 m within
+    2.0 s before the whistle, no shot). Classes: foul_to_stop_clock, foul_up_3 (leading by 3, <= 12 s),
+    transition_take_foul / stop_break_foul (numbers advantage active, before t_scoring_zone).
+  params: {}
+  min_duration_s: null
+  outputs: class, clocks
+  confidence: needs PBP foul alignment
+  noise: Foul type is not inferable from XY.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.4', supports: foul up 3}
+  status: proposal
+  needs_data: true
+  detector: detect_take_foul (returns [])
+
+- id: tag_and_recover
+  ref: TRN-A20 (new, skeptic missing list)
+  level: action
+  name: Tag and recover on a leak-out
+  aliases: [tag the leaker]
+  actors: defender, leaker
+  t0: tag frame
+  rule: >-
+    While the ball is at y > half_y after t0_poss: a defender comes within tag_m of the leak_out runner, and within
+    recover_s afterwards closes on the ball at >= recover_mps for >= 0.3 s while moving away from the leaker.
+  params:
+    tag_m: {value: 2.0, unit: m}
+    recover_s: {value: 1.5, unit: s}
+    recover_mps: {value: 1.0, unit: m/s}
+  min_duration_s: null
+  outputs: tag frame, recover onset
+  confidence: 'window_conf(p_below(dist, tag_m)) over [tag, tag + 0.2 s] x window_conf(p_above(closing, recover_mps)) x q_obj(defender, leaker)'
+  noise: The leaker is often off-screen.
+  conflicts_resolved: []
+  sources: []
+  status: proposal
+  detector: detect_tag_and_recover
+# ============================================================================================== set components
+- id: primary_break
+  ref: TRN-S01
+  level: set_component
+  name: Primary break (numbers break)
+  aliases: [fast break, numbers break]
+  actors: team
+  t0: possession_change t0
+  rule: >-
+    A numbers_advantage episode active when the ball crosses half_y (or started at y <= half_y) with a shot proxy
+    before the episode ends + grace_s, or a run_out whose shot follows within runout_shot_s of the run-out end with
+    no pull_back of the possession before the shot (loop 1, TRN-T05: a run-out pulled back and shot 10 s later is a
+    half-court possession). Flags prim_time_2_3s (shot within 3.0 s) and prim_time_3_9s. Name = '<start_type> ->
+    <advance_mode> -> <AvD> -> shot'.
+  params:
+    grace_s: {value: 0.5, unit: s}
+    runout_shot_s: {value: 3.0, unit: s, note: 'shot within this of the run-out end (loop 1, TRN-T05)'}
+  min_duration_s: null
+  outputs: name, action_sequence, config, time flags
+  confidence: 'min(possession_change conf, numbers_advantage conf)'
+  noise: Off-screen defenders inflate the advantage.
+  conflicts_resolved: ['Primary window 2-3 s (coaching) vs 3-9 s (Fotinakis): both flags.']
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.1, §3.1', supports: definitions}
+  status: canonical
+  detector: detect_primary_break
+
+- id: secondary_break
+  ref: TRN-S02
+  level: set_component
+  name: Secondary break, flow and pull-back
+  aliases: [secondary, flow]
+  actors: team
+  t0: first structured transition action
+  rule: >-
+    No primary_break, and >= 1 structured transition action (drag_screen, double_drag, trailer_pitch_back) before
+    defense_set or t0 + 12.0 s. flow when no interval >= stall_s with ball speed < 0.5 m/s follows before the next
+    action; otherwise pull_back -> half-court set.
+  params:
+    stall_s: {value: 1.0, unit: s}
+  min_duration_s: null
+  outputs: actions, flow flag
+  confidence: max conf of the structured actions
+  noise: Ball-speed stall needs the visible ball; handler proxy.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §2.1 Secondary, Flow', supports: thresholds}
+  status: proposal
+  detector: detect_secondary_break
+
+- id: early_offense_sequence
+  ref: TRN-S03
+  level: set_component
+  name: Early-offense naming grammar (compositional name + action sequence)
+  aliases: [early offense name]
+  actors: team
+  t0: possession_change t0
+  rule: >-
+    Name slots: [start_type] -> [outlet class | inbound] -> [advance: push | pass_ahead | walk] -> [break: primary |
+    secondary | none] -> [first early action: drag | 77 | pitch_back | none]. A missing slot gives a shorter name,
+    never a guessed one. action_sequence = every TRN event in the possession, ordered, with t - t0.
+  params: {}
+  min_duration_s: null
+  outputs: compositional_name, action_sequence, situation = transition_flow
+  confidence: possession_change conf
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:schema/tables/set_instances.yaml:219,240,409', supports: 'compositional_name, action_sequence'}
+  status: proposal
+  detector: detect_early_offense_sequence
+
+- id: push_after_make
+  ref: TRN-S04
+  level: set_component
+  name: Push after a made basket / made FT
+  aliases: [push off a make, quick inbound]
+  actors: inbounder, team
+  t0: t_net proxy (t_rim)
+  rule: >-
+    Start made_fg: inbound_delay = t_release - t_net <= quick_s AND t_cross_half - t_net <= cross_s. press_present
+    when >= 2 defenders at y > half_y at the release. Reported excluding end_of_period by default (needs clock).
+  params:
+    quick_s: {value: 2.0, unit: s}
+    cross_s: {value: 5.0, unit: s}
+  min_duration_s: null
+  outputs: inbound_delay, cross time, press_present
+  confidence: 'throw_in conf (t_net without ball z is a proxy: q_anchor 0.6 stored)'
+  noise: t_net needs ball z.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §7.4', supports: 'inbound <= 2.0 s, cross <= 5.0 s'}
+  status: canonical
+  detector: detect_push_after_make
+
+- id: passed_up_break
+  ref: TRN-S05
+  level: set_component
+  name: Passed-up break (declined / denied / failed)
+  aliases: [declined break]
+  actors: team
+  t0: frame the passed-up condition fires
+  rule: >-
+    Opportunity: a numbers_advantage episode starting no later than opp_s after the ball crosses half_y (t0 when it
+    never crosses; loop 1, TRN-T06: after a far-rim rebound the attackers count only near the ball, 2-3 s after t0).
+    Passed-up conditions: slow_crossing (t_cross_half > t0 +
+    slow_cross_s), held_ball (handler vbar(0.5) < held_mps for >= held_s before the crossing), pull_back with
+    advantage. Category: failed when the other team takes control (a hold >= control_min_s) after t0 and before the
+    defense-set time (else the set timeout) (implemented loop 1, TRN-T16), denied when a jam_rebounder or press_trap
+    occurred, declined otherwise.
+  params:
+    opp_s: {value: 1.5, unit: s, note: 'after t_cross_half (t0 if the ball never crosses), loop 1 TRN-T06'}
+    slow_cross_s: {value: 6.0, unit: s}
+    held_mps: {value: 1.0, unit: m/s}
+    held_s: {value: 1.0, unit: s}
+  min_duration_s: null
+  outputs: condition, category
+  confidence: 'numbers_advantage conf x condition probability'
+  noise: Ignored-runner relies on off-screen leaks (not implemented in V0).
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §8', supports: rules}
+  status: proposal
+  detector: detect_passed_up_break
+
+- id: defensive_transition_scheme
+  ref: TRN-S06
+  level: set_component
+  name: Defensive transition scheme (one back, two back, shooter back, send the house)
+  aliases: [floor balance scheme]
+  actors: shooting team
+  t0: t_rel
+  rule: >-
+    Per shot proxy by scene.defense, from shot_rebound_decision and safety: crash_n = CI; one_back: safety count ==
+    1 and crash_n >= 3; two_back: safety count == 2; shooter_back: shooter is the safety and crash_n >= 3;
+    send_house: crash_n >= 4 and no safety; everyone_back: crash_n <= 1; else balanced. no_mans_land = defenders at
+    y > half_y when the ball first reaches r <= 6.75.
+  params: {}
+  min_duration_s: null
+  outputs: label, crash_n, safety count, no_mans_land
+  confidence: mean of the member confs
+  noise: As shot_rebound_decision and safety.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/research/transition_full.md §9.8, §9.10', supports: conventions}
+  status: proposal
+  detector: detect_defensive_transition_scheme
+
+- id: press_active
+  ref: TRN-S07a
+  level: set_component
+  name: Press active (full-court pressure context)
+  aliases: [press, full-court press]
+  actors: defense
+  t0: first frame of the active interval
+  rule: >-
+    >= min_defenders defenders at y > half_y while the ball is at y > half_y AND the ball's nearest defender within
+    engage_m (F9.0); loop 4: only in an offense possession that started with a throw-in (t_disposal until the next
+    defense hold; a press is set against an inbound, after a live rebound or steal it is transition defense) and
+    counting only defenders that are not retreating (window speed toward their own rim < max_back_mps); enter after >= min_duration_s, exit after >= exit_s false. press_present_loose = >= 2 defenders
+    at y > half_y at a backcourt t_disposal (stored by press_break_alignment). Depth from the first engagement: full
+    (y >= 21.2598), three_quarter, half_court.
+  params:
+    min_defenders: {value: 3, unit: players}
+    engage_m: {value: 2.0, unit: m}
+    exit_s: {value: 1.0, unit: s}
+    max_back_mps: {value: 2.0, unit: m/s, note: 'loop 4: a backcourt defender counts only while his window speed toward his own rim is below this (= retreat.onset_mps: a retreating defender is getting back, not pressing)'}
+  min_duration_s: 0.5
+  outputs: interval, depth
+  confidence: 'window_conf(p_below(nearest defender distance, engage_m, sigma_dist)) x q_obj(ball)'
+  noise: Backcourt defenders before the inbound are often off-screen.
+  conflicts_resolved: ['Press presence F9.0 (>= 3 and an engaged handler defender) canonical; >= 2 loose stored.']
+  sources:
+  - {url: 'repo:docs/taxonomy/defense_full.md F9.0, A0', supports: press detection}
+  - {url: 'repo:config/named_spots.yaml#press_backcourt_zone', supports: region}
+  status: canonical
+  detector: detect_press_active
+
+- id: press_fall_back
+  ref: TRN-S07b
+  level: set_component
+  name: Press fall-back
+  aliases: [drop back]
+  actors: defense
+  t0: first frame with >= 4 defenders at y < fall_y_m after a press
+  rule: After a press_active interval, the first frame with >= min_defenders defenders at y < fall_y_m, held >= min_duration_s.
+  params:
+    min_defenders: {value: 4, unit: players}
+    fall_y_m: {value: 9.0, unit: m}
+  min_duration_s: 0.3
+  outputs: t - press end
+  confidence: 'window_conf(p of the count, Poisson-binomial) x q_obj(ball)'
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#press_backcourt_zone', supports: fall-back >= 4 at y < 9.0}
+  status: canonical
+  detector: detect_press_fall_back
+
+- id: press_break_alignment
+  ref: TRN-S08
+  level: set_component
+  name: Press-break alignment templates ('80', '60', 4-Across, Diamond)
+  aliases: [press break]
+  actors: 4 in-bounds attackers
+  t0: t_disposal
+  rule: >-
+    Backcourt throw-in with press_present_loose (>= 2 defenders at y > half_y at t_disposal). Snapshot = mean
+    positions over [t_disposal, t_disposal + snap_s]; minimum-cost matching of the 4 in-bounds attackers to each
+    template (and its x mirror); accept the best when mean error < max_err_m and the next template is worse by >=
+    margin_m. Templates (attacked-rim frame): 4_across (+-6, 20.5), (+-2, 20.5); 80 (-7, 12.5), (7, 12.5), (0, 4.0),
+    (2.5, 23.0); diamond (+-3, 21.26), (+-6.5, 12.7); 60 (0, 17.0), (+-6.5, 13.0), (3.0, 23.0).
+  params:
+    snap_s: {value: 0.5, unit: s}
+    max_err_m: {value: 1.8, unit: m}
+    margin_m: {value: 0.4, unit: m}
+  min_duration_s: null
+  outputs: template, fit error, margin, press_present_loose
+  confidence: 'Phi((max_err_m - err) / sigma_fit) x Phi(margin / sigma_fit), sigma_fit = median calibrated position sigma (K_CAL x sqrt(var_p)) of the four over the snapshot / 2 (loop 1, TRN-T16: was a hard-coded 0.3 m)'
+  noise: Templates come from coaching sources, not MSU-verified; unmatched instances go to clustering.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F12.2', supports: named press breaks}
+  status: proposal
+  detector: detect_press_break_alignment
+
+- id: blob_alignment
+  ref: TRN-S09
+  level: set_component
+  name: BLOB alignment
+  aliases: [baseline out of bounds, box, stack, line, 4 low]
+  actors: 4 in-bounds attackers
+  t0: t_disposal
+  rule: >-
+    Throw-in from behind the attacked end line (y <= END_Y). Snapshot = mean positions over the snap_s before the
+    first cut (an in-bounds attacker moving >= cut_mps for >= 3 frames) after t_disposal, else the last snap_s
+    before t_release (the set alignment, not the first cut). box: one attacker in blob_box_high on each side and one
+    in blob_box_low on each side; line: 4 with |dx| < line_dx_m; stack: >= 3 with |dx| < line_dx_m; 4_low: all four
+    at y <= 1.5 (four_low_band) with x spread >= spread_m; else other. Actions after release are matched by the set
+    family; name = 'BLOB <alignment> -> ...'.
+  params:
+    snap_s: {value: 0.5, unit: s}
+    cut_mps: {value: 1.5, unit: m/s}
+    line_dx_m: {value: 1.0, unit: m}
+    spread_m: {value: 9.0, unit: m}
+  min_duration_s: null
+  outputs: alignment, slots, safety (blob_safety_top) id
+  confidence: 'mean over the 4 of Phi(slot margin / sigma_p) x throw_in conf'
+  noise: Close clusters in the lane; identity swaps.
+  conflicts_resolved: ['BLOB spot: named_spots blob_designated_spot over offense §0.1.']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#blob_box_high, #blob_box_low, #four_low_band', supports: regions}
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.2', supports: templates}
+  status: proposal
+  detector: detect_blob_alignment
+
+- id: slob_alignment
+  ref: TRN-S10
+  level: set_component
+  name: SLOB alignment
+  aliases: [sideline out of bounds]
+  actors: 4 in-bounds attackers
+  t0: t_disposal
+  rule: >-
+    Throw-in from beyond a sideline (|x| >= SIDE_X). Snapshot as blob_alignment. line: 4 with |dx| < line_m or |dy|
+    < line_m; stack: >= 2 in slob_stack_region; box: two pairs with |dy| < line_m * 1.5 separated by >= 2.5 m in y;
+    else spread. backcourt flag when the thrower is at y > half_y.
+  params:
+    snap_s: {value: 0.5, unit: s}
+    cut_mps: {value: 1.5, unit: m/s}
+    line_m: {value: 1.0, unit: m}
+  min_duration_s: null
+  outputs: alignment, backcourt flag
+  confidence: 'mean slot margin probability x throw_in conf'
+  noise: Bench-side sideline partly occluded.
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#slob_stack_region', supports: stack region}
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.3', supports: templates}
+  status: proposal
+  detector: detect_slob_alignment
+
+- id: ato
+  ref: TRN-S11
+  level: set_component
+  name: ATO flag hook (after-timeout possession)
+  aliases: [after timeout]
+  actors: team
+  t0: t_disposal
+  rule: >-
+    ato = a PBP timeout whose next live-ball event is this possession's restart. Hook: the throw_in event carries
+    t_disposal; the PBP joiner sets ato, called_by, live_ball_timeout, backcourt_restart and the name prefix 'ATO
+    <BLOB|SLOB|backcourt|FT> -> ...'.
+  params: {}
+  min_duration_s: null
+  outputs: ato flags
+  confidence: PBP
+  noise: Media timeouts are not team-called.
+  conflicts_resolved: ['Backcourt ATO starts stay in the backcourt until Rule 5 is read fully.']
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/transition-opportunities', supports: plays after a timeout excluded}
+  status: proposal
+  needs_data: true
+  detector: detect_ato (returns [])
+
+- id: late_clock
+  ref: TRN-S12
+  level: set_component
+  name: Late clock mode
+  aliases: [end of shot clock]
+  actors: team
+  t0: shot clock = 10.0 s
+  rule: Needs shot_clock_s (clock_buckets); clear_out = >= 3 teammates move to r >= 6.6 away from the ball side within 2.0 s; bailout = FGA at <= 3.0 s.
+  params: {}
+  min_duration_s: null
+  outputs: switch time, clear_out, bailout
+  confidence: clock OCR
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:docs/taxonomy/offense_full.md F13.5', supports: end-of-clock switch}
+  status: proposal
+  needs_data: true
+  detector: detect_late_clock (returns [])
+
+- id: end_of_game
+  ref: TRN-S13
+  level: set_component
+  name: End-of-period / end-of-game situations
+  aliases: [2-for-1, last shot, catch and heave, tip only]
+  actors: team
+  t0: t_disposal or t0
+  rule: >-
+    Flags from clock_buckets with movement evidence: two_for_one_attempt, last_shot, catch_and_heave (canon_heave: r
+    > 12.0, game clock <= 3.0 s), tip_only_inbound (min clock <= 0.3 s), full_court_inbound_eog (home_run_inbound),
+    keep_away, intentional_ft_miss, down3 / up3 foul.
+  params: {}
+  min_duration_s: null
+  outputs: flags, clocks
+  confidence: clock OCR
+  noise: Tenths needed for the 0.3-s rule.
+  conflicts_resolved: ['Heave: canon_heave (r > 12.0, <= 3 s) over the pbpstats variant.']
+  sources:
+  - {url: 'repo:config/named_spots.yaml#canon_heave', supports: heave}
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 5 art. 19)', supports: tip-only}
+  status: proposal
+  needs_data: true
+  detector: detect_end_of_game (returns [])
+
+- id: jump_ball_alignment
+  ref: TRN-S14
+  level: set_component
+  name: Jump-ball alignment and tip play
+  aliases: [opening tip]
+  actors: all
+  t0: t_toss
+  rule: Snapshot at t_toss (needs ball z) of jump_ring_front / back, jump_ball_unrestricted and jump_ball_deep_safety counts per team; tip_play = >= 1 releaser and a tip to the attacking side.
+  params: {}
+  min_duration_s: null
+  outputs: counts, releasers, outcome
+  confidence: needs ball z
+  noise: Small sample (period starts).
+  conflicts_resolved: []
+  sources:
+  - {url: 'repo:config/named_spots.yaml#jump_ring_front, #jump_ball_deep_safety', supports: regions}
+  status: proposal
+  needs_data: true
+  detector: detect_jump_ball_alignment (returns [])
+
+- id: ft_alignment
+  ref: TRN-S15
+  level: set_component
+  name: Free-throw alignment
+  aliases: [FT lineup]
+  actors: all
+  t0: FT release proxy
+  rule: >-
+    At the FT release proxy (see ft_lane_entry): occupancy of ft_lane_space_1..3 and ft_lane_open_low per side and
+    team, ft_perimeter_top / wing, ft_leak_out, the shooter (ft_shooter); requires >= min_lane lane-space occupants.
+    A player is in the lane space with the largest margin when that margin is >= -space_hyst_m (multi-label
+    hysteresis convention; the spaces are 0.91 m deep).
+  params:
+    min_lane: {value: 3, unit: players}
+    space_hyst_m: {value: 0.2, unit: m}
+  min_duration_s: null
+  outputs: occupancy table, n_lane, leakers
+  confidence: 'mean P_in of the lane occupants x q_obj(shooter, ball)'
+  noise: Lane spaces are thin; probability-only labels.
+  conflicts_resolved: []
+  sources:
+  - {url: 'file://docs/rules/PRMBB_RulesBook.pdf (Rule 8-5)', supports: lane rules}
+  - {url: 'repo:config/named_spots.yaml#ft_lane_space_1', supports: spaces}
+  status: proposal
+  detector: detect_ft_alignment

@@ -1,0 +1,2179 @@
+family: ball_actions
+research_family: BALL ACTIONS
+version: 0.1.4
+date: '2026-10-22'
+owner: Mac session (msu-colab) for Aldemir
+status: proposal under the build freeze
+detectors: tools/specgen/movement/detectors/ball_actions.py
+tests: tests/movement/test_ball_actions.py
+frame: >-
+  Attacked-rim frame of config/named_spots.yaml 0.3.2 (metres, rim at the origin, +y toward half court).
+  29.97 fps, DT = 1001/30000 s; elapsed durations are (n_frames - 1) * DT. Positions are CA-RTS smoothed
+  stance centres (MP-04, mvlib.smooth); the ball is one smoothed track. Every spot label, zone and continuous
+  coordinate (d3, sd_paint_out) comes from named_spots.yaml through spotlib; this file never redefines a spot.
+conventions:
+  v_r: >-
+    Research v_r is negative toward the rim. mvlib.Kin.v_r is positive toward the rim, so detectors use
+    vr = -Kin.v_r and every v_r threshold below is in the research sign (negative = toward the rim).
+  stationary: >-
+    'Still' tests use the MP-09 chi-square statistic stationary_s2 < 5.99 (2 dof, 95%) per frame plus a
+    displacement bound over the window, never raw speed < 0.3-0.5 m/s (CA-RTS speed is Rician, biased up at rest).
+  confidence: see rule ba_confidence.
+  label_items: >-
+    Classifier items (drive_direction, drive_depth, entry_pass, rebound_control, ...) emit one event whose
+    kind is the item and whose attrs.label is the class; attrs.alternatives holds the class distribution and
+    attrs.status is 'unresolved' when the top two are within unresolved_margin.
+  needs_data: >-
+    Items marked detectable: needs_data have a detector that returns [] until the named input exists
+    (ball z, pose keypoints, PBP, restart state). They are never guessed from XY.
+checker_fixes:
+  BA-R0: impulse frame-difference segmenter dropped; flight/control from holder-proximity hysteresis on the CA-RTS ball track (ba_kinematics_noise).
+  BA-R0-sigma: sigma_v taken from the CA-RTS covariance x K_CAL (MP-09) instead of the white-noise windowed formula; measured variogram is a validation task.
+  BA-00: 0.4 s forward-window relative-speed gate (not 0.2 s) on the frames where the candidate is the nearest player; pass-completion team prior; team-change confirmation (0.6 s); exit after 2 frames beyond 1.5 m; occlusion hold 0.5 s; no flight spans a cut.
+  BA-14: hesitation restated (slow phase >= 0.3 s, displacement-deficit form) inside dribble_move_type (needs_ball_z).
+  BA-03: pickup = no bounce >= max(0.5 s, 1.5 x local period); band 1.0-5.5 Hz; method B gated on the CV ball-XY method (dribble_bounce, needs_ball_z).
+  BA-33: depth partition reordered rim > floater > paint > baseline_dead > outside_lane_short > short (complete).
+  BA-48: drive_pass parent with kick_out three / mid and dump_off children; 1.0 s window everywhere (BA-36 too).
+  BA-42: lob needs a lob target (catch r < 3.0 or receiver v_r <= -2.0); proxy needs air >= 0.7 s; high skip passes are not lobs.
+  BA-61: post gate restricted (post_area_rule or |x| <= 4.0 below the FT line), contact <= 1.2 m for >= 0.5 s, quiet holder; posture unknown without pose.
+  BA-63: not implemented in 0.1.0 (post moves deferred); fix recorded in open_questions.
+  BA-10: hand switch only with hand keypoints (dribble_move_type, needs pose).
+  BA-R1: min over criteria instead of product; candidates emitted on the point rule, no p >= 0.5 gate before calibration; PBP as log-odds.
+  BA-30: r_min <= 5.0 or d3_min <= -1.0 ceiling; 20 ft / 10 ft cited to Wikipedia only.
+  BA-35: contained = not beaten and rim-side on >= 90% of frames (no gain cap); recovered class added.
+  BA-40: handoff when air <= 0.3 s and players <= 1.5 m apart (no pass/handoff gap); CMU baseline had ball z.
+  BA-47: dribble_reversal separate item; swing on polar theta.
+  BA-60/BA-62: seal at phi >= 135 deg (= behind); one contact radius key (1.2 m) for seal and post-up.
+  BA-50: outlet 3.0 s with outlet_quick (<= 1.5 s, 6-15 m) flag.
+  BA-02: release kind order shot > lost > intercepted > pass.
+  summary-citations: NBA C&S numbers cited to Wikipedia Player_tracking_(NBA) only; nba_paint_touch flag added.
+missing_items_added:
+  - shot family (catch_and_shoot, pull_up, held_jumper, shot_release with gather) as XY proxies with alternatives
+  - turnover / steal (live_ball_turnover, pass_incomplete) and violations (violation_turnover, needs_data)
+  - rebounds (rebound_control); tip and box-out deferred to needs_ball_z / defense family
+  - fakes and footwork declared needs_data (pose)
+  - noise model and ball sigma tiers (ba_kinematics_noise)
+  - ground-truth test plan (validation field on every item and ba_validation_plan)
+  - camera-cut handling (touch rule and ba_kinematics_noise)
+  - jump ball / held ball (contested_ball) with the possession arrow from PBP
+  - precedence table (ba_precedence)
+items:
+# ======================================================================================
+# Rules (shared)
+# ======================================================================================
+- id: ba_kinematics_noise
+  research_id: BA-R0
+  level: rule
+  name: Ball-action kinematics and noise budget (shared)
+  aliases: [noise budget, windowed kinematics]
+  actors: all objects
+  t0: n/a
+  status: proposal
+  detectable: rule
+  rule: |
+    1. Players and ball are smoothed with the MP-04 CA-RTS smoother per segment (mvlib.smooth); a camera cut
+       or a gap > 2.0 s starts a new segment, and no FLIGHT, catch or release may span a segment edge
+       (frames with edge == 0 inside a free-ball interval make that interval 'unknown').
+    2. The ball is NOT segmented at impulses by frame differences (checker: a 3-frame velocity difference
+       fires on 70-92% of frames at sigma 0.3 m). Control and flight come from the holder-proximity
+       hysteresis of item touch; the smoother's lag at a catch or release (about 3-6 frames) is absorbed by
+       the refine step (back / forward extrapolation to d_bp = refine_radius_m) and by t0 tolerances.
+    3. Every speed / heading sigma is the CA-RTS covariance inflated by K_CAL = 1.8 (MP-09), times k_edge
+       near segment edges. The research windowed formula sigma_vW = sqrt(2) sigma_pos / W is kept only as an
+       upper bound (1.06 / 0.85 / 0.42 m/s at W 0.4 / 0.5 / 1.0 s, sigma_pos 0.3 m); the measured value
+       (0.16-0.68 m/s in the skeptic simulation) depends on the tracker's error autocorrelation and must be
+       measured from a variogram on static players and known-path drills, stored per sigma tier.
+    4. Ball sigma is tracked separately from player sigma (ball_sigma_tiers); the ball is small, blurred and
+       occluded, so its tier is usually one step worse than the players'.
+  params:
+    k_cal: {value: 1.8, unit: '1', note: MP-09 default until measured}
+    ball_sigma_tiers: {value: [0.15, 0.30, 0.50, 1.0], unit: m, note: named_spots rule_position_sigma_model tiers, applied to the ball separately}
+    sigma_vw_upper_w04: {value: 1.06, unit: m/s, note: white-noise bound at W 0.4 s, sigma 0.3 m}
+  min_duration_s: null
+  outputs: per-object smoothed x, y, v, a, var_p, var_v, edge, state (mvlib.Kin)
+  confidence: n/a (feeds every item)
+  noise: Correlated (AR) tracker noise inflates real velocity errors by up to 1.8x over the filter's own covariance; K_CAL covers this until measured.
+  conflicts_resolved:
+    - Instantaneous stationary cut-offs (0.3 / 0.5 / 0.6 m/s) are replaced by stationary_s2 < 5.99 plus displacement bounds.
+    - Impulse segmentation by 3-frame velocity differences is dropped (checker BA-R0).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: rule_position_sigma_model tiers 0.15 / 0.30 / 0.50 / 1.0 m}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/tools/specgen/movement/mvlib.py', supports: CA-RTS smoother, K_CAL 1.8, stationary_s2}
+  validation: Variogram of residuals on static players and on known-path drills (both games with footage); report per sigma tier.
+
+- id: ba_confidence
+  research_id: BA-R1
+  level: rule
+  name: Confidence model for every ball-action instance
+  aliases: [p_raw, calibration]
+  actors: n/a
+  t0: n/a
+  status: proposal
+  detectable: rule
+  rule: |
+    conf = P_cond x c_edge x c_gap (MP-16), clipped to [0, 1].
+    - P_cond = MIN over the item's criteria of each criterion's probability: Phi(margin / sigma) for point
+      tests, mvlib.window_conf of the per-frame probability for held conditions, Phi((run - min) / 1 frame)
+      for duration criteria, class frequency under position sampling for label items. Min, not product:
+      criteria share the same noisy positions (r and v_r of one track), and a product of 5 criteria at a
+      1-sigma margin is 0.42, which the checker showed cuts recall.
+    - c_edge = mvlib.edge_factor at t0 (0 within 5 frames of a segment edge), c_gap = mvlib.gap_factor
+      over [start, end] (0.8 with short interpolation, 0 with long gaps).
+    - Composite items take the min of their constituents (MP-16 actions).
+    - Emission: an instance is emitted when its point-estimate rule holds; conf is attached and is NOT a gate
+      before calibration. Review queue: conf < 0.6 (requirements.md:587).
+    - Calibration: isotonic regression per item, conf -> p_cal, on >= 50 labels per class from >= 5 games
+      (R-ST-10); until then conf is a raw score.
+    - PBP anchoring (ba_pbp_anchor) enters as a likelihood ratio in log-odds, never as a multiplier.
+    - Label items: argmax class; status 'unresolved' when the top two are within unresolved_margin (0.15).
+    - Every event carries the criteria margins it was decided on (attrs.criteria where computed).
+  params:
+    unresolved_margin: {value: 0.15, unit: probability}
+    review_below: {value: 0.6, unit: probability}
+  min_duration_s: null
+  outputs: Event.conf, attrs.criteria, attrs.status, attrs.alternatives
+  confidence: n/a
+  noise: Independence is not assumed; isotonic calibration absorbs residual mis-scaling per item.
+  conflicts_resolved:
+    - Research p_raw = product of Phi with a 0.5 gate replaced by min and no pre-calibration gate (checker BA-R1).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: rule_probabilistic_membership P_in = Phi(d / sigma), sampling for complex regions}
+  validation: Reliability diagram per item on the labelled sample; ECE <= 0.05 after isotonic calibration.
+
+- id: ba_precedence
+  research_id: new (checker missing item)
+  level: rule
+  name: Precedence when several ball actions claim the same frames
+  aliases: [overlap resolution]
+  actors: n/a
+  t0: n/a
+  status: proposal
+  detectable: rule
+  rule: |
+    Applied by consumers (composition engine); detectors emit every instance with its conf.
+    1. shot_release beats pass on the same flight; an alley-oop catch (teammate control <= 0.4 s after the
+       ball reaches the rim, at r <= 1.5 m) makes the flight a pass (lob_pass), not a shot.
+    2. Handoff exchange (air <= 0.3 s, players <= 1.5 m apart) beats pass; handoffs belong to the screens family.
+    3. post_up beats drive and isolation for the same touch (post_iso is a post_up attribute).
+    4. kick_out / dump_off (drive or post source) beat swing_pass and skip_pass as the pass's role; skip_pass
+       and swing_pass stay as geometric attributes of the same pass.
+    5. A reversal by skip is reported once as ball_reversal(via=skip); the skip_pass event is kept.
+    6. catch_and_shoot / pull_up / held_jumper are mutually exclusive for one shot (decided by inferred
+       dribble and touch time); a stationary-dribble pull-up cannot be separated from a held jumper without
+       ball z, so held_jumper carries both alternatives.
+    7. drive_outcome uses the first of: shot, kick_out, dump_off, other pass, turnover, reset within 1.0 s.
+    8. A team change of control without a shot is a live_ball_turnover; after a shot it is a rebound.
+  params: {}
+  min_duration_s: null
+  outputs: n/a
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: 'DHO thresholds, drive-and-kick 1 s window'}
+  validation: Count overlapping claims per possession on labelled games; every overlap must resolve to one terminal label.
+
+- id: ba_pbp_anchor
+  research_id: BA-R2
+  level: rule
+  name: PBP anchoring, blind and anchored outputs
+  aliases: [anchoring]
+  actors: n/a
+  t0: n/a
+  status: proposal
+  detectable: needs_data
+  needs: [pbp]
+  rule: |
+    Every ball action is produced blind first. Anchoring matches CBBD rows (1 s resolution) with a Hungarian
+    assignment on time: shot +-2.0 s, turnover / steal +-2.0 s of a LOOSE or opponent control, assist =
+    the last completed pass to the shooter in the chance, DREB = the control flip. Anchoring changes conf by
+    a likelihood ratio in log-odds (proposal: LR 3 for a matching row, 1/3 for a contradicting row) and never
+    moves frames by more than 1.0 s. Both versions are stored; disagreements go to cv_events_unmatched (R-SR-14).
+  params:
+    shot_window_s: {value: 2.0, unit: s}
+    turnover_window_s: {value: 2.0, unit: s}
+    max_shift_s: {value: 1.0, unit: s}
+    lr_match: {value: 3.0, unit: '1', note: proposal}
+  min_duration_s: null
+  outputs: blind and anchored rows, anchor_event_id, disagreement flag
+  confidence: log-odds update of conf
+  noise: PBP clock errors and late logging; Hungarian matching, not nearest.
+  conflicts_resolved:
+    - Research 1.15 / 0.7 multipliers replaced by log-odds (checker BA-R1).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/passes.yaml', supports: blind / anchored / none column}
+  validation: Agreement rate blind vs anchored per item on games with PBP.
+
+- id: ba_validation_plan
+  research_id: new (checker missing item)
+  level: rule
+  name: Ground-truth test plan for the family
+  aliases: [acceptance]
+  actors: n/a
+  t0: n/a
+  status: proposal
+  detectable: rule
+  rule: |
+    V0 (now): synthetic scenarios (sim.scenario, sigma_p 0.3 m, fixed seeds) with a positive and a negative
+    case per detector (tests/movement/test_ball_actions.py).
+    V1: SportVU 2015-16 (ball z present) for control, pass, catch, release, shot and dribble presence; z
+    gives the truth for bounce / lob / dribble count that XY proxies are scored against.
+    V2: 'MSU footage (UConn, Louisville webm): >= 50 labelled instances per class from >= 5 games (R-ST-10),'
+    with explicit hard sets: dribbles through traffic, inbounds, overhead skips, bounce passes to cutters,
+    handoffs vs short passes, post catches vs wing catches with the defender rim-side.
+    Acceptance (proposal): holder correct on >= 97% of visible in-control frames per ball sigma tier; passes
+    >= 95% recall and precision (baseline 72% / 85.8%, CMU 2020, SportVU with z); drives >= 90% found,
+    direction >= 95%; post-up >= 85% F1; C&S vs pull-up >= 90% where dribble presence is visible.
+  params:
+    min_labels_per_class: {value: 50, unit: count}
+    min_games: {value: 5, unit: count}
+  min_duration_s: null
+  outputs: n/a
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: 546 passes, 72% found, 85.8% precision; one game; ball z used}
+  validation: n/a
+
+# ======================================================================================
+# L0 / L1: control state and ball events
+# ======================================================================================
+- id: touch
+  research_id: BA-00 + BA-04
+  level: primitive
+  name: Ball control segment (holder state) and touch record
+  aliases: [possession state, ball holder, touch, R-BL-02, R-BL-03, R-EV-04]
+  actors: {holder: player, team: offense|defense}
+  t0: refined catch frame when the touch follows a flight (else the first control frame)
+  status: canonical
+  detectable: xy
+  rule: |
+    d_bp(t) = |ball_xy - player_xy| (smoothed). Decode per frame, all ten players:
+    - Enter control by p: d_bp <= enter_radius_m for enter_frames consecutive frames, p nearest to the ball by
+      >= nearest_margin_m over every other player, and the minimum |v_ball - v_p| over the frames of the
+      rel_speed_window_s after the run start on which p is the nearest player and the ball is within
+      enter_radius_m of him is <= rel_speed_max_mps (a pass flying past a defender in the lane is his only
+      while fast; once it sits with the receiver it is the receiver's; a catch, even a 0.2 s
+      one-touch that the smoother smears to ~4 m/s, matches his velocity at some frame; a failed gate
+      restarts the run on the next frame).
+    - Stay while d_bp <= exit_radius_m; exit after exit_frames consecutive frames beyond it (segment ends at
+      the last frame inside). Ball unobserved: hold the state for occlusion_hold_s, then close.
+    - Takeover (handoff, strip): another player within enter_radius_m and nearer than the holder by
+      nearest_margin_m for takeover_frames frames (same velocity gate) takes control at the run start.
+    - Entry team prior: when the nearest player belongs to the team that last controlled the ball and
+      every rival within nearest_margin_m is an opponent, the margin is waived (pass-completion prior; a
+      defender in contact with the receiver must not take the catch).
+    - Same-player segments separated by <= merge_gap_s with ball travel < merge_max_travel_m are merged.
+    - Team-change confirmation: a segment of one team shorter than team_change_confirm_s between two
+      segments of the other team is contact (deflection, reach-in, a defender next to a driver whose
+      smoothed ball lags), not a possession change; it is dropped and the holder's segments on both sides
+      are merged when <= contact_merge_max_s apart.
+    - Segments shorter than min_touch_s are taps (not touches); flights pass through them.
+    Free-ball interval between two segments: 'exchange' (adjacent, no free frame), 'flight' (mean smoothed
+    ball speed over the first 3 free frames >= flight_min_speed_mps and the ball moving away from the
+    releaser), 'loose' otherwise, 'unknown' when it contains a segment edge (cut) or unobserved ball.
+    Refine: release = the later of (a) the last frame within refine_window_s before the control end with
+    d_bp <= refine_radius_m and (b) the control end minus (exit_radius - refine_radius) / v, with v = ball
+    travel / air between the control frames; catch = the earlier of the mirrored pair. (a) is right for
+    slow exchanges (handoffs, pitches) where (b) over-corrects, (b) when noise pushes the ball beyond
+    0.5 m for a few frames next to the hands. Flight travel and
+    air time are measured between the refined frames (the control frames sit 1.5 m and 1.0 m from the
+    hands, which would understate short passes by up to 2.5 m).
+    Touch record: start_kind {pass, handoff, steal, interception, rebound, loose_ball, regather, clip_start,
+    unknown}; end_kind {pass, shot, handoff, turnover, lost, pass_unresolved, regather, dead, unknown};
+    touch_time_s = last control frame - t0.
+    changes_loop1: rim finishes split a segment (BA-T1, rim_finish_* params); a short opponent segment followed by a slow receding ball (BA-T3, deflect_*) or by a shot flight (BA-T10) is contact.
+    changes_loop2: offence possession prior (BA-T10b, possession_prior_frac): a defence segment with one offensive player within exit_radius_m on >= that fraction of its frames is that player's control (contact), except after a shot-like flight; handoff cut (BA-T11b): consecutive teammates' segments are split at their closest approach when it is <= pass.handoff_max_dist_m with the ball within exit_radius_m of both (an exchange); the BA-T3 deflection test also applies when the recoverer's control is adjacent (BA-T3b).
+    changes_loop3: the prior is not applied to a real steal (BA-T10c): when the next control is the defence's, is itself not absorbed and is not reached on a shot-like path at the attacked rim, or when the ball moves >= possession_prior_upcourt_m away from the rim over the segment; the team-change confirmation runs again after the prior (BA-T3c).
+  params:
+    enter_radius_m: {value: 1.0, unit: m, note: proposal (2.4 sigma_rel at 0.3 m)}
+    exit_radius_m: {value: 1.5, unit: m, note: R-IV-13}
+    enter_frames: {value: 3, unit: frames}
+    takeover_frames: {value: 9, unit: frames, note: 0.3 s; a takeover from a current holder must persist (tie-ups, contact)}
+    exit_frames: {value: 2, unit: frames}
+    nearest_margin_m: {value: 0.3, unit: m}
+    rel_speed_max_mps: {value: 4.0, unit: m/s}
+    rel_speed_window_s: {value: 0.4, unit: s, note: checker BA-00 (>= 0.4 s)}
+    occlusion_hold_s: {value: 0.5, unit: s}
+    min_touch_s: {value: 0.1, unit: s}
+    flight_min_speed_mps: {value: 3.0, unit: m/s}
+    loose_min_s: {value: 0.3, unit: s}
+    refine_radius_m: {value: 0.5, unit: m}
+    refine_window_s: {value: 0.5, unit: s}
+    merge_gap_s: {value: 0.2, unit: s}
+    merge_max_travel_m: {value: 1.0, unit: m}
+    team_change_confirm_s: {value: 0.6, unit: s, note: proposal}
+    contact_merge_max_s: {value: 1.0, unit: s}
+    rim_finish_reach_m: {value: 0.75, unit: m, note: 'changes_loop1 BA-T1: ball r at which a close finish is released (= shot_release rim_reach_m)'}
+    rim_finish_holder_gap_m: {value: 0.4, unit: m, note: 'BA-T1: holder stance at least this much farther from the rim than the ball'}
+    rim_finish_approach_m: {value: 0.5, unit: m, note: 'BA-T1: ball r must have fallen by this much ...'}
+    rim_finish_approach_s: {value: 0.5, unit: s, note: 'BA-T1: ... over this window'}
+    rim_finish_resume_s: {value: 0.6, unit: s, note: 'BA-T1: the finisher''s control resumes this long after the rim frame (own rebound)'}
+    rim_finish_releaser_r_max_m: {value: 2.5, unit: m, note: 'BA-T1: a free interval reaching the rim from a releaser this close is a flight even when slow'}
+    deflect_recede_m: {value: 0.6, unit: m, note: 'changes_loop1 BA-T3: ball recedes from the deflector by this much over his segment'}
+    deflect_max_s: {value: 1.5, unit: s, note: 'BA-T3: longest segment that can still be a deflection contact'}
+    deflect_slow_frames: {value: 9, unit: frames, note: 'BA-T3: window after the segment over which the mean ball speed is < flight_min_speed_mps'}
+    clip_start_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T18: a touch starting this close to the clip start is start_kind clip_start'}
+    possession_prior_frac: {value: 0.8, unit: fraction, note: 'changes_loop2 BA-T10b: a defence segment with one offensive player within exit_radius_m of the ball on >= this fraction of its frames is that player''s control (offence possession prior)'}
+    possession_prior_frontcourt_r_m: {value: 7.5, unit: m, note: 'changes_loop4 BA-R4h: the possession prior favours the defence list (its players absorb an offence-list segment) when the ball at the segment start is within this distance of the defence list''s basket (its half-court offence, about the 3-point distance); otherwise it favours the offence list as before. On real SportVU clips the fixed offence-list prior handed passes of the far-basket team to a nearby offence-list defender (false live-ball turnovers)'}
+    possession_prior_lead_m: {value: 0.0, unit: m, note: 'changes_loop4 BA-R4i (loop-3 open item, guard a): guard (a) frees a defence segment only when, over the last possession_prior_lead_s, the ball is on average at least this much nearer the defender than the absorbing offensive player (0.3 lost quick strip-and-outlets, P1 and l3_strip_outlet, where the victim stays glued to the stripper)'}
+    possession_prior_lead_s: {value: 0.3, unit: s, note: 'changes_loop4 BA-R4i: window at the end of the defence segment for the lead test of guard (a)'}
+    possession_prior_upcourt_m: {value: 3.0, unit: m, note: 'changes_loop3 BA-T10c: the prior is not applied when the ball moves at least this much away from the attacked rim over the defence segment (a stealer heading up-court with the victim chasing); absorbed contact segments move it <= 1.0 m outward on the harness (max over 1980 scenes), real chased steals 4.5-5.6 m'}
+    rim_goalside_min_players: {value: 4, unit: players, note: 'changes_loop4 BA-R4b: the goal-side vote is used only when both teams have at least this many players tracked; with 2-3 per side one help defender behind his man or a trap outweighs the team shape (adversarial 2-on-2 scenes N01 / N07 voted the wrong basket on 21 / 24 and 24 / 24 seeds)'}
+    rim_goalside_min_s: {value: 1.0, unit: s, note: 'changes_loop4 BA-R4b: the goal-side vote (frames with all players in one half where the defence list is nearer that half''s basket than the offence list, minus frames where it is not; signed by which half) decides the team baskets when its absolute net reaches this; otherwise the BA-R4a control-frame fallback runs. On 194 real SportVU clock-running chunks it agrees with the per-half basket of each team on every decided chunk (1 short chunk undecided), clean and at added noise 0.5 m'}
+  min_duration_s: 0.1
+  outputs: touch events (holder, team, start_kind, end_kind, touch_time_s, x, y, spot); per-frame holder array; free-ball intervals
+  confidence: window_conf of P(d_bp <= exit radius) over the segment x c_edge(ball) x c_gap(ball)
+  noise: >-
+    sigma_rel ~ 0.42 m raw; after smoothing, AR tracker noise still leaves pair-distance errors of
+    0.2-0.5 m that persist for ~1 s (V0 sim), so a defender in contact with the receiver or the driver is
+    regularly measured nearer to the ball than the holder - hence the team prior and the team-change
+    confirmation. The ball and the holder are smoothed separately: under hard acceleration (> ~15 m/s^2)
+    their CA-RTS lags differ by up to 1.7 m (V0 sim), which can drop control for a few frames. The 1.0 m
+    enter gate fires late by <= 3 frames; the smoother spreads a 20 m/s pass over ~10 frames; a 0.2 s
+    one-touch is smeared to a ~4 m/s relative-speed minimum (the gate's margin).
+  conflicts_resolved:
+    - Possession radius R-IV-13 1.5 m vs squared2020 3 ft (0.91 m) -> hysteresis 1.0 m enter / 1.5 m exit.
+    - HMM decode is the target; this hard-threshold decoder is the reference implementation (proposal).
+  sources:
+    - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: 3 ft possession radius, PBP offence filter, failure modes (defenders, overhead passes, handoffs)}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-IV-13 holder within 1.5 m}
+    - {url: 'https://www.nba.com/stats/help/glossary', supports: Touches = gets and holds the ball}
+  validation: Holder accuracy per frame per ball sigma tier (SportVU, then MSU labels); target >= 97%.
+
+- id: team_possession
+  research_id: BA-00 (team_in_control)
+  level: primitive
+  name: Team in control
+  aliases: [possession, team_in_control]
+  actors: {team: offense|defense}
+  t0: first control frame of the team's first touch
+  status: canonical
+  detectable: xy
+  rule: |
+    Maximal run of consecutive touches by players of one team; flights, loose balls and shots between
+    teammates are bridged (an offensive rebound continues the possession). Ends at the first touch by the
+    other team. PBP possession changes (made FG, DREB, turnover, period end) anchor it (ba_pbp_anchor).
+  params:
+    min_s: {value: 0.1, unit: s}
+  min_duration_s: 0.1
+  outputs: team, holders, n_touches
+  confidence: min touch conf x c_edge(ball)
+  noise: A false defender touch splits a possession; the takeover margin limits it.
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: offence filter via change-of-possession events}
+  validation: Possession boundaries vs PBP change events.
+
+- id: ball_flight
+  research_id: BA-00 (FLIGHT)
+  level: primitive
+  name: Ball flight
+  aliases: [FLIGHT, air]
+  actors: {from: releaser, to: next controller or null}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    A free-ball interval of kind flight (touch rule) with travel >= min_travel_m and air >= min_air_s.
+    attrs.shot from shot_release; attrs.loose_s = longest slow run (< flight speed) before the next control.
+  params:
+    min_air_s: {value: 0.10, unit: s}
+    min_travel_m: {value: 1.0, unit: m}
+  min_duration_s: 0.1
+  outputs: from, to, travel_m, air_s, shot, loose_s
+  confidence: min(P(travel >= 1.0 m), releaser conf) x c_edge(ball) x c_gap(ball)
+  noise: Smoother lag shortens the measured air time by ~2-4 frames at each end; refine compensates.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: 'PASS: ball flight > 1.0 m'}
+  validation: Flight start / end vs SportVU ball z events.
+
+- id: loose_ball
+  research_id: BA-00 (LOOSE)
+  level: primitive
+  name: Loose ball
+  aliases: [LOOSE, free ball]
+  actors: {last_holder: player, recovered_by: player or null}
+  t0: first slow free frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Inside a free-ball interval: smoothed ball speed < max_speed_mps for >= min_s (hysteresis run).
+    changes_loop1 BA-T12: out-of-bounds frames are not loose.
+  params:
+    max_speed_mps: {value: 3.0, unit: m/s}
+    min_s: {value: 0.3, unit: s}
+  min_duration_s: 0.3
+  outputs: last_holder, recovered_by, after_shot, duration_s
+  confidence: window_conf of P(speed < 3.0) x c_edge x c_gap (ball)
+  noise: A ball bouncing near a player at low speed can be read as loose for a few frames before the enter run completes.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: ball_states enum (loose)}
+  validation: Loose-ball recoveries vs PBP turnovers / rebounds.
+
+- id: contested_ball
+  research_id: BA-00 (CONTESTED) + checker missing (jump ball / held ball)
+  level: primitive
+  name: Contested ball and held-ball candidate
+  aliases: [CONTESTED, tie-up, held ball, jump ball]
+  actors: {offense: player, defense: player}
+  t0: first contested frame
+  status: proposal
+  detectable: xy
+  rule: |
+    Ball slower than ball_max_speed_mps, the moving means (mean_window_s) of the nearest offensive and
+    the nearest defensive player's distances to the ball both <= radius_m and within margin_m of each
+    other (both on the ball, no unique controller), for >= min_frames frames (gaps <= max_gap_frames).
+    held_ball_candidate when it lasts >= held_ball_min_s. The research form (both within 1.0 m) fires on
+    ordinary on-ball defence: with AR tracking noise a defender 1.0 m from the ball is measured at
+    0.55-0.6 m for 0.3 s stretches, so the symmetric margin is what separates a tie-up (proposal). The
+    NCAA possession arrow (alternating
+    possession) and the jump-ball restart need PBP.
+    changes_loop1 BA-T4: the distance test above must coincide with a free-ball frame of the control decode or with the ball displaced toward the defender while both players and the ball are still (between_* / still_s2_max / ball_still_mps params, >= held_ball_min_s); edge events are dropped; attrs.basis.
+    changes_loop2 BA-T4b: a ball-between (tie-up) run starts where both players come to rest on the ball (onset_still_* / onset_search_s), not at the noisy distance-run start. A noise-tier-aware radius / lateral bound was tried and rejected (see changes_loop2).
+    changes_loop3 BA-T4c: attrs.noise_status (ok / noise_limited, noise_limited_pair_sigma_m) and attrs.pair_sigma_m; at the sigma_p 0.5 tier the item is noise-limited (P/R 0.30 / 0.30) and says so.
+  params:
+    radius_m: {value: 0.7, unit: m, note: proposal (research 1.0 m)}
+    mean_window_s: {value: 0.3, unit: s, note: moving mean of each distance against per-frame ball noise}
+    margin_m: {value: 0.45, unit: m}
+    max_gap_frames: {value: 9, unit: frames}
+    ball_max_speed_mps: {value: 3.0, unit: m/s}
+    min_frames: {value: 9, unit: frames, note: 0.3 s (research 3 frames fires on noise next to an on-ball defender)}
+    held_ball_min_s: {value: 0.5, unit: s}
+    between_proj_lo: {value: 0.35, unit: '1', note: 'changes_loop1 BA-T4: ball projection onto the O-D segment (0 = offence, 1 = defence) lower bound; the ball must be displaced toward the defender (a ball at the holder is guarded, not contested)'}
+    between_proj_hi: {value: 1.5, unit: '1', note: 'BA-T4: upper bound (> 1: the defender''s measured position is often on the ball at 0.3-0.6 m pair distances)'}
+    between_lateral_m: {value: 0.35, unit: m, note: 'BA-T4: max lateral offset of the moving-mean ball from the O-D segment'}
+    still_s2_max: {value: 5.99, unit: chi2 (2 dof), note: 'BA-T4: both players still (stationary_s2 below this on >= half the moving window)'}
+    ball_still_mps: {value: 1.5, unit: m/s, note: 'BA-T4: moving-mean ball speed below this for the ball-between basis'}
+    between_window_s: {value: 0.5, unit: s, note: 'BA-T4: moving-mean window for the ball-between geometry and ball speed (the pair is ~0.5 m apart, so per-frame projections are noise)'}
+    onset_lookback_s: {value: 0.3, unit: s, note: 'BA-T4: a confirmed free-ball run (and a ball-between run with no rest onset)  is extended over the enclosing distance run, back by at most this (the stillness test lags the arrival)'}
+    onset_still_mps: {value: 1.5, unit: m/s, note: 'changes_loop2 BA-T4b: a ball-between (tie-up) run starts where both players come to rest: the faster of their smoothed speeds below this ...'}
+    onset_still_s: {value: 0.3, unit: s, note: 'changes_loop2 BA-T4b: ... for this long ...'}
+    onset_still_gap_frames: {value: 2, unit: frames, note: 'changes_loop2 BA-T4b: gaps bridged inside the rest stretch'}
+    onset_search_s: {value: 1.0, unit: s, note: 'changes_loop2 BA-T4b: ... the rest stretch containing the confirmed run start, back by at most this (S20b onset within 0.3 s: 20 / 20 / 18 of 20 at sigma 0.2 / 0.3 / 0.5, against 7 / 6 / 5 for the distance-run start)'}
+    noise_limited_pair_sigma_m: {value: 0.24, unit: m, note: 'changes_loop3 BA-T4c: attrs.noise_status = noise_limited when the calibrated ball-player pair sigma at t0 exceeds this (sigma_p 0.2 / 0.3 / 0.5 tiers read 0.13 / 0.19 / 0.27-0.28 m on the harness); P/R at the 0.5 tier is 0.30 / 0.30, at the 0.2 / 0.3 tiers 0.86 / 0.90 and 0.62 / 0.75'}
+  min_duration_s: 0.1
+  outputs: offense, defense, held_ball_candidate, noise_status (ok / noise_limited), pair_sigma_m, possession_arrow (needs_pbp)
+  confidence: min window_conf of P(d <= radius) for both players x c_edge x c_gap (ball)
+  noise: >-
+    Weak at sigma 0.3 m with AR noise (pair-distance error ~0.24 m, MP-19). The 0.1.0 distance-only rule
+    had precision 0.02-0.05 in the independent test (60-80% false runs with an on-ball defender at 0.75-0.85 m,
+    not the 5/40 the V0 sweep reported at 1.0 m). With the changes_loop1 BA-T4 restatement (free-ball frame
+    or ball displaced toward the defender with both players still), tester harness, 10 seeds x mirrored:
+    P/R 0.48/0.50 at sigma 0.2, 0.25/0.30 at 0.3, 0.12/0.10 at 0.5. With the changes_loop2 BA-T4b rest onset:
+    0.86/0.90, 0.62/0.75, 0.30/0.30. At sigma 0.5 the moving-mean distances of a ball 0.3 m from both players
+    read 0.6-0.9 m, so most tie-ups fail the radius / projection gates; widening them with the pair sigma
+    was tried and lost more precision than it gained recall (see changes_loop2). Two bodies in contact: ID-swap risk.
+    PBP held-ball rows should anchor it; status stays proposal.
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: defenders within the radius get credited without a touch (failure mode)}
+  validation: Held-ball whistles in PBP vs held_ball_candidate.
+
+- id: catch
+  research_id: BA-01
+  level: primitive
+  name: Catch
+  aliases: [reception, touch start]
+  actors: {receiver: player, passer: player or null}
+  t0: refined catch frame (first control frame + (enter - refine radius) / ball speed)
+  status: canonical
+  detectable: xy
+  rule: |
+    First control of a touch that follows a FLIGHT or LOOSE interval. catch_on_move = mean smoothed speed
+    over speed_window_s after t0 >= on_move_speed_mps. Recorded: r, d3, spot, court_region, nearest
+    opponent and its closing speed over closing_window_s before t0.
+  params:
+    on_move_speed_mps: {value: 2.0, unit: m/s}
+    speed_window_s: {value: 0.4, unit: s}
+    closing_window_s: {value: 0.5, unit: s}
+  min_duration_s: 0.1
+  outputs: receiver, passer, catch_on_move, speed_mps, r, d3, spot, court_region, nearest_def_m, def_closing_mps
+  confidence: touch conf x c_edge(ball) x c_gap(ball)
+  noise: Catch frame jitter about +-2 frames; a deflection then recovery reads as a catch (deflection needs a changepoint test, open question).
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-BL-04 release / catch as frame index}
+  validation: Catch frame error vs SportVU / labelled frames (target |error| <= 3 frames on 90%).
+
+- id: release
+  research_id: BA-02
+  level: primitive
+  name: Release
+  aliases: [ball leaves hand]
+  actors: {holder: player}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Last control frame before a FLIGHT. release_kind (checker order): shot (shot_release) > lost (the flight
+    ends in a LOOSE phase >= loose_min_s) > intercepted (next control is an opponent) > pass (teammate);
+    'unresolved' when the ball leaves view with no next control. A flight back to the same player is a
+    regather, not a release (the CMU dribble-through-traffic error).
+    changes_loop2 T18b: the edge factor of a shot release is the shooter's (as in shot_release); the ball track
+    usually ends at the rim right after a finish, which gave conf 0.
+  params: {}
+  min_duration_s: null
+  outputs: release_kind, ball_speed_mps
+  confidence: touch conf x c_edge(ball)
+  noise: Ball occlusion at release delays control end by <= 3 frames; refine step back-extrapolates.
+  conflicts_resolved:
+    - "'lost' was unreachable in the research order (checker BA-02)."
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: pass start node needs a different next handler; dribbles through traffic were the main error}
+  validation: Release frame error vs labelled frames.
+
+- id: dribble_inferred
+  research_id: BA-03 (XY presence proxy)
+  level: primitive
+  name: Dribble presence inferred from handler travel
+  aliases: [dribble present, travel bound]
+  actors: {handler: player}
+  t0: start of the travelling run (walking back from the crossing while speed >= onset_speed_mps), not before the touch start
+  status: proposal
+  detectable: xy
+  rule: |
+    A holder cannot travel with the ball without dribbling. Pivot frame tp = catch + gather_allowance_s (two
+    gather steps; tp = first control frame when the touch did not start with an observed catch). End te =
+    last control frame - final_gather_s when the touch ends in a pass / shot / handoff / loss. If the
+    holder's stance centre leaves the circle of radius travel_bound_m around its tp position at any frame in
+    [tp, te], the touch contains >= 1 dribble. Stationary dribbles produce no XY evidence: absence of this
+    event means 'not evident', never 0 dribbles. Dribble COUNT needs ball z (dribble_bounce).
+    changes_loop1 BA-T7 / BA-T14: gather allowance only after a catch on the move; te from the refined release; onset walk-back also needs stationary_s2 >= onset_s2_min and (after a set catch) the stance outside the noise band onset_disp_k.
+  params:
+    gather_allowance_s: {value: 0.5, unit: s}
+    final_gather_s: {value: 0.5, unit: s}
+    travel_bound_m: {value: 1.2, unit: m, note: proposal; pivot stride about 0.6-0.8 m plus margin}
+    onset_speed_mps: {value: 1.0, unit: m/s}
+    catch_move_window_s: {value: 0.2, unit: s, note: 'changes_loop1 BA-T7: catch on the move = mean speed over this window after the catch >= catch.on_move_speed_mps; the gather allowance applies only then'}
+    onset_s2_min: {value: 5.99, unit: chi2 (2 dof), note: 'changes_loop1 BA-T14: onset walk-back also needs stationary_s2 >= this'}
+    onset_disp_k: {value: 1.0, unit: sigma, note: 'changes_loop1 BA-T14: walk-back stops where the stance is within onset_disp_k x sqrt(2) x calibrated sigma of the pivot position (noise band)'}
+  min_duration_s: null
+  outputs: handler, max_disp_m, dribble_count (unknown_needs_ball_z), method travel_bound
+  confidence: P(max displacement >= travel_bound) x c_edge x c_gap (handler)
+  noise: A catch on the move with a long gather can exceed the bound (false dribble); a stationary probe dribble is invisible.
+  conflicts_resolved:
+    - Research method B (ray oscillation) depends on how CV builds ball XY (open question); this proxy does not.
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: dribbling context 0 / 1 / 2 needs a dribble model}
+  validation: Against SportVU ball-z bounces - precision of 'present' per touch; recall reported separately for stationary dribbles.
+
+- id: dribble_bounce
+  research_id: BA-03
+  level: primitive
+  name: Dribble bounce, dribble segment, pickup
+  aliases: [dribble count, DRIBBLE_START, DRIBBLE_END, gather]
+  actors: {handler: player}
+  t0: bounce frame; pickup frame
+  status: proposal
+  detectable: needs_data
+  needs: [ball_z]
+  rule: |
+    With z: bounce at a local minimum z <= bounce_max_z_m with v_z sign change, >= min_bounce_gap_s after
+    the previous bounce, ball within 1.5 m of the holder. Pickup (checker fix): no bounce for >=
+    max(pickup_min_s, pickup_period_mult x local period); z >= 0.6 m only as support. Method B (no z, floor
+    homography ball XY only): band-pass the camera-ray offset at band_lo_hz-band_hi_hz, amplitude >= 0.4 m;
+    allowed only when the CV ball-XY method is recorded as floor homography of the ball pixel.
+  params:
+    bounce_max_z_m: {value: 0.30, unit: m}
+    min_bounce_gap_s: {value: 0.20, unit: s}
+    pickup_min_s: {value: 0.5, unit: s}
+    pickup_period_mult: {value: 1.5, unit: '1'}
+    band_lo_hz: {value: 1.0, unit: Hz}
+    band_hi_hz: {value: 5.5, unit: Hz, note: checker BA-03 (was 4.0)}
+    ray_amp_min_m: {value: 0.4, unit: m}
+  min_duration_s: 0.2
+  outputs: dribbles rows, dribble_count, pickup_ts, method {z, ray, pose}
+  confidence: Phi margins on z and spacing (when implemented)
+  noise: Occlusion in traffic -> dribble_count_partial.
+  conflicts_resolved:
+    - Pickup z >= 0.6 m for 0.35 s fired on every slow dribble (checker BA-03).
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: ball height used to separate bounce passes and dribbles}
+  validation: Dribble count exact on >= 85% of touches (R-BL-06) on SportVU.
+
+- id: dribble_move_type
+  research_id: BA-10..BA-20
+  level: primitive
+  name: Dribble-move types
+  aliases: [crossover, between the legs, behind the back, hesitation, in-and-out, spin, retreat, push, pound, snatch-back, hand switch]
+  actors: {handler: player}
+  t0: per move (move onset)
+  status: proposal
+  detectable: needs_data
+  needs: [ball_z, pose_hands]
+  rule: |
+    Scope decision: no dribble-move types from XY. With ball z (bounce frames) and hand keypoints:
+    - hand_switch: ball lateral offset changes side with |d lat| >= hand_switch_swing_m (checker BA-10),
+      axis from heading only when speed >= 2.5 m/s, else the rim axis; crossover / between-legs /
+      behind-back split by the forward offset of the bounce (+- 0.15 m) and pose.
+    - hesitation (checker BA-14): slow phase >= hesitation_min_slow_s, defined as a displacement deficit
+      >= hesitation_deficit_m against constant-speed extrapolation over 0.5 s, then re-acceleration.
+    - retreat: 'vr >= +1.0 m/s for >= 0.5 s and dr >= +1.0 m while dribbling; push: speed >= 4.0 m/s for'
+      >= 0.5 s with the bounce >= 0.6 m ahead; pound: period <= 0.45 s, apex <= hip; snatch-back: >= 1.0 m
+      back in <= 0.6 s with heading change >= 135 deg after >= 3.0 m/s.
+    The XY-only parts (retreat / push kinematics) are kinematics-family primitives on the handler.
+  params:
+    hand_switch_swing_m: {value: 0.8, unit: m}
+    hesitation_min_slow_s: {value: 0.3, unit: s}
+    hesitation_deficit_m: {value: 0.6, unit: m}
+    push_speed_mps: {value: 4.0, unit: m/s}
+    pound_period_max_s: {value: 0.45, unit: s}
+  min_duration_s: null
+  outputs: move_type, unresolved alternatives
+  confidence: n/a until z / pose exist
+  noise: XY hand switch fires ~8 false switches per minute under AR noise (checker BA-10).
+  conflicts_resolved:
+    - Hesitation 0.15 s stops are undetectable with a 0.4 s window (checker BA-14).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/vocab/actions_extra.yaml', supports: push >= 4.0 m/s, bounce >= 0.60 m ahead; pound < 1.0 m/s, period <= 0.45 s}
+    - {url: 'https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/', supports: two retreat dribbles can reclass a PnR as isolation}
+  validation: R-EV-05 >= 75% on resolved classes with the unresolved rate reported.
+
+# ======================================================================================
+# L2: drives
+# ======================================================================================
+- id: drive
+  research_id: BA-30
+  level: primitive
+  name: Drive
+  aliases: [DRIVE, penetration, attack the basket, R-EV-06, short_drive]
+  actors: {driver: offensive holder, defender: nearest defender at t0 (matchup proxy)}
+  t0: onset - first frame (walking back from the sustained run) with vr < onset_vr_mps, not before the touch start; end = t1 (end of the approach)
+  status: canonical
+  detectable: xy
+  rule: |
+    Inside one offensive touch (the holder controls the ball; travelling that far implies dribbling):
+    (a) a sustained run vr <= vr_max_mps for >= sustain_s (gaps <= run_max_gap_frames bridged);
+    (b) t0 = onset (above); search end = the first frame after the run where vr > 0 for >= retreat_s (or
+        the touch end: pickup / release / loss); r_min = minimum r on [t0, search end]; t1 = end of the
+        approach = first frame after the run with vr >= end_vr_mps, capped at the r-minimum frame (a
+        driver standing still at the end must not move t1 to a noise minimum; -1.0 rather than the
+        -0.5 onset value offsets the smoother's lag at the stop);
+    (c) start r(t0) >= start_r_min_m and gain r(t0) - r(t1) >= gain_min_m and depth ceiling
+        r_min <= r_min_max_m or d3(t1) <= d3_min_max_m (checker BA-30);
+    (d) mean vr over the run <= vr_max_mps, mean vr over the whole approach -(r(t0) - r(t1)) / (t1 - t0)
+        <= vr_max_mps (a slow walk-in with a few noisy fast frames is not a drive), and (t1 - t0) >=
+        min_duration_s.
+    short_drive subtype: short_start_r_min_m <= r(t0) < start_r_min_m and gain >= short_gain_min_m.
+    changes_loop2 BA-T14b: (b) after the s2-gated walk-back the onset continues up to onset_s2_lag_s while
+        vr < onset_lag_vr_mps in the low-noise tiers (calibrated sigma <= onset_s2_lag_sigma_max_m); te
+        (event t0 of drive_depth / drive_outcome) = first frame after the run's peak with vr above
+        end_vr_mps - end_vr_sigma_slope x (sigma - end_vr_sigma_ref_m), capped at t1; t1 itself (geometry) is
+        unchanged.
+    changes_loop3 BA-T14c: onset_lag_vr_mps 0.0 -> -0.2 (the allowance no longer runs on a still player's noise).
+    Flags: nba_drive (r0 >= 6.096 and r_min <= 3.048, not transition); closeout_attack (t0 <= 1.0 s after
+    a catch at which the nearest defender closed >= 3.0 m/s over 0.5 s); transition_drive (handler in the
+    backcourt within transition_lookback_s; proxy until the transition family's window exists).
+  params:
+    start_r_min_m: {value: 5.5, unit: m}
+    gain_min_m: {value: 3.0, unit: m, note: R-EV-06}
+    vr_max_mps: {value: -1.5, unit: m/s}
+    sustain_s: {value: 0.3, unit: s}
+    run_max_gap_frames: {value: 6, unit: frames}
+    onset_vr_mps: {value: -0.5, unit: m/s}
+    end_vr_mps: {value: -1.0, unit: m/s}
+    retreat_s: {value: 0.3, unit: s}
+    min_duration_s: {value: 0.5, unit: s}
+    r_min_max_m: {value: 5.0, unit: m, note: checker BA-30}
+    d3_min_max_m: {value: -1.0, unit: m, note: checker BA-30}
+    short_start_r_min_m: {value: 3.5, unit: m}
+    short_gain_min_m: {value: 2.0, unit: m}
+    nba_start_r_m: {value: 6.096, unit: m}
+    nba_rmin_m: {value: 3.048, unit: m}
+    closeout_window_s: {value: 1.0, unit: s}
+    closeout_speed_mps: {value: 3.0, unit: m/s}
+    transition_lookback_s: {value: 3.0, unit: s}
+    onset_s2_min: {value: 5.99, unit: chi2 (2 dof), note: 'changes_loop1 BA-T14: onset walk-back also needs stationary_s2 >= this'}
+    onset_s2_lag_s: {value: 0.2, unit: s, note: 'changes_loop2 BA-T14b: after the s2-gated walk-back, continue at most this much further while vr < onset_lag_vr_mps (chi-square latency and the slow ramp on a start from rest)'}
+    onset_lag_vr_mps: {value: -0.2, unit: m/s, note: 'changes_loop2 BA-T14b: during the onset_s2_lag_s allowance the walk-back continues while vr < this (the ramp from rest back to zero radial speed). changes_loop3 BA-T14c: 0.0 -> -0.2: after 2.6 s at rest (S17) the smoothed vr of a still player is below 0 on about half of the frames, so the allowance ran its full 0.2 s on noise; -0.2 keeps the S18 slow-ramp fix (drive at sigma 0.2 unchanged)'}
+    onset_s2_lag_sigma_max_m: {value: 0.15, unit: m, note: 'changes_loop2 BA-T14b: the onset_s2_lag_s allowance applies only when the driver''s calibrated position sigma at the onset is <= this (sigma_p 0.2 / 0.3 tiers: 0.09 / 0.12 m; 0.5 tier: 0.18 m)'}
+    end_vr_sigma_ref_m: {value: 0.09, unit: m, note: 'changes_loop2 BA-T14b: calibrated position sigma (sigma_p 0.2 tier) at which the approach-end time te uses end_vr_mps unchanged'}
+    end_vr_sigma_slope: {value: 11.0, unit: (m/s)/m, note: 'changes_loop2 BA-T14b: te threshold = end_vr_mps - this x (sigma - end_vr_sigma_ref_m); te (event t0 of drive_depth / drive_outcome) is the first frame after the run peak with vr above it, capped at t1. Fit on the harness drives: -1.0 / -1.5 / -2.0 m/s best at sigma_p 0.2 / 0.3 / 0.5'}
+    handoff_lookback_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T11: after a handoff the onset may walk back to the giver-receiver closest approach in [giver end - this, touch start]'}
+    closeout_closing_window_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T18: closing-speed window before the catch (was hard-coded)'}
+  min_duration_s: 0.5
+  outputs: driver, defender, subtype, start_r, r_min, gain_m, mean_v_r, duration_s, nba_drive, closeout_attack, transition_drive, start_spot, criteria, end_kind
+  confidence: min(P(start r), P(gain), window P(vr <= -1.5), P(duration), P(depth ceiling), touch conf) x c_edge x c_gap (driver)
+  noise: Gain test robust (3 m vs ~0.2 m smoothed sigma); onset jitter ~0.1-0.2 s (AR noise); post back-downs excluded by the 5.5 m start.
+  conflicts_resolved:
+    - NBA 20 ft -> 10 ft (offense_full, motion_starts) vs R-EV-06 3 m gain -> canonical 3 m gain + 5.5 m start + vr; nba_drive kept as a flag.
+    - No r_min ceiling labelled arc attacks as drives -> r_min <= 5.0 or d3 <= -1.0 (checker).
+  sources:
+    - {url: 'https://en.wikipedia.org/wiki/Player_tracking_(NBA)', supports: drive = touch starting >= 20 ft from the hoop dribbled within 10 ft, excluding fast breaks}
+    - {url: 'https://www.nba.com/stats/help/glossary', supports: drive = attack off the dribble in the half court (no distances given)}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/drives.yaml', supports: grain = gaining >= 3 m toward the rim}
+  validation: R-EV-06 drives found >= 90%; onset error <= 0.3 s on 90%.
+
+- id: drive_direction
+  research_id: BA-31 + BA-32
+  level: primitive
+  name: Drive direction (baseline / middle / straight / top) and side (left / right)
+  aliases: [drive_baseline, drive_middle, drive side]
+  actors: {driver: player}
+  t0: drive t0
+  status: canonical
+  detectable: xy
+  rule: |
+    (hx, hy) = driver at drive t0, (x, y) = driver at t1. Per position sample (samples, sigma = calibrated
+    position sigma at each end): 'baseline' if named_spots drive_baseline holds, else 'middle' if
+    drive_middle holds, else 'top' when |hx| < top_abs_x_m (both spots need |hx| >= 0.9), else 'straight'.
+    Label = argmax (unresolved within the margin). Side: u = unit start->rim, d = end - start,
+    lat = cross(u, d); left if lat > side_deadband_m, right if lat < -side_deadband_m, else straight.
+  params:
+    samples: {value: 256, unit: count}
+    unresolved_margin: {value: 0.15, unit: probability}
+    top_abs_x_m: {value: 0.9, unit: m, note: mirrors the |hx| >= 0.9 gate inside drive_baseline / drive_middle}
+    side_deadband_m: {value: 0.5, unit: m}
+  min_duration_s: null
+  outputs: label, status, alternatives, side, lateral_m
+  confidence: min(P(label), drive P_cond) x c_edge x c_gap
+  noise: 10 deg at r ~ 4 m is ~0.7 m lateral (several smoothed sigmas); sampling gives the boundary probability.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: drive_baseline / drive_middle relative entries}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/drives.yaml', supports: direction and side enums}
+  validation: R-EV-06 direction >= 95% on labelled drives.
+
+- id: drive_depth
+  research_id: BA-33
+  level: primitive
+  name: Drive depth class
+  aliases: [depth reached]
+  actors: {driver: player}
+  t0: drive t1 (end of the approach, where r_min is reached)
+  status: canonical
+  detectable: xy
+  rule: |
+    Complete partition at the r_min position (checker fix): rim (post_depth_deep) > floater (floater_zone)
+    > paint (paint) > baseline_dead (dunker_spot or short_corner) > outside_lane_short (post_depth_standard
+    outside the paint) > short (everything else). Class probability by position sampling.
+  params:
+    samples: {value: 256, unit: count}
+    unresolved_margin: {value: 0.15, unit: probability}
+  min_duration_s: null
+  outputs: label, status, alternatives, r_min, sd_paint_out
+  confidence: P(label) x c_edge x c_gap
+  noise: Near boundaries the sampled distribution is stored, not a boolean.
+  conflicts_resolved:
+    - floater class was unreachable behind paint; outside-lane 1.83-3.05 m had no class (checker BA-33).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: post_depth_deep, floater_zone, paint, dunker_spot, short_corner, post_depth_standard}
+  validation: Depth class vs labels on the probe grid and labelled drives.
+
+- id: paint_touch
+  research_id: BA-34
+  level: primitive
+  name: Paint touch
+  aliases: [PAINT_TOUCH]
+  actors: {holder: player}
+  t0: first touch frame with P_in(paint) >= p_in_min
+  status: canonical
+  detectable: xy
+  rule: |
+    Offensive touch with the holder's stance centre in the paint, P_in = Phi(-sd_paint_out / sigma) (named
+    spots continuous coordinate, half-plane case), >= p_in_min on one consecutive run of >= min_dwell_s
+    (gaps <= max_gap_frames) whose window confidence is also >= p_in_min (changes_loop1 BA-T15; 0.1.0 counted
+    cumulative frames, so noise flicker of a post on the block added up). One per touch. via = catch (caught in the lane), drive (a drive active), other. nba_paint_touch flag = caught
+    inside the lane (NBA glossary definition, comparability).
+  params:
+    min_dwell_s: {value: 0.2, unit: s}
+    p_in_min: {value: 0.5, unit: probability, note: 'changes_loop1 BA-T15: 0.7 was tried (early fires on a block post 2/5/10 -> 2/2/5 of 20 at sigma 0.2/0.3/0.5) but cut harness recall 0.97 -> 0.92 at sigma 0.3; kept at 0.5'}
+    max_gap_frames: {value: 2, unit: frames, note: 'changes_loop1 BA-T15: gaps bridged inside the consecutive in-paint run'}
+  min_duration_s: 0.2
+  outputs: holder, via, dwell_s, nba_paint_touch
+  confidence: window_conf of P_in over the qualifying run x c_edge x c_gap
+  noise: Without z the ball XY is biased along the camera ray, so the stance centre is used (not the ball).
+  conflicts_resolved:
+    - NBA Paint Touch (receives in the lane) differs from the 0.2 s dwell -> nba_paint_touch flag (checker).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: 'PAINT_TOUCH: ball inside the paint >= 0.2 s'}
+    - {url: 'https://www.nba.com/stats/help/glossary', supports: Paint touches = touches that start in the lane}
+  validation: Per-chance paint-touch counts vs labelled possessions.
+
+- id: drive_defender_reaction
+  research_id: BA-35
+  level: primitive
+  name: Drive defender reaction and help
+  aliases: [beaten, contained, recovered, help arrival]
+  actors: {driver: player, defender: nearest defender at t0 (matchup proxy), help: first other defender within help radius}
+  t0: drive t0
+  status: proposal
+  detectable: xy
+  rule: |
+    D = nearest defender at drive t0 (until defensive_matchups exists). beaten: r_driver < r_D -
+    beaten_margin_m and |driver - D| >= beaten_sep_m for >= beaten_min_s. recovered: beaten, then D rim-side
+    (r_D <= r_driver + rim_side_margin_m) again for >= recovered_min_s before t1. contained (checker fix): not
+    beaten and D rim-side on >= contained_frac of the drive frames (no gain cap). Else unresolved.
+    help = first other defender within help_radius_m of the driver during [t0, t1]; help_arrival_s.
+  params:
+    beaten_margin_m: {value: 0.5, unit: m}
+    beaten_sep_m: {value: 0.8, unit: m}
+    beaten_min_s: {value: 0.1, unit: s}
+    rim_side_margin_m: {value: 0.3, unit: m}
+    contained_frac: {value: 0.9, unit: fraction}
+    recovered_min_s: {value: 0.3, unit: s}
+    help_radius_m: {value: 1.5, unit: m, note: drives.yaml}
+  min_duration_s: null
+  outputs: label, help, help_arrival_s, matchup source
+  confidence: min(window P(beaten geometry) or mean P(rim-side), drive P_cond) x c_edge x c_gap; matchup confidence to be multiplied when available
+  noise: Bodies within 0.8 m risk ID swaps; matchup errors assign the wrong D.
+  conflicts_resolved:
+    - contained required gain < 3.5 m, leaving a gap with beaten (checker BA-35).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/drives.yaml', supports: help within 1.5 m; reaction enum contained, beaten, fouled, stripped}
+  validation: Reaction class vs labels; help arrival error <= 0.2 s.
+
+- id: drive_outcome
+  research_id: BA-36
+  level: action
+  name: Drive outcome
+  aliases: [drive result]
+  actors: {driver: player}
+  t0: drive t1
+  status: canonical
+  detectable: xy
+  rule: |
+    First of, from t0 to t1 + window_s: shot (shot_release), kick_out_pass (kick_out), dump_off_pass
+    (dump_off), other_pass, turnover (next control by the opponent); else reset when the driver's r returns
+    to >= reset_r_m within the window; else continue (or unresolved_clip_end). foul_drawn needs PBP.
+  params:
+    window_s: {value: 1.0, unit: s, note: unified with kick_out and dump_off (checker BA-48)}
+    reset_r_m: {value: 5.5, unit: m}
+  min_duration_s: null
+  outputs: label, foul_drawn (needs_pbp)
+  confidence: drive P_cond x c_edge x c_gap
+  noise: Inherits from its parts.
+  conflicts_resolved:
+    - BA-36 1.5 s vs BA-48 1.0 s window -> 1.0 s everywhere.
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/drives.yaml', supports: result enum}
+  validation: Outcome vs labels on drives.
+
+# ======================================================================================
+# L2: passes
+# ======================================================================================
+- id: pass
+  research_id: BA-40 + BA-41
+  level: primitive
+  name: Completed pass (with delivery)
+  aliases: ['PASS(a->b)', one_touch, off_dribble, pitch]
+  actors: {passer: player, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Touch of A, FLIGHT, touch of teammate B != A with no LOOSE phase >= loose_min_s, travel >= min_travel_m,
+    air >= min_air_s. Handoff (excluded, screens family): air <= handoff_max_air_s and |A - B| <=
+    handoff_max_dist_m at the exchange (checker BA-40 closes the pass/handoff gap); adjacent control
+    segments with no free frame are handoffs too.
+    delivery: one_touch if A caught the ball and released <= one_touch_max_s later; off_dribble_inferred if
+    A's inferred dribble ended <= off_dribble_max_s before the final gather; else from_hold.
+    pitch flag: air in [pitch_air_min_s, pitch_air_max_s] and travel in [pitch_dist_min_m, pitch_dist_max_m].
+    lane_openness_m = nearest defender's distance to the release-catch segment at mid-flight.
+    advantage_pass: receiver's nearest defender at the catch >= open_dist_m and >= the passer's at release +
+    advantage_gain_m.
+    changes_loop1 BA-T11: handoff distance is the closest approach over [A.b - handoff_lookback_s, B.a]; travel <= handoff_max_travel_m with that approach <= handoff_max_dist_m is a handoff.
+  params:
+    min_travel_m: {value: 1.0, unit: m}
+    min_air_s: {value: 0.10, unit: s}
+    handoff_max_air_s: {value: 0.3, unit: s, note: offense_full A11.18}
+    handoff_max_dist_m: {value: 1.5, unit: m, note: checker BA-40}
+    one_touch_max_s: {value: 0.30, unit: s}
+    off_dribble_max_s: {value: 0.30, unit: s}
+    pitch_air_min_s: {value: 0.3, unit: s}
+    pitch_air_max_s: {value: 0.7, unit: s}
+    pitch_dist_min_m: {value: 1.0, unit: m}
+    pitch_dist_max_m: {value: 3.5, unit: m}
+    open_dist_m: {value: 1.83, unit: m, note: 6 ft closely guarded}
+    advantage_gain_m: {value: 0.5, unit: m}
+    handoff_lookback_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T11: handoff distance = closest approach over [passer end - this, receiver start]'}
+    handoff_max_travel_m: {value: 1.5, unit: m, note: 'BA-T11: ball travel <= this with closest approach <= handoff_max_dist_m is a handoff whatever the air time'}
+  min_duration_s: 0.1
+  outputs: passer, receiver, distance_m, travel_m, air_s, speed_mps, delivery, pitch, lane_openness_m, passer_def_m, receiver_def_m, advantage_pass, release / catch xy, spots, catch_region
+  confidence: min(passer conf, receiver conf, P(travel >= 1.0), P(air >= 0.1)) x c_edge(ball) x c_gap(ball)
+  noise: Overhead passes without z can look like a catch by a player under the flight (velocity gate blocks most); deflections need a changepoint test (open question).
+  conflicts_resolved:
+    - Pass vs handoff gap at 1.0-1.5 m (checker BA-40).
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: pass detection logic and the 72% / 85.8% baseline (SportVU with ball z)}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/vocab/actions_extra.yaml', supports: one_touch / off_dribble <= 0.30 s}
+  validation: Pass recall / precision >= 95 / 95 on visible passes.
+
+- id: pass_incomplete
+  research_id: BA-40 (incomplete)
+  level: primitive
+  name: Incomplete pass (intercepted / thrown away)
+  aliases: [interception, bad pass, thrown away]
+  actors: {passer: player, intended: teammate or null, defender: interceptor or null}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    A non-shot FLIGHT whose next control is an opponent with no LOOSE phase (intercepted), or whose ball
+    crosses out of bounds (named_spots court_region out_of_bounds: thrown_away_oob), or that ends in a LOOSE
+    phase >= loose_min_s before another player's control (thrown_away_loose). Intended receiver = teammate
+    with the smallest angle between the release heading (first 4 flight frames) and his bearing, if <
+    intended_max_angle_deg. Deflections need a changepoint test (open question).
+  params:
+    intended_max_angle_deg: {value: 20, unit: deg}
+    heading_frames: {value: 4, unit: frames, note: 'changes_loop1 BA-T18: release heading measured over this many frames (was hard-coded)'}
+  min_duration_s: null
+  outputs: label, intended, intended_angle_deg
+  confidence: passer conf (and interceptor conf) x c_edge(ball) x c_gap(ball)
+  noise: Out-of-bounds needs the ball observed past the line; balls leaving view stay unresolved.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: PASS ending in b's control}
+  validation: Against PBP bad-pass turnovers and steals.
+
+- id: lob_pass
+  research_id: BA-42
+  level: primitive
+  name: Lob pass (XY proxy)
+  aliases: [LOB, alley-oop pass, R-ST-26]
+  actors: {passer: player, receiver: teammate}
+  t0: refined release frame
+  status: proposal
+  detectable: xy
+  rule: |
+    With z: apex >= 3.5 m (R-ST-26); not implemented here. Without z, a completed pass is a lob when
+    (tof) air >= tof_min_s, distance <= tof_max_dist_m and a lob target (checker): catch r < target_r_max_m
+    or receiver vr (mean 0.4 s before catch) <= target_vr_max_mps; or
+    (proxy) catch r < proxy_catch_r_m with receiver vr <= proxy_vr_mps and air >= proxy_min_air_s.
+    A long pass without a lob target (high skip) is not a lob. No-bounce check needs z. apex estimate =
+    g T^2 / 8 above release (equal release / catch heights). lob_to_rim flag = catch r < 1.5 m.
+    changes_loop1 BA-T13: air time corrected by refine_radius / speed at both ends (closing speed at the catch) before the tof test.
+  params:
+    tof_min_s: {value: 1.03, unit: s, note: g T^2 / 8 = 1.30 m above a ~2.2 m release}
+    tof_max_dist_m: {value: 12.0, unit: m}
+    target_r_max_m: {value: 3.0, unit: m}
+    target_vr_max_mps: {value: -2.0, unit: m/s}
+    proxy_catch_r_m: {value: 1.5, unit: m}
+    proxy_vr_mps: {value: -3.0, unit: m/s}
+    proxy_min_air_s: {value: 0.7, unit: s}
+    catch_jitter_frames: {value: 2, unit: frames}
+    max_conf_xy: {value: 0.8, unit: probability, note: 'multiplier on the lob conf without z (changes_loop1 BA-T18: it was described as a cap but is applied as a factor)'}
+    receiver_vr_window_s: {value: 0.4, unit: s, note: 'changes_loop1 BA-T18: receiver v_r averaged over this window before the catch (was hard-coded)'}
+    lob_to_rim_r_m: {value: 1.5, unit: m, note: 'BA-T18: lob_to_rim flag radius (was hard-coded)'}
+  min_duration_s: null
+  outputs: method {tof, proxy}, apex_above_release_est_m, catch_r, receiver_v_r, lob_to_rim, bounce_checked (needs_ball_z)
+  confidence: min(P(air), P(target), pass conf) x max_conf_xy x c_edge x c_gap (ball)
+  noise: The proxy also matches bounce passes to cutters (no z); report precision on that hard set.
+  conflicts_resolved:
+    - motion_starts apex > 3.5 AND r < 1.5 vs R-ST-26 OR form -> OR form plus the lob_to_rim flag.
+    - Apex-only and time-of-flight routes matched high skip passes (checker BA-42).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-ST-26 lob apex >= 3.5 m or proxy (catch r < 1.5 moving rimward >= 3 m/s)}
+  validation: Precision on bounce passes to cutters and on overhead skips (SportVU z truth).
+
+- id: pass_height_type
+  research_id: BA-43 + BA-44
+  level: primitive
+  name: Bounce / chest / overhead pass
+  aliases: [bounce pass, chest pass, overhead pass]
+  actors: {passer: player, receiver: teammate}
+  t0: release frame
+  status: proposal
+  detectable: needs_data
+  needs: [ball_z, pose]
+  rule: |
+    bounce: a floor contact (z <= 0.30 m local minimum with a v_z sign change) inside the flight. chest /
+    overhead: release height and arm pose. Without z the research kink proxy (>= 15% speed drop) is too weak
+    (p <= 0.6) and confusable with a deflection; not emitted.
+  params:
+    bounce_max_z_m: {value: 0.30, unit: m}
+  min_duration_s: null
+  outputs: pass_type in {bounce, chest, overhead, unresolved}
+  confidence: n/a until z / pose exist
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: end node requires ball height > 1 ft (bounce passes excluded with z)}
+  validation: SportVU z.
+
+- id: skip_pass
+  research_id: BA-45
+  level: primitive
+  name: Skip pass
+  aliases: [SKIP, cross-court pass]
+  actors: {passer: player, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Completed pass crossing x = 0 with |x_catch - x_release| > min_dx_m, both ends at r >= min_r_m, in the
+    half court. skip_true: at least one perimeter teammate (r >= min_r_m) whose polar angle theta lies
+    strictly between passer and receiver by >= skipped_margin_deg on each side (theta, not the folded angle).
+  params:
+    min_dx_m: {value: 8.0, unit: m}
+    min_r_m: {value: 5.5, unit: m}
+    skipped_margin_deg: {value: 10, unit: deg}
+  min_duration_s: null
+  outputs: dx_m, skip_true, n_skipped, skipped_ids
+  confidence: min(pass conf, P(|dx| > 8), P(r >= 5.5)) x c_edge x c_gap (ball)
+  noise: 8 m is far above the noise; top-to-corner passes (|dx| ~ 7 m) are not skips.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: 'SKIP: crosses x = 0 with |dx| > 8 m'}
+  validation: Labelled skips; skip_true agreement with coaches' 'skipped a man'.
+
+- id: swing_pass
+  research_id: BA-47 (swing)
+  level: primitive
+  name: Swing pass
+  aliases: [swing]
+  actors: {passer: player, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Completed pass with both ends at r >= min_r_m, |theta_catch - theta_release| >= min_dtheta_deg (polar
+    angle, checker BA-47), and no perimeter teammate strictly between them (adjacent players).
+  params:
+    min_dtheta_deg: {value: 25, unit: deg}
+    min_r_m: {value: 5.5, unit: m}
+    adjacent_margin_deg: {value: 10, unit: deg}
+  min_duration_s: null
+  outputs: dtheta_deg
+  confidence: pass conf x c_edge x c_gap (ball)
+  noise: Low.
+  conflicts_resolved:
+    - swing on the folded angle t was side-less (checker BA-47) -> polar theta.
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: REVERSAL / swing context}
+  validation: Labelled swings.
+
+- id: entry_pass
+  research_id: BA-46
+  level: primitive
+  name: Entry passes (high-low, post entry, entry, wing entry)
+  aliases: [ENTRY, POST_ENTRY, high-low, feed the post, wing entry]
+  actors: {passer: player, receiver: teammate}
+  t0: refined release frame
+  status: proposal
+  detectable: xy
+  rule: |
+    Priority high_low > post_entry > entry > wing_entry:
+    - high_low: passer in high_post_strip or elbow, receiver in low_post / mid_post / deep_seal /
+      block_outside_lane, y_passer - y_receiver >= high_low_dy_m.
+    - post_entry: receiver in post_area_rule or r < post_receiver_r_m, a post_up starts at this catch (+-0.5 s)
+      or the receiver held a post_seal ending <= seal_lookback_s before the catch, passer r >= passer_min_r_m.
+    - entry: receiver r < post_receiver_r_m without post evidence (flash / cut catch).
+    - wing_entry: the team's first pass in the clip, from the top (m >= wing_top_m_deg, r >= wing_top_r_m)
+      to a wing (wing_m_lo_deg <= m <= wing_m_hi_deg, r >= wing_r_m); proxy for 'first pass after ALIGN'.
+    changes_loop1 BA-T16: 'entry' needs passer r >= passer_min_r_m, no passer drive within drive_exclusion_s, and not a lob_pass or dump_off.
+  params:
+    post_receiver_r_m: {value: 3.5, unit: m}
+    passer_min_r_m: {value: 4.5, unit: m}
+    high_low_dy_m: {value: 2.0, unit: m}
+    seal_lookback_s: {value: 1.0, unit: s}
+    wing_top_m_deg: {value: 60, unit: deg}
+    wing_top_r_m: {value: 6.0, unit: m}
+    wing_m_lo_deg: {value: 20, unit: deg}
+    wing_m_hi_deg: {value: 60, unit: deg}
+    wing_r_m: {value: 5.5, unit: m}
+    post_match_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T18: post_up event within this of the catch (was hard-coded)'}
+    drive_exclusion_s: {value: 1.0, unit: s, note: 'changes_loop1 BA-T16: no ''entry'' label when the passer drove within this before the release'}
+  min_duration_s: null
+  outputs: label, sealed_before, post_up_after, entry_angle_m_deg, posture (unknown_needs_pose)
+  confidence: pass conf x c_edge x c_gap (ball)
+  noise: Back-to-basket without pose is not used; post evidence comes from post_seal / post_up.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: 'ENTRY: receiver at r < 3.5 m (POST_ENTRY if back to the basket)'}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: post_area_rule, low_post, mid_post, elbow, high_post_strip, deep_seal}
+  validation: Labelled entries per class.
+
+- id: ball_reversal
+  research_id: BA-47
+  level: action
+  name: Ball reversal (by passes)
+  aliases: [REVERSAL, side change]
+  actors: {first_passer: player, final_receiver: teammate}
+  t0: release of the first pass of the sequence
+  status: canonical
+  detectable: xy
+  rule: |
+    The ball is in named_spots reversal_band on one side at the start of an offensive touch, then caught in
+    reversal_band on the opposite side via <= max_passes passes within max_s (first release to final catch),
+    every intermediate catch at r >= perimeter_r_m, no drive with gain >= drive_gain_block_m in between.
+    via: skip (one pass that is a skip_pass), one_pass, top_swing (an intermediate catch at m >= top_m_deg),
+    two_pass. Dribble reversals are a separate item.
+    changes_loop1 BA-T8: any drive overlapping [first passer's touch start, final catch] blocks.
+  params:
+    max_passes: {value: 2, unit: count}
+    max_s: {value: 4.0, unit: s}
+    perimeter_r_m: {value: 5.5, unit: m}
+    top_m_deg: {value: 60, unit: deg}
+    drive_gain_block_m: {value: 3.0, unit: m}
+  min_duration_s: null
+  outputs: via, n_passes, duration_s, start_side
+  confidence: min pass conf x c_edge x c_gap (ball)
+  noise: The band (|x| >= 3.0) avoids sign flips at the top of the key.
+  conflicts_resolved:
+    - motion_starts sign(x) change vs named_spots reversal_band -> the band.
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: reversal_band x >= 3.0 (mirrored)}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: ShotTracker reversals and PPP}
+  validation: Reversal counts per chance vs labels.
+
+- id: dribble_reversal
+  research_id: BA-47 (dribble_reversal)
+  level: action
+  name: Dribble reversal
+  aliases: [dribble side change]
+  actors: {handler: player}
+  t0: last frame in the starting reversal band
+  status: canonical
+  detectable: xy
+  rule: |
+    Within one offensive touch the holder's stance centre goes from reversal_band on one side to the
+    opposite side's band within max_s (checker BA-47: separate from pass reversals).
+  params:
+    max_s: {value: 4.0, unit: s}
+    samples: {value: 128, unit: count}
+  min_duration_s: null
+  outputs: start_side
+  confidence: min(P(start and end in opposite bands) by sampling, touch conf) x c_edge x c_gap
+  noise: Low; the band is 6 m wide.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: reversal_band}
+  validation: Labelled dribble reversals.
+
+- id: kick_out
+  research_id: BA-48 + BA-66
+  level: action
+  name: Kick-out pass (from a drive or a post-up)
+  aliases: [drive-and-kick pass, inside-out, post kick-out]
+  actors: {passer: driver or post, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    drive_pass parent (checker BA-48): a completed pass released during a drive or <= window_after_s after
+    its t1, passer r <= passer_max_r_m; or during / <= window_after_s after a post_up (source post).
+    Children: three (receiver d3 >= three_d3_min_m), mid (drive source, receiver r >= mid_r_min_m and d3 <
+    three_d3_min_m). Interior receivers are dump_off. Flags: corner (named_spots corner_three), open
+    (receiver's nearest defender >= open_dist_m).
+  params:
+    window_after_s: {value: 1.0, unit: s}
+    passer_max_r_m: {value: 5.0, unit: m}
+    three_d3_min_m: {value: -0.3, unit: m}
+    mid_r_min_m: {value: 3.05, unit: m}
+    open_dist_m: {value: 1.83, unit: m}
+  min_duration_s: null
+  outputs: subtype {three, mid}, source {drive, post}, corner, receiver_d3, receiver_def_m, open
+  confidence: min(pass conf, P(d3 class)) x c_edge x c_gap (ball)
+  noise: d3 near 0 stores the margin; P from the receiver sigma.
+  conflicts_resolved:
+    - offense_full r > 6.75 vs motion_starts r >= 6.6 -> named_spots d3 >= -0.3.
+    - kick_out_mid was unreachable under the parent gate (checker BA-48).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: drive-and-kick = DRIVE then PASS to r > 6.75 within 1 s}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: d3 continuous coordinate}
+  validation: Labelled drive-and-kick sequences.
+
+- id: dump_off
+  research_id: BA-49
+  level: action
+  name: Dump-off / drive-and-dish
+  aliases: [dump_off, dish]
+  actors: {passer: driver, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    Completed pass during or <= window_after_s after a drive, passer r <= passer_max_r_m, receiver catch at
+    r < receiver_r_max_m or in dunker_spot / baseline_dunker / upper_dunker. receiver_origin_spot = his
+    spot origin_lookback_s before the catch (dunker vs cutter vs roller).
+  params:
+    window_after_s: {value: 1.0, unit: s}
+    passer_max_r_m: {value: 5.0, unit: m}
+    receiver_r_max_m: {value: 2.5, unit: m}
+    origin_lookback_s: {value: 1.0, unit: s}
+  min_duration_s: null
+  outputs: catch_r, dunker_spot, receiver_origin_spot
+  confidence: min(pass conf, P(r < 2.5) or 1 in a dunker spot) x c_edge x c_gap (ball)
+  noise: Short passes in traffic risk ball occlusion.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: drive-and-dish = DRIVE then PASS to r < 2.5}
+  validation: Labelled drive-and-dish sequences.
+
+- id: potential_assist
+  research_id: BA-51
+  level: action
+  name: Potential assist
+  aliases: [R-EV-03]
+  actors: {passer: assister, receiver: shooter}
+  t0: release of the pass
+  status: canonical
+  detectable: xy
+  rule: |
+    Completed pass whose receiver's next action is a shot_release <= max_catch_to_shot_s after the catch.
+    The NBA '<= 1 dribble' cannot be counted without z: when a dribble is inferred, conf is multiplied by
+    p_le_one_dribble_if_dribbled (proposal prior). 'assist' needs a made FG (PBP).
+    changes_loop1 BA-T17: none when the inferred travel exceeds max_one_dribble_travel_m.
+  params:
+    max_catch_to_shot_s: {value: 2.0, unit: s, note: R-EV-03 project addition}
+    p_le_one_dribble_if_dribbled: {value: 0.5, unit: probability, note: proposal prior until z}
+    max_one_dribble_travel_m: {value: 4.5, unit: m, note: 'changes_loop1 BA-T17: inferred travel beyond this needs >= 2 dribbles; no potential assist'}
+  min_duration_s: null
+  outputs: shooter, catch_to_shot_s, dribbles (unknown_needs_ball_z), assist (needs_pbp_made_fg)
+  confidence: min(pass conf, shot conf, P(time)) x dribble prior x c_edge x c_gap (ball)
+  noise: A missed dribble creates a false potential assist.
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://www.nba.com/stats/help/glossary', supports: potential assist = pass to a teammate who shoots within 1 dribble}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/schema/tables/passes.yaml', supports: chain_role enum}
+  validation: Assists vs PBP assistedBy on made shots.
+
+- id: hockey_assist
+  research_id: BA-51
+  level: action
+  name: Hockey assist (secondary assist)
+  aliases: [secondary assist, hockey_assist_nba]
+  actors: {passer: hockey assister, receiver: assister}
+  t0: release of the pass to the assister
+  status: canonical
+  detectable: xy
+  rule: |
+    The completed pass to the potential assister immediately before his assist pass (same touch chain,
+    broad passes.yaml rule). hockey_assist_nba flag: the assister's touch <= nba_max_touch_s and no inferred
+    dribble (NBA: pass within 1 s without dribbling).
+  params:
+    nba_max_touch_s: {value: 1.0, unit: s}
+  min_duration_s: null
+  outputs: assister, shooter, hockey_assist_nba, assister_touch_s
+  confidence: min(pass conf, potential assist conf) x c_edge x c_gap (ball)
+  noise: Inherits the dribble-presence limits.
+  conflicts_resolved:
+    - NBA 1 s / 0 dribbles vs passes.yaml no time limit -> both stored (flag).
+  sources:
+    - {url: 'https://www.nba.com/stats/help/glossary', supports: secondary assist within 1 s without dribbling}
+  validation: NBA-flag subset vs NBA definition on SportVU.
+
+- id: outlet_pass
+  research_id: BA-50
+  level: primitive
+  name: Outlet pass
+  aliases: [outlet]
+  actors: {passer: defensive rebounder, receiver: teammate}
+  t0: refined release frame
+  status: canonical
+  detectable: xy
+  rule: |
+    The defensive rebounder's completed pass from the rebound touch <= max_after_rebound_s after rebound
+    control. outlet_quick flag: <= quick_s and length in [quick_min_len_m, quick_max_len_m] (offense_full).
+  params:
+    max_after_rebound_s: {value: 3.0, unit: s}
+    quick_s: {value: 1.5, unit: s}
+    quick_min_len_m: {value: 6.0, unit: m}
+    quick_max_len_m: {value: 15.0, unit: m}
+  min_duration_s: null
+  outputs: after_rebound_s, outlet_quick
+  confidence: min(pass conf, rebound conf) x c_edge x c_gap (ball)
+  noise: Depends on the shot proxy for the rebound.
+  conflicts_resolved:
+    - research 3.0 s vs offense_full 1.5 s and 6-15 m -> 3.0 s label + outlet_quick flag (checker BA-50).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: outlet <= 1.5 s after the DREB, 6-15 m}
+  validation: Labelled transitions.
+
+- id: throw_in_pass
+  research_id: BA-52
+  level: primitive
+  name: Throw-in pass flag
+  aliases: [inbound, is_throw_in]
+  actors: {passer: inbounder, receiver: teammate}
+  t0: release frame
+  status: proposal
+  detectable: needs_data
+  needs: [restart_state, pbp]
+  rule: |
+    A pass whose release follows a dead ball with the passer out of bounds (named_spots out_of_bounds) in a
+    restart state (transition family / state machine). Without the restart state an inbounder standing out
+    of bounds is ambiguous with a player saving a ball; not emitted. Inbounds were the main CMU misses.
+  params: {}
+  min_duration_s: null
+  outputs: is_throw_in
+  confidence: n/a until restart state exists
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://www.stat.cmu.edu/cmsac/conference/2020/assets/pdf/nba_tracking_data.pdf', supports: missed passes were mostly inbounds}
+  validation: Restart events in PBP.
+
+# ======================================================================================
+# L2: post play and isolation
+# ======================================================================================
+- id: post_seal
+  research_id: BA-60
+  level: primitive
+  name: Post seal
+  aliases: [SEAL, deep seal]
+  actors: {post: offensive non-holder, defender: nearest defender (mode over the run)}
+  t0: first frame of the qualifying run
+  status: proposal
+  detectable: xy
+  rule: |
+    Per frame, for every offensive player P who is not the holder while a teammate holds the ball:
+    (a) P in post_area_rule or r <= gate_r_m; (b) still: stationary_s2 < s2_max; (c) nearest defender D within
+    contact_radius_m; (d) phi = angle at P between (D - P) and (ball - P) >= phi_min_deg (D on the far side
+    from the ball; aligned with 'behind', checker BA-60/62); (e) ball at r >= ball_min_r_m. Run >= min_s
+    with gaps <= max_gap_frames, and displacement over the first min_s <= max_disp_m.
+    deep_seal flag (named_spots deep_seal); seal_strict flag = old motion_starts r < 2.5.
+  params:
+    min_s: {value: 0.8, unit: s}
+    gate_r_m: {value: 3.25, unit: m}
+    s2_max: {value: 5.99, unit: chi2(2)}
+    max_disp_m: {value: 0.8, unit: m}
+    contact_radius_m: {value: 1.2, unit: m, note: one contact radius key for seal and post-up}
+    phi_min_deg: {value: 135, unit: deg}
+    ball_min_r_m: {value: 4.5, unit: m}
+    max_gap_frames: {value: 3, unit: frames}
+    seal_strict_r_m: {value: 2.5, unit: m, note: 'changes_loop1 BA-T18: seal_strict flag radius (was hard-coded)'}
+  min_duration_s: 0.8
+  outputs: post, defender, phi_median_deg, duration_s, deep_seal, spot, seal_strict
+  confidence: min(window P(contact), window P(phi), fraction still, P(displacement)) x c_edge x c_gap (post)
+  noise: phi sigma ~30 deg at |P - D| 0.8 m, hence the persistence and the median phi; contact = ID-swap risk.
+  conflicts_resolved:
+    - motion_starts r < 2.5 and speed < 0.5 m/s -> post_area_rule or r <= 3.25 with stationary_s2 and displacement.
+    - geometry.py post_zone superseded by named_spots.
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/motion_starts.md', supports: 'SEAL: post r < 2.5 m, speed < 0.5 m/s for >= 0.8 s, body between defender and ball'}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: deep_seal, post_area_rule}
+  validation: Labelled seals; phi class vs coach labels.
+
+- id: post_up
+  research_id: BA-61 (+ BA-62 attribute)
+  level: primitive
+  name: Post-up (post touch)
+  aliases: [post up, post touch, back-to-basket, face-up post]
+  actors: {post: holder, defender: nearest defender at the catch, passer: entry passer or null}
+  t0: catch frame
+  status: proposal
+  detectable: xy
+  rule: |
+    An offensive touch starting with a catch / handoff / rebound / loose recovery, the holder at the catch
+    in post_area_rule or (|x| <= gate_abs_x_m and y <= FT_Y) (checker BA-61), and within window_s after the
+    catch: nearest defender within contact_radius_m on >= contact_min_s of frames, and a quiet sub-window
+    (displacement over quiet_s <= quiet_disp_m). Touch >= min_s unless it ends in a pass or shot.
+    post_depth (deep / standard / high named spots) and spot are attributes, not gates. defense_position
+    (BA-62): behind if the median angle at P between rim and D <= behind_max_deg, front if between ball and D
+    <= front_max_deg, else three_quarter. Posture (back-to-basket vs face-up) needs pose: 'unknown'.
+    changes_loop1 BA-T6: the |x| clause also needs r <= gate_r_max_m; rebound / loose-ball touches must last min_s.
+    changes_loop2 BA-T6b: attrs.defense_position_alternatives {behind, front, three_quarter} from the angle standard error (pair sigma / distance) and defense_position_status (unresolved_margin); the point label is unchanged.
+  params:
+    gate_abs_x_m: {value: 4.0, unit: m, note: checker BA-61 proposal}
+    contact_radius_m: {value: 1.2, unit: m}
+    contact_min_s: {value: 0.5, unit: s}
+    window_s: {value: 1.0, unit: s}
+    quiet_disp_m: {value: 0.5, unit: m}
+    quiet_s: {value: 0.5, unit: s}
+    min_s: {value: 1.0, unit: s}
+    behind_max_deg: {value: 45, unit: deg}
+    front_max_deg: {value: 45, unit: deg}
+    unresolved_margin: {value: 0.2, unit: probability, note: 'changes_loop2 BA-T6b: defense_position_status unresolved when the two most likely positions are within this'}
+    gate_r_max_m: {value: 4.2, unit: m, note: 'changes_loop1 BA-T6: the |x| / FT-line gate clause also needs r <= this'}
+  min_duration_s: 1.0
+  outputs: post, defender, passer, touch_duration_s, end_kind, post_depth, spot, defense_position, posture, defender_rim_side
+  confidence: min(window P(contact), P(quiet), touch conf) x c_edge x c_gap (post)
+  noise: Perimeter defence also puts D rim-side; the contact and quiet gates plus the post gate separate wing catches.
+  conflicts_resolved:
+    - offense_full r < 4 vs named_spots post_depth_high 4.572 -> gate as above; depth is an attribute (checker BA-61).
+  sources:
+    - {url: 'https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/', supports: post-up includes back-to-the-basket and face-up}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: post_area_rule, post_depth_*}
+  validation: Post-up F1 >= 85% with wing catches (defender rim-side) as the hard negative set.
+
+- id: isolation
+  research_id: BA-70
+  level: action
+  name: Isolation
+  aliases: [iso, ISO, 1-on-1, clear out]
+  actors: {handler: holder, defender: nearest defender at t0}
+  t0: first frame of the qualifying window
+  status: proposal
+  detectable: xy
+  rule: |
+    Offensive holder in control with the nearest defender <= defender_max_m and no teammate within
+    teammate_min_m, for >= min_s (gaps <= 2 frames). No screen: the screens table when available; proxy
+    here = no teammate within screen_proxy_m of the handler during the screen_lookback_s before t0.
+    clear flag: <= 1 teammate on the ball side (same x sign, |x| >= clear_abs_x_m) within clear_ballside_m.
+    from_broken_action: a retreat run (vr >= retreat_vr_mps for >= retreat_s) in the broken_lookback_s
+    before t0 (Synergy reclass).
+    changes_loop1 BA-T5: the window must contain an attack (drive, shot, or a tight dribble that gains toward the rim; attack_* params); spot-up drives after a catch and edge windows are excluded; attrs.attack.
+    changes_loop2: windows starting within touch.clip_start_s of the clip start are dropped (no screen lookback).
+    changes_loop3 BA-I1: the teammate-clear distance and the attacking-dribble gain bound widen with the handler's pair sigma (teammate_noise_k, attack_gain_noise_k).
+  params:
+    min_s: {value: 2.0, unit: s}
+    defender_max_m: {value: 2.5, unit: m}
+    teammate_min_m: {value: 4.0, unit: m}
+    teammate_noise_k: {value: 1.0, unit: sigma, note: 'changes_loop3 BA-I1: the no-teammate test needs dT >= teammate_min_m + this x the handler''s pair sigma (sqrt(2) x calibrated sigma): a teammate 3.3-3.8 m away read >= 4.0 m at sigma_p 0.5 and stretched a 1.6 s window to 2.0 s (S03). k = 2 shifted S26 windows past the clip-start drop at sigma 0.2 (2 new FPs), so 1.0'}
+    screen_lookback_s: {value: 3.0, unit: s}
+    screen_proxy_m: {value: 1.5, unit: m}
+    clear_ballside_m: {value: 6.0, unit: m}
+    clear_abs_x_m: {value: 1.0, unit: m}
+    broken_lookback_s: {value: 2.0, unit: s}
+    retreat_vr_mps: {value: 1.0, unit: m/s}
+    retreat_s: {value: 0.5, unit: s}
+    max_gap_frames: {value: 2, unit: frames, note: 'changes_loop1 BA-T18: gaps bridged in the qualifying run (was hard-coded)'}
+    attack_before_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T5: the attack may start this long before the window ...'}
+    attack_after_s: {value: 1.0, unit: s, note: 'BA-T5: ... or up to this long after it'}
+    attack_def_m: {value: 1.5, unit: m, note: 'BA-T5: dribble attack = inferred dribble with the defender within this ...'}
+    attack_dribble_min_s: {value: 1.0, unit: s, note: 'BA-T5: ... for at least this long'}
+    catch_drive_exclusion_s: {value: 1.0, unit: s, note: 'BA-T5: a window starting this soon after a catch that is followed this soon by a drive is a spot-up drive, not an iso'}
+    attack_dribble_gain_m: {value: 1.0, unit: m, note: 'BA-T5: the attacking dribble must also gain this much toward the rim (r at its start minus r_min); a dribble reversal with a shadowing defender is not an attack'}
+    attack_gain_noise_k: {value: 1.0, unit: sigma, note: 'changes_loop3 BA-I1: the attacking-dribble gain bound is attack_dribble_gain_m + this x the pair sigma at the window start (a start-minus-minimum of a noisy r series is biased upward); a dribble reversal across the top truly cuts 0.7 m inside the arc, and read >= 1.0 m at sigma_p 0.3 / 0.5 (S26)'}
+  min_duration_s: 2.0
+  outputs: handler, defender, clear, from_broken_action, screen_check, duration_s
+  confidence: min(window P(defender <= 2.5), window P(teammates >= 4.0), touch conf) x c_edge x c_gap
+  noise: A missed screen makes a false iso; the proxy is conservative (any teammate within 1.5 m blocks).
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://fansided.com/2017/09/08/nylon-calculus-understanding-synergy-play-type-data/', supports: isolation incl. broken actions}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/offense_full.md', supports: 'Isolation: >= 2 s holding with no screen'}
+  validation: Labelled isos; terminal play type vs Synergy-style labels.
+
+# ======================================================================================
+# L2: shots (XY proxies) and rebounds / turnovers
+# ======================================================================================
+- id: shot_release
+  research_id: BA-80
+  level: primitive
+  name: Shot release (XY proxy) and gather
+  aliases: [FGA, shot release]
+  actors: {shooter: player}
+  t0: refined release frame
+  status: proposal
+  detectable: xy
+  rule: |
+    A FLIGHT from a touch where (a) the ball's displacement over the first dir_window_s (or to the rim
+    frame) is within dir_tol_deg of the bearing to the rim (skipped when release r < layup_r_m); (b) the
+    ball reaches r <= rim_reach_m within max_flight_s; (c) the ball does not pass through: forward progress
+    along the release direction over pass_through_window_s after the rim frame <= pass_through_max_m; (d)
+    not an alley-oop: no teammate control at r <= oop_catch_r_m starting <= oop_window_s after the rim frame.
+    changes_loop4: each team's own basket (BA-R4b, attrs.basket); the oop guard needs another player's catch within
+    oop_catch_lag_s of the rim frame (BA-R4c); rim reach followed into the rebounder's control (BA-R4d).
+    With z (not here): release z >= 1.8 m and apex >= 3.05 m. PBP shot row within 2.0 s anchors.
+    gather = end of the inferred dribble run, else the catch. made / missed needs PBP or z.
+    changes_loop1: pass-through measured into the receiver's control (BA-T2); airball class (BA-T9, airball_* params, attrs.airball).
+    changes_loop2 BA-T9b: the airball direction, r_min and pass-through bounds widen by airball_noise_k standard errors.
+  params:
+    dir_tol_deg: {value: 15, unit: deg}
+    dir_window_s: {value: 0.3, unit: s}
+    rim_reach_m: {value: 0.75, unit: m}
+    max_flight_s: {value: 3.0, unit: s}
+    rim_reach_ext_s: {value: 0.3, unit: s, note: 'changes_loop4 BA-R4d: the rim-reach search follows the ball into the next player''s control for up to this long while its smoothed speed stays >= touch.flight_min_speed_mps; on real SportVU misses the rebounder''s 1.0 m enter run started 0.07-0.33 s before the ball reached the rim (r_min over the free 0.8-2.3 m, 0.0-0.6 m through the catch)'}
+    layup_r_m: {value: 1.5, unit: m}
+    pass_through_window_s: {value: 0.3, unit: s}
+    pass_through_max_m: {value: 1.5, unit: m}
+    oop_window_s: {value: 0.4, unit: s}
+    oop_catch_r_m: {value: 1.5, unit: m}
+    oop_catch_lag_s: {value: 0.15, unit: s, note: 'changes_loop4 BA-R4c: the alley-oop guard needs another player''s refined catch within this of the rim frame; on real SportVU misses a teammate (or the shooter, 11 of 37) gained the ball 0.2-0.6 s after the rim frame and the shot was dropped as an oop'}
+    airball_r_max_m: {value: 2.0, unit: m, note: 'changes_loop1 BA-T9: a short jumper whose ball r_min is <= this (and > rim_reach_m) ...'}
+    airball_release_r_min_m: {value: 3.0, unit: m, note: 'BA-T9: ... released from r >= this ...'}
+    airball_teammate_clear_m: {value: 1.5, unit: m, note: 'BA-T9: ... with no teammate this close to the ball at its rim-nearest frame is an airball FGA'}
+    airball_noise_k: {value: 2.0, unit: sigma, note: 'changes_loop2 BA-T9b: the airball direction / r_min / pass-through thresholds widen by this many standard errors (calibrated ball sigma at the rim frame; direction error sqrt(2) sigma / release displacement)'}
+    closing_window_s: {value: 0.5, unit: s, note: 'changes_loop1 BA-T18: nearest-defender closing speed window before the release (was hard-coded)'}
+  min_duration_s: null
+  outputs: release_r, three, spot, court_region, gather_frame, touch_time_before_s, touch_start, dribble_inferred, speed_at_gather, speed_at_release, nearest_def_m, def_closing_mps, criteria, made (needs data)
+  confidence: min(P(rim reach), P(direction), P(no pass-through), touch conf) x c_edge x c_gap (shooter)
+  noise: Floor-projected ball XY of a high arc is displaced along the camera ray; rim reach uses the projected track (open question on the CV ball method).
+  conflicts_resolved:
+    - A lob to a cutter satisfies (a) and (b); (d) resolves it (BA-90 rule).
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: R-EV-07 shot fields; C&S 0 dribbles and touch <= 2.0 s}
+  validation: Shots = PBP FGA in 100% of games (R-EV-07).
+
+- id: catch_and_shoot
+  research_id: BA-81
+  level: primitive
+  name: Catch-and-shoot (proxy)
+  aliases: [C&S, spot-up jumper]
+  actors: {shooter: player}
+  t0: release frame (window starts at the catch)
+  status: proposal
+  detectable: xy
+  rule: |
+    Jump shot (release r > min_r_m) from a touch that began with a pass / handoff catch, no inferred dribble,
+    catch-to-release <= max_touch_s. Without z a stationary dribble is invisible: conf x (1 -
+    p_hidden_dribble_short) for touches <= short_touch_s, x (1 - p_hidden_dribble_long) otherwise, and the
+    alternatives list pull_up with that probability. cs_set (catch speed <= set_speed_mps), cs_on_move
+    (>= move_speed_mps), one_motion (<= one_motion_s).
+  params:
+    min_r_m: {value: 3.048, unit: m}
+    max_touch_s: {value: 2.0, unit: s}
+    short_touch_s: {value: 1.0, unit: s}
+    p_hidden_dribble_short: {value: 0.05, unit: probability, note: proposal prior}
+    p_hidden_dribble_long: {value: 0.2, unit: probability, note: proposal prior}
+    set_speed_mps: {value: 1.0, unit: m/s}
+    move_speed_mps: {value: 2.0, unit: m/s}
+    one_motion_s: {value: 0.6, unit: s}
+    catch_speed_window_s: {value: 0.4, unit: s, note: 'changes_loop1 BA-T18: catch speed window for cs_set / cs_on_move (was hard-coded)'}
+  min_duration_s: null
+  outputs: cs_set, cs_on_move, one_motion, catch_speed_mps, touch_time_s, three, alternatives
+  confidence: min(shot conf, P(time <= 2.0)) x (1 - p_hidden) x c_edge x c_gap
+  noise: A missed dribble makes a pull-up look like C&S; the prior is the honest cost.
+  conflicts_resolved:
+    - NBA (Wikipedia), R-EV-07 and metrics.yaml agree on > 3.048 m, 0 dribbles, <= 2.0 s; held catches are their own family.
+  sources:
+    - {url: 'https://en.wikipedia.org/wiki/Player_tracking_(NBA)', supports: catch and shoot = jump shot outside 10 ft, possessed <= 2 s, no dribbles}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/metrics.yaml', supports: cs formula; held catch family}
+  validation: C&S vs pull-up >= 90% where dribble presence is visible (SportVU z truth).
+
+- id: pull_up
+  research_id: BA-82
+  level: primitive
+  name: Pull-up jumper (proxy)
+  aliases: [pull up, off-the-dribble jumper]
+  actors: {shooter: player}
+  t0: release frame
+  status: proposal
+  detectable: xy
+  rule: |
+    Jump shot (release r > min_r_m) from a touch with an inferred dribble (>= 1 dribble is certain).
+    on_move: speed at gather >= on_move_speed_mps.
+  params:
+    min_r_m: {value: 3.048, unit: m}
+    on_move_speed_mps: {value: 3.0, unit: m/s}
+  min_duration_s: null
+  outputs: on_move, three, touch_time_s
+  confidence: min(shot conf, dribble_inferred conf) x c_edge x c_gap
+  noise: Floaters (r 3.0-4.6 in the lane) overlap; floater rule deferred to the shot family.
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://en.wikipedia.org/wiki/Player_tracking_(NBA)', supports: pull-up = jump shot outside 10 ft with >= 1 dribble}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/metrics.yaml', supports: pull-up dribbles_before >= 1}
+  validation: As catch_and_shoot.
+
+- id: held_jumper
+  research_id: BA-91
+  level: primitive
+  name: Held jumper (proxy)
+  aliases: [held catch, triple-threat jumper]
+  actors: {shooter: player}
+  t0: release frame
+  status: proposal
+  detectable: xy
+  rule: |
+    Jump shot (release r > min_r_m), no inferred dribble, touch > max_touch_cs_s. A stationary dribble in a
+    long touch is invisible without z, so alternatives = {held_jumper: 1 - p_hidden_dribble,
+    pull_up_stationary_dribble: p_hidden_dribble}. jab-step needs pose.
+  params:
+    min_r_m: {value: 3.048, unit: m}
+    max_touch_cs_s: {value: 2.0, unit: s}
+    p_hidden_dribble: {value: 0.4, unit: probability, note: proposal prior}
+  min_duration_s: null
+  outputs: touch_time_s, jab (needs_pose), alternatives
+  confidence: shot conf x (1 - p_hidden_dribble) x c_edge x c_gap
+  noise: Dominated by the hidden-dribble ambiguity.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/metrics.yaml', supports: held catch (0 dribbles, touch > 2.0 s) own family}
+  validation: SportVU z.
+
+- id: rebound_control
+  research_id: new (checker missing item)
+  level: primitive
+  name: Rebound control
+  aliases: [rebound, OREB, DREB]
+  actors: {rebounder: player, shooter: player}
+  t0: refined catch frame of the rebounder
+  status: proposal
+  detectable: xy
+  rule: |
+    The first touch after a shot_release flight, starting <= max_after_shot_s after the release; offensive
+    when the rebounder is on the shooter's team, else defensive. Tips need ball z; box-outs are a defense
+    family item.
+  params:
+    max_after_shot_s: {value: 4.0, unit: s}
+    scramble_window_s: {value: 3.0, unit: s, note: 'changes_loop4 BA-R4f: a touch starting this soon after a shot''s rim frame ...'}
+    secure_min_s: {value: 1.5, unit: s, note: 'changes_loop4 BA-R4f: ... and lasting less than this is a rebound-scramble touch (tip, bobble), not a possession: losing it to the other team is not a live_ball_turnover and a flight from it is not a pass_incomplete. Real SportVU: 45 of 150 unmatched live-ball turnovers and 0 of 20 PBP-matched steals fall inside (3.0 s, 1.5 s)'}
+  min_duration_s: 0.1
+  outputs: label {offensive, defensive}, r, tip (needs_ball_z)
+  confidence: touch conf x c_edge x c_gap (rebounder)
+  noise: Depends on the shot proxy; PBP rebound rows anchor it.
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: ball_states and R-IV-13 holder rule used for the rebound control}
+  validation: Rebounds vs PBP rows.
+
+- id: live_ball_turnover
+  research_id: new (checker missing item)
+  level: primitive
+  name: Live-ball turnover (strip, interception, loose-ball recovery)
+  aliases: [steal, strip, interception]
+  actors: {lost_by: player, gained_by: opponent}
+  t0: first control frame of the opponent
+  status: proposal
+  detectable: xy
+  rule: |
+    Control passes to the other team without a shot: strip (takeover with no free frame), interception (a
+    flight with no LOOSE phase), loose_recovery (otherwise). PBP steal / turnover rows within 2.0 s anchor it.
+    changes_loop4 BA-R4f: not when the lost control is a rebound-scramble touch (rebound_control
+    scramble_window_s / secure_min_s).
+  params: {}
+  min_duration_s: null
+  outputs: label, pbp_check
+  confidence: min(both touch confs) x c_edge x c_gap (ball)
+  noise: A false defender touch (contact) creates a false strip; the takeover margin and frames limit it.
+  conflicts_resolved: []
+  sources:
+    - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: defender proximity without a touch is a known failure mode}
+  validation: Against PBP steals and turnovers.
+
+- id: violation_turnover
+  research_id: new (checker missing item)
+  level: primitive
+  name: Violations and dead-ball turnovers (travel, 5-second, offensive foul)
+  aliases: [travel, five seconds, charge]
+  actors: {player: offender}
+  t0: whistle (PBP)
+  status: proposal
+  detectable: needs_data
+  needs: [pbp, pose]
+  rule: |
+    Taken from PBP rows (turnover type) aligned to the touch in progress; travel needs foot keypoints,
+    closely-guarded counts need the referee's count. XY gives context only (the touch, its duration).
+  params: {}
+  min_duration_s: null
+  outputs: turnover_type from PBP, touch_id
+  confidence: PBP alignment
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/requirements_review/proposals_consolidated.yaml', supports: PBP-anchored event alignment (R-SR-14)}
+  validation: PBP.
+
+- id: fakes
+  research_id: new (checker missing item)
+  level: primitive
+  name: Pump fake, pass fake, ball-side fake handoff
+  aliases: [pump fake, shot fake, pass fake]
+  actors: {player: holder}
+  t0: fake onset
+  status: proposal
+  detectable: needs_data
+  needs: [pose, ball_z]
+  rule: |
+    Ball raised toward a shooting / passing position and lowered without release (ball z or wrist
+    keypoints). XY cannot see it; the fake handoff (no exchange) belongs to the screens family.
+  params: {}
+  min_duration_s: null
+  outputs: fake_type
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/vocab/actions_extra.yaml', supports: fakes vocabulary (jab_step, pump fake)}
+  validation: Pose-labelled clips.
+
+- id: footwork
+  research_id: new (checker missing item)
+  level: primitive
+  name: Euro step, jump stop, two-foot gather, pivot
+  aliases: [euro step, jump stop, gather step, pivot foot]
+  actors: {player: holder}
+  t0: gather frame
+  status: proposal
+  detectable: needs_data
+  needs: [pose_feet]
+  rule: |
+    Foot contacts from ankle keypoints; the research XY proxy for the euro (lateral >= 0.6 m with heading
+    change >= 45 deg) is a kinematics-family primitive on the handler and is not labelled as footwork here.
+  params: {}
+  min_duration_s: null
+  outputs: footwork type
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved: []
+  sources:
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/vocab/actions_extra.yaml', supports: footwork vocabulary}
+  validation: Pose-labelled clips.
+
+changes_loop1:
+  # Loop 1 of the independent test (tester harness: 33 scenarios x mirrored x 10 seeds x sigma_p 0.2 / 0.3 / 0.5).
+  # Metrics are label-level precision / recall from that harness, 0.1.0 -> 0.1.1, at sigma 0.2 unless stated.
+  - id: BA-T1 close finishes never release
+    what: >-
+      _split_rim_finishes after the decode: a control segment is cut at the first frame where ball r <=
+      rim_finish_reach_m, the holder's stance is >= rim_finish_holder_gap_m farther from the rim and the ball's
+      r fell >= rim_finish_approach_m over rim_finish_approach_s; release = last frame with d_bp <=
+      refine_radius_m before it; control resumes rim_finish_resume_s later. A free interval reaching the rim
+      from a releaser at r <= rim_finish_releaser_r_max_m is a flight even when slow. New touch params.
+    why: Layups, dunks, putbacks and post finishes are released inside the 1.5 m exit radius, so control never ended and no FGA existed.
+    evidence: shot_release R 0.72 -> 1.00 (0.96 at sigma 0.3), release R 0.90 -> 1.00, drive_outcome 0.61 -> 1.00, potential_assist R 0.71 -> 1.00; tests l1_layup (BA-T1 cases).
+  - id: BA-T2 dump-off under the rim read as a shot
+    what: Pass-through progress is measured on the ball track up to the receiver's control end (f.nxt.b), not the free-interval end.
+    why: The free interval stops at the receiver's 1.0 m enter run, hiding most of a drift pass's progress past the rim.
+    evidence: >-
+      dump_off R 0.05 -> 1.00, rebound_control P 0.76 -> 1.00, drive_outcome dump_off_pass restored; tests
+      l1_dump_baseline. The tester's extra far-side rule (teammate control within 0.4 s of the rim frame at r <= 3.0
+      on the far side = pass) was implemented and REJECTED: it turned the S15 long offensive rebound into a pass
+      (shot_release miss, pass / lob / entry / post_up / potential_assist FPs at 6/6 seeds, sigma 0.2); the
+      pass-through fix alone already gives dump_off 1.00. Guard tests on l1_putback.
+  - id: BA-T3 deflection becomes two turnovers
+    what: >-
+      Team-change confirmation also treats a middle opponent segment as contact when it is followed by a slow ball
+      (mean speed over deflect_slow_frames < flight_min_speed_mps), the ball recedes from him by >= deflect_recede_m
+      and the segment is < deflect_max_s. pass_incomplete thrown_away_loose now needs an opponent recovery.
+    why: A deflected ball rolling away stays inside the deflector's exit radius for 0.75-0.85 s, longer than team_change_confirm_s.
+    evidence: loose_ball R 0.00 -> 0.95 (P 1.00), live_ball_turnover P 0.25 -> 1.00 (with BA-T9), pass_incomplete P 0.50 -> 1.00; tests l1_deflect.
+  - id: BA-T4 contested_ball fires on ordinary on-ball defence
+    what: >-
+      Restated on the control decode: the distance test must coincide with (a) a free-ball frame or (b) the ball
+      displaced toward the defender (0.5 s moving-mean projection onto the O-D segment in [between_proj_lo,
+      between_proj_hi], lateral <= between_lateral_m), both players still (stationary_s2) and the moving-mean ball
+      speed < ball_still_mps for >= held_ball_min_s; a confirmed run spans the enclosing distance run (back by at most
+      onset_lookback_s); events at a ball segment edge are dropped; attrs.basis added. Noise note updated.
+    why: Distances alone gave precision 0.02-0.05 (holder with a defender at 0.66-0.85 m, catches on closeouts, conf-0 clip-start runs).
+    evidence: >-
+      contested_ball P/R 0.05/0.25 -> 0.48/0.50 (sigma 0.2), 0.02/0.20 -> 0.25/0.30 (0.3), 0.03/0.30 -> 0.12/0.10
+      (0.5: recall fell, still open). The tester's exact form (projection 0.2-0.8, lateral 0.3, per-frame ball
+      speed < 1.0) found 1/10 tie-ups at sigma 0.3: the O-D pair is measured 0.3-0.6 m apart, so the per-frame
+      projection is noise and often > 1; hence the 0.5 s means, upper bound 1.5 and lookback. Tests l1_tight_onball,
+      l1_faceup, tie_up basis test.
+  - id: BA-T5 isolation fires on every spaced holder
+    what: >-
+      An isolation window needs an attack in [a - attack_before_s, b + attack_after_s]: a drive, a shot, or an inferred
+      dribble with the defender within attack_def_m for >= attack_dribble_min_s that gains >= attack_dribble_gain_m
+      toward the rim; windows starting <= catch_drive_exclusion_s after a catch followed that soon by a drive (spot-up
+      drive) and windows at a segment edge are dropped; attrs.attack added; max_gap_frames is a param.
+    why: Coaches / Synergy label isolation only when the handler attacks one-on-one; the hold-only rule fired on any 2 s touch in normal spacing.
+    evidence: >-
+      isolation P 0.17 -> 1.00 (0.95 / 0.87 at sigma 0.3 / 0.5), R 1.00 kept. The gain requirement is an addition to
+      the tester's fix (S26 dribble reversal with a shadowing defender was 4-5/6 FPs without it). The author's
+      'iso' positive now drives (3.4-4.6 s); the old hold-only clip is the negative 'iso_hold'.
+  - id: BA-T6 post_up gate admits mid-range face-ups and putbacks
+    what: Gate clause |x| <= gate_abs_x_m and y <= FT_Y also needs r <= gate_r_max_m (4.2); the pass / shot short-touch exception no longer applies to rebound / loose-ball touches.
+    why: An 18-ft face-up at (3.9, 3.9) and a 0.5 s putback were post-ups.
+    evidence: post_up P 0.29 -> 0.70 (detection-level 1.00; the rest are defense_position flips at the 45 deg boundary), kick_out P 0.73 -> 1.00; tests l1_faceup, l1_putback.
+  - id: BA-T7 one-dribble pull-up invisible
+    what: dribble_inferred applies gather_allowance_s only to a catch on the move (mean speed over catch_move_window_s >= catch.on_move_speed_mps) and ends the window at the refined release minus final_gather_s.
+    why: After a set catch the window was ~0.2 s, too short to see a 1.8 m side-step.
+    evidence: pull_up R 0.50 -> 0.88, catch_and_shoot P 0.83 -> 0.95; tests l1_one_dribble_pullup.
+  - id: BA-T8 ball_reversal ignores a drive before the first pass
+    what: Any drive (gain >= drive_gain_block_m) overlapping [first passer's touch start, final catch] blocks the reversal.
+    why: A slot drive and kick-out to the opposite wing is a drive-and-kick, not a reversal.
+    evidence: ball_reversal P 0.75 -> 1.00, R unchanged; test l1_slot_kick.
+  - id: BA-T9 airball is not a shot
+    what: >-
+      _shot_scan airball class: aimed at the rim, released from r >= airball_release_r_min_m, ball r_min (followed into
+      the grabber's hands for pass_through_window_s) in (rim_reach_m, airball_r_max_m], ending loose or with an
+      opponent, no teammate within airball_teammate_clear_m of the ball at that frame. shot_release attrs.airball and
+      alternatives {shot_airball, pass_intercepted}; no pass_incomplete / live_ball_turnover for it.
+    why: A short FGA grabbed by a defender was an interception and a turnover.
+    evidence: S12 shot_release and defensive rebound found 20/20 at sigma 0.2 (rebound_control R 0.75 -> 1.00); tests l1_airball.
+  - id: BA-T10 shot credited to the closing-out defender
+    what: In the merge loop, a defensive segment shorter than team_change_confirm_s right after an offensive holder and followed by a fast ball that passes the geometric shot test (_shot_like) is contact; the shooter's segment is extended to its end.
+    why: At sigma 0.5 a closeout defender took control in the shooter's last frames and was credited with the shot.
+    evidence: >-
+      Partial: defender-credited shots in the harness 7 -> 5 of 660 scenes at sigma 0.5 (1 -> 1 at 0.3); the rest
+      (S19 'DE' at the catch-and-shoot) have the defender segment after a catch, not after a shooter's touch, or a
+      flight that fails the geometric shot test. Synthetic l1_closeout_contest (defender on the ball 0.45 s) records
+      the contact and credits A on seeds 2-3.
+  - id: BA-T11 DHO read as a pass when the receiver runs away
+    what: >-
+      pass: handoff distance = closest approach over [A.b - handoff_lookback_s, B.a]; ball travel <= handoff_max_travel_m
+      with that approach <= handoff_max_dist_m is a handoff regardless of air. drive: after a teammate exchange the onset
+      may walk back to the giver-receiver closest-approach frame (drive.handoff_lookback_s).
+    why: The receiver's control starts late (1.43-1.77 s vs 1.2 s), by which time he is > 1.5 m from the giver.
+    evidence: S21 pass FP 0 / 1 / 7 of 20 at sigma 0.2 / 0.3 / 0.5 (was 0 / 3 / 11); tests l1_dho.
+  - id: BA-T12 loose_ball on a dead ball out of bounds
+    what: Frames whose court_region contains out_of_bounds are excluded from the loose-ball slow mask (computed once per scene).
+    why: A ball resting out of bounds is dead, not loose.
+    evidence: S14 loose_ball FP 20/20 -> 0; test l1_oob.
+  - id: BA-T13 lob air time biased short
+    what: >-
+      lob_pass adds back refine_radius / v at the release and refine_radius / v_close at the catch (v_close = ball speed
+      minus the receiver's velocity along the pass) before the tof test; attrs.air_corrected_s. The tester's literal
+      fix (closing speed in the catch extrapolation) would shorten the air further: the bias comes from both refined
+      frames sitting 0.5 m from the hands, not from the receiver's speed.
+    why: Measured air 0.98 s for a true 1.10 s lob; the tof route (>= 1.03 s) missed 30-50%.
+    evidence: lob_pass R 0.70 -> 1.00 (P 1.00) at sigma 0.2, 0.65 -> 1.00 at 0.3, 0.50 -> 0.80 at 0.5; high-skip negative still passes; test l1_lob_cutter.
+  - id: BA-T14 dribble and drive onset drift early at sigma 0.5
+    what: >-
+      dribble onset walk-back also needs stationary_s2 >= onset_s2_min and, after a set catch, the stance outside
+      onset_disp_k x sqrt(2) x calibrated sigma of the pivot; drive onset walk-back needs stationary_s2 >= onset_s2_min.
+    why: Smoothed noise speed is ~1 m/s at sigma 0.5, so speed-only walk-backs ran 0.3-0.6 s early.
+    evidence: dribble_inferred P/R at sigma 0.5 0.48/0.42 -> 0.76/0.69; drive 0.72/0.66 -> 0.81/0.74 (sigma 0.2 drive 0.99 -> 0.97, S18 slow transition push onset 1.3 vs 1.0). The s2 test alone did not move dribble_inferred (0.48); the displacement band did. Test l1_pullup_top at sigma 0.5.
+  - id: BA-T15 paint_touch accumulates noise flicker
+    what: One consecutive run (gaps <= max_gap_frames) of >= min_dwell_s whose window_conf(P_in) >= p_in_min replaces the cumulative count.
+    why: A post on the block 0.17 m outside the lane accumulated noise frames.
+    evidence: >-
+      Partial: early fires on that post 3/6/11 -> 2/5/10 of 20 at sigma 0.2/0.3/0.5. p_in_min 0.7 gives 2/2/5 but
+      cuts harness recall 0.97 -> 0.92 at sigma 0.3, so 0.5 is kept; a real fix needs the stance-vs-ball bias of
+      the CV pipeline (open question). Test l1_post_spin (<= 2 of 10 seeds).
+  - id: BA-T16 entry label on dump-offs and cut catches
+    what: The 'entry' label needs passer r >= passer_min_r_m, no drive by the passer within drive_exclusion_s before the release, and the pass not a lob_pass or dump_off.
+    why: A driver's dump to the dunker and a lob to a cutter are not entry passes.
+    evidence: entry_pass P 0.90 (after BA-T2) -> 1.00; tests on 'dump' and l1_dump_baseline.
+  - id: BA-T17 potential_assist after a multi-dribble drive
+    what: No potential assist when the receiver's inferred travel (dribble max_disp) exceeds max_one_dribble_travel_m (4.5 m); the 0.5 prior stays below it.
+    why: The NBA definition allows <= 1 dribble; 7 m off the bounce needs >= 2.
+    evidence: potential_assist P 0.87 -> 1.00 at sigma 0.2 (S01 FP removed); test l1_layup.
+  - id: BA-T18 conf-0 edge events and hard-coded constants
+    what: >-
+      Every DETECTORS entry tags events whose conf is 0 at a track segment edge with attrs.edge_status 'edge'
+      (contested_ball and isolation drop them). New params: lob_pass receiver_vr_window_s, lob_to_rim_r_m;
+      drive closeout_closing_window_s; shot_release closing_window_s; catch_and_shoot catch_speed_window_s;
+      entry_pass post_match_s; post_seal seal_strict_r_m; isolation max_gap_frames; touch clip_start_s;
+      pass_incomplete heading_frames. lob max_conf_xy note now says multiplier.
+    why: Consumers could not tell edge events from real zero-confidence ones; constants outside the YAML broke the single-source rule.
+    evidence: tests test_loop1_t18_constants_are_yaml_params and test_loop1_t18_edge_events_are_tagged.
+
+changes_loop2:
+  # Loop 2 (fix pass 2) on the loop-1 confirmer's still_failing items and regressions. Harness: the tester's and the
+  # confirmer's harness.py / scenarios.py (byte-identical; both run, identical tables), 33 scenarios x mirrored x
+  # 10 seeds x sigma_p 0.2 / 0.3 / 0.5. Label-level P/R, 0.1.1 (loop 1) -> 0.1.2, as sigma 0.2 / 0.3 / 0.5.
+  - id: BA-T10b defender-credited possession changes (offence possession prior)
+    what: >-
+      _possession_prior after the team-change merge loop: a defence segment during which one offensive player keeps
+      the ball within exit_radius_m on >= possession_prior_frac (0.8) of its frames is reassigned to that player
+      (recorded in contacts; adjacent same-player segments re-merged with merge_gap_s / merge_max_travel_m), except
+      after a shot-like flight (rebound). It covers the confirmer's three causes at once: out-and-back defender
+      segments of 0.6-2.5 s, the trailing defender segment at the clip end, and the closeout defender at the
+      kick-out catch. isolation windows starting within touch.clip_start_s of the clip start are dropped (they
+      appeared once the possession was right and have no screen lookback).
+    why: >-
+      Under AR noise an on-ball defender is measured nearer the ball than the holder for 0.5-2.5 s. Labelling
+      every decoded segment against the scenario truth (33 scenarios x 5 seeds x mirrored x sigma 0.2 / 0.5, 133
+      defence segments): every wrong defence segment had an offensive player within 1.5 m of the ball on 0.88-1.0
+      of its frames (one 0.67), every true one (rebounds, outlets, the interception) 0.0-0.2. The rule is
+      asymmetric on purpose: offence segments always have a defender that close.
+    evidence: >-
+      live_ball_turnover P 1.00 / 0.71 / 0.20 -> 1.00 / 1.00 / 0.69 (events at sigma 0.5 92 -> 26, R 0.90 kept);
+      pass_incomplete P 1.00 / 0.89 / 0.53 -> 1.00 / 1.00 / 0.87; touch P at 0.5 0.90 -> 0.95; drive R at 0.5
+      0.74 -> 0.89 (with BA-T11b / T14b); kick_out R at 0.5 0.78 -> 0.95; hockey_assist R 0.80 -> 0.95. Costs at
+      sigma 0.5: isolation P 0.87 -> 0.83 (S03 / S26 windows that now have the right holder for > 2 s), pull_up P
+      0.96 -> 0.92 (1 event), post_up P 0.56 -> 0.53 (a former miss now found with the wrong defence label).
+      The confirmer's exact sub-fixes were checked: (a) an inclusive frame count makes segments LONGER (19
+      frames = 0.63 s either way), so it cannot make a 0.60 s segment short; it changed nothing and was not kept;
+      (a) confirm_s scaled by median(ball.var_p)^0.5 / 0.3 never exceeds 1 (the smoothed ball sigma is 0.055 /
+      0.078 / 0.119 m at sigma_p 0.2 / 0.3 / 0.5), so it is a no-op; (b)-(d) are subsumed. Tests
+      test_loop2_t10b_* (tight on-ball at sigma 0.5, closeout at the catch, real interception kept),
+      test_loop2_isolation_not_at_clip_start.
+  - id: BA-T4b contested_ball onset scatter and recall at sigma 0.5
+    what: >-
+      A ball-between (tie-up) run starts where both players come to rest on the ball: the rest stretch (faster of
+      the two smoothed speeds < onset_still_mps 1.5 for >= onset_still_s 0.3, gaps <= onset_still_gap_frames 2) containing the
+      confirmed run start, back by at most onset_search_s 1.0 (else the first rest stretch inside the run, else
+      the old enclosing-near-run start). Free-ball runs keep the old onset.
+    why: >-
+      The near run's start scatters 0.3-1.0 s early or late under noise. On S20b the rest onset is within 0.3 s
+      of the truth in 20 / 20 / 18 of 20 runs at sigma 0.2 / 0.3 / 0.5 against 7 / 6 / 5 for the near-run start.
+      The confirmer's hysteresis on the distance run (enter 0.7 / 0.45, exit +0.25 / +0.2) starts even earlier
+      (0 / 1 / 3 of 20). A noise-tier-aware radius and lateral bound (radius_m and between_lateral_m widened by k x
+      (pair sigma - 0.13 m)) were swept (k 0-3): at sigma 0.5 the best recall gain (0.30 -> 0.50) cost precision
+      0.33 -> 0.22; at sigma 0.3 the lateral widening helped (0.58 / 0.70 -> 0.64 / 0.80) but hurt 0.5 (FP 12 ->
+      17), so neither was kept.
+    evidence: >-
+      contested_ball P/R 0.48 / 0.50 -> 0.86 / 0.90 (sigma 0.2), 0.25 / 0.30 -> 0.62 / 0.75 (0.3), 0.12 / 0.10 ->
+      0.30 / 0.30 (0.5; the loop-1 recall regression is back to the 0.1.0 level 0.30 with 4x the precision). The
+      author's tie_up onset (truth = the defender's arrival) is 9 / 20 within 0.3 s at sigma 0.3, 10 / 20 before.
+      Tests test_loop2_t4b_tie_up_onset, test_loop2_t4b_tight_onball_still_negative_at_low_noise.
+  - id: BA-T11b DHO with a running receiver
+    what: >-
+      _handoff_cut in the control decode: for consecutive teammates' segments, the giver-receiver closest approach
+      over [giver end - pass.handoff_lookback_s, receiver start]; when it is <= pass.handoff_max_dist_m and the ball
+      is within exit_radius_m of both there, the giver's segment ends one frame before it and the receiver's starts
+      at it (an 'exchange': start_kind handoff, no pass, and the drive onset may walk back to it).
+    why: >-
+      The giver keeps the ball inside his 1.5 m exit radius while the receiver runs away with it, so the exchange
+      was decoded 0.4-0.9 s late as a short flight (a pass), and the receiver's touch, dribble and drive started
+      late. Over all scenarios (5 seeds, mirrored, sigma 0.2 / 0.5) only the DHO had a teammate closest approach
+      <= 1.5 m with the ball near both (one S19 case at 1.78 m does not pass).
+    evidence: >-
+      S21 pass FPs 1 / 7 -> 0 / 3 of 20 at sigma 0.3 / 0.5, B's late drive onset 4 / 12 -> 0 / 2; drive P/R at 0.3 0.96 -> 0.98, at 0.5 0.85 / 0.82 -> 0.90 / 0.89;
+      dribble_inferred R at 0.5 0.71 -> 0.75; potential_assist P at 0.5 0.95 -> 0.97. The confirmer's 'travel
+      <= 1.5 m' clause was not needed (the travel of the late flights is 0.9-4.1 m, so it would miss most).
+      Test test_loop2_t11b_dho_handoff_at_high_noise.
+  - id: BA-T14b drive onset on a slow start and approach-end time at sigma 0.5
+    what: >-
+      Onset: after the s2-gated walk-back, continue up to onset_s2_lag_s (0.2) while vr < onset_lag_vr_mps (0.0; -0.2 since changes_loop3 BA-T14c),
+      only when the driver's calibrated sigma <= onset_s2_lag_sigma_max_m (0.15 m: the sigma_p 0.2 / 0.3 tiers).
+      End: a new approach-end time te (event t0 of drive_depth and drive_outcome) = first frame after the run's
+      peak where vr rises above end_vr_mps - end_vr_sigma_slope (11) x (sigma - end_vr_sigma_ref_m (0.09)), capped
+      at t1; t1 (geometry: depth class, direction, defender reaction, outcome windows) is unchanged.
+    why: >-
+      S18's ramp from rest crosses onset_vr_mps -0.5 at 1.27-1.30 s (truth 1.0): it is the vr threshold on a slow
+      ramp, not only s2 latency, so the confirmer's '< onset_vr_mps' allowance alone left t0 at 1.30; walking back
+      to vr 0 does. At sigma 0.5 the same allowance undid BA-T14 (S27 onset 0.33 s early), hence the tier gate.
+      The heavier smoothing of the high-noise tier stretches the deceleration, so the -1.0 m/s crossing is 0.2-0.4
+      s late at sigma 0.5; on the harness drives the best fixed threshold is -1.0 / -1.5 / -2.0 m/s at sigma 0.2 /
+      0.3 / 0.5 (72 / 72 / 70 of 72 / 72 / 71 within 0.3 s), which the slope reproduces. A fraction of the peak radial
+      speed was tried and failed on the long transition push (bell-shaped profile); moving t1 itself cut
+      drive_depth to 0.53 at sigma 0.2 (labels at a shallower position). The confirmer's '3 consecutive frames'
+      end rule moves t1 later, not earlier.
+    evidence: >-
+      drive 0.97 / 0.94 / 0.82 (P) -> 0.99 / 0.98 / 0.90 (S18 onset misses 5 / 5 / 3 -> 0 / 0 / 3 of 20);
+      drive_depth 0.96 / 0.85 / 0.53 -> 0.96 / 0.87 / 0.78; drive_outcome 1.00 / 0.95 / 0.46 -> 1.00 / 1.00 /
+      0.90. Cost: drive_direction at sigma 0.3 0.97 -> 0.95 (S17 onset 0.33 s early in 2 / 20). Tests
+      test_loop2_t14b_drive_onset_after_slow_ramp, test_loop2_t14b_approach_end_time_at_high_noise.
+  - id: BA-T9b airball at higher noise
+    what: >-
+      The airball direction, r_min and pass-through bounds widen by airball_noise_k (2.0) standard errors: direction
+      by sqrt(2) x ball sigma / release displacement (deg), r_min by ball sigma, pass-through by 1.5 x ball sigma.
+    why: The misses at sigma 0.3 / 0.5 were direction 15.6-25.5 deg (tolerance 15), pass-through 1.52 m (1.5) and r_min 2.05-2.15 m (2.0), all within 2 standard errors.
+    evidence: >-
+      S12 shot found 17 / 11 of 20 -> 20 / 19 of 20 at sigma 0.3 / 0.5; rebound_control R 0.96 / 0.86 -> 1.00 / 0.96;
+      shot_release R at 0.5 0.89 -> 0.92; no new shot FPs. Test test_loop2_t9b_airball_at_high_noise.
+  - id: BA-T3b deflection with an adjacent recovery
+    what: The BA-T3 deflection test (slow ball after the deflector's segment, ball receding >= deflect_recede_m, < deflect_max_s) also applies when the recoverer's control starts right after the deflector's (no free frame between).
+    why: At sigma 0.3-0.5 the rolling ball passes from the deflector's exit radius straight into the recoverer's enter radius, so the test (which needed a free frame) never ran.
+    evidence: live_ball_turnover P at 0.3 0.91 -> 1.00, at 0.5 0.64 -> 0.69; loose_ball R 0.90 / 0.75 -> 0.95 / 0.80 at 0.3 / 0.5; pass_incomplete P at 0.5 0.85 -> 0.87; contested_ball P at 0.5 0.33 -> 0.30 (2 events). Test test_loop2_t3b_deflection_with_adjacent_recovery.
+  - id: BA-T6b post_up defence-position label flips
+    what: post_up attrs.defense_position_alternatives {behind, front, three_quarter} (phi of the margin to behind_max_deg / front_max_deg over the angle standard error pair sigma / distance) and defense_position_status (unresolved_margin); the point label is unchanged.
+    why: >-
+      S07's true geometry is 38.6 deg, 6.4 deg inside the 45 deg boundary, and the angle standard error between two
+      stances 0.66 m apart is 8-15 deg at sigma_p 0.2-0.5, so P(read > 45) is ~0.25: the 6-8 / 20 flips are the
+      noise, not a bias. A dead band would only move the flips; the confirmer scoring a hard label here is the
+      wrong test, so the probability is reported instead.
+    evidence: post_up label P/R unchanged by this (0.70 / 0.55 / 0.53); detection level 1.00 / 0.95 / 1.00. Test test_loop2_t6b_post_up_defense_position_alternatives.
+  - id: T18b rim-finish release events carry conf 0
+    what: A release of kind shot takes the shooter's edge factor (as shot_release does), not the ball's.
+    why: The ball track ends at the rim right after a finish, so the ball's edge factor at the release frame is 0.
+    evidence: conf-0 release events in the sweep 145 -> 0 (all conf-0 events 3985 -> 3839, the rest are clip-start touches / possessions tagged edge). Test test_loop2_t18b_rim_finish_release_conf.
+  - id: loop2 not changed
+    what: >-
+      BA-T15 paint_touch early fires on the block post (3 / 4 / 9 of 20) and post_seal recall at sigma 0.5 (0.45) are
+      left as they are.
+    why: >-
+      The paint flicker comes from the AR-correlated stance error (0.17 m outside the lane, ~1 s correlation), which
+      the per-frame sigma in P_in does not model; loop 1 measured the only threshold lever (p_in_min 0.7) costing
+      recall 0.97 -> 0.92. Needs the CV pipeline's stance-vs-ball bias (open question).
+    evidence: paint_touch 0.98 / 0.97 / 0.87 -> 0.98 / 0.97 / 0.90 (via BA-T10b / T11b only).
+
+changes_loop3:
+  # Loop 3 (fix pass 3) on the pass-2 confirmer's still_failing items and regressions. Harnesses: the tester's
+  # 1980-scene harness (scenarios.py, 10 seeds x mirrored x sigma_p 0.2 / 0.3 / 0.5) and the confirmer's
+  # adversarial steal probes (P1 strip + quick outlet, P2 pick-pocket chased up-court, 120 scenes). Label-level
+  # P/R, 0.1.2 (loop 2) -> 0.1.3, as sigma 0.2 / 0.3 / 0.5. Every detector not listed is unchanged at every sigma.
+  - id: BA-T10c possession prior absorbs real steals
+    what: >-
+      _possession_prior decides from the last segment backwards and does not reassign a defence segment when
+      (a) the next control is the defence's, that segment is itself not absorbed, and the ball does not reach it
+      on an attempt-like path at the attacked rim (_attempt_like: heading within shot_release.dir_tol_deg and
+      coming within airball_r_max_m of the rim, both widened by airball_noise_k standard errors), or (b) the ball
+      moves >= possession_prior_upcourt_m (3.0) away from the attacked rim over the segment.
+    why: >-
+      Features of all 552 decoded defence segments on both harnesses (10 seeds), labelled against the truth
+      holder: 180 met the prior, 107 of them real steals (all in P1 / P2) and 73 offensive contact. Rule (a) or
+      (b) frees 99 / 107 steals and 3 / 73 contacts. Two of those 3 are S20b tie-up segments followed by another
+      segment of the same defender; requiring the next segment to be un-absorbed (backward decision) keeps them
+      contact. The third is S12 at sigma 0.5 seed 5: a closeout whose segment runs into the airball's flight to the
+      defensive rebounder. The confirmer's one-line form (next segment is defence) frees it, giving +1 strip FP,
+      +1 entry/pass FP, -1 shot and -1 rebound at sigma 0.5. Defenders do not shoot at the offence's rim, so
+      the attempt-like exemption keeps it contact. Contact segments move the ball at most +1.0 m outward
+      (max over the harness); the chased steals move it +4.5 to +5.6 m. So (b) has a wide margin and needs no
+      noise term (ball sigma <= 0.22 m). The confirmer's 'ball travel >= 4 m' cost lbt P 0.69 -> 0.60 because
+      travel does not separate them: contact on drives travels 3-4.5 m toward the rim, and the radial sign does
+      separate them. Distance margins do not separate the cases (confirmer, measured); this rule needs none.
+    evidence: >-
+      Probes: live_ball_turnover 0.00 / 0.00, 0.10 / 0.05, 0.20 / 0.10 -> 0.95 / 0.90, 0.92 / 0.82, 0.72 / 0.65
+      (P1 20 / 19 / 16 of 20, P2 16 / 14 / 10 of 20; pass 1 had 20 / 18 / 16 and 16 / 14 / 10). team_possession
+      on the probes 0.67 / 0.50, 0.67 / 0.50, 0.58 / 0.44 -> 0.97 / 0.95, 0.93 / 0.89, 0.75 / 0.71. Main harness:
+      no change at any sigma for any detector (the confirmer's one-line form measured -0.02 lbt P, -0.01 drive
+      R and -0.01 rebound R at 0.5). The remaining P2 misses are late takeovers in the decoder (D's control starts
+      0.3-0.7 s late or only at 3.4 s, when A is still within nearest_margin_m), not the prior. Tests
+      test_loop3_t10c_strip_with_quick_outlet_is_a_steal, test_loop3_t10c_pick_pocket_chased_upcourt_is_a_steal,
+      test_loop3_t10c_upcourt_guard_is_a_yaml_param, test_loop3_t10c_closeout_before_an_airball_stays_contact.
+  - id: BA-T3c deflection confirmed after the prior
+    what: The team-change confirmation (_confirm_team_changes, the BA-T3 / T3b / T10 contact rules) runs again after the possession prior.
+    why: >-
+      S13 at sigma 0.5 seed 3 decodes A, D (deflector), DB (0.17 s next to B), B. The D segment was not between two
+      offensive segments when the confirmation ran, so it was kept. The prior then hands DB's frames to B, which
+      leaves A-D-B, and D's segment passes the deflection test (slow ball after it, recedes 0.93 m, 0.8 s). The
+      result was an 'interception' by D plus a 'loose_recovery' by B.
+    evidence: >-
+      live_ball_turnover P at 0.5 0.69 -> 0.75 (26 -> 24 events, R 0.90 kept); loose_ball 0.53 / 0.80 -> 0.55 / 0.85
+      at 0.5; pass_incomplete P at 0.5 0.87 -> 0.89; no change at 0.2 / 0.3. Test
+      test_loop3_t3c_deflection_confirmed_after_the_prior. The other S13 FP pair (mirrored seed 4) has a mean ball
+      speed of 3.01 m/s after D against the 3.0 slow bound: noise-limited, left.
+  - id: BA-I1 isolation precision at sigma 0.5 (noise-aware gates)
+    what: >-
+      isolation: the no-teammate test needs dT >= teammate_min_m + teammate_noise_k (1.0) x the handler's pair
+      sigma, and the attacking-dribble gain bound is attack_dribble_gain_m + attack_gain_noise_k (1.0) x the pair
+      sigma at the window start.
+    why: >-
+      The 0.87 -> 0.83 drop was S03 (3 FPs at sigma 0.5) and S26 (1). S03: T stands 3.35 m from A at the catch,
+      and at sigma 0.5 the distance reads >= 4.0 m, so the window starts at the catch and lasts 2.07 s; with the
+      true distance it lasts 1.6 s and is no isolation. BA-T10b only exposed this by handing the contact frames
+      back to A. S26: a dribble reversal along the chord across the top truly comes 0.7 m closer to the rim, and
+      a start-minus-minimum of noisy r reads >= 1.0 m. Both are min / max statistics of noisy series, so the
+      bound widens with the measured sigma. k = 2 on teammates moved S26 windows past the clip-start drop at
+      sigma 0.2 (+2 FPs), so k = 1.
+    evidence: >-
+      isolation 1.00 / 1.00, 0.95 / 1.00, 0.83 / 1.00 -> 1.00 / 1.00, 1.00 / 1.00, 0.95 / 1.00 (above pass 1's 0.87
+      at 0.5). No other detector changed. Tests test_loop3_i1_noise_aware_isolation_gates,
+      test_loop3_i1_true_isolation_kept_at_high_noise, test_loop3_params_are_yaml_params.
+  - id: BA-T14c drive onset early after a long rest (drive_direction at sigma 0.3)
+    what: drive.onset_lag_vr_mps 0.0 -> -0.2 m/s (the BA-T14b lag allowance continues only while the driver really moves toward the rim).
+    why: >-
+      S17 (A at rest for 2.6 s, then a baseline drive at 3.5 s) was dated 3.17 s at sigma 0.3 seeds 1 / 10. The smoothed
+      vr of a still player is below 0 on about half of the frames, so the 0.2 s allowance ran its full length
+      on noise. -0.2 and -0.4 gave the same harness result; -0.2 is the smaller change.
+    evidence: >-
+      drive_direction at 0.3 0.95 -> 0.97 (back to the baseline / pass 1); drive at 0.3 0.98 -> 0.99; drive at 0.2
+      (the S18 slow-ramp fix) unchanged at 0.99; drive_defender_reaction t0 moves by 1-2 frames only. Test
+      test_loop3_t14c_drive_onset_after_long_rest; test_loop2_t14b_drive_onset_after_slow_ramp still passes.
+  - id: BA-T4c contested_ball at sigma 0.5 (noise_status)
+    what: >-
+      attrs.noise_status (ok / noise_limited) and attrs.pair_sigma_m. The status is noise_limited when the calibrated
+      ball-player pair sigma at t0 exceeds noise_limited_pair_sigma_m (0.24 m). The harness reads 0.13 / 0.19 / 0.27-0.28 m at the three tiers.
+      P/R is unchanged by design.
+    why: >-
+      At sigma 0.5 the S20b tie-up (ball 0.3 m from both, players 0.63 m apart) and the S20 on-ball defence (ball at the holder,
+      defender 0.75 m) overlap in every gate: over the 2 s window the measured ball projection onto the O-D segment
+      is 0.00-0.94 for the tie-up and -0.48-0.41 for on-ball defence, and |dA - dD| runs up to 0.63 m. Loop 2
+      rejected widening the radius and lateral bounds (recall +0.20 for precision -0.11). The confirmer offered a choice:
+      accept the item as noise-limited, or mark it. It now marks itself.
+    evidence: >-
+      contested_ball 0.86 / 0.90, 0.62 / 0.75, 0.30 / 0.30 (unchanged). On S20b, S20, S26 and S07 (10 seeds) every event
+      at sigma 0.5 is noise_limited and every event at 0.2 / 0.3 is ok. Test test_loop3_t4c_contested_noise_status.
+  - id: loop3 tried and rejected
+    what: >-
+      (1) dribble_inferred travel bound held for travel_hold_s 0.1 / 0.2 s (aimed at the S30 jab FP behind the pull_up
+      P drop at 0.5). (2) No further change for post_up and pull_up precision at 0.5.
+    why: >-
+      (1) It cut pull_up R 0.88 / 0.80 / 0.57 -> 0.72 / 0.65 / 0.50 (0.1 s) and catch_and_shoot P 0.95 -> 0.90: a
+      one-dribble pull-up's displacement crosses 1.2 m only in the last frames before the final gather. The S30
+      jab FP (max displacement 1.24 m, conf 0.56) and the S04 true one-dribble pull-ups (1.22-1.47 m, conf 0.53-0.86)
+      overlap, so no displacement bound separates them. (2) pull_up P at 0.5 0.96 -> 0.92 is 1 FP in 25 events:
+      S30 mirrored seed 5, where the BA-T10b prior correctly gives the jab segment back to B. The other FP, S17 mirrored
+      seed 9, was already there in pass 1. post_up P at 0.5 0.56 -> 0.53 is a former miss that is now detected with
+      the wrong defence label. Detection level is 1.00 / 0.85 against 1.00 / 0.80 in pass 1, so the drop is a gain
+      in detection, and the BA-T6b label probability covers the label. The confirmer counts both as precision losses;
+      at the detection level they are not.
+    evidence: Sweeps in fix3_ball_actions/main (c4_h0.1, c4_h0.2); dbg_dr.py displacement table.
+
+changes_loop4:
+  # Loop 4: calibration on real tracking (SportVU, 3 NBA 2015-16 games, 194 clock-running chunks, 6855 s; private
+  # research data, aggregates only). Runner told sigma 0.15 m; PBP truth matched on (period, clock), detection clock
+  # shifted 2.0 s, tolerance 2.5 s, greedy one-to-one. Covered truth: 386 FGA, 25 steals (27 live turnovers), 229
+  # player rebounds. Synthetic checks: the loop-3 harnesses (main 1980 scenes, steal probes P1 / P2, confirm3
+  # adversarial set N01-N14), sigma_p 0.2 / 0.3 / 0.5; a change was kept only with real agreement up and no
+  # synthetic loss beyond one event. Loop start -> end (clean): shot_release P / R 0.75 / 0.35 -> 0.79 / 0.67
+  # (shooter id 0.60 / 0.28 -> 0.73 / 0.62); live_ball_turnover 276 events (P 0.08, steal R 0.84) -> 118 (P 0.18,
+  # R 0.84); rebound P / R 0.42 / 0.29 -> 0.47 / 0.63; pass_incomplete 192 -> 63 events (steal R 0.56 -> 0.44).
+  # With added noise 0.3 m: shot 76 -> 133 / 48 min, live_ball_turnover 110 -> 56, rebound 66 -> 123 (clean 138 /
+  # 50 / 129): rates move <= 14 % under noise.
+  - id: BA-R4b team baskets from the goal-side vote (replaces the BA-R4a draft)
+    what: >-
+      _team_rims: a clip holds both teams' possessions, so each list gets its own basket. On every frame with all
+      players in one half, each attacker's nearest opponent is goal-side (nearer that half's basket) or not; the
+      frame votes for the majority, signed by the half. The net vote decides when |vote| >= rim_goalside_min_s and
+      both lists have >= rim_goalside_min_players; else the default (offence list -> origin). Every rim test
+      (shot / attempt / rim finish / rebound / oop / release_r / spot / three) uses the releasing team's basket;
+      shot_release attrs gain basket (origin / far).
+    why: >-
+      The SportVU loader puts each chunk in the frame of the basket the ball is nearest most of the time; 138 of
+      the first 194 classified FGA misses went to the other basket. The BA-R4a draft (team whose ball-control
+      frames sit in the origin half more) put 43 of 194 chunks (900 s) at the wrong basket; the loader's own
+      offence/attacked-end pairing is wrong on 47 chunks (1826 s).
+    evidence: >-
+      Goal-side vote vs each team's per-half basket (consistent across the 4 periods and both teams of all 3
+      games): 0 wrong of 193 decided chunks, 1 undecided (11 s), also with added noise 0.5 m. Real: shot R 0.35 ->
+      0.53, rebound R 0.29 -> 0.48, live_ball_turnover 276 -> 193 events. Synthetic: unchanged at every sigma
+      (2-on-2 adversarial scenes N01 / N07 voted the wrong basket without the player minimum). Tests
+      test_loop4_r4b_*.
+  - id: BA-R4c alley-oop guard needs a catch at the rim frame by another player
+    what: >-
+      _shot_scan oop: the receiving teammate must not be the shooter and his refined catch must come within
+      shot_release.oop_catch_lag_s (0.15 s) of the rim frame.
+    why: >-
+      37 real misses had every shot criterion passed and were dropped as alley-oops: a teammate (11 of them the
+      shooter) gained the ball 0.2-0.6 s after the rim frame, i.e. an offensive rebound or putback.
+    evidence: Real shot R 0.53 -> 0.60 (tp 204 -> 232), OREB R 0.22 -> 0.38. Synthetic unchanged. Test test_loop4_r4c_*.
+  - id: BA-R4d rim reach followed into the rebounder's control
+    what: >-
+      _shot_scan: when the free interval ends at the next control, the rim-reach window extends into it for up to
+      shot_release.rim_reach_ext_s (0.3 s) while the smoothed ball speed stays >= touch.flight_min_speed_mps.
+    why: >-
+      A rebounder under the rim enters his 1.0 m control run 0.07-0.33 s before the ball reaches the rim (35 real
+      misses: r_min over the free 0.8-2.3 m, 0.0-0.6 m through the catch); a caught pass slows to the catcher's pace.
+    evidence: >-
+      Real shot R 0.60 -> 0.66 at P 0.79; live_ball_turnover 193 -> 170, pass_incomplete 124 -> 101 events (shots
+      read as interceptions). Synthetic: potential_assist and rebound_control at sigma 0.5 move by one event each
+      (156 / 158, 81 / 80 events); nothing else. Test test_loop4_r4d_*.
+  - id: BA-R4f rebound-scramble touches are not possessions
+    what: >-
+      _scramble: a touch starting <= rebound_control.scramble_window_s (3.0 s) after a shot's rim frame and lasting
+      < rebound_control.secure_min_s (1.5 s). Losing it to the other team is not a live_ball_turnover; a flight
+      from it is not a pass_incomplete.
+    why: >-
+      Of 150 unmatched real live-ball turnovers, 86 followed a rim visit (ball z); 45 had a scramble-length lost_by
+      touch, against 0 of 20 PBP-matched steals. NBA scoring credits the opponent's rebound, not a steal.
+    evidence: >-
+      Real live_ball_turnover 170 -> 126 events with steal recall unchanged (0.76), pass_incomplete 101 -> 86.
+      Synthetic unchanged. Tests test_loop4_r4f_*. Tried and reverted (BA-R4g): crediting the rebound to the first
+      secured control dropped rebounder-id matches 87 -> 77 and broke rebound_outlet (a rebound and a quick outlet).
+  - id: BA-R4h possession prior favours the team in its frontcourt
+    what: >-
+      _possession_prior: the prior is applied for the possessing team, taken as the defence list when the ball at
+      the segment start is within touch.possession_prior_frontcourt_r_m (7.5 m) of the defence list's basket, else
+      the offence list (as before); guards (a) / (b) and the up-court distance use that team's basket.
+    why: >-
+      The offence-list prior handed far-basket passes to a nearby offence-list defender (inspected false
+      interceptions: receiver 0.2-0.4 m from the ball, defender 1.3-1.5 m). A first version (possessor = nearer
+      basket at any distance) regressed the steal probes (stealer crossing half court).
+    evidence: >-
+      Real live_ball_turnover P / R 0.15 / 0.76 -> 0.18 / 0.84 (118 events), shot R 0.66 -> 0.68, rebound R 0.62 ->
+      0.64 (rebounder id 0.38 -> 0.41). Synthetic unchanged at every sigma. Test test_loop4_r4h_*.
+  - id: BA-R4i possession-prior guards need the defender to lead the ball (loop-3 open items a and b)
+    what: >-
+      Guard (a) frees a defence segment only when the ball over its last possession_prior_lead_s (0.3 s) is on
+      average >= possession_prior_lead_m (0.0 m) nearer the defender than the absorbing player; guard (b) only when
+      the defender is nearer the ball on most frames and the absorbing player does not take the next control.
+    why: >-
+      confirm3 still_failing BA-T10c-a (glued on-ball defender before an intercepted pass became a false strip and
+      hid the interception) and BA-T10c-b (back-out dribble under pressure gave strip / re-strip pairs).
+    evidence: >-
+      Adversarial set, sigma 0.2 / 0.3 / 0.5: live_ball_turnover P 0.50 / 0.41 / 0.27 -> 0.51 / 0.42 / 0.35, R
+      0.38 / 0.33 / 0.22 -> 0.38 / 0.33 / 0.28; pass_incomplete R at 0.5 0.58 -> 0.78; N03 found 12 -> 15 of 20 at 0.5,
+      N10 10 -> 16, N05 / N05b false strips 0/6/6 / 4/3/8 -> 0/2/1 / 0/2/2; team_possession at 0.5 0.48 / 0.44 ->
+      0.54 / 0.49. Main harness and P1 / P2 unchanged (a 0.3 m lead margin lost quick strip-and-outlets and was
+      dropped to 0.0). Real: +-1 event. Tests test_loop4_r4i_*.
+  - id: BA-R4e (reverted) closeout merge when the ball flies over the defender
+    what: Merge a short defender segment into the shooter's when the ball from the shooter's release heads at the rim and recedes from the defender.
+    why: 14 real misses decoded the contesting defender as the holder for 0.3-0.5 s (ball over his head at z 12 ft).
+    evidence: Real shot R 0.66 -> 0.63 (the merged shooter segment swallowed releases); reverted.
+open_after_loop4:
+  - 'Shots still missed (PBP FGA, 126): 24 close finishes with no free interval (the finisher keeps the ball in his radius), 23 teammate catches within 0.15 s of the rim frame (oop-like in XY), 14 exchanges to a contesting defender, 14 at the other team''s basket after a defender-attributed release, 15 with no rim arrival in the window. Ball z (made / missed, apex, release height) resolves most; see upstream.'
+  - 'Rebound 129 / 48 against 97 / 48 PBP player rebounds: a made shot''s inbound gather is read as a defensive rebound (55 of 308 events follow a PBP make); made / missed needs ball z or PBP.'
+  - 'live_ball_turnover 50 / 48 against 10.5 steals and 0.8 dead-ball turnovers / 48: 44 remaining false events follow an undetected shot''s rim visit, about 60 have no rim visit (half are next to a PBP rebound row).'
+  - 'team_possession 243 / 48 includes 81 / 48 chunk starts; changes inside chunks 161 / 48 against ~188 possessions / 48 minus possession changes at dead balls (chunk breaks); 56 of 578 possessions last < 2 s (scramble flicker).'
+  - 'post_up 19-20 / 48 is of the order of play-type tracking post-up shares (well under 10 % of ~100 possessions per team; approximate, not re-verified here); the bigs family''s 78 / 48 counts a different, broader event.'
+v0_sweep:
+  description: >-
+    Every positive / negative case of tests/movement/test_ball_actions.py re-run on 30 seeds (sigma_p
+    0.3 m, white + AR(1) noise). Counts are failures out of 30; cases not listed failed 0 / 30. Most are
+    attribute flips at a boundary or late control starts when a defender is in contact.
+  date: '2026-10-20'
+  failures_of_30:
+    contested_ball (tie-up positive): 4
+    contested_ball (holder + on-ball defender negative): 4
+    drive_direction (baseline label): 3
+    pass (one-touch delivery / missed 0.2 s touch): 3
+    post_up (defense_position or contact gate): 3
+    live_ball_turnover (strip t0 > 0.3 s late): 3
+    kick_out (post source; depends on post_up): 2
+    post_seal (contact gate under AR noise): 2
+    drive_depth, paint_touch, drive_defender_reaction, hockey_assist, catch_and_shoot (cs_set): 1 each
+    drive and children (walk-in negative): 1
+open_questions:
+  - How does the CV pipeline produce ball XY (floor homography of the ball pixel vs 3D)? It decides dribble_bounce method B, the shot rim-reach test and paint-touch ball bias.
+  - Ball sigma tier and tracker error autocorrelation must be measured (variogram) before any sigma_v figure is final.
+  - Deflection / tap detection needs a changepoint test on the ball track (piecewise-linear fits >= 6 frames each side, likelihood ratio) calibrated on labelled passes; not in 0.1.0.
+  - Matchup assignment (defensive_matchups) should replace the nearest-defender proxy in drive_defender_reaction, post_up, post_seal and isolation, carrying its probability.
+  - Post moves (BA-63 back-down with median contact <= 0.9 m and dr <= -0.5 m over >= 1.0 s, BA-64 drop step, BA-65 spin) and post double teams (BA-67) are deferred to 0.2.0.
+  - Handoff family items (BA-75..BA-77) are owned by the SCREENS family; the pass detector only excludes the exchanges.
+  - Shot-family finishes (floater, layup, dunk, hook, step-back, fadeaway) need the shot family or z / pose; the floater range is resolved in drive_depth only.
+  - The hidden-dribble priors of catch_and_shoot / held_jumper and the potential-assist dribble prior must be measured on SportVU (z) before use.
