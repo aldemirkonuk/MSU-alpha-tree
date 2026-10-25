@@ -1495,3 +1495,578 @@ def test_l4_double_drag_needs_a_set_second_screener():
     for sg in (0.2, 0.3, 0.5):
         assert _rate("drag_double_late", "double_drag", seeds=range(1, 11), sigma=sg) == 0, sg
     assert _rate("double_drag", "double_drag", seeds=range(1, 11), screener_1="s", screener_2="s2", handler="h") >= 7
+
+
+# --------------------------------------------------------------------------------------
+# Mastery round 1 (changes_mastery_r1 in screens.yaml): two-stage on-ball model, used-only off-ball screens and row
+# vetoes; scenes for each new rule and one regression test per fix
+# --------------------------------------------------------------------------------------
+def _line(t0, t1, p0, p1, step=0.2):
+    """Dense waypoints along a straight segment: sim.min_jerk stops at every waypoint, 0.2 s steps read as steady motion."""
+    n = max(1, int(round((t1 - t0) / step)))
+    return [(t0 + (t1 - t0) * k / n, p0[0] + (p1[0] - p0[0]) * k / n, p0[1] + (p1[1] - p0[1]) * k / n) for k in range(n + 1)]
+
+
+def sc_rolling_pnr():
+    """High PnR whose screener never stops: he walks through the contact with D_h at about 1.1 m/s and keeps rolling."""
+    a = pnr(go=2.0)
+    a["s"] = Off(*_line(0.0, 2.2, (3.0, 7.2), (0.9, 7.6)), *_line(2.4, 3.6, (0.5, 7.4), (-0.4, 5.6)), (4.4, -0.6, 2.0))
+    a["Ds"] = Def(*_line(0.0, 2.2, (3.0, 6.2), (1.2, 6.5)), (3.2, 1.0, 5.2), (4.4, 0.6, 2.6))
+    return spec(a, held=[(0, 5.0, "h")]), 5.0
+
+
+def sc_brush_pnr():
+    """Moving (brush) ball screen: the screener runs through the contact at about 1.6 m/s and rolls."""
+    a = pnr(go=2.0)
+    a["s"] = Off(*_line(0.6, 2.5, (3.6, 7.0), (0.6, 7.6)), *_line(2.6, 3.4, (0.3, 7.2), (-0.4, 5.6)), (4.4, -0.6, 2.0))
+    a["Ds"] = Def(*_line(0.6, 2.5, (3.4, 6.1), (1.0, 6.5)), (3.4, 0.9, 5.0), (4.4, 0.6, 2.6))
+    return spec(a, held=[(0, 5.0, "h")]), 5.0
+
+
+def sc_runner_through():
+    """Near miss for the contact path: a teammate sprints (about 3.5 m/s) past D_h at 0.6 m while the handler drives."""
+    a = pnr(go=2.0, post="stay")
+    a["s"] = Off((0, 5.5, 8.0), *_line(1.4, 2.8, (3.5, 7.9), (-1.5, 7.1)), (4.0, -5.0, 6.5))
+    a["Ds"] = Def((0, 5.0, 7.0), (2.8, -0.5, 6.5), (4.0, -4.3, 5.8))
+    return spec(a, held=[(0, 5.0, "h")]), 5.0
+
+
+def sc_pnr_wide():
+    """High PnR where the handler turns the corner wide: closest approach to the screener about 1.6 m."""
+    a = pnr(go=2.0)
+    a["h"] = Off((0, -0.4, 9.3), (2.0, -0.4, 9.3), (2.5, 1.4, 9.2), (3.0, 2.9, 7.6), (3.9, 2.4, 3.6))
+    a["Dh"] = Def((0, -0.15, 8.2), (2.0, -0.15, 8.2), (2.4, 0.2, 8.0), (2.9, 0.9, 8.6), (3.4, 2.5, 7.0), (4.0, 2.1, 4.2))
+    return spec(a, held=[(0, 6.0, "h")]), 6.0
+
+
+def sc_pnr_handoff():
+    """Near miss: the 'screener' pitches the ball to the handler at 1.4 m and then stands on D_h (a handoff row)."""
+    a = {"h": Off((0, 2.2, 9.0), (1.4, 1.1, 8.6), (1.9, 0.4, 8.6), (2.5, -1.2, 7.4), (3.4, -1.6, 4.4)),
+         "s": Off((0, -0.3, 8.3), (1.6, -0.3, 8.0), (3.4, -0.3, 8.0), (4.4, 0.5, 5.0)),
+         "Dh": Def((0, 2.2, 8.0), (1.4, 1.0, 7.6), (1.9, 0.4, 7.5), (2.5, 0.2, 7.5), (3.2, -0.6, 6.5), (4.0, -1.2, 4.6)),
+         "Ds": Def((0, -0.3, 7.2), (3.4, -0.2, 7.0), (4.4, 0.3, 4.6))}
+    return spec(a, held=[(0, 1.6, "s"), (1.75, 5.0, "h")], flights=[(1.6, 1.75, "s", "h")]), 5.0
+
+
+def sc_pnr_sag():
+    """D_h sags 3 m off the handler next to where the screener sets; the screener's own defender guards him from below."""
+    a = pnr(go=2.6, t_set=1.6)
+    a["h"] = Off((0, -0.3, 10.0), (2.6, -0.3, 10.0), (3.1, 1.0, 9.0), (3.6, 2.3, 6.8), (4.5, 1.5, 3.0))
+    a["Dh"] = Def((0, 0.0, 7.4), (2.6, 0.0, 7.4), (3.0, 0.3, 7.9), (3.5, 0.9, 8.6), (4.0, 2.2, 6.6), (4.6, 1.9, 3.8))
+    a["s"] = Off((0, 3.0, 4.5), (1.6, *P_S), (3.5, *P_S), (4.1, -0.2, 4.6), (4.7, -0.6, 1.8))
+    a["Ds"] = Def((0, 2.6, 4.0), (1.6, 0.9, 6.4), (3.6, 0.9, 6.3), (4.0, 1.1, 5.0), (4.8, 0.8, 2.6))
+    return spec(a, held=[(0, 6.0, "h")]), 6.0
+
+
+def sc_help_stand():
+    """Near miss for screen_set: a big runs in and stands next to the help defender in the lane, whose softmax matchup
+    names the far corner shooter (4.5 m away), who never moves."""
+    a = {"u": Off((0, -6.9, 0.6)), "D": Def((0, -2.6, 2.2)),
+         "s": Off((0, 2.0, 7.5), (1.9, -2.0, 2.9), (5.0, -2.0, 2.9)),
+         "Ds": Def((0, 2.6, 6.6), (2.0, -1.0, 3.6), (5.0, -1.0, 3.6)),
+         "p": Off((0, 5.5, 6.0)), "Dp": Def((0, 4.8, 5.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o5",)), 5.0
+
+
+def sc_slow_drift():
+    """Near miss for an off-ball screen: the user drifts at about 1 m/s past a standing teammate next to his defender."""
+    a = {"u": Off((0, -5.0, 2.0), (4.0, -2.0, 3.0)), "Du": Def((0, -4.5, 2.7), (4.0, -1.8, 3.7)),
+         "s": Off((0, -3.6, 3.2)), "Ds": Def((0, -3.2, 3.9)),
+         "p": Off((0, 5.5, 6.0)), "Dp": Def((0, 4.8, 5.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o4", "o5")), 5.0
+
+
+def sc_rim_scrum():
+    """Near miss for an off-ball screen: a cutter runs under the rim past a teammate standing at r 0.6 m."""
+    a = {"u": Off((0, 4.0, 1.0), (1.5, 4.0, 1.0), (2.5, -1.0, 0.0), (3.5, -4.5, 1.5)),
+         "Du": Def((0, 3.4, 1.6), (1.5, 3.4, 1.6), (2.7, -0.6, 0.6), (3.7, -3.9, 2.0)),
+         "s": Off((0, -0.2, 0.6)), "Ds": Def((0, 0.2, 1.2)),
+         "p": Off((0, 5.5, 6.0)), "Dp": Def((0, 4.8, 5.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o3", "o5")), 5.0
+
+
+def sc_coincident():
+    """Tracker artefact: during the set the screener's reported position jumps onto D_h's (a merged identity / pile-up
+    for about 1 s) and back."""
+    sp, dur = sc_high_pnr()
+    sp["actors"]["s"] = Off((0, 3.0, 4.5), (1.3, *P_S), (1.45, -0.15, 7.7), (2.0, -0.15, 7.7), (2.4, 0.0, 7.9),
+                            (2.75, 0.4, 8.0), (2.9, *P_S), (3.6, -0.2, 4.6), (4.2, -0.6, 1.8))
+    return sp, dur
+
+
+SCEN.update({"rolling_pnr": sc_rolling_pnr, "brush_pnr": sc_brush_pnr, "runner_through": sc_runner_through,
+             "pnr_wide": sc_pnr_wide, "pnr_handoff": sc_pnr_handoff, "pnr_sag": sc_pnr_sag, "help_stand": sc_help_stand,
+             "slow_drift": sc_slow_drift, "rim_scrum": sc_rim_scrum, "coincident": sc_coincident})
+SEEDS10 = range(1, 11)
+
+
+def test_m1_01_possession_survives_noise():
+    # SCR-M1-01: at sigma_p 0.5 the cleaned holder lost the dribble and on-ball rows became off-ball (high PnR ball_screen
+    # 7 of 10 before); the noise-widened possession keeps the handler's ball through the screen
+    _, sc = build("high_pnr", 3, 0.5)
+    poss, hold = S._poss(sc), S._holder(sc)
+    a, b = int(0.5 / DT), int(5.5 / DT)
+    assert np.mean([x == "h" for x in poss[a:b]]) >= 0.9
+    assert np.mean([x == "h" for x in poss[a:b]]) >= np.mean([x == "h" for x in hold[a:b]])
+    assert _rate("high_pnr", "ball_screen", seeds=SEEDS10, sigma=0.5, screener="s", handler="h") >= 9
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m1_02_rolling_and_brush_screeners_are_ball_screens(sigma):
+    # SCR-M1-02: a screener who never stands made no SET row (rolling: 1 / 3 / 4 of 10, brush: 0 of 10 before)
+    assert _rate("rolling_pnr", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") >= 6
+    assert _rate("brush_pnr", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") >= 3
+    evs = [e for sd in SEEDS10 for e in run("rolling_pnr", "ball_screen", sd, sigma) if e.actors["screener"] == "s"]
+    assert any(e.attrs["plant"] == "moving" for e in evs)
+    # ... and a runner through D_h near the handler is not one
+    assert _rate("runner_through", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s") == 0
+
+
+def test_m1_03_wide_use_and_close_reject():
+    # SCR-M1-03: the 1.2 m centre gate dropped handlers who turn the corner wide (0-1 of 5 before at every sigma_p)
+    for sg in (0.2, 0.3, 0.5):
+        assert _rate("pnr_wide", "ball_screen", seeds=range(1, 6), sigma=sg, screener="s", handler="h") >= 4, sg
+    # ... while a handler who brushes the screener and turns away without crossing is a reject (ICE stays reachable)
+    assert _rate("wing_reject_ice", "screen_read", sigma=0.2, pred=lambda e: e.attrs["read"] == "reject", screener="s") >= 4
+    assert _rate("pnr_reject", "ball_screen", screener="s") == 0
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m1_04_no_set_row_next_to_a_help_defender(sigma):
+    # SCR-M1-04: a stand next to the help defender made an unused off-ball SET row for the far corner shooter (1-2 of 5)
+    assert _rate("help_stand", "screen_set", sigma=sigma, screener="s") == 0
+
+
+def test_m1_05_coincident_tracks():
+    # SCR-M1-05: on precise tracks a screener track merged onto D_h is an artefact (base: 10 of 10 screens at 0.05)
+    assert _rate("coincident", "screen", seeds=SEEDS10, sigma=0.05, screener="s") <= 4
+    # on noisy tracks the test is off: a real contact at 0.2-0.4 m reads as coincident there
+    _, sc = build("coincident", 1, 0.3)
+    assert not S._coincident(sc, [("s", "Dh")], 0, sc.n - 1, S.prm("ball_screen_model"))
+    _, sc = build("high_pnr", 1, 0.05)
+    assert not S._coincident(sc, [("s", "Dh"), ("s", "h")], 0, sc.n - 1, S.prm("ball_screen_model"))
+
+
+def test_m1_06_handoff_is_not_a_ball_screen():
+    # SCR-M1-06: a pitched handoff (1.4 m, not a dho-typed transfer) followed by a stand made ball screens (base 1 / 3 of
+    # 10 at sigma_p 0.3 / 0.5)
+    assert _rate("pnr_handoff", "ball_screen", seeds=SEEDS10, sigma=0.3, screener="s") == 0
+    assert _rate("pnr_handoff", "ball_screen", seeds=SEEDS10, sigma=0.5, screener="s") <= 1
+
+
+def test_m1_07_sagging_ball_defender():
+    # SCR-M1-07: the joint assignment gives a sagging D_h to the handler (base 0 of 5 at sigma_p 0.5: own-man stop)
+    _, sc = build("pnr_sag", 1, 0.3)
+    assert S._assignment(sc, int(2.5 / DT), 1.2)["Dh"] == "h"
+    for sg in (0.3, 0.5):
+        assert _rate("pnr_sag", "ball_screen", seeds=range(1, 6), sigma=sg, screener="s", handler="h") >= 4, sg
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m1_08_offball_screens_are_used_screens(sigma):
+    # SCR-M1-08: a user drifting past a standing teammate was an off-ball screen (base 1-2 of 5; at sigma_p 0.5 the
+    # speed estimate itself is noisy)
+    assert _rate("slow_drift", "screen", sigma=sigma, screener="s") <= (1 if sigma >= 0.5 else 0)
+    # every off-ball screen row is a used one (passed at speed); unused rows stay in screen_set / screen_read
+    for name in ("pin_down", "stagger", "cross"):
+        _, sc = build(name, 1, sigma)
+        for r in S._screens(sc, "off_ball"):
+            assert r.m["passed"] and max(r.m["user_speed"], r.m["user_peak_mps"]) >= S.prm("screen")["user_speed_off_mps"]
+    # the fade of a flare is read as away use from the distance gain (the angle to u0 - P_s is noise near the screener)
+    assert _rate("flare_away", "flare_screen", seeds=SEEDS10, sigma=0.3, screener="s", user="u") >= 7
+
+
+def test_m1_09_fragmented_stand_is_one_screen():
+    # SCR-M1-09: at sigma_p 0.5 a stand cut in two read as a merged re-screen
+    assert _rate("high_pnr", "re_screen", seeds=SEEDS10, sigma=0.5) == 0
+    assert _rate("rescreen", "re_screen", seeds=SEEDS10, sigma=0.5, screener="s", handler="h") >= 7
+
+
+def test_m1_10_no_offball_screen_under_the_rim():
+    # SCR-M1-10: a cutter running under the rim past a teammate at r 0.6 m (base 10 of 10)
+    for sg in (0.2, 0.3, 0.5):
+        assert _rate("rim_scrum", "screen", sigma=sg, screener="s") == 0, sg
+
+
+@pytest.mark.parametrize("scen,det,actors,lo", [
+    ("flip", "flip_screen", {"screener": "s", "handler": "h"}, 3),        # base 0 of 10 at sigma_p 0.5
+    ("spain", "spain_pnr", {"screener": "s1"}, 6),                        # base 4
+    ("stagger", "stagger_screen", {"user": "u"}, 5),                      # base 6
+    ("back_top", "back_screen", {"screener": "s", "user": "u"}, 8),       # base 9
+])
+def test_m1_composites_hold_at_high_noise(scen, det, actors, lo):
+    # the composite detectors read the new rows: flip / Spain / stagger / back screen at sigma_p 0.5 over 10 seeds
+    assert _rate(scen, det, seeds=SEEDS10, sigma=0.5, **actors) >= lo
+
+
+# --------------------------------------------------------------------------------------
+# Mastery round 2 (changes_mastery_r2 in screens.yaml): one scene per new rule and a regression test per fix
+# --------------------------------------------------------------------------------------
+def sc_pnr_dribble_in_place():
+    """Near miss (SCR-M2-03): a planted high screen on D_h; the handler dribbles in place beside it (about 1 m of drift)
+    and passes to o4 at 4.3 s - he never travels through the screen."""
+    a = pnr(go=2.0, post="stay")
+    a["h"] = Off((0, -0.3, 8.7), (2.0, -0.3, 8.7), (2.6, 0.5, 8.6), (3.4, -0.2, 8.8), (5.0, -0.2, 8.8))
+    a["Dh"] = Def((0, -0.15, 7.7), (2.0, -0.15, 7.7), (2.6, 0.3, 7.7), (3.4, -0.1, 7.8), (5.0, -0.1, 7.8))
+    return spec(a, held=[(0, 4.3, "h"), (4.8, 5.0, "o4")], flights=[(4.3, 4.8, "h", "o4")]), 5.0
+
+
+def sc_reverse_handoff():
+    """Near miss (SCR-M2-04): the handler dribbles at the big, hands him the ball at 0.6 m (2.4 s) next to D_h and
+    the big keeps it and drives: a DHO from h to s, not a ball screen for h."""
+    a = {"h": Off((0, -2.5, 8.6), (1.6, -2.5, 8.6), (2.4, -0.4, 8.2), (3.0, 0.4, 9.2), (4.5, 1.8, 9.6)),
+         "s": Off((0, 0.6, 6.4), (2.0, 0.4, 7.9), (2.4, 0.2, 7.9), (3.2, 1.6, 6.0), (4.2, 1.2, 2.4)),
+         "Dh": Def((0, -2.3, 7.6), (1.6, -2.3, 7.6), (2.4, -0.5, 7.3), (3.0, 0.6, 8.3), (4.5, 1.6, 8.7)),
+         "Ds": Def((0, 0.8, 5.5), (2.0, 0.6, 7.0), (2.6, 0.9, 6.8), (3.4, 1.5, 5.0), (4.4, 1.0, 2.8))}
+    return spec(a, held=[(0, 2.42, "h"), (2.42, 5.0, "s")]), 5.0
+
+
+def sc_coincident_brief():
+    """True high PnR; the screener's track jumps onto D_h for 0.15 s at the contact (confirm r1 adversarial scene)."""
+    sp, dur = sc_high_pnr()
+    sp["actors"]["s"] = Off((0, 3.0, 4.5), (1.3, *P_S), (2.3, *P_S), (2.38, -0.15, 7.7), (2.45, -0.1, 7.75), (2.53, *P_S),
+                            (2.9, *P_S), (3.6, -0.2, 4.6), (4.2, -0.6, 1.8))
+    return sp, dur
+
+
+def sc_plant_then_roll():
+    """High PnR whose screener plants for 0.8 s and starts his roll 0.4 s before the handler's closest approach (judged
+    J34 on SportVU: rolling at 2.6 m/s by t_s, planted before it)."""
+    a = pnr(go=2.2)
+    a["s"] = Off((0, 3.0, 4.5), (1.2, *P_S), (2.45, *P_S), *_line(2.5, 3.4, (0.5, 7.0), (-0.4, 4.6)), (4.0, -0.6, 1.8))
+    a["Ds"] = Def((0, 2.6, 4.0), (1.2, 0.8, 6.2), (2.45, 0.8, 6.2), (3.2, 0.4, 5.0), (4.0, 0.4, 2.6))
+    return spec(a, held=[(0, 5.5, "h")]), 5.5
+
+
+def sc_pass_and_screen():
+    """The big passes to the guard at the top (1.0 s), follows his pass and screens D_h; the guard turns the corner."""
+    sp, dur = sc_high_pnr()
+    sp["actors"]["s"] = Off((0, 2.5, 8.2), (1.0, 2.5, 8.2), (1.9, *P_S), (2.9, *P_S), (3.6, -0.2, 4.6), (4.2, -0.6, 1.8))
+    sp["actors"]["Ds"] = Def((0, 2.4, 7.2), (1.0, 2.4, 7.2), (1.9, 0.8, 6.2), (3.0, 0.8, 6.0), (3.4, 1.1, 5.0),
+                             (4.2, 0.8, 2.6))
+    sp["ball"] = {"held": [(0, 1.0, "s"), (1.4, 6.0, "h")], "flights": [(1.0, 1.4, "s", "h")]}
+    return sp, dur
+
+
+def sc_boxout():
+    """Near miss (SCR-M2-07, confirm r1 adversarial): p shoots at 1.0 s and D_p rebounds at 2.4 s; u crashes past s,
+    who is boxed out at r 2.5 m, with D_u trailing into s - no offensive possession, not a screen."""
+    a = {"p": Off((0, 5.5, 6.0), (1.2, 5.5, 6.0), (2.6, 4.0, 3.5)),
+         "Dp": Def((0, 4.8, 5.4), (1.0, 4.8, 5.2), (2.4, 0.9, 1.3), (5.0, 0.9, 1.3)),
+         "s": Off((0, -1.9, 1.7)), "Ds": Def((0, -1.4, 1.2)),
+         "u": Off((0, -5.0, 5.0), (1.0, -5.0, 5.0), (2.8, 0.4, 1.6), (5.0, 0.4, 1.6)),
+         "Du": Def((0, -4.4, 5.6), (1.0, -4.4, 5.6), (2.8, -1.2, 2.7), (5.0, -1.0, 2.4))}
+    return spec(a, held=[(0, 1.0, "p"), (2.4, 5.0, "Dp")], flights=[(1.0, 2.4, "p", "Dp")], skip=("o4", "o5")), 5.0
+
+
+def sc_tight_pnr():
+    """True high PnR with D_h glued to the handler (0.03 m apart, a merged pair) through the use: the (u, D) pair is not
+    a pile-up veto (judged J35, a real screen lost to it)."""
+    a = pnr(go=2.0)
+    a["Dh"] = Def((0, -0.27, 8.7), (2.0, -0.27, 8.7), (2.5, 1.03, 8.3), (3.0, 2.33, 6.6), (3.9, 1.53, 3.0))
+    return spec(a, held=[(0, 6.0, "h")]), 6.0
+
+
+def sc_early_pileup():
+    """Tracker artefact 1.2 s before the contact: the screener's track sits on D_h for 0.6 s (SCR-M2-08 window)."""
+    sp, dur = sc_high_pnr()
+    sp["actors"]["s"] = Off((0, 3.0, 4.5), (0.8, -0.15, 7.7), (1.4, -0.15, 7.7), (1.9, *P_S), (2.9, *P_S),
+                            (3.6, -0.2, 4.6), (4.2, -0.6, 1.8))
+    return sp, dur
+
+
+def sc_slow_passby():
+    """A user jogs (about 2.3 m/s) 0.6 m past a standing teammate with his defender trailing 1.4 m behind on the same line
+    (SCR-M2-11 contract scene: a used row there must carry a block or an interaction)."""
+    a = {"u": Off((0, -6.0, 2.5), (1.0, -6.0, 2.5), *_line(1.2, 3.8, (-5.6, 3.0), (-0.2, 6.6))),
+         "Du": Def((0, -6.6, 1.9), (1.0, -6.6, 1.9), *_line(1.8, 4.4, (-5.6, 3.0), (-0.2, 6.6))),
+         "s": Off((0, -2.9, 5.6)), "Ds": Def((0, -3.3, 6.5)),
+         "p": Off((0, 5.5, 6.0)), "Dp": Def((0, 4.8, 5.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o4", "o5")), 5.0
+
+
+def sc_fast_brush():
+    """Brush ball screen at about 2.3 m/s: the screener runs through D_h at 0.3 m as the handler passes him at 0.7 m."""
+    a = pnr(go=2.0)
+    a["s"] = Off(*_line(1.0, 2.5, (3.9, 7.0), (0.6, 7.6)), *_line(2.6, 3.4, (0.3, 7.2), (-0.4, 5.6)), (4.4, -0.6, 2.0))
+    a["Ds"] = Def(*_line(1.0, 2.5, (3.7, 6.1), (1.0, 6.5)), (3.4, 0.9, 5.0), (4.4, 0.6, 2.6))
+    return spec(a, held=[(0, 5.0, "h")]), 5.0
+
+
+SCEN.update({"pnr_dribble_in_place": sc_pnr_dribble_in_place, "reverse_handoff": sc_reverse_handoff,
+             "coincident_brief": sc_coincident_brief, "plant_then_roll": sc_plant_then_roll,
+             "pass_and_screen": sc_pass_and_screen, "boxout": sc_boxout, "tight_pnr": sc_tight_pnr,
+             "early_pileup": sc_early_pileup, "slow_passby": sc_slow_passby, "fast_brush": sc_fast_brush})
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m2_03_handler_who_never_travels_is_no_ball_screen(sigma):
+    # SCR-M2-03: judged SportVU 'ball screens' of a handler dribbling in place / stopping at the screener were not screens
+    assert _rate("pnr_dribble_in_place", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s") <= 1
+    assert _rate("high_pnr", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") >= 9
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3])
+def test_m2_04_reverse_handoff_is_not_a_ball_screen(sigma):
+    # SCR-M2-04: the handler handing the ball to the 'screener' at the contact is a DHO (u -> s)
+    assert _rate("reverse_handoff", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") <= 1
+
+
+def test_m2_04_possession_flip_at_the_screen_is_not_a_handoff():
+    # SCR-M2-04 guard: at sigma_p 0.5 the possession flips to a screener standing 0.2 m from the handler for a few frames
+    # and back (a reverse-handoff veto without the keep / flip-back test removed 34 synthetic ball screens)
+    for sg in (0.3, 0.5):
+        assert _rate("high_pnr", "ball_screen", seeds=SEEDS10, sigma=sg, screener="s", handler="h") >= 9, sg
+
+
+def test_m2_05_brief_track_jump_and_early_roll_keep_the_screen():
+    # SCR-M2-05 (confirm r1 CR1-05): the screener speed at t_s read 4.5 m/s after a 0.15 s track jump (10 -> 0 of 10)
+    assert _rate("coincident_brief", "ball_screen", seeds=SEEDS10, sigma=0.05, screener="s", handler="h") >= 8
+    # ... and a stand row whose screener planted and rolls by the handler's closest approach keeps its stand speed
+    for sg in (0.05, 0.3):
+        assert _rate("plant_then_roll", "ball_screen", seeds=SEEDS10, sigma=sg, screener="s", handler="h") >= 7, sg
+    # runners through D_h stay out (median over the window, not a minimum)
+    assert _rate("runner_through", "ball_screen", seeds=SEEDS10, sigma=0.3, screener="s") == 0
+
+
+def test_m2_02_fast_brush_with_close_contact():
+    # SCR-M2-02: a contact row at 2.0-2.5 m/s is kept with a close contact and a close use
+    assert _rate("fast_brush", "ball_screen", seeds=SEEDS10, sigma=0.2, screener="s", handler="h") >= 5
+
+
+def test_m2_06_pass_and_screen_attribute():
+    # SCR-M2-06: a pass from the screener to the handler before the screen is an attribute, not a veto
+    evs = [e for sd in range(1, 6) for e in _evs("pass_and_screen", "ball_screen", sd, 0.2, screener="s", handler="h")]
+    assert len(evs) >= 4 and sum(bool(e.attrs.get("pass_and_screen")) for e in evs) >= 3
+    assert not any(e.attrs.get("pass_and_screen") for sd in range(1, 6)
+                   for e in _evs("high_pnr", "ball_screen", sd, 0.2, screener="s"))
+
+
+@pytest.mark.parametrize("sigma", [0.05, 0.2, 0.3, 0.5])
+def test_m2_07_boxout_is_not_an_off_ball_screen(sigma):
+    # SCR-M2-07 (confirm r1 CR1-04): the box-out scene fired 7 / 4 / 4 / 1 of 10 at sigma_p 0.05 / 0.2 / 0.3 / 0.5
+    assert _rate("boxout", "screen", seeds=SEEDS10, sigma=sigma, screener="s") == 0
+
+
+def test_m2_08_coincident_pairs_and_window():
+    # SCR-M2-08: a defender glued to the handler (merged u-D pair) does not veto a real screen (judged J35) ...
+    assert _rate("tight_pnr", "ball_screen", seeds=SEEDS10, sigma=0.05, screener="s", handler="h") >= 8
+    # ... and a screener pile-up on D_h 1.2 s before t_s is now inside the tested window
+    _, sc = build("early_pileup", 1, 0.05)
+    ts = int(2.6 / DT)
+    assert S._coincident(sc, [("s", "Dh")], *S._win(sc, ts, -S.prm("ball_screen_model")["coincident_pre_s"], 0.5),
+                         S.prm("ball_screen_model"))
+    assert not S._coincident(sc, [("s", "Dh")], *S._win(sc, ts, -0.5, 0.5), S.prm("ball_screen_model"))
+
+
+def test_m2_09_screener_came_test():
+    # SCR-M2-09: the screener ran to D_h (who stood with the handler); his own defender, who followed him, was not 'come to'
+    _, sc = build("high_pnr", 1, 0.05)
+    assert S._screener_came(sc, "s", "Dh", int(1.3 / DT))
+    assert not S._screener_came(sc, "s", "Ds", int(1.3 / DT))
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3])
+def test_m2_11_used_offball_rows_block_interact_or_sprint(sigma):
+    # SCR-M2-11: every used off-ball row has a block, an interaction or a sprint (>= offball_fast_use_mps) and D_u guarding
+    # u on precise tracks; fast stagger cutters (whose second defender already trails) stay screens
+    Pb = S.prm("ball_screen_model")
+    for name in ("pin_down", "stagger", "cross", "flare", "back_top", "slow_passby"):
+        for sd in (1, 2, 3):
+            _, sc = build(name, sd, sigma)
+            for r in S._screens(sc, "off_ball"):
+                assert r.m["blocking"] or r.m["interaction"]["interaction"] or r.m["user_speed"] >= Pb["offball_fast_use_mps"]
+                assert r.m["offense_ball"] and r.m["guards_user"]
+    assert _rate("stagger", "stagger_screen", seeds=SEEDS10, sigma=sigma, user="u") >= 8
+
+
+def test_m2_13_rescreen_after_a_merged_reset():
+    # SCR-M2-13: a used screen after a reset that was merged into the first stand links to the reset (sigma_p 0.5:
+    # rescreen_same_side re_screen 17 -> 20 of 40 in the tester sweep)
+    assert _rate("rescreen_same_side", "re_screen", seeds=SEEDS10, sigma=0.5, screener="s", handler="h") >= 6
+
+
+@pytest.mark.parametrize("scen,det,actors,lo", [
+    ("rolling_pnr", "ball_screen", {"screener": "s", "handler": "h"}, 7),   # rolling screener
+    ("brush_pnr", "ball_screen", {"screener": "s", "handler": "h"}, 4),     # moving screen
+    ("rescreen", "re_screen", {"screener": "s", "handler": "h"}, 7),
+    ("flip", "flip_screen", {"screener": "s", "handler": "h"}, 7),
+    ("spain", "spain_pnr", {"screener": "s1"}, 7),
+    ("stagger", "stagger_screen", {"user": "u"}, 8),
+    ("flare", "flare_screen", {"screener": "s", "user": "u"}, 7),
+    ("back_top", "back_screen", {"screener": "s", "user": "u"}, 8),
+])
+def test_m2_rule_scenes_at_sigma_03(scen, det, actors, lo):
+    # every r2 rule keeps the canonical scenes at sigma_p 0.3 over 10 seeds
+    assert _rate(scen, det, seeds=SEEDS10, sigma=0.3, **actors) >= lo
+
+
+# --------------------------------------------------------------------------------------
+# Mastery round 3 (changes_mastery_r3 in screens.yaml): pocket pass, off-ball contact / pass-by, ball dropout
+# --------------------------------------------------------------------------------------
+def sc_pocket_pass():
+    """True PnR: h turns the corner and hits the rolling big with a pocket pass 0.35 s after passing him, 1.3 m away."""
+    a = pnr(go=2.0)
+    a["s"] = Off((0, 3.0, 4.5), (1.3, *P_S), (2.7, *P_S), (3.1, 0.6, 6.4), (3.6, 0.0, 4.6), (4.2, -0.4, 1.8))
+    return spec(a, held=[(0, 2.85, "h"), (3.05, 6.0, "s")], flights=[(2.85, 3.05, "h", "s")]), 6.0
+
+
+def sc_pin_ball_dropout():
+    """Down screen (sc_pin_down) with the ball lost by the tracker for the whole clip (production dropout)."""
+    sp, dur = sc_pin_down()
+    sp["ball"] = {"held": [], "flights": []}
+    return sp, dur
+
+
+def sc_jog_pair():
+    """Near miss (SCR-M3-04): s and u jog together 0.9 m apart up the lane line at about 2 m/s and stop side by side;
+    their defenders trail them - neither screens the other."""
+    a = {"u": Off(*_line(0.5, 3.5, (3.2, 0.8), (3.2, 6.8))),
+         "s": Off(*_line(0.5, 3.5, (2.3, 0.6), (2.3, 6.6))),
+         "Du": Def(*_line(0.5, 3.5, (3.6, 0.0), (3.6, 6.0))),
+         "Ds": Def(*_line(0.5, 3.5, (1.8, -0.1), (1.8, 5.9))),
+         "p": Off((0, -5.0, 7.0)), "Dp": Def((0, -4.3, 6.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o3", "o4")), 5.0
+
+
+def sc_pin_wide_trail():
+    """Near miss (SCR-M3-03): the down-screen user sprints past s, but D_u goes under, never nearer s than about 1.2 m -
+    no contact on D_u, so no used off-ball screen (the user ran free past a teammate)."""
+    sp, dur = sc_pin_down()
+    sp["actors"]["Du"] = Def((0, 4.3, 1.6), (2.0, 4.3, 1.6), (2.5, 3.4, 2.0), (2.9, 3.2, 3.0), (3.5, 5.0, 4.8))
+    return sp, dur
+
+
+def sc_boxout_noball():
+    """Near miss (SCR-M3-05): sc_boxout with the ball lost by the tracker after the shot - the crash to the rim past the
+    boxed-out s stays no screen when the possession gate has no evidence."""
+    sp, dur = sc_boxout()
+    sp["ball"] = {"held": [(0, 1.0, "p")], "flights": []}
+    return sp, dur
+
+
+SCEN.update({"pocket_pass": sc_pocket_pass, "pin_ball_dropout": sc_pin_ball_dropout, "jog_pair": sc_jog_pair,
+             "pin_wide_trail": sc_pin_wide_trail, "boxout_noball": sc_boxout_noball})
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m3_01_pocket_pass_to_the_roller_keeps_the_ball_screen(sigma):
+    # SCR-M3-01 (confirm r2): the reverse-handoff veto (SCR-M2-04) and the SET receive veto removed a true pocket pass
+    # (r1 -> r2: 2 -> 0 of 10 at sigma_p 0.2 / 0.3, 5 -> 3 at 0.5); a catch while the screener rolls to the rim, the pair
+    # separating and the passer still attacking, is kept (r3: 10 / 10 / 9)
+    assert _rate("pocket_pass", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") >= 8
+
+
+@pytest.mark.parametrize("sigma", [0.05, 0.2, 0.3, 0.5])
+def test_m3_01_reverse_handoff_still_vetoed(sigma):
+    # the exemption must not reopen the DHO u -> s (under noise its detected catch lags 0.2-0.35 s, when the pair has
+    # already separated and the big drives: only the passer stepping away tells them apart)
+    assert _rate("reverse_handoff", "ball_screen", seeds=SEEDS10, sigma=sigma, screener="s", handler="h") == 0
+
+
+def test_m3_03_offball_screen_needs_contact_on_the_users_defender():
+    # SCR-M3-03: D_u going under, about 1.0-1.1 m off the screener, is no contact on precise tracks (r2: 8 of 10 used
+    # screens at sigma_p 0.05; judged SportVU used rows: every real one had D_u within 0.80 m of the screener)
+    assert _rate("pin_wide_trail", "screen", seeds=SEEDS10, sigma=0.05, screener="s", user="u") <= 2
+    # the canonical down screen keeps its screen at every noise level
+    for sg in (0.05, 0.2, 0.3, 0.5):
+        assert _rate("pin_down", "screen", seeds=SEEDS10, sigma=sg, screener="s", user="u") >= 7, sg
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m3_04_teammates_jogging_side_by_side_are_no_screen(sigma):
+    # SCR-M3-04 (confirm r2 adversarial: 1 / 2 / 3 of 10 at sigma_p 0.2 / 0.3 / 0.5): the user must pass the screener
+    for s, u in (("s", "u"), ("u", "s")):
+        assert _rate("jog_pair", "screen", seeds=SEEDS10, sigma=sigma, screener=s, user=u) == 0, (s, u)
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_m3_05_ball_dropout_keeps_the_offball_screen(sigma):
+    # SCR-M3-05 (confirm r2: down screen with the ball missing 8 -> 0 of 10): a missing ball is no evidence of a shot;
+    # the box-out (ball tracked, no offensive possession) stays out
+    assert _rate("pin_ball_dropout", "screen", seeds=SEEDS10, sigma=sigma, screener="s", user="u") >= 7
+    assert _rate("boxout", "screen", seeds=SEEDS10, sigma=sigma, screener="s") == 0
+    # without ball evidence only a user who leaves the rim is accepted: a crash past a boxed-out teammate stays out
+    assert _rate("boxout_noball", "screen", seeds=SEEDS10, sigma=sigma, screener="s") == 0
+
+
+@pytest.mark.parametrize("scen,det,actors,lo", [
+    ("rolling_pnr", "ball_screen", {"screener": "s", "handler": "h"}, 7),   # rolling screener
+    ("brush_pnr", "ball_screen", {"screener": "s", "handler": "h"}, 4),     # moving screen
+    ("rescreen", "re_screen", {"screener": "s", "handler": "h"}, 7),
+    ("flip", "flip_screen", {"screener": "s", "handler": "h"}, 7),
+    ("spain", "spain_pnr", {"screener": "s1"}, 7),
+    ("stagger", "stagger_screen", {"user": "u"}, 8),
+    ("flare", "flare_screen", {"screener": "s", "user": "u"}, 7),
+    ("back_top", "back_screen", {"screener": "s", "user": "u"}, 8),
+    ("cross", "cross_screen", {"screener": "s", "user": "u"}, 8),
+])
+def test_m3_rule_scenes_keep_their_rates(scen, det, actors, lo):
+    # the r3 rules keep every canonical scene at sigma_p 0.3 and 0.5 (the 0.5 floor is two runs lower)
+    assert _rate(scen, det, seeds=SEEDS10, sigma=0.3, **actors) >= lo
+    assert _rate(scen, det, seeds=SEEDS10, sigma=0.5, **actors) >= lo - 2 - (5 if scen in ("flip", "flare", "spain") else 0)
+
+
+def test_m3_coincident_track_artefact_still_vetoed():
+    # SCR-M1-05 / SCR-M2-08 unchanged by r3: a screener track merged onto D_h on precise tracks is not a screen
+    assert _rate("coincident", "screen", seeds=SEEDS10, sigma=0.05, screener="s") <= 4
+
+
+def sc_logo_pnr_end():
+    """Logo PnR (screen 10 m out, roll to the rim) that ends with handler, screener and D_s standing together at the
+    rim - the end of the clip is no new ball screen on the screener's own defender (tester NEG_logo_pnr)."""
+    a = {"h": Off((0, -0.3, 10.6), (2.2, -0.3, 10.6), (2.7, 1.0, 10.3), (3.2, 2.3, 8.6), (4.4, 1.5, 4.0)),
+         "s": Off((0, 3.0, 6.0), (1.4, 0.7, 9.4), (3.1, 0.7, 9.4), (4.4, 0.0, 4.0)),
+         "Dh": Def((0, -0.15, 9.7), (2.2, -0.15, 9.7), (2.6, 0.0, 9.9), (3.0, 0.9, 10.5), (3.5, 2.2, 8.6),
+                   (4.4, 1.8, 5.0)),
+         "Ds": Def((0, 2.6, 5.3), (1.4, 0.8, 8.2), (3.1, 0.8, 8.0), (4.4, 0.4, 4.6))}
+    return spec(a, held=[(0, 5.5, "h")], skip=("o3",)), 5.5
+
+
+SCEN.update({"logo_pnr_end": sc_logo_pnr_end})
+
+
+def test_m3_06_retreat_needs_travel():
+    # SCR-M3-06: at sigma_p 0.5 a handler standing beside the screener at the rim read a retreat from velocity noise and
+    # the retreat exemption of the travel test kept a ball screen on D_s (tester sweep: ball_screen FP 0 -> 1 since r1)
+    for sg in (0.3, 0.5):
+        assert _rate("logo_pnr_end", "ball_screen", seeds=SEEDS10, sigma=sg, screener="s", defender="Ds") == 0, sg
+        assert _rate("logo_pnr_end", "ball_screen", seeds=SEEDS10, sigma=sg, screener="s", defender="Dh") >= 7, sg
+    Pb = S.prm("ball_screen_model")
+    for name in ("high_pnr", "wing_reject_ice", "logo_pnr_end"):
+        for sd in (1, 2, 3):
+            _, sc = build(name, sd, 0.5)
+            for r in S._screens(sc, "on_ball"):
+                if r.m["read"] == "retreat":
+                    assert r.m["handler_disp_m"] >= Pb["retreat_travel_m"]
+
+
+@pytest.mark.parametrize("sigma", [0.3, 0.5])
+def test_m3_07_on_ball_reject_is_a_move(sigma):
+    # SCR-M3-07: a standing handler's unused set-up read a reject from speed noise and became a ball_screen_coverage row
+    # (tester sweep at sigma_p 0.5: coverage FPs 2 -> 5 since r1, 0 after); the ICE reject keeps its coverage row
+    Pr = S.prm("screen_read")
+    for name in ("rescreen_same_side", "wing_reject_ice", "high_pnr"):
+        for sd in (1, 2, 3, 8, 10):
+            _, sc = build(name, sd, sigma)
+            for r in S._records(sc):
+                if r.kind == "on_ball" and r.m["read"] == "reject":
+                    ka, kb = S._win(sc, r.ts, -0.5, S.prm("ball_screen_model")["use_disp_post_s"])
+                    k = sc.k(r.u)
+                    assert float(np.nanmax(np.hypot(k.x[ka:kb + 1] - k.x[ka], k.y[ka:kb + 1] - k.y[ka]))) >= \
+                        Pr["reject_disp_m"]
+    ice = _rate("wing_reject_ice", "ball_screen_coverage", seeds=SEEDS10, sigma=sigma,
+                pred=lambda e: e.attrs["route"] == "ice", handler="h", handler_defender="Dh")
+    assert ice >= (5 if sigma == 0.3 else 3), ice
+
+
+def test_m3_08_contact_row_keeps_the_stand_onset():
+    # SCR-M3-08: a contact row that replaces an off-ball stand row of the pair reports the stand onset as the screen_set
+    # t0 (tester A_side_step_up at sigma_p 0.3: screen_set t0 0.5 s early, strict 570 -> 569 since r1)
+    for sd in SEEDS10:
+        _, sc = build("side_step_up", sd, 0.3)
+        for r in S._records(sc):
+            if r.m.get("set_stop") is not None:
+                assert r.stop.synthetic and r.m["set_stop"][0] >= r.stop.a
+        evs = [e for e in S.detect_screen_set(sc) if e.actors["screener"] == "s" and e.actors["user"] == "h"]
+        assert evs and min(abs(e.t0 * DT - 1.4) for e in evs) <= 0.6, [e.t0 * DT for e in evs]

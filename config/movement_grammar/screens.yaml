@@ -1,6 +1,6 @@
 family: screens
-version: 0.3.0
-date: '2026-10-20'
+version: 0.6.0
+date: '2026-10-24'
 owner: Mac session
 status: proposal under the build freeze (items marked canonical are the family's canonical definitions; every numeric value is an engineering proposal until fitted on MSU film)
 scope: one canonical screen detector with strict and loose outputs (R-ST-17), the screen moment, ball screens, off-ball screens, handoffs, screen angle, and defender response as attributes
@@ -252,6 +252,186 @@ changes_loop4:
   what: 'Net effect of SCR-L4-01..03. Real data (3 SportVU games 2015-16, 6855 s tracked; runner, sigma told 0.15, rates per 48 min both teams): screen_set 222.2 -> 229.8, screen 58.4 -> 67.6, ball_screen 14.7 -> 18.9, high / side ball screen 2.9 / 2.9 -> 3.8 / 3.8, off_ball_screen_coverage 84.4 -> 88.6, dho 14.3 unchanged. With added noise 0.3: screen_set 281.1 -> 283.6, screen 60.5 -> 61.3, ball_screen 8.4 -> 8.4. Synthetic sweep (5250 runs): hits 12612 -> 12618, strict 11832 -> 11837, FPs 1139 -> 1122, no detector worse at any sigma_p, 0 crashes.'
   why: 'Reference: Second Spectrum counts just under 70 picks per game per offense in a recent season, no team below 54 (Raptors Republic, https://www.raptorsrepublic.com/?p=133298); 2015-16 used fewer, so 90-140 ball screens per 48 for both teams is the reference band. Synergy-style play-type splits put pick-and-roll ball handler plus roll man at about a quarter of possessions that end in a play type. Ball screens remain 5-7x under the band. play-by-play has no screen labels, so there is no PBP precision / recall for this family.'
   evidence: 'Open (not fixed this loop): (1) on-ball SET rows are about 63 per 48 and only 70 of 150 are used; 45 of the unused fail the d_su_max_m 1.2 m centre gate only or with notpassed (median d_su 1.5 m on unused on-ball rows), a threshold question left for gold labels; (2) 50 of 143 unmatched geometric candidates have no stand (screener minimum speed 0.42-1.49 m/s: rolling / slipping screeners); (3) under added noise 0.3 ball_screen halves (18.9 -> 8.4) and screen_set rises 23 %, so the usage gates lose on-ball screens to noise; (4) off-ball unused rows are 289 of 492 screen_read rows, which inflates screen_set relative to used screens.'
+changes_mastery_r1:
+- id: SCR-M1-01-possession
+  severity: critical
+  what: 'New possession (ball_screen_model poss_*): 5-frame median raw-ball distance, radius HOLD_R + poss_k x the clip''s robust ball sigma, sticky owner, None gaps up to poss_bridge_s filled, runs < poss_min_run_frames removed. Used by the on-ball kind, the on-ball defender override and the contact candidates; DHO / pass logic keeps the cleaned holder.'
+  why: 'Holder collapse was the main noise failure: on real tracks with sigma_p 0.3 / 0.5 added, cleaned holder coverage fell 0.55 -> 0.42 -> 0.15 and 32 / 49 of the 54 clean ball screens became off-ball rows.'
+  evidence: 'Synthetic high PnR at sigma_p 0.5: ball_screen 7 -> 10 of 10, possession covers >= 0.9 of the hold (test_m1_01). Real data (below): ball_screen 22.7 / 10.5 / 2.9 -> 44.5 / 47.5 / 44.1 per 48 at noise 0 / 0.3 / 0.5.'
+- id: SCR-M1-02-contact-candidates
+  severity: critical
+  what: 'Stage 1 adds on-ball contact candidates (_contact_rows): for every possession run of h and teammate s, contact episodes with the ball defender (5-frame median d(s, d) <= contact_on_m + contact_k x sigma_d for >= contact_min_frames), not covered by an on-ball stand row of the pair, s not holding or catching the ball; the episode is a synthetic stop (plant attribute moving / loose, source contact). Kept only when the on-ball decision accepts it, with the stricter moving-screener terms (speed <= moving_screener_max_mps, blocking, interaction or close contact). An off-ball row of the same pair at the same contact is replaced.'
+  why: 'Rolling / moving screeners never form a stand (real diagnosis: 352 on-ball candidates with no stand, about 16 real ball screens per 48 there).'
+  evidence: 'Synthetic rolling screener (about 1.1 m/s) ball_screen 1 / 3 / 4 -> 7 / 8 / 9 of 10 at sigma_p 0.2 / 0.3 / 0.5, brush screen (about 1.6 m/s) 0 -> 5 / 4 / 8, runner through D_h at 3.5 m/s stays 0 (test_m1_02). Judged real contact rows: the moving-screener terms removed drives with a big alongside and pass-and-cut traffic (10-row inspection: 4 real / 5 ambiguous / 1 not before, 3 real / 2 ambiguous kept after).'
+- id: SCR-M1-03-onball-decision
+  severity: critical
+  what: 'Stage 2 for every on-ball row (_onball_decision): screen = sigma-aware contact on D_h AND d(s, h) <= near_m AND possession of h AND handler peak speed >= 1.0 m/s AND read use / snake / split (or a retreat inside the old gate) AND screener speed at t_s <= screener_max_mps; USE allows a crossing within use_near_m (2.0 m); p = max(p_loose, plant_floor) x p_contact x p_use. On-ball REJECT no longer needs d_su_ca > 1.2 m.'
+  why: 'The off-ball 1.2 m centre gate dropped real ball screens where the handler goes wide (4 real, 2 ambiguous of 8 judged not_geo rows); the plant was a gate although moving screens are screens; an ICE handler who brushes the screener and turns away could not be a reject.'
+  evidence: 'Synthetic wide PnR (closest approach 1.6 m) 0-1 -> 4-5 of 5 at every sigma_p; wing_reject_ice coverage rows restored (test_m1_03, test_t02).'
+- id: SCR-M1-04-unused-row-guards
+  severity: high
+  what: 'An off-ball row that is not a used screen is kept only when D guards u (mean d(D, u) over [t_s - 1.5, t_s - 0.3] <= offball_du_max_m and the joint assignment or the nearest-defender test gives D to u) and u comes within reject_approach_m of s; an on-ball row that is not a screen only when D is within bd_max_m of the handler over [t_s - 1, t_s].'
+  why: 'screen_set was 196 per 48 against about 110 true screens (diagnosis): stands next to help defenders, scrums and pairs with the user 3-5 m away were unused SET rows; under noise they grew to 244 / 264.'
+  evidence: 'Real screen_set 196.2 / 244.1 / 263.8 -> 121.4 / 134.9 / 131.5 per 48 (noise 0 / 0.3 / 0.5); in a 10-row inspection of unused off-ball rows before this rule most were stands with the user 2.5-4.6 m away who never came (no screen), the rest ambiguous. Synthetic help-defender stand 1-2 of 5 -> 0 (test_m1_04).'
+- id: SCR-M1-05-coincident-tracks
+  severity: medium
+  what: 'A row is dropped when (s, D), (s, u) or (u, D) stay below coincident_m (5-frame median) for coincident_frames consecutive frames within t_s +- 0.5 s, tested only when the pair distance sigma is <= coincident_sigma_max_m.'
+  why: 'Coincident-track pile-ups (0.00-0.04 m) were 3 of 114 judged real candidates. On noisy tracks a real contact at 0.2-0.4 m reads as coincident, so the test is limited to precise tracking.'
+  evidence: 'Real clean data, one game: 7 rows caught (pairs at 0.016-0.051 m for 10-24 frames, 5 with the final 8-frame rule). Synthetic merged-identity scene at sigma_p 0.05: screen 10 -> <= 4 of 10; no change at sigma_p >= 0.2 by design (test_m1_05). A first 0.15 m / 9-frame version vetoed V0 flex screens (defenders scripted 0.1-0.15 m from the screener), hence 0.08 m and the sigma gate.'
+- id: SCR-M1-06-handoff-rows
+  severity: medium
+  what: 'An on-ball row is kind handoff when s handed the ball to u within [t_s - handoff_s, t_s + 0.3] at close range: a transfer with d_ab <= handoff_d_m and air <= handoff_air_s, or (noise-robust) a possession change s -> u with the pair within handoff_d_m.'
+  why: 'Pitch-typed handoffs (1.2-1.6 m exchanges) were judged ball-screen false positives (2 handoffs among the stand-based rows; 1 more at noise 0.3).'
+  evidence: 'Synthetic pitched handoff then stand: ball_screen 1 / 3 -> 0 / <= 1 of 10 at sigma_p 0.3 / 0.5 (test_m1_06); the noise-0.3 judged sample lost its handoff false positive.'
+- id: SCR-M1-07-assignment
+  severity: medium
+  what: 'Joint one-to-one defender assignment (_assignment, minimum summed mean distance) as the own-man veto of the contact path, with the research D_h override (nearest the handler within bd_max_m on >= bd_frac of [t - bd_pre_s, t - bd_post_s]).'
+  why: 'The softmax matchup scores each defender alone, so a ball defender sagging into the screener''s approach read as the screener''s own man (judged own_man stratum: 1 real moving, 4 ambiguous of 8).'
+  evidence: 'Synthetic sagging D_h: ball_screen 4 / 4 / 0 -> 5 / 5 / 4 of 5 at sigma_p 0.2 / 0.3 / 0.5 (test_m1_07).'
+- id: SCR-M1-08-offball-used
+  severity: high
+  what: 'Off-ball screen rows are used screens: passed (or the away use of a fade) at >= user_speed_off_mps at the closest approach, or the peak within +-offball_use_win_s with an interaction; away use reads the distance gain instead of the angle to u0 - P_s; hammer_screen also reads passed fast SET rows.'
+  why: 'Unused off-ball rows labelled screens (geometry only) were post scrums, pairs jogging side by side and slow drifts; the diagnosis estimated off-ball precision at 50-80 %. The angle test of a fade is noise when the user starts within 1 m of the screener (70-84 deg on true 0-deg fades at sigma_p 0.3).'
+  evidence: 'Real off-ball screens 39.5 / 46.2 / 50.8 -> 25.6 / 23.9 / 22.3 per 48 (the old rate grew with noise; the new one does not). Synthetic slow drift 1-2 of 5 -> 0; flare_away 8 of 10 at sigma_p 0.3 (test_m1_08).'
+- id: SCR-M1-09-fragments-and-rescreens
+  severity: medium
+  what: 'fragment_gap_s: a used on-ball screen cut in two by noise is one row; a contact candidate within window_s of a row of the pair needs a relocation > split_move_m + hyst_m.'
+  why: 'At sigma_p 0.5 the new on-ball decision turned stand fragments into merged re-screens (re_screen false positives 1 -> 7 in the sweep).'
+  evidence: 're_screen false positives at sigma_p 0.5 back to 1 (base 1); high PnR at sigma_p 0.5 has no re_screen in 10 seeds; rescreen 6 -> 8 of 10 at 0.5 (test_m1_09).'
+- id: SCR-M1-10-offball-rim
+  severity: low
+  what: 'offball_r_min_m 1.2: no off-ball used screen with the screen point under the rim.'
+  why: 'Judged off-ball rows at r_s 0.6-0.9 m were rebound and post scrums.'
+  evidence: 'Synthetic cutter under the rim past a teammate at r 0.6 m: screen 10 -> 0 of 10 (test_m1_10).'
+- id: mastery-r1-summary
+  severity: info
+  what: 'Net effect. Real data (3 SportVU games 2015-16, 194 chunks, 6855 s tracked, runner default team_ends, sigma told 0.15, per 48 min both teams, noise 0 / 0.3 / 0.5): ball_screen 22.7 / 10.5 / 2.9 -> 44.5 / 47.5 / 44.1; screen (all kinds) 63.0 / 58.0 / 53.8 -> 73.5 / 75.2 / 71.0; off-ball used screens 39.5 / 46.2 / 50.8 -> 25.6 / 23.9 / 22.3; screen_set 196.2 / 244.1 / 263.8 -> 121.4 / 134.9 / 131.5; screener_post_action 9.2 / 4.6 / 1.3 -> 17.2 / 23.1 / 18.1; ball_screen_coverage 23.9 / 10.1 / 2.5 -> 45.4 / 50.0 / 46.6; high_ball_screen 5.9 -> 13.4, side_ball_screen 4.6 -> 9.2 (clean).'
+  why: 'Hand-judged precision (position-only numeric strips, no video; R real, A ambiguous counted 0.5, N not): ball screens clean, 40-event random sample 31 R / 8 A / 1 N = 0.875 (A-bounds 0.78-0.98); noise 0.3, 30-event sample, 29 still emitted after SCR-M1-06: 19 R / 7 A / 3 N = 0.78 (0.66-0.90); off-ball used screens clean, 30-event sample 22 R / 7 A / 1 N = 0.85 (0.73-0.97), the N removed by SCR-M1-10; the 3 rows SCR-M1-08 added later were judged 1 A / 2 N (population estimate about 0.84). On the diagnosis''s judged candidate universe (114 candidates) the stratified estimate of captured true ball screens rose 21.6 -> 46.3 per 48 at precision 0.95 -> 0.80-0.91 (small strata, wide intervals).'
+  evidence: 'Defensible band: the diagnosis estimated 71 true ball screens per 48 (95 % 51-96; 47.6 with every ambiguous call counted as not a screen); 44.5 at 0.875 precision is about 39 true per 48 against that lower bound, and the rate holds within 7 % at noise 0.3 and 1 % at 0.5. Synthetic sweep (175 scenes x 10 seeds x sigma_p 0.2 / 0.3 / 0.5, 5250 runs, 0 crashes): hits 12618 -> 13213, strict 11837 -> 12432, false positives 1122 -> 684; ball_screen at sigma_p 0.5 206 -> 302 of 340. Downstream bigs (real, noise 0 / 0.3): roll 13.4 / 13.9 -> 16.4 / 21.0, pop_arc 1.3 / 0.4 -> 3.4 / 4.6, short_roll 3.4 / 1.3 -> 5.9 / 5.5, no errors; composition builds its own proxy screens and is unchanged. Not fixed this round: see open_mastery_r1.'
+open_mastery_r1:
+- 'Ball-screen recall: the remaining gap to the 71 per 48 estimate sits in strata judged mostly ambiguous from positions (no_stop, own_man); gold labels or video are needed to move further. Screens at the rim (r_s < 3.05 m, CTG 10 ft) stay excluded by design.'
+- 'Sweep cells with one fewer hit than base at sigma_p 0.5 only: cross_screen 19 -> 18 of 20, re_screen 18 -> 17 of 40 (strict 14 -> 16), off_ball_screen_coverage 249 -> 247 of 260; false positives up at 0.5: ball_screen_coverage 2 -> 6, ball_screen 0 -> 2, screen_the_screener 2 -> 3. Every cell at sigma_p 0.2 / 0.3 has at least the base hits.'
+- 'The coincident-track veto cannot be applied on noisy tracks (sigma_p >= 0.2); artefacts there need the tracker''s own identity-confidence output.'
+- 'Unused off-ball SET rows (35 per 48 clean) have no judged precision yet; they are kept as the screen_set layer for coverage and veer_screen.'
+changes_mastery_r2:
+- id: SCR-M2-02-fast-brush
+  severity: low
+  what: 'A contact row (no stand) whose screener moves at moving_screener_max_mps .. screener_max_mps (2.0-2.5 m/s) through the contact is kept when the contact is close (<= screen_set.contact_likely_m + contact_k x sigma_d / 2) and the use is close (d_su_ca <= screen.d_su_max_m).'
+  why: 'Judged SportVU contact rows rejected only for screener speed 2.0-2.5 m/s: 4 real and 4 ambiguous of 8; with both close terms 4 real and 1 ambiguous. Rows above 2.5 m/s stayed out (11 not screens, 5 ambiguous of 16 judged).'
+  evidence: 'Real clean: +4 judged-real ball screens. Synthetic fast_brush (2.2 m/s) 1 -> 5 of 10 at sigma_p 0.2 (test_m2_02); runner_through stays 0.'
+- id: SCR-M2-03-handler-travels
+  severity: high
+  what: 'An on-ball screen needs the handler to get >= use_disp_m from his position at t_s - 0.5 within [t_s - 0.5, t_s + use_disp_post_s] (smoothed positions), except a retreat read.'
+  why: 'Confirm r1 CR1-02. In an all-events hand judgment of the 106 r1 clean ball screens (position strips, no video) the not-screens were a handler dribbling in place beside the screener, one who stopped at him, a catch-and-stand after a cut and a handler who handed the ball on: their largest displacement was 1.6-2.2 m; judged real uses 2.8-8 m.'
+  evidence: 'Real clean: 4 judged not-screens removed, no judged-real row lost. Synthetic sweep: no ball-screen cell below r1 (test_m2_03).'
+- id: SCR-M2-04-reverse-handoff
+  severity: medium
+  what: 'A row whose handler hands the ball to the screener within [t_s - 0.3, t_s + handoff_rev_post_s] at <= handoff_d_m (transfer or possession change), with the screener keeping it handoff_keep_s and the ball not coming straight back, is dropped (a DHO u -> s).'
+  why: 'Judged r1 row: the handler handed the ball to the screener 0.45 s after t_s. Without the keep / flip-back tests the veto removed 34 synthetic ball screens at sigma_p 0.5, where the possession flips to a screener 0.2 m from the handler for a few frames; a wider window removed pocket passes to the roller.'
+  evidence: 'Synthetic: high PnR >= 9 of 10 at sigma_p 0.3 / 0.5, reverse_handoff <= 1 (test_m2_04).'
+- id: SCR-M2-05-screener-speed
+  severity: medium
+  what: 'Screener speed of the on-ball decision = median of his 5-frame median speed over t_s +- screener_win_s; for a stand row whose stand overlaps t_s +- contact_win_s, the stand''s window speed.'
+  why: 'Confirm r1 CR1-05 (a 0.15 s screener track jump at the contact read 4.5 m/s: 10 -> 0 of 10) and judged J34 (a real screen whose screener planted 0.5 s before the handler''s closest approach and rolled at 2.6 m/s by it).'
+  evidence: 'coincident_brief at sigma_p 0.05: 0 -> 10 of 10; plant_then_roll 2 -> 10 of 10; J34 recovered on real data; runners through D_h stay 0 (test_m2_05).'
+- id: SCR-M2-06-pass-and-screen
+  severity: info
+  what: 'Attribute pass_and_screen: the screener passed to the handler (catch in [t_s - pass_screen_s, t_s]) and then screened for him.'
+  why: 'Confirm r1 CR1-02 asked for pass-and-follow rows to be typed. Judged r1 rows of this pattern: 12 real, 5 ambiguous, 2 handoffs of 19, so it is an attribute and not a veto; the kind stays on_ball (bigs maps kinds to screen classes).'
+  evidence: 'test_m2_06.'
+- id: SCR-M2-07-offball-possession
+  severity: medium
+  what: 'Off-ball used screens need an attacker owning the ball (noise-robust possession) on >= offball_poss_frac of [t_s - offball_poss_pre_s, t_s + offball_poss_post_s].'
+  why: 'Confirm r1 CR1-04: box-out and rebound plays emitted off-ball screens (synthetic box-out 7 / 4 / 4 / 1 of 10 at sigma_p 0.05 / 0.2 / 0.3 / 0.5; 6 of 61 real used screens had no offensive possession).'
+  evidence: 'Box-out 0 of 10 at every sigma_p (test_m2_07).'
+- id: SCR-M2-08-coincident-pairs
+  severity: low
+  what: 'Coincident-track veto on the screener pairs (s, D) and (s, u) only, over [t_s - coincident_pre_s, t_s + 0.5].'
+  why: 'Confirm r1: judged J35 (a real screen) was lost to a (u, D) merge; judged J03 was a screener pile-up just before the old t_s +- 0.5 window. Rule text corrected (CR1-06: the veto needs coincident_frames consecutive frames and the sigma gate).'
+  evidence: 'J35 recovered on real data; early pile-up detected by the new window (test_m2_08).'
+- id: SCR-M2-09-screener-came
+  severity: low
+  what: 'The own-man veto (stand rows: the proxy says D guards s; contact rows: the joint assignment gives D to s) is lifted when the screener came to D (came_s, came_m, came_ratio) and D was not nearer s than any other attacker at the start; such rows must be used on-ball screens and yield to any other row of the pair within window_s.'
+  why: 'Confirm r1 CR1-01: judged J34 (D beside the handler''s path; the screener ran 2.5 m to him) was a real screen lost to the own-man veto. A first version without the use / yield / start tests created rows on the screener''s own dropping defender and cost 11 synthetic hits.'
+  evidence: 'J34 recovered; synthetic sweep unchanged (test_m2_09).'
+- id: SCR-M2-10-sigma-use
+  severity: low
+  what: 'On-ball USE needs d_su_ca <= use_near_m - min(use_k x sigma_d, use_k_cap_m).'
+  why: 'Confirm r1 CR1-03 (noise-only rows). An uncapped 1 sigma removed mostly ambiguous rows at 1.7-2.0 m but also the synthetic wide use (test_m1_03), so the tightening is capped at 0.1 m.'
+  evidence: 'Real: a few ambiguous rows at 1.9-2.0 m removed at noise 0 / 0.3.'
+- id: SCR-M2-11-offball-block-guard
+  severity: high
+  what: 'A used off-ball row needs a block of D_u''s route, an interaction with him or a user passing at >= offball_fast_use_mps; the peak-speed fallback of SCR-M1-08 needs a block; on precise tracks (pair sigma <= offball_guard_sigma_max_m) D_u must guard u (assignment, nearest defender or mean distance <= offball_du_close_m).'
+  why: 'Confirm r1 CR1-04 (off-ball precision 0.725). All 59 r2-candidate clean off-ball rows were hand judged: rows with neither block nor interaction at 2.0-2.7 m/s and rows on a defender who guarded someone else were ambiguous or not screens. On noisy tracks the guard test cost synthetic stack / stagger users their screens, hence the sigma gate.'
+  evidence: 'Real clean off-ball rows 61 -> 54; hand-judged precision of all emitted rows 0.79 (see summary). Synthetic composites at r1 level (test_m2_11).'
+- id: SCR-M2-12-offball-contact
+  severity: info
+  what: 'Off-ball used screens need CONTACT on D_u (min 5-frame median d(s, D_u) over t_s +- contact_win_s <= contact_on_m + contact_k x sigma_d), as research OFF-BALL requires.'
+  why: 'Research alignment; every emitted row already met it on the SportVU sample.'
+  evidence: 'No rate change.'
+- id: SCR-M2-13-rescreen-link
+  severity: low
+  what: 'A used on-ball screen within window_s of a row already merged into an earlier one (a reset of the same screen), from a new stand, is linked as its re-screen. offball_r_min_m 1.2 -> 1.0.'
+  why: 'Confirm r1 regressions at sigma_p 0.5: re_screen 18 -> 17 and cross_screen 19 -> 18 of 20 (cross screens at the block read r_s 1.15-1.2 under noise; judged rim scrums sit at 0.6-0.9 m).'
+  evidence: 'Synthetic sigma_p 0.5: re_screen 17 -> 20 of 40, cross_screen 18 -> 19, off_ball_screen_coverage 247 -> 249 (test_m2_13).'
+- id: mastery-r2-summary
+  severity: info
+  what: 'Real data (3 SportVU games 2015-16, 194 chunks, 6855 s, team_ends, sigma told 0.15, per 48 min both teams, noise 0 / 0.3 / 0.5), r1 -> r2: ball_screen 44.5 / 47.5 / 44.1 -> 45.0 / 47.1 / 43.3 (noise 0.3 within +5 % of clean, 0.5 within -4 %); screen 73.5 / 75.2 / 71.0 -> 70.2 / 74.8 / 69.3; off-ball used screens 25.6 / 23.9 / 22.3 -> 22.7 / 23.9 / 21.4; screen_set 121.4 / 134.9 / 131.5 -> 121.4 / 134.9 / 130.2; ball_screen_coverage 45.4 / 50.0 / 46.6 -> 45.8 / 49.6 / 45.8. Downstream (same runs): bigs roll 16.4 / 21.0 / 17.2 -> 16.8 / 21.0 / 16.8, pop_arc 3.4 / 4.6 / 2.9 -> 2.9 / 4.6 / 2.9, slip 2.5 / 0.8 / 2.1 -> 2.1 / 0.8 / 2.1, composition pnr_location 37.0 / 40.8 / 36.1 unchanged (composition builds its own proxy screens).'
+  why: 'Hand-judged precision (position-only numeric strips, no video; R real, A ambiguous = 0.5, N / H not). Every one of the 106 r1 clean ball screens was judged (74 R, 25 A, 5 N, 2 H = 0.82) and every row r2 added; r2 clean ball screens 107: 81 R / 23 A / 1 N / 2 H = 0.86 (A-bounds 0.76-0.97). Noise 0.3: 112 rows (clean labels carried by actors and time, 13 noise-only rows judged) = 0.81; noise 0.5: 103 rows = 0.83. Off-ball used screens, clean, all 54 rows judged: 33 R / 19 A / 2 N = 0.79 (A-bounds 0.61-0.96); at noise 0.3 about 0.64 (18 noise-only rows judged 4 R / 8 A / 6 N).'
+  evidence: 'Synthetic tester sweep (175 scenes x 10 seeds x sigma_p 0.2 / 0.3 / 0.5, 5250 runs, 0 crashes) against r1: hits 13213 -> 13224, strict 12432 -> 12441, false positives 684 -> 679; no detector below r1 except screen_read at sigma_p 0.5 594 -> 593 (a noise row with the wrong defender). Against the pre-r1 base: every cell at or above base hits except screen_set strict at sigma_p 0.3 570 -> 569 (one seed whose stand onset moved 0.5 s); false positives at sigma_p 0.5 ball_screen 0 -> 1, ball_screen_coverage 2 -> 5, high_ball_screen 2 -> 3, screen_the_screener 2 -> 3 (total false positives 1122 -> 679). Thresholds of SCR-M2-02/03/10/11 were set on judged rows of these same 3 games (in-sample, see open_mastery_r2).'
+open_mastery_r2:
+- 'Ball-screen recall (CR1-01): 45 per 48 against the diagnosis estimate of 71 (95 % 51-96). On the diagnosis''s judged candidate universe the r2 engine captures 14 of the 16 sampled candidates judged real (R / RM); the rest of the estimated gap is candidates judged ambiguous from positions (own-man, no-stand, not-geo strata). Moving further needs gold labels (video or the user''s manual labels).'
+- 'In-sample tuning (CR1-07): use_disp_m, use_k_cap_m, offball_fast_use_mps, offball_du_close_m, the fast-brush terms, came_* and every r1 parameter listed by the confirmer were chosen on judged rows of the same 3 games, with precision judged on the same games by the same (position-only) judge. Only 3 SportVU games are available; all of these values are provisional until a held-out source (another season or the UConn-MSU film) is labelled.'
+- 'Off-ball precision under noise: about 0.64 at sigma_p 0.3 (noise-only rows: missing ball, wrong defender, screener pile-ups and pairs jogging together). The guard test is limited to precise tracks because it removed real synthetic stack / stagger screens under noise.'
+- 'Off-ball recall: the judged-universe estimate of captured true off-ball screens fell 24.0 -> 18.5 per 48 (precision 0.81 -> 0.83); most removed rows were judged ambiguous.'
+- 'Position-only judging: ambiguous calls (D sagging 2 m below the handler, defender glued to the user through the screen) are a quarter of the ball-screen rows and bound every precision figure above (A-bounds).'
+changes_mastery_r3:
+- id: SCR-M3-01-pocket-pass
+  severity: high
+  what: 'A catch by the screener right after t_s is a pocket pass to the roller (not a reverse handoff and not a SET receive) when the screener moves toward the rim at >= pocket_roll_mps, the pair separates into the catch (nearer by pocket_sep_m within [catch - pocket_sep_win_s, catch - 0.15 s]) and the passer still attacks the rim at >= pocket_handler_vr_mps; radial speeds from smoothed positions. Lifts the SCR-M2-04 reverse-handoff veto and the SET / contact-row receive veto.'
+  why: 'Confirm r2 regression: a true PnR with a pocket pass to the rolling big 0.35 s after the handler passed him was vetoed as a handoff u -> s (r1 -> r2: 10 -> 6 of 10 at sigma_p 0.05, 2 -> 0 at 0.2 and 0.3, 5 -> 3 at 0.5); at sigma_p >= 0.2 the SET receive veto (catch within [a - pad_s, b + receive_s]) also removed it. A first version without the passer term reopened the reverse handoff (0 -> 1 / 1 / 2 of 10 at sigma_p 0.2 / 0.3 / 0.5: under noise its detected catch lags 0.2-0.35 s, when the pair has already separated and the big drives).'
+  evidence: 'Pocket pass 0 / 0 / 3 -> 10 / 10 / 9 of 10 at sigma_p 0.2 / 0.3 / 0.5 (6 at 0.05, unchanged: the CA-RTS filter loses manoeuvring players at sigma_p <= 0.1); reverse handoff 0 of 10 at 0.05 / 0.2 / 0.3 / 0.5 (test_m3_01). Real SportVU ball screens unchanged (no judged row moved).'
+- id: SCR-M3-03-offball-contact
+  severity: high
+  what: 'A used off-ball screen needs CONTACT on D_u at min 5-frame median d(s, D_u) over t_s +- contact_win_s <= offball_contact_m + offball_contact_k x sigma_d (about 1.05 m on SportVU, 1.2 m at sigma_p 0.3, 1.35 m at 0.5) instead of the on-ball 1.2 m + 1 sigma.'
+  why: 'Confirm r2: off-ball precision 0.79 against the 0.8 bar. Every hand-judged real SportVU used row had D_u within 0.80 m of the screener; rows whose D_u never came nearer than 0.9-1.2 m were ambiguous or not screens (the defender went under or trailed wide). offball_contact_k 1.0 cost synthetic back / rip screens scripted at 1.0-1.05 m (sigma_p 0.2) and a second stagger screen at sigma_p 0.5, hence 1.5.'
+  evidence: 'Real clean off-ball used rows 54 -> 50 (with SCR-M3-04): removed 3 judged ambiguous and 1 not a screen, no judged-real row lost; synthetic sweep unchanged (test_m3_03, test_m3_rule_scenes_keep_their_rates).'
+- id: SCR-M3-04-offball-pass-by
+  severity: medium
+  what: 'A used off-ball screen needs the user to pass the screener: displacement of u relative to s over t_s +- offball_rel_win_s >= offball_rel_pass_m + offball_rel_k x sigma_d.'
+  why: 'Confirm r2 adversarial: two teammates jogging 0.9 m apart up the lane line and stopping side by side read off-ball screens at sigma_p 0.2 / 0.3 / 0.5 (1 / 2 / 3 of 10). A 0.6 s window with 2 sigma cost slow cross and elbow-down screens at sigma_p 0.3 / 0.5 (users at 1.6-2.6 m/s), hence 0.8 s and 1.5 sigma.'
+  evidence: 'Jog pair 1 / 2 / 3 -> 0 / 0 / 0 of 10 (test_m3_04); real clean: 1 judged not-screen removed.'
+- id: SCR-M3-05-ball-dropout
+  severity: medium
+  what: 'When the raw ball is observed on < offball_ball_obs_min of the off-ball possession window (tracker dropout), the possession gate of SCR-M2-07 has no evidence; the used row is then kept only for a user who leaves the rim by >= offball_dropout_dr_m.'
+  why: 'Confirm r2: a down screen with the ball missing for the whole clip went 8 -> 0 of 10 at every sigma_p (production ball dropouts). Without the leave-the-rim term a box-out with the ball lost after the shot became a screen (0 -> 2 of 10 at sigma_p 0.3 / 0.5).'
+  evidence: 'Pin-down with ball dropout 0 -> 8 / 10 / 8 / 8 of 10 at sigma_p 0.05 / 0.2 / 0.3 / 0.5; box-out with and without ball 0 of 10 (test_m3_05). SportVU tracks the ball: no real change.'
+- id: SCR-M3-06-retreat-travel
+  severity: low
+  what: 'A retreat read is exempt from the handler-travel test (SCR-M2-03) only when the handler travels >= retreat_travel_m.'
+  why: 'Tester sweep at sigma_p 0.5 (NEG_logo_pnr seed 10): a handler standing beside the screener at the rim read a retreat from velocity noise (0.9 m of travel) and kept a ball screen on the screener''s own defender (ball_screen false positives 0 -> 1 since r1).'
+  evidence: 'Sweep ball_screen false positives at sigma_p 0.5 1 -> 0 (test_m3_06).'
+- id: SCR-M3-07-reject-travel
+  severity: low
+  what: 'An on-ball reject read needs the handler to travel >= screen_read.reject_disp_m from h(t_s - 0.5) within [t_s - 0.5, t_s + use_disp_post_s].'
+  why: 'At sigma_p 0.5 a standing handler''s unused set-up read a reject from speed noise (0.9-1.1 m/s peak) and became a ball_screen_coverage row (sweep false positives 2 -> 5 since r1).'
+  evidence: 'Sweep ball_screen_coverage false positives at sigma_p 0.5 5 -> 0; ICE reject coverage kept (test_m3_07). One sweep cell (NEG_wing_step_down seed 9 at sigma_p 0.5) loses a coverage hit that was that kind of row: a reject read 2 s after the screen with the handler 1 m from his start.'
+- id: SCR-M3-08-set-onset
+  severity: info
+  what: 'A contact row that replaces an off-ball stand row of the same pair (SCR-M1-02) keeps that stand as its screen_set onset (attribute set_stop).'
+  why: 'Sweep regression since r1: A_side_step_up seed 6 at sigma_p 0.3 reported the screen_set onset at the contact-episode start, 0.5 s early (strict 570 -> 569).'
+  evidence: 'screen_set strict at sigma_p 0.3 back to 570 (test_m3_08).'
+- id: mastery-r3-summary
+  severity: info
+  what: 'Real data (3 SportVU games 2015-16, 194 chunks, 6855 s, team_ends, sigma told 0.15, per 48 min both teams, noise 0 / 0.3 / 0.5), r2 -> r3: ball_screen 45.0 / 47.1 / 43.3 unchanged (noise 0.3 +5 %, 0.5 -4 % of clean); off-ball used screens 22.7 / 23.9 / 21.4 -> 21.0 / 23.5 / 21.4; screen 70.2 / 74.8 / 69.3 -> 68.5 / 74.4 / 69.3; screen_set 121.4 / 134.9 / 130.2 unchanged; ball_screen_coverage 45.8 / 49.6 / 45.8 -> 45.4 / 47.9 / 45.4. Downstream bigs roll 16.8 / 21.0 / 16.8, pop_arc 2.9 / 4.6 / 2.9, short_roll 5.5 / 5.5 / 8.4, slip 2.1 / 0.8 / 2.1 and composition pnr_location 37.0 / 40.8 / 36.1 unchanged.'
+  why: 'Hand-judged precision (position-only strips, no video; R real, A ambiguous = 0.5): ball screens clean, every one of the 107 rows judged: 81 R / 23 A / 1 N / 2 H = 0.86 (A-bounds 0.76-0.97); noise 0.3, 112 rows (106 labelled) = 0.81; noise 0.5 = 0.83. Off-ball used screens clean, all 50 rows judged: 33 R / 16 A / 1 N = 0.82 (A-bounds 0.66-0.98), up from 0.79; at noise 0.3 about 0.65 (noise-only rows).'
+  evidence: 'Synthetic tester sweep (175 scenes x 10 seeds x sigma_p 0.2 / 0.3 / 0.5, 5250 runs, 0 crashes): hits 13224 -> 13223, strict 12441 -> 12443, false positives 679 -> 656; every cell at or above r2 hits and strict except ball_screen_coverage at sigma_p 0.5 320 -> 319 (SCR-M3-07). Against the pre-r1 base every hit and strict cell is at or above base; false positives above base remain only at sigma_p 0.5: high_ball_screen 2 -> 3 (a DHO keep whose giver passes the receiver at 1.3 m, ball_screen is do-not-care there) and screen_the_screener 2 -> 3 (a double drag whose second screener meets the rolling first screener''s defender). Confirm-r2 adversarial scenes: pocket pass restored, ball dropout restored, jog pair 0, box-out with and without ball 0, every other scene equal to r2.'
+open_mastery_r3:
+- 'Ball-screen recall (CR1-01, high): 45 per 48 at precision 0.86 (about 39 true per 48) against the diagnosis estimate of 71 (95 % 51-96; 47.6 counting every ambiguous call as not a screen). On the judged candidate universe the engine captures 14 of 16 candidates judged real; the estimated gap sits in strata judged ambiguous from positions (no-stand, own-man, not-geo). The confirmer asked not to loosen thresholds without gold labels: this needs video or the user''s manual labels (a labelling queue of these candidates is the next step).'
+- 'Off-ball precision under noise: about 0.65 at sigma_p 0.3 and 0.68 at 0.5 (noise-only rows: curls and fades at 2-3 m/s with the defender trailing, missing-ball and wrong-defender rows); clean precision 0.82. Off-ball recall on the judged universe: 14.8 per 48 captured (A-bounds 11.1-18.5) of about 40 estimated; several judged-real misses pass the user 1.2-1.25 m from the screener (d_su_max_m 1.2 against the research 2.0 m).'
+- 'In-sample tuning (CR1-07): offball_contact_m was set on judged rows of the same 3 games as every r1 / r2 threshold; all stay provisional until a held-out source is labelled.'
+- 'Confirm-r2 adversarial a_offreb_crash (1 / 3 / 5 of 10 at sigma_p 0.2 / 0.3 / 0.5) is not fixable from the scene: its ball flies from the shooter to himself along his own path, so the tracking shows him holding it; on real tracks a shot leaves no owner and SCR-M2-07 applies. a_snake_short (info) stays out: the handler gets 1.9-2.3 m from his start, inside the SCR-M2-03 band of judged not-screens.'
+- 'Two false-positive cells above the pre-r1 base at sigma_p 0.5 (high_ball_screen, screen_the_screener, one run each) are unchanged from r1 / r2.'
 v0_results: 'sigma_p 0.3, seeds 1-5, 53 positive cases (48 detectors): 242 / 265 = 91 % pass kind + actors + t0 within 0.3 s + conf 0.2-1 + attributes; no detector fires on the null scenario (10 moving players, ball passed) for any of the 5 seeds. Weakest: side/step-up PnR 3/5 (handler wraps the screener, closest approach ambiguous), the rest 4-5/5. Synthetic only (V0): no claim about film until gold labels exist. Loop 1 (independent tester report, 22 failures): 196 tests pass (163 + 33 regression tests); on the tester''s 175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5 (5250 runs) 0 crashes (4 before); per-item before/after numbers are in changes_loop1. Loop 2 (confirmer report on loop 1): on the same sweep hits 12539 -> 12612, strict 11756 -> 11832, FPs 1818 -> 1139, no detector worse at any sigma_p; see changes_loop2.'
 noise_driven_design (V0 findings of this task, each documented at its item):
 - 'smoothed positions under V0 noise (white + AR(1) 0.9, sigma_p 0.3) have 0.17 m per-axis error (median 2-D error 0.23 m, p90 0.44 m) with slow drift; pair distances wander 0.3-0.5 m for up to 1 s, so every distance gate has a probability and the screen moment uses a contact window, not a bare argmin'
@@ -320,6 +500,154 @@ items:
   - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/taxonomy/defense_full.md', supports: F3.0 screen point, screen line and level offset}
   status: canonical
   detector: null
+- id: ball_screen_model
+  level: rule
+  name: Two-stage on-ball screen model (possession, contact candidates, probabilistic decision) and screen-row vetoes
+  aliases: [on-ball screen model, PnR model, mastery r1]
+  research_ids: [SCR-M1-01, SCR-M1-02, SCR-M1-03, SCR-M1-04, SCR-M1-05, SCR-M2-02, SCR-M2-03, SCR-M2-04, SCR-M2-05, SCR-M2-06, SCR-M2-07, SCR-M2-08, SCR-M2-09, SCR-M2-10, SCR-M2-11, SCR-M2-12, SCR-M2-13, SCR-M3-01, SCR-M3-03, SCR-M3-04, SCR-M3-05, SCR-M3-06, SCR-M3-08]
+  actors: {screener: s, handler: h, defender: D_h, user: u, user_defender: D_u}
+  t0: t_s (screen_moment)
+  rule: |
+    Mastery round 1 (real SportVU diagnosis: ball screens found at about 30 % recall and 90 % precision; under added noise 0.3 / 0.5 the
+    rate fell 22.7 -> 10.5 -> 2.9 per 48). Stage 1 generates candidates generously, stage 2 decides with sigma-aware terms.
+    POSSESSION (SCR-M1-01): poss(t) = the attacker whose 5-frame median raw-ball distance (poss_med_frames) is smallest and <= HOLD_R +
+    poss_k x ball sigma (the MAD of raw minus smoothed ball over the clip); the owner is sticky (a teammate takes over only when nearer
+    by poss_switch_margin_m); None gaps up to poss_bridge_s between runs of the same attacker are filled (a dribble); runs shorter than
+    poss_min_run_frames are removed. It replaces the cleaned holder in the on-ball kind test (u holds on >= screen.onball_frames of the
+    9 frames around t_s), in the on-ball defender override (screen_target_defender) and in the contact candidates. DHO / pass logic
+    keeps the cleaned holder.
+    CONTACT CANDIDATES (SCR-M1-02): for every possession run of h and teammate s, episodes of >= contact_min_frames frames (gaps <=
+    contact_gap_frames bridged) where the 5-frame median d(s, d) <= contact_on_m + contact_k x sigma_d (sigma_d = mvlib sigma_dist x
+    screen_noise_calibration.dist_sigma_scale) for a defender d that guards the ball at the episode onset (screen_target_defender on-ball
+    override: nearest the holder on >= onball_def_frac of the holder frames of [onset - onball_window_s, onset], within onball_def_max_m,
+    nearer h than s - this is also the own-man veto). Skipped when a stand-based row of the same (s, h) covers the episode, s has the
+    ball on half of it, or s catches the ball. The episode is a synthetic stop (attribute plant = moving / loose, source = contact); t_s
+    from screen_moment. Only rows that pass the decision below are kept, so this path never adds unused or rejected SET rows.
+    ON-BALL DECISION (SCR-M1-03), for every on-ball row (stand or contact): USE = the handler crosses the screen line within
+    max(screen_frame.pass_lateral_m, use_near_m) of P_s, d_su_ca <= use_near_m, the screener blocks D_h's route or is in contact, and the
+    handler speed at the closest approach >= screen.user_speed_on_mps. screen = CONTACT (min 5-frame median d(s, D_h) over t_s +-
+    contact_win_s <= contact_on_m + contact_k x sigma_d) AND min d(s, h) over the same window <= near_m AND possession of h on >=
+    hold_frac of [t_s - 0.5, t_s + 0.3] AND the handler's peak 5-frame median speed over [t_s - 0.5, t_s + handler_post_s] >=
+    screen.user_speed_on_mps AND read in (use, snake, split) or a retreat with d_su_ca <= screen.d_su_max_m AND the screener's 5-frame
+    median speed at the contact <= screener_max_mps. p = max(p_loose, plant_floor) x p_below(contact, contact_on_m + contact_k x
+    sigma_d, sigma_d) x p_below(d_su_ca, use_near_m, sigma_d) x ambiguity_penalty: the plant is a likelihood term, not a gate.
+    OFF-BALL GUARD (SCR-M1-04): an unused off-ball SET row needs D_u to guard u before the screen - mean d(D_u, u) over [t_s -
+    offball_guard_pre_s, t_s - offball_guard_post_s] <= offball_du_max_m, and the joint one-to-one assignment (_assignment) gives D_u
+    to u or D_u is the defender nearest u on >= offball_guard_frac of that window (Hojo: the assignment and the nearest defender) -
+    and u must come within screen_read.reject_approach_m of s (min d(s, u) over [t_s - 1.0, t_s + 1.5]). An unused / rejected
+    on-ball row needs mean d(D, h) over [t_s - 1.0, t_s] <= bd_max_m. A stand next to a help defender is not a row.
+    Mastery r2 (SCR-M2-11): a USED off-ball row (an off-ball screen) also needs D_u to guard u on precise tracks (pair distance
+    sigma <= offball_guard_sigma_max_m; mean d(D_u, u) <= offball_du_close_m also suffices), the screener to block D_u's route
+    or interact with him or the user to pass at >= offball_fast_use_mps, the peak-speed fallback of SCR-M1-08 only with a block,
+    CONTACT on D_u (min 5-frame median d(s, D_u) over t_s +- contact_win_s <= contact_on_m + contact_k x sigma_d; SCR-M2-12) and
+    the offense owning the ball (noise-robust possession) on >= offball_poss_frac of [t_s - offball_poss_pre_s, t_s +
+    offball_poss_post_s] (SCR-M2-07: box-outs and rebound scrums are not screens).
+    COINCIDENT TRACKS (SCR-M1-05, SCR-M2-08): a row is dropped when the 5-frame median distance of the screener pairs (s, D) or
+    (s, u) stays below coincident_m for >= coincident_frames consecutive frames of [t_s - coincident_pre_s, t_s + 0.5] (a tracker
+    pile-up or merged identity; centre-to-centre distance cannot go below about 0.45 m). Tested only when the pair distance sigma
+    is <= coincident_sigma_max_m (precise tracking): on noisy tracks a close contact reads as coincident. (u, D) is not tested
+    (a defender glued to the handler does not fake a screen).
+    MASTERY R2 additions to the on-ball decision: the screener speed is the median of his 5-frame median speed over t_s +-
+    screener_win_s, or the stand's window speed when the row's stand overlaps t_s +- contact_win_s (SCR-M2-05); the handler
+    gets >= use_disp_m from h(t_s - 0.5) within [t_s - 0.5, t_s + use_disp_post_s] unless the read is a retreat (SCR-M2-03);
+    USE needs d_su_ca <= use_near_m - min(use_k x sigma_d, use_k_cap_m) (SCR-M2-10); a contact row moving between
+    moving_screener_max_mps and screener_max_mps needs a close contact and d_su_ca <= screen.d_su_max_m (SCR-M2-02); a row
+    whose handler hands the ball to the screener within [t_s - 0.3, t_s + handoff_rev_post_s] at <= handoff_d_m, keeping it
+    handoff_keep_s without it coming back, is dropped (a DHO u -> s; SCR-M2-04). The own-man veto of a stand row (proxy says
+    D guards s) and of a contact row (assignment gives D to s) is lifted when the screener came to D (SCR-M2-09: over
+    [onset - came_s, onset] s moved >= came_m toward D, D moved <= came_ratio of that toward s, and D was not nearer s than to
+    any other attacker at the start); such a row must be a used on-ball screen and yields to any other row of the pair within
+    screen_window.window_s. Attribute pass_and_screen: s passed to h (catch in [t_s - pass_screen_s, t_s]) and screened for him
+    (SCR-M2-06).
+    MASTERY R3: a catch by the screener is a pocket pass to the roller, not a handoff back to him, when he moves toward the rim at
+    >= pocket_roll_mps over [catch - pocket_win_s / 2, catch + pocket_win_s], the pair was nearer by pocket_sep_m within [catch -
+    pocket_sep_win_s, catch - 0.15 s] and the passer still attacks the rim at >= pocket_handler_vr_mps over [catch - pocket_win_s,
+    catch] (radial speeds from smoothed positions); such a catch lifts both the reverse-handoff veto and the SET receive veto
+    (SCR-M3-01). A retreat read is exempt from use_disp_m only with >= retreat_travel_m of handler travel (SCR-M3-06). A USED
+    off-ball row needs CONTACT on D_u at min 5-frame median d(s, D_u) <= offball_contact_m + offball_contact_k x sigma_d
+    (SCR-M3-03, tighter than the on-ball contact) and the user to pass the screener - displacement of u relative to s over t_s +-
+    offball_rel_win_s >= offball_rel_pass_m + offball_rel_k x sigma_d (SCR-M3-04: teammates jogging or stopping side by side).
+    When the raw ball is observed on < offball_ball_obs_min of the possession window (tracker dropout), the possession gate has no
+    evidence and the used row is kept only for a user who leaves the rim by >= offball_dropout_dr_m (SCR-M3-05). A contact row
+    that replaces an off-ball stand row of the same pair reports that stand as its screen_set onset (attribute set_stop,
+    SCR-M3-08).
+  params:
+    poss_k: {value: 1.5, unit: sigma, note: 'possession radius = HOLD_R + poss_k x the clip''s robust raw-ball sigma (1.0-1.1 m on SportVU, about 1.45 m with V0 sigma_p 0.3)'}
+    poss_med_frames: {value: 5, unit: frames, note: 'median of the raw ball-player distance (a single noisy ball frame does not end the hold)'}
+    poss_switch_margin_m: {value: 0.3, unit: m, note: 'a teammate takes the ball only when nearer than the current owner by this margin (a screener brushing the handler)'}
+    poss_bridge_s: {value: 0.7, unit: s, note: 'None gaps up to this long between two runs of the same attacker are a dribble, not a loss of possession'}
+    poss_min_run_frames: {value: 8, unit: frames, note: 'shorter possession runs are removed (the cleaned holder uses 12; the gap filling makes 8 safe)'}
+    contact_on_m: {value: 1.2, unit: m, note: 'CONTACT: 5-frame median screener-defender distance (research CONTACT 1.2 m; CTG 4 ft)'}
+    contact_k: {value: 1.0, unit: sigma, note: 'contact threshold widened by contact_k x sigma_d: about 1.45 m at sigma_p 0.3 (research: 1.5 m when sigma_p >= 0.3)'}
+    contact_min_frames: {value: 5, unit: frames, note: 'research: >= 5 frames (0.17 s)'}
+    contact_gap_frames: {value: 3, unit: frames}
+    contact_win_s: {value: 0.5, unit: s, note: 'the contact and the screener-handler distance are read over t_s +- this window'}
+    near_m: {value: 3.05, unit: m, note: 'research ON-BALL: d(s, h) <= 10 ft somewhere in t_s +- 0.5 s'}
+    use_near_m: {value: 2.0, unit: m, note: 'on-ball USE: the handler passes within this distance of the screener (soft term; 4 of 8 judged real screens rejected by the 1.2 m gate went wide at 1.3-1.8 m)'}
+    use_k: {value: 1.0, unit: sigma, note: 'mastery r2 (SCR-M2-10): on-ball USE needs d_su_ca <= use_near_m - use_k x sigma_d (1.85 m on SportVU, about 1.6 m at sigma_p 0.3)'}
+    use_k_cap_m: {value: 0.1, unit: m, note: 'mastery r2 (SCR-M2-10): the tightening use_k x sigma_d is capped here: an uncapped 1 sigma (0.25-0.35 m under noise) removed mostly ambiguous rows at 1.7-2.0 m but also the synthetic wide use (1.6 m path read 1.89 m at sigma_p 0.3, test_m1_03)'}
+    hold_frac: {value: 0.5, unit: fraction, note: 'possession of h over [t_s - 0.5, t_s + 0.3]'}
+    handler_post_s: {value: 1.2, unit: s, note: 'handler motion window [t_s - 0.5, t_s + handler_post_s] (research HANDLER READ window)'}
+    screener_win_s: {value: 0.4, unit: s, note: 'mastery r2 (SCR-M2-05): the screener speed is the median of his 5-frame median speed over t_s +- this window (a 0.15 s track jump is a minority of the 25 frames)'}
+    use_disp_m: {value: 2.3, unit: m, note: 'mastery r2 (SCR-M2-03): the handler gets at least this far from his position at t_s - 0.5 within [t_s - 0.5, t_s + use_disp_post_s] (judged SportVU rows of a handler dribbling in place, stopping at the screener or catching and standing were not screens, 1.6-2.2 m; judged real uses 2.8-8 m)'}
+    use_disp_post_s: {value: 1.5, unit: s}
+    retreat_travel_m: {value: 1.2, unit: m, note: 'mastery r3 (SCR-M3-06): a retreat read is exempt from use_disp_m only when the handler travels at least this far (a retreat dribble backs off 1-2 m; at sigma_p 0.5 a handler standing beside the screener read a retreat from velocity noise, 0.9 m of travel)'}
+    screener_max_mps: {value: 2.5, unit: m/s, note: 'screener 5-frame median speed at the contact; rolling / brush screens run 0.6-1.5 m/s, cutters and sprinters through the ball faster'}
+    moving_screener_max_mps: {value: 2.0, unit: m/s, note: 'contact candidates (no stand): screener speed at the contact; with the blocking test and an interaction or a close contact (judged SportVU contact rows: runners at 2.2-2.9 m/s were drives with a big alongside or rushed traffic)'}
+    plant_floor: {value: 0.5, unit: probability, note: 'p uses max(p_loose, plant_floor): a moving screener halves the confidence instead of removing the screen'}
+    offball_guard_pre_s: {value: 1.5, unit: s}
+    offball_guard_post_s: {value: 0.3, unit: s}
+    offball_guard_frac: {value: 0.5, unit: fraction, note: 'D_u is the defender nearest u on at least this fraction of [t_s - 1.5, t_s - 0.3]'}
+    offball_du_max_m: {value: 4.0, unit: m, note: 'mean d(u, D_u) over the same window'}
+    offball_du_close_m: {value: 1.2, unit: m, note: 'mastery r2 (SCR-M2-11): used off-ball rows also need D_u to guard u (offball_guard_*), which a mean d(D_u, u) <= this satisfies on its own (a screener''s defender may stand nearer u in a stack)'}
+    offball_guard_sigma_max_m: {value: 0.16, unit: m, note: 'mastery r2 (SCR-M2-11): the D_u-guards-u test of used off-ball rows runs only when the pair distance sigma is at most this (precise tracking, as coincident_sigma_max_m)'}
+    offball_fast_use_mps: {value: 3.0, unit: m/s, note: 'mastery r2 (SCR-M2-11): a used off-ball row needs the screener to block D_u or interact with him, or the user to pass at >= this speed (a sprint off a second stagger screener whose defender already trails)'}
+    offball_use_win_s: {value: 0.3, unit: s, note: 'SCR-M1-08: an off-ball used screen needs the user speed at his closest approach >= screen.user_speed_off_mps, or the peak 5-frame median speed within +-this of it >= that gate together with an interaction with D_u (research USED: >= 2.0 m/s around the screen; the peak alone added 8 rows on the SportVU sample, 6 judged not screens)'}
+    offball_r_min_m: {value: 1.0, unit: m, note: 'SCR-M1-10: an off-ball used screen has its screen point at least this far from the rim (judged SportVU off-ball rows under the rim, r_s 0.6-0.9 m, were rebound and post scrums; cross screens at the block sit at r 1.5-2.5 m)'}
+    coincident_m: {value: 0.08, unit: m, note: 'real SportVU pile-ups sit at 0.02-0.05 m for 10-24 frames; V0 defenders scripted on the user''s path come within 0.1-0.15 m'}
+    coincident_pre_s: {value: 1.5, unit: s, note: 'mastery r2 (SCR-M2-08): the screener pairs (s, D) and (s, u) are tested over [t_s - coincident_pre_s, t_s + 0.5]'}
+    coincident_frames: {value: 8, unit: frames, note: 'the pair stays below coincident_m for at least this many consecutive frames (0.27 s): a user brushing through the screener''s centre is not a pile-up'}
+    bd_pre_s: {value: 1.5, unit: s, note: 'SCR-M1-07 contact path ball defender: window [t - bd_pre_s, t - bd_post_s] before the contact onset (research D_h override [t_s - 1.5, t_s - 0.5])'}
+    bd_post_s: {value: 0.3, unit: s}
+    bd_max_m: {value: 3.7, unit: m, note: 'research: the defender nearest h within 12 ft'}
+    bd_frac: {value: 0.6, unit: fraction, note: 'd is nearest h on at least this fraction of the possession frames of the window (or the joint assignment gives d to h); the joint assignment must not give d to s (own man)'}
+    came_s: {value: 1.5, unit: s, note: 'mastery r2 (SCR-M2-09): own-man veto revisited - window [onset - came_s, onset] for the screener-came test'}
+    came_m: {value: 1.5, unit: m, note: 'mastery r2 (SCR-M2-09): the screener moved at least this far toward the defender (projection on the direction to the defender''s position at the onset)'}
+    came_ratio: {value: 0.5, unit: fraction, note: 'mastery r2 (SCR-M2-09): and the defender moved toward the screener by at most this fraction of that (a defender who guards s follows him)'}
+    coincident_sigma_max_m: {value: 0.16, unit: m, note: 'SCR-M1-05 is tested only when the pair distance sigma (sigma_dist x dist_sigma_scale) is at most this: about 0.14 m on SportVU told 0.15, 0.17-0.25 m from sigma_p 0.2 up'}
+    handoff_s: {value: 1.0, unit: s, note: 'SCR-M1-06: an on-ball row whose screener handed the ball to the handler (catch in [t_s - handoff_s, t_s + 0.3]) at close range is a handoff row'}
+    handoff_d_m: {value: 1.6, unit: m, note: 'SCR-M1-06: exchange distance of that transfer (the dho gate is 1.0 m; pitch-typed handoffs measure 1.2-1.6 m; mastery r2 tried 1.8 m: one more judged SportVU handoff, but at sigma_p 0.5 the noisy possession then typed real ball screens as handoffs)'}
+    handoff_rev_post_s: {value: 0.5, unit: s, note: 'mastery r2 (SCR-M2-04): a row whose handler hands the ball to the screener within [t_s - 0.3, t_s + this] at close range is a DHO (u -> s), not a ball screen; later close passes are pocket passes to the roller'}
+    handoff_keep_s: {value: 0.6, unit: s, note: 'mastery r2 (SCR-M2-04): the possession-based reverse handoff (u hands to s) needs s to keep the ball on >= 80 % of this window after the change (at sigma_p 0.5 the possession flips between handler and screener for a few frames)'}
+    pocket_roll_mps: {value: 1.5, unit: m/s, note: 'mastery r3 (SCR-M3-01): a reverse-handoff catch while the screener moves toward the rim at >= this (median radial speed over [catch - pocket_win_s, catch]) is a pocket pass to the roller and keeps the ball screen (research ROLL: v_r >= 1.5 m/s)'}
+    pocket_win_s: {value: 0.4, unit: s, note: 'radial speed window [catch - pocket_win_s / 2, catch + pocket_win_s]'}
+    pocket_sep_win_s: {value: 0.6, unit: s, note: 'mastery r3 (SCR-M3-01): a pocket pass is thrown after the handler went past the screener - the pair was closer by pocket_sep_m within [catch - pocket_sep_win_s, catch - 0.15 s]; a handoff is exchanged at the closest approach'}
+    pocket_sep_m: {value: 0.3, unit: m}
+    pocket_handler_vr_mps: {value: 0.5, unit: m/s, note: 'mastery r3 (SCR-M3-01): the passer of a pocket pass still attacks the rim through the catch (median radial speed toward the rim over [catch - pocket_win_s, catch]); a handoff giver steps out'}
+    pass_screen_s: {value: 3.0, unit: s, note: 'mastery r2 (SCR-M2-06): attribute pass_and_screen - the screener passed to the handler (catch in [t_s - pass_screen_s, t_s]) and then screened for him; judged SportVU rows of this pattern were 12 real, 5 ambiguous, 2 handoffs of 19, so it is an attribute, not a veto'}
+    offball_poss_pre_s: {value: 1.0, unit: s, note: 'mastery r2 (SCR-M2-07): off-ball used screens need an attacker owning the ball on >= offball_poss_frac of [t_s - offball_poss_pre_s, t_s + offball_poss_post_s]'}
+    offball_poss_post_s: {value: 0.5, unit: s}
+    offball_poss_frac: {value: 0.5, unit: fraction}
+    offball_ball_obs_min: {value: 0.3, unit: fraction, note: 'mastery r3 (SCR-M3-05): when the raw ball is observed on fewer than this fraction of the possession window (tracker dropout) the possession gate has no evidence; the used screen is then accepted only for a user who leaves the rim by >= offball_dropout_dr_m (a down / pin-down / flare exit), never for a crash to the rim (a box-out with the ball lost after the shot)'}
+    offball_dropout_dr_m: {value: 0.5, unit: m}
+    offball_contact_m: {value: 0.85, unit: m, note: 'mastery r3 (SCR-M3-03): off-ball CONTACT = min 5-frame median d(s, D_u) over t_s +- contact_win_s <= this + offball_contact_k x sigma_d (about 1.05 m on SportVU, 1.2 m at sigma_p 0.3, 1.35 m at 0.5); every judged real SportVU used row was <= 0.80 m (in-sample, provisional)'}
+    offball_contact_k: {value: 1.5, unit: sigma, note: 'mastery r3 (SCR-M3-03): widening of the off-ball contact by the pair sigma (1.0 cost synthetic back / rip screens scripted at 1.0-1.05 m at sigma_p 0.2 and a second stagger screen at sigma_p 0.5)'}
+    offball_rel_pass_m: {value: 1.2, unit: m, note: 'mastery r3 (SCR-M3-04): the user passes the screener - displacement of u relative to s over t_s +- offball_rel_win_s (teammates jogging or stopping side by side never pass each other; a cut at 2 m/s moves about 3 m relative to him over 1.6 s)'}
+    offball_rel_win_s: {value: 0.8, unit: s}
+    offball_rel_k: {value: 1.5, unit: sigma, note: 'the relative displacement is a difference of four smoothed positions: widened by offball_rel_k x the pair distance sigma (about 1.4 m on SportVU, 1.7 m at sigma_p 0.5)'}
+    handoff_air_s: {value: 0.4, unit: s, note: 'SCR-M1-06: raw-ball air time of that transfer'}
+  min_duration_s: 0.17
+  outputs: [source (stand | contact), plant (strict | loose | moving | unknown), contact_min_m, d_sh_min_m, handler_peak_mps, screener_mps, handler_disp_m, pass_and_screen, screener_came]
+  confidence: {level: medium, p_terms: ['max(p_loose, plant_floor)', 'p_below(contact_min, contact_on_m + contact_k sigma_d, sigma_d)', 'p_below(d_su_ca, use_near_m, sigma_d)', ambiguity_penalty]}
+  noise: The possession radius and the contact threshold scale with the measured noise of the clip, so the on-ball decision keeps its meaning from SportVU (sigma about 0.05-0.15 m) to video tracking (sigma_p 0.2-0.5 m).
+  conflicts_resolved:
+  - research ON-BALL SCREEN and HANDLER READ (screens_mastery notes section 3) adopted for on-ball rows; the off-ball rows keep the screen / screen_read gates
+  - research PLANT is an attribute and a likelihood term, not a gate (contact candidates); the stand-based SET keeps its moving veto (walk-by)
+  sources:
+  - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: screener 10-45 ft from the rim, 4 ft relocation, own-man screens are not ball screens}
+  - {url: 'https://www.nessis.org/nessis17/Keshri_adj.pdf', supports: ball-screen detection from screener-defender and handler distances}
+  status: proposal
+  detector: null
 - id: screen_target_defender
   level: rule
   name: Target defender assignment (D_u), own-man screens, zone fallback and pre-switch
@@ -332,6 +660,9 @@ items:
     P(d guards o) = exp(-c^2 / (2 tau^2)) normalised over attackers o. Frozen at t_f = a - freeze_offset_s (a = SET stop onset; fixes the circular t_s definition).
     Loop 1 (SCR-T04): when an earlier SET row of the same s ended within screen_window.window_s before this stop, with no switch on it and no ball transfer since, its freeze frame is reused; and the frames where s stood screening d in earlier rows (d within set_def_radius_m of the standing s) are dropped from the cost of the pair (d, s) - contact with a standing screener is not guarding him. For a defender d within set_def_radius_m of the stopped screener: u = argmax_o P(d guards o). If u == s or P(d guards s) >= own_man_p, the stop is an own-man stop and no screen row is made.
     On-ball override (loop 4, SCR-L4-02): when d is the defender nearest the ball holder h (h != s) over [a - onball_window_s, a] (see params) and the proxy names another attacker, P(d guards h) = that nearest fraction and the other attackers share the rest in proportion; the ball-handler's defender is defined by the ball, not by a 2 s mean distance.
+    Mastery r1: the on-ball override reads the noise-robust possession (ball_screen_model, SCR-M1-01); the contact candidates use the research D_h override
+    (nearest the handler within ball_screen_model.bd_max_m over [t - bd_pre_s, t - bd_post_s]) with a one-to-one defender assignment (minimum summed mean
+    distance) as the own-man veto (SCR-M1-07); the same assignment is one of the two guard tests of unused off-ball rows (SCR-M1-04).
     Zone fallback: if max_o P(d guards o) < ambiguous_p, D_u_ambiguous = true, both top-2 attackers are stored, u = the top-1 attacker, and every p term is multiplied by ambiguity_penalty.
     pre_switch flag: the defender nearest u over [t_s - 0.5, t_s] is D_s, not D_u (the defense switched before the screen).
   params:
@@ -440,10 +771,14 @@ items:
     s moved more than split_move_m + hyst_m from P_s between the two, or dist(s, D_u) exceeded split_def_m + hyst_m for >= hyst_dwell_frames frames, or the ball changed hands, or (loop 2) the first row was unused / rejected and the later one, from a new stand, is not.
     A later row of the same (s, u) whose t_s gap exceeds window_s but whose stand starts within rescreen_gap_s after the earlier stand ends is a split re-screen as well (loop 2).
     A split row stores rescreen_of = the first row. Double screens give one row per screener.
+    Mastery r1 (SCR-M1-09): a later on-ball row of the same (s, u, kind) whose stand starts within fragment_gap_s after a used row's stand ends, at the same
+    spot (P_s within split_move_m), is that screen cut in two by noise and is dropped; a contact candidate within window_s of a row of the pair is kept only
+    when the screener relocated by more than split_move_m + hyst_m.
     False-positive budget: on V0 null scenarios (8 players moving, no screens) the expected number of emitted screens is 0; on film, track false SETs per possession (target <= fp_budget_per_poss).
   params:
     dedupe_s: {value: 0.6, unit: s}
     window_s: {value: 3.0, unit: s}
+    fragment_gap_s: {value: 0.3, unit: s, note: 'mastery r1 (SCR-M1-09): an on-ball row whose stand starts within this time after the stand of a used row of the same (s, u, kind) ends, at the same spot (P_s within split_move_m), is that screen cut in two by noise and is dropped (sigma_p 0.5: 2 re_screen FPs on rescreen_same_side)'}
     rescreen_gap_s: {value: 1.5, unit: s, note: 'loop 2 (SCR-T04 re_screen): a later row whose stand starts within this time after the earlier stand ends is linked as a re-screen (rescreen_of, never merged) even when the t_s gap exceeds window_s'}
     split_move_m: {value: 1.22, unit: m}
     split_def_m: {value: 3.05, unit: m}
@@ -585,6 +920,10 @@ items:
     the screener, settles into a non-moving stop that starts within still_cover_s of t_s, lasts past t_s + still_post_s, and his speed stays below still_user_mps from its onset - two
     screeners arriving side by side). These rows are kept aside for veer_screen only.
     Unused and rejected screens are kept as SET rows (CTG under-captures them).
+    Mastery r1 (SCR-M1-04): an off-ball row that is not a used screen is kept only when D guards u before t_s (ball_screen_model.offball_*: within
+    offball_du_max_m and the joint assignment or the nearest-defender test gives D to u) and u comes within screen_read.reject_approach_m of s; an
+    on-ball row that is not a screen only when D is within ball_screen_model.bd_max_m of the handler over [t_s - 1, t_s] (stands next to help defenders
+    are not SET rows).
   params:
     set_def_radius_m: {value: 1.5, unit: m}
     pad_s: {value: 0.5, unit: s}
@@ -634,6 +973,13 @@ items:
     user_speed_off_mps (off-ball) AND screen_interaction with (d_sD <= strict_contact_m or DEFLECT or DELAY). NULL when stationarity is untestable and every other term holds.
     Reports use STRICT; LOOSE is the sensitivity view. kind = handoff when s handed the ball to u (dho) around the stop, on_ball when u holds the ball on >= 5 of
     the 9 frames around t_s, else off_ball.
+    Mastery r1 (0.4.0): the on-ball kind reads the noise-robust possession (ball_screen_model, SCR-M1-01) and a close pitched exchange s -> u within
+    ball_screen_model.handoff_s before t_s also makes kind handoff (SCR-M1-06). On-ball rows (stand-based or contact candidates of moving screeners,
+    SCR-M1-02) are screens by the ball_screen_model decision (sigma-aware contact on D_h, handler use within use_near_m, plant as a likelihood term;
+    SCR-M1-03), not by the 1.2 m centre gate. Off-ball rows are USED screens only (SCR-M1-08): the gate above AND the user comes through (passed, or the
+    away use of a fade) at >= user_speed_off_mps at the closest approach (or the peak within +-ball_screen_model.offball_use_win_s of it with an
+    interaction with D_u) AND P_s at least ball_screen_model.offball_r_min_m from the rim (SCR-M1-10); unused and rejected off-ball rows stay in
+    screen_set / screen_read. Rows whose tracks coincide (ball_screen_model.coincident_*) are dropped (SCR-M1-05).
   params:
     user_arrive_s: {value: 0.5, unit: s, note: 'SCR-T03: the closest approach t_c is taken over frames where the user moves (displacement speed >= screen_moment.tsu_min_speed_mps), the screener stands (t >= a) and the user is not inside, or within user_arrive_s before, a stand of his own'}
     d_su_max_m: {value: 1.2, unit: m}
@@ -710,8 +1056,11 @@ items:
     REJECT: u comes within reject_approach_m of s in [t_s - 1.0, t_s + 1.5], d_su_ca > d_su_max_m, u does not pass, and u's attack direction (mean velocity over 0.5 s from
     the first frame after t_s - 0.5 at which u moves, displacement speed >= 1.0 m/s) makes >= reject_turn_deg with the direction from u to the screen point. Loop 2: a reject also needs u to move (peak 5-frame median speed over [t_s - screen_set.still_pre_s, t_s + screen_set.still_post_s] >= screen_set.still_user_mps).
     UNUSED: SET exists and neither USE nor REJECT within unused_s.
+    Mastery r1 (SCR-M1-03): on-ball USE = d_su_ca <= ball_screen_model.use_near_m, passed with a crossing within max(pass_lateral_m, use_near_m) of P_s,
+    blocking or contact, user speed >= 1.0 m/s; on-ball REJECT drops the d_su_ca > d_su_max_m term (a handler who brushes the screener and turns away
+    without crossing is a reject). Off-ball away use (SCR-M1-08): 'straight away' = the user-screener distance grows by >= cos(away_use_deg) x |displacement|.
     On-ball extras: SNAKE = USE (the handler crosses the rim->screener line), then he crosses back over it by >= screen_frame.pass_margin_m within snake_s; SPLIT = handler within split_seg_m of segment(D_h, D_s) while they
-    are < split_gap_m apart; RETREAT = handler v_r <= -retreat_vr_mps (away from the rim) mean over retreat_s after t_s. Precedence: retreat > snake > split > use > reject > unused.
+    are < split_gap_m apart; RETREAT = handler v_r <= -retreat_vr_mps (away from the rim) mean over retreat_s after t_s. Mastery r3 (SCR-M3-07): an on-ball REJECT also needs the handler to travel >= reject_disp_m from h(t_s - 0.5) within [t_s - 0.5, t_s + ball_screen_model.use_disp_post_s]. Precedence: retreat > snake > split > use > reject > unused.
     Exit class (off-ball): curl = end r < r_s - curl_dr_m; fade = exit angle to u->ball > fade_deg; straight otherwise.
   params:
     reject_approach_m: {value: 2.5, unit: m}
@@ -722,6 +1071,7 @@ items:
     split_seg_m: {value: 0.5, unit: m, note: 'handler within this distance of the D_h-D_s segment (projection 0.15-0.85)'}
     retreat_vr_mps: {value: 1.5, unit: m/s}
     retreat_s: {value: 0.5, unit: s}
+    reject_disp_m: {value: 1.5, unit: m, note: 'mastery r3 (SCR-M3-07): an on-ball reject needs the handler to travel at least this far from h(t_s - 0.5) within [t_s - 0.5, t_s + ball_screen_model.use_disp_post_s] (smoothed positions; a standing handler read rejects from speed noise at sigma_p 0.5)'}
     curl_dr_m: {value: 1.0, unit: m}
     fade_deg: {value: 120.0, unit: deg}
   min_duration_s: 0.2

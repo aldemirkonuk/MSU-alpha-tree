@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -215,6 +216,19 @@ def _sigd(scene, a, b, t) -> float:
         c[key] = sigma_dist(scene.k(a), scene.k(b))
     v = c[key][t] * prm("screen_noise_calibration")["dist_sigma_scale"]
     return float(v) if np.isfinite(v) else 0.5
+
+
+def _med5(scene, a, b) -> np.ndarray:
+    """Cached 5-frame running median of d(a, b) (NaN where the whole window is missing)."""
+    c = _cache(scene).setdefault("med5", {})
+    key = (a, b) if a < b else (b, a)
+    if key not in c:
+        d = _dist(scene, a, b)
+        win = np.lib.stride_tricks.sliding_window_view(np.pad(d, 2, mode="constant", constant_values=np.nan), 5)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            c[key] = np.nanmedian(win, axis=1)
+    return c[key]
 
 
 def _med(arr, t, half=2) -> float:
@@ -465,6 +479,94 @@ def _holds(scene, oid, a, b) -> int:
     return int(sum(1 for v in h if v == oid))
 
 
+def _ball_sigma(scene) -> float:
+    """Robust 2-D sigma of the raw ball around the smoothed ball (MAD of the residual, both axes): the observed ball
+    noise of this clip (about 0.05 m on SportVU, sigma_p x 0.7 x sqrt 2 on V0 tracks)."""
+    c = _cache(scene)
+    if "ball_sigma" not in c:
+        v = 0.0
+        if getattr(scene, "ball_raw", None) is not None and scene.ball is not None:
+            rx = np.asarray(scene.ball_raw[0], dtype=float) - scene.ball.x
+            ry = np.asarray(scene.ball_raw[1], dtype=float) - scene.ball.y
+            ok = np.isfinite(rx) & np.isfinite(ry)
+            if ok.sum() >= 10:
+                v = float(math.hypot(1.4826 * np.median(np.abs(rx[ok] - np.median(rx[ok]))),
+                                     1.4826 * np.median(np.abs(ry[ok] - np.median(ry[ok])))))
+        c["ball_sigma"] = v
+    return c["ball_sigma"]
+
+
+def _poss(scene) -> np.ndarray:
+    """Ball possession per frame for the on-ball tests (mastery r1, SCR-M1-01; ball_screen_model).
+
+    The cleaned holder (_holder) collapses under position noise: noise on the ball and the player pushes the
+    ball-handler distance over HOLD_R, and its 12-frame minimum runs then delete the dribble (real tracks with
+    sigma_p 0.3 / 0.5 added: cleaned holder coverage 0.55 -> 0.42 -> 0.15, and 32 / 49 of 54 clean ball screens
+    became off-ball rows). Here: the 5-frame median distance of the raw ball to each attacker, a radius widened by
+    the clip's measured ball noise (HOLD_R + poss_k x ball sigma), a sticky owner (a teammate takes over only when
+    nearer by poss_switch_margin_m), None gaps up to poss_bridge_s between two runs of the same attacker filled (a
+    dribble), and runs shorter than poss_min_run_frames removed. Used for the on-ball kind, the ball defender and
+    the contact candidates; DHO / pass logic keeps _holder."""
+    c = _cache(scene)
+    if "poss" in c:
+        return c["poss"]
+    if getattr(scene, "ball_raw", None) is None or not scene.offense:
+        c["poss"] = _holder(scene)
+        return c["poss"]
+    P = prm("ball_screen_model")
+    n = scene.n
+    bx, by = (np.asarray(v, dtype=float) for v in scene.ball_raw)
+    half = int(P["poss_med_frames"]) // 2
+    D = {}
+    for o in scene.offense:
+        k = scene.k(o)
+        d = np.hypot(bx - k.x, by - k.y)
+        win = np.lib.stride_tricks.sliding_window_view(np.pad(d, half, mode="edge"), 2 * half + 1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN windows (ball in flight / missing) stay NaN
+            D[o] = np.nanmedian(win, axis=1)
+    R = mvlib.HOLD_R + P["poss_k"] * _ball_sigma(scene)
+    h = np.array([None] * n, dtype=object)
+    cur = None
+    for t in range(n):
+        best, bd = None, R
+        for o in scene.offense:
+            v = D[o][t]
+            if np.isfinite(v) and v <= bd:
+                best, bd = o, v
+        if best is not None and cur is not None and best != cur:
+            dc = D[cur][t]
+            if np.isfinite(dc) and dc <= R and bd + P["poss_switch_margin_m"] >= dc:
+                best = cur
+        h[t] = best
+        cur = best if best is not None else cur
+    # fill short None gaps between runs of the same attacker (a dribble or a noisy hand)
+    gap = frames(P["poss_bridge_s"])
+    last_o, last_t = None, -10**9
+    for t in range(n):
+        if h[t] is None:
+            continue
+        if h[t] == last_o and 1 < t - last_t <= gap + 1:
+            h[last_t + 1:t] = last_o
+        last_o, last_t = h[t], t
+    mn = int(P["poss_min_run_frames"])
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and h[j + 1] == h[i]:
+            j += 1
+        if h[i] is not None and j - i + 1 < mn:
+            h[i:j + 1] = None
+        i = j + 1
+    c["poss"] = h
+    return h
+
+
+def _poss_holds(scene, oid, a, b) -> int:
+    h = _poss(scene)[_cl(scene, a):_cl(scene, b) + 1]
+    return int(sum(1 for v in h if v == oid))
+
+
 # --------------------------------------------------------------------------------------
 # Stationarity (screen_stationarity)
 # --------------------------------------------------------------------------------------
@@ -480,6 +582,7 @@ class Stop:
     p_strict: float
     loose: bool | None
     strict: bool | None
+    synthetic: bool = False  # mastery r1 (SCR-M1-02): a contact window of a moving screener, not a stand
 
 
 def _split_disp(k, a, b, P) -> list:
@@ -667,7 +770,7 @@ def _records(scene, set_over=None, screen_over=None) -> list:
     if key in c:
         return c[key]
     Pset, Pscr = prm("screen_set", set_over), prm("screen", screen_over)
-    Ptd, Pmo = prm("screen_target_defender"), prm("screen_moment")
+    Ptd, Pmo, Pb = prm("screen_target_defender"), prm("screen_moment"), prm("ball_screen_model")
     recs, still = [], []
     for s in scene.offense:
         excl = []  # (a, b, D) of earlier SET rows of s: D was screened there, not guarding s (SCR-T04)
@@ -677,8 +780,12 @@ def _records(scene, set_over=None, screen_over=None) -> list:
             if _holds(scene, s, st.a, st.b) >= Pset["holder_frac"] * (st.b - st.a + 1):
                 continue  # the screener holds the ball (handoff phase is handled by dho)
             ra_, rb_ = _win(scene, st.a, -Pset["pad_s"], 0)[0], _win(scene, st.b, 0, Pset["receive_s"])[1]
-            if any(x["to"] == s and ra_ <= x["catch"] <= rb_ for x in _transfers(scene)):
-                continue  # s receives the ball at this stop: a handoff receiver or a catch, not a screener
+            if any(x["to"] == s and ra_ <= x["catch"] <= rb_
+                   and not (x["catch"] > st.b and _rolling_catch(scene, s, x["catch"], Pb, h=x["frm"]))
+                   for x in _transfers(scene)):
+                # s receives the ball at this stop: a handoff receiver or a catch, not a screener (a catch after the stand
+                # while he rolls to the rim is a pocket pass to the roller, SCR-M3-01)
+                continue
             tf = _cl(scene, st.a - frames(Ptd["freeze_offset_s"]))
             tf = _inherit_freeze(scene, s, st, tf, recs)
             mu = _matchup_excl(scene, tf, s, excl)
@@ -691,6 +798,9 @@ def _records(scene, set_over=None, screen_over=None) -> list:
                     continue
                 probs = mu[d]
                 ob = _onball_defender(scene, s, d, st.a, Ptd)
+                if ob is not None and ob[2] and not (max(probs, key=probs.get) == s
+                                                     or probs.get(s, 0.0) >= Ptd["own_man_p"]):
+                    ob = None  # SCR-M2-09: the screener-came override is used only against an own-man reading
                 if ob is not None and max(probs, key=probs.get) != ob[0]:
                     # loop 4 (SCR-L4-02): d is guarding the ball (nearest defender to the holder over the second before the
                     # stand); the on-ball role is instantaneous, the 2 s mean-distance proxy still reads his previous man
@@ -712,6 +822,15 @@ def _records(scene, set_over=None, screen_over=None) -> list:
                 if _role_reversal(scene, s, u, ts, tf, Pset):
                     continue
                 rec = _build(scene, s, u, d, st, ts, half, tf, probs, Pset, Pscr)
+                if rec is not None and ob is not None and ob[2]:
+                    # SCR-M2-09: a row kept only by the screener-came test must be a used on-ball screen (a roller who
+                    # meets his own dropping defender is not an unused SET row on him)
+                    rec.m["screener_came"] = True
+                    if not (rec.kind == "on_ball" and rec.is_screen):
+                        rec = None
+                if rec is not None and _coincident(scene, [(s, d), (s, u)],
+                                                   *_win(scene, ts, -Pb["coincident_pre_s"], 0.5), Pb):
+                    rec = None  # SCR-M1-05 / SCR-M2-08: tracker pile-up / merged identity of the screener
                 if rec is not None and rec.kind == "off_ball":
                     veto = _off_ball_veto(scene, s, u, ts, Pset, rec.m["passed"])
                     if veto == "still_user":
@@ -719,15 +838,253 @@ def _records(scene, set_over=None, screen_over=None) -> list:
                         still.append(rec)  # kept aside: veer_screen's second leg is a stand for a standing teammate
                     if veto:
                         rec = None
+                if rec is not None and rec.kind == "off_ball" and not rec.is_screen and (
+                        not _guards_user(scene, d, u, ts, Pb)
+                        or not rec.m["approach_min_m"] <= prm("screen_read")["reject_approach_m"]):
+                    # SCR-M1-04: an unused stand next to a help defender (not on the user's own defender), or one the
+                    # user never comes near (min d(s, u) over [t_s - 1.0, t_s + 1.5] > screen_read.reject_approach_m), is
+                    # not a SET row (after the still-user veto, whose rows veer_screen keeps)
+                    rec = None
+                if rec is not None and rec.kind == "on_ball" and not rec.is_screen:
+                    # SCR-M1-04 (on-ball): an unused / rejected on-ball row needs D near the ball - mean d(D, h) over
+                    # [t_s - 1.0, t_s] <= bd_max_m (real SportVU rows with D 5-10 m from the handler were stands next to
+                    # a help defender)
+                    ga_, gb_ = _win(scene, ts, -1.0, 0)
+                    dh_ = _dist(scene, d, u)[ga_:gb_ + 1]
+                    if not (np.any(np.isfinite(dh_)) and np.nanmean(dh_) <= Pb["bd_max_m"]):
+                        rec = None
                 if rec is not None:
                     rec.m["t_s_source"] = source
                     rec.m["t_freeze"] = int(tf)
                     recs.append(rec)
                     excl.append((st.a, st.b, d))
+    # SCR-M2-09: a screener-came row yields to any other row of the same pair near it (the override is a recovery path for
+    # a screen the matchup proxy vetoed, never a second reading of one it kept - a roller meeting his own defender)
+    cont = _contact_rows(scene, recs, Pset, Pscr)  # SCR-M1-02: rolling / moving ball screeners
+    if cont:
+        # an off-ball row of the same pair at the same contact (the user caught the ball during the screen) is replaced
+        lim = frames(Pb["contact_win_s"]) * 3
+        for q in cont:
+            # SCR-M3-08: the SET onset of the replaced stand row is the screen_set onset of the contact row (the contact
+            # episode can start 0.5 s before the screener stood: screen_set t0 off by 0.5 s at sigma_p 0.3)
+            st_ = [r.stop for r in recs if r.kind == "off_ball" and q.s == r.s and q.u == r.u and abs(q.ts - r.ts) <= lim
+                   and not r.stop.synthetic]
+            if st_:
+                q.m["set_stop"] = (st_[0].a, st_[0].b)
+        recs = [r for r in recs if not (r.kind == "off_ball" and any(
+            q.s == r.s and q.u == r.u and abs(q.ts - r.ts) <= lim for q in cont))]
+    recs = recs + cont
+    dd_ = frames(prm("screen_window")["window_s"])
+    recs = [r for r in recs if not (r.m.get("screener_came") and any(
+        q is not r and q.s == r.s and q.u == r.u and not q.m.get("screener_came") and abs(q.ts - r.ts) <= dd_
+        for q in recs))]
     recs = _merge(scene, recs)
     c[key] = recs
     c[key + ("still_user",)] = still
     return recs
+
+
+def _runs(arr) -> list:
+    """(value, start, end) runs of a per-frame object array (None runs skipped)."""
+    out, i, n = [], 0, len(arr)
+    while i < n:
+        j = i
+        while j + 1 < n and arr[j + 1] == arr[i]:
+            j += 1
+        if arr[i] is not None:
+            out.append((arr[i], i, j))
+        i = j + 1
+    return out
+
+
+def _coincident(scene, pairs, a, b, Pb) -> bool:
+    """SCR-M1-05: two tracks closer than coincident_m (5-frame median) for coincident_frames consecutive frames of [a, b]
+    are a tracker pile-up or a merged identity, not a screen (bodies cannot be closer than about 0.45 m centre to
+    centre). Tested only when the pair's distance sigma is <= coincident_sigma_max_m (precise tracking, e.g. SportVU):
+    at sigma_p >= 0.2 a real contact at 0.2-0.4 m reads below coincident_m by noise.
+    Mastery r2 (SCR-M2-08): the pairs are the screener's - (s, D) and (s, u) - over [t_s - coincident_pre_s, t_s + 0.5]
+    (a pile-up just before the window faked a contact; judged J03); (u, D) is not tested (a defender glued to the
+    handler or user does not fake a screen: judged J35, a real screen, was lost to it)."""
+    for x, y in pairs:
+        if x is None or y is None:
+            continue
+        if _sigd(scene, x, y, _cl(scene, (a + b) // 2)) > Pb["coincident_sigma_max_m"]:
+            continue  # on noisy tracks a close contact reads as coincident: the artefact is only testable on precise ones
+        m5 = _med5(scene, x, y)[_cl(scene, a):_cl(scene, b) + 1]
+        run = best = 0
+        for v in np.nan_to_num(m5, nan=99.0) < Pb["coincident_m"]:
+            run = run + 1 if v else 0
+            best = max(best, run)
+        if best >= Pb["coincident_frames"]:  # persistent: a brush past the screener's centre is not a pile-up
+            return True
+    return False
+
+
+def _guards_user(scene, d, u, ts, Pb, used=False) -> bool:
+    """SCR-M1-04 (off-ball, unused rows): d guards u before the screen - within offball_du_max_m of him on average over
+    [t_s - offball_guard_pre_s, t_s - offball_guard_post_s], and either the joint assignment (_assignment) gives d to u
+    or d is the defender nearest u on >= offball_guard_frac of that window (Hojo: the assignment and the nearest
+    defender). A screener standing next to a help defender whose softmax matchup names a far-away attacker is not a
+    screen_set row. Used screens skip this test (the user came through the screen at speed)."""
+    a, b = _win(scene, ts, -Pb["offball_guard_pre_s"], -Pb["offball_guard_post_s"])
+    if b < a:
+        return True
+    du = _dist(scene, d, u)[a:b + 1]
+    if not np.any(np.isfinite(du)) or np.nanmean(du) > Pb["offball_du_max_m"]:
+        return False
+    if used and np.nanmean(du) <= Pb["offball_du_close_m"]:
+        return True  # SCR-M2-11: a used row whose D_u stayed on u (a screener's defender may stand nearer)
+    asg = _assignment(scene, b, Pb["offball_guard_pre_s"] - Pb["offball_guard_post_s"])
+    if asg.get(d) == u:
+        return True
+    others = [_dist(scene, x, u)[a:b + 1] for x in scene.defense if x != d]
+    near = np.ones(b - a + 1, dtype=bool)
+    for o in others:
+        near &= ~(np.nan_to_num(o, nan=99.0) < np.nan_to_num(du, nan=99.0))
+    return bool(near.mean() >= Pb["offball_guard_frac"])
+
+
+def _contact_rows(scene, recs, Pset, Pscr) -> list:
+    """On-ball contact candidates (SCR-M1-02, ball_screen_model): screens of screeners who never form a stand.
+
+    The stand-based SET misses rolling / moving screeners (0.6-1.5 m/s through the contact; about 16 real ball screens
+    per 48 on the judged SportVU sample had no stand) and, under noise, real plants whose window speed reads above the
+    loose band. For every possession run of the handler h (_poss) and every teammate s, the contact episodes are the
+    frames where the 5-frame median d(s, d) <= contact_on_m + contact_k x sigma_d for a defender d that guards the ball
+    (_onball_defender at the episode onset: nearest h on >= onball_def_frac of the holder frames, nearer h than s - the
+    own-man veto), with >= contact_min_frames frames. Each episode becomes an on-ball row (the contact window as a
+    synthetic stop, plant = moving / loose), unless a stand-based row of the same (s, h) covers it; only rows that pass
+    the on-ball decision (_onball_decision) are kept, so the contact path never adds unused / rejected SET rows."""
+    Pb, Ptd, Pmo, Pst = (prm("ball_screen_model"), prm("screen_target_defender"), prm("screen_moment"),
+                         prm("screen_stationarity"))
+    if not scene.defense:
+        return []
+    n = scene.n
+    poss = _poss(scene)
+    pad = frames(Pmo["pad_s"])
+    scale = prm("screen_noise_calibration")["dist_sigma_scale"]
+    out = []
+    for h, a0, b0 in _runs(poss):
+        if h not in scene.offense or b0 - a0 + 1 < Pb["contact_min_frames"]:
+            continue
+        for s in scene.offense:
+            if s == h:
+                continue
+            ks = scene.k(s)
+            for d in scene.defense:
+                dd = _dist(scene, s, d)
+                sg = sigma_dist(ks, scene.k(d)) * scale
+                med = _med5(scene, s, d)[a0:b0 + 1]
+                thr = Pb["contact_on_m"] + Pb["contact_k"] * np.nan_to_num(sg[a0:b0 + 1], nan=0.5)
+                mask = np.zeros(n, dtype=bool)
+                mask[a0:b0 + 1] = np.nan_to_num(med, nan=99.0) <= thr
+                if mask.sum() < Pb["contact_min_frames"]:
+                    continue
+                for ea, eb in hysteresis(mask, mask, (Pb["contact_min_frames"] - 1) * DT,
+                                         int(Pb["contact_gap_frames"])):
+                    if eb - ea + 1 < Pb["contact_min_frames"]:
+                        continue
+                    if any(r.s == s and r.u == h and r.kind != "off_ball" and r.stop.a - pad <= eb and r.stop.b + pad >= ea
+                           and not r.m.get("screener_came") for r in recs + out):
+                        continue  # an on-ball / handoff row of the pair covers this contact
+                    if _poss_holds(scene, s, ea, eb) >= 0.5 * (eb - ea + 1):
+                        continue  # s has the ball (handoff phase / post entry)
+                    ra_, rb_ = _win(scene, ea, -Pset["pad_s"], 0)[0], _win(scene, eb, 0, Pset["receive_s"])[1]
+                    if any(x["to"] == s and ra_ <= x["catch"] <= rb_
+                           and not (x["catch"] > eb and _rolling_catch(scene, s, x["catch"], Pb, h=x["frm"]))
+                           for x in _transfers(scene)):
+                        continue  # s receives the ball: a handoff receiver or a catch (not a pocket pass, SCR-M3-01)
+                    # d guards the ball before the contact (SCR-M1-07), read at the onset or half a second into it
+                    # (h caught the ball just before)
+                    frac = _ball_defender(scene, s, d, h, ea, Pb)
+                    if frac is None:
+                        frac = _ball_defender(scene, s, d, h, min(eb, ea + frames(Pb["contact_win_s"])), Pb)
+                    if frac is None:
+                        continue  # d does not guard the ball, or he is s's own man
+                    probs = {o: (frac if o == h else (1.0 - frac) / max(1, len(scene.offense) - 1))
+                             for o in scene.offense}
+                    lo, hi = _cl(scene, ea - pad), _cl(scene, eb + pad)
+                    ts, half = _t_s(scene, dd, lo, hi, Pmo, _dist(scene, s, h),
+                                    _disp_speed(scene, h, Pmo["tsu_half_s"]), su_from=ea)
+                    if ts is None:
+                        continue
+                    st = _stop_stats(scene, ks, s, ea, eb, Pst)
+                    st.synthetic = True
+                    tf = _cl(scene, ea - frames(Ptd["freeze_offset_s"]))
+                    rec = _build(scene, s, h, d, st, ts, half, tf, probs, Pset, Pscr, force_on_ball=True)
+                    if rec is None or rec.kind != "on_ball" or not rec.is_screen:
+                        continue
+                    if _coincident(scene, [(s, d), (s, h)], *_win(scene, ts, -Pb["coincident_pre_s"], 0.5), Pb):
+                        continue
+                    # a second row of the pair within screen_window.window_s is kept only as a real re-screen: the
+                    # screener relocated by > split_move_m + hyst_m (CTG 4 ft); otherwise it is the same screen read
+                    # again (a stand fragment at high noise)
+                    Pw = prm("screen_window")
+                    if any(q.s == s and q.u == h and q.kind != "off_ball" and abs(q.ts - rec.ts) <= frames(Pw["window_s"])
+                           and math.hypot(*(np.array(q.m["P_s"]) - np.array(rec.m["P_s"])))
+                           <= Pw["split_move_m"] + Pw["hyst_m"] for q in recs + out):
+                        continue
+                    rec.m["t_s_source"] = "defender"
+                    rec.m["t_freeze"] = int(tf)
+                    out.append(rec)
+    return out
+
+
+def _assignment(scene, t, w_s) -> dict:
+    """One-to-one defender -> attacker assignment minimising the summed mean distance over [t - w_s, t] (SCR-M1-07).
+
+    The softmax proxy scores each defender alone, so a ball defender sagging into the screener's approach reads as the
+    screener's man even when the screener's own defender stands next to him; the joint assignment gives each attacker
+    one defender. Exhaustive over the permutations (5! = 120); {} when the teams are not 5 v 5 or distances are missing."""
+    t = _cl(scene, t)
+    c = _cache(scene).setdefault("assign", {})
+    if (t, w_s) in c:
+        return c[(t, w_s)]
+    import itertools
+    off, dfn = list(scene.offense), list(scene.defense)
+    out = {}
+    if 0 < len(dfn) <= len(off) <= 6:
+        a = _cl(scene, t - frames(w_s))
+        M = np.array([[np.nanmean(_dist(scene, d, o)[a:t + 1]) for o in off] for d in dfn])
+        M = np.where(np.isfinite(M), M, 50.0)
+        best, bp = float("inf"), None
+        for perm in itertools.permutations(range(len(off)), len(dfn)):
+            v = float(sum(M[i, j] for i, j in enumerate(perm)))
+            if v < best:
+                best, bp = v, perm
+        out = {dfn[i]: off[j] for i, j in enumerate(bp)}
+    c[(t, w_s)] = out
+    return out
+
+
+def _ball_defender(scene, s, d, h, t, Pb) -> float | None:
+    """Contact path ball defender (SCR-M1-07): fraction of the handler's possession frames of [t - bd_pre_s, t - bd_post_s]
+    on which d is the defender nearest h within bd_max_m (research: 12 ft), when that fraction >= bd_frac and the joint
+    assignment at t - bd_post_s does not give d to s (own-man veto); also accepted when the assignment gives d to h.
+    None otherwise."""
+    a, b = _win(scene, t, -Pb["bd_pre_s"], -Pb["bd_post_s"])
+    if b <= a:
+        return None
+    asg = _assignment(scene, b, Pb["bd_pre_s"] - Pb["bd_post_s"])
+    if asg.get(d) == s and not _screener_came(scene, s, d, t):
+        return None
+    poss = _poss(scene)
+    n = ok = 0
+    dh = []
+    for k in range(a, b + 1):
+        if poss[k] != h:
+            continue
+        n += 1
+        dists = {x: _dist(scene, x, h)[k] for x in scene.defense}
+        dn = min(dists, key=lambda x: dists[x] if np.isfinite(dists[x]) else 1e9)
+        ok += int(dn == d and dists[d] <= Pb["bd_max_m"])
+        dh.append(dists[d])
+    if n < 0.5 * (b - a + 1):
+        return None
+    frac = ok / n
+    if frac >= Pb["bd_frac"] or (asg.get(d) == h and np.nanmean(dh) <= Pb["bd_max_m"]):
+        return max(frac, 0.5)
+    return None
 
 
 def _onball_defender(scene, s, d, a, Ptd):
@@ -735,7 +1092,7 @@ def _onball_defender(scene, s, d, a, Ptd):
     [a - onball_window_s, a] one teammate h != s holds the ball on >= onball_hold_frac of the frames and d is the defender
     nearest h, within onball_def_max_m, on frac >= onball_def_frac of the frames where h holds it. None otherwise."""
     wa, wb = _win(scene, a, -Ptd["onball_window_s"], 0)
-    hold = _holder(scene)[wa:wb + 1]
+    hold = _poss(scene)[wa:wb + 1]  # mastery r1 (SCR-M1-01): noise-robust possession
     hs = [x for x in hold if x is not None]
     if not hs:
         return None
@@ -756,9 +1113,35 @@ def _onball_defender(scene, s, d, a, Ptd):
     frac = ok / n if n else 0.0
     if frac < Ptd["onball_def_frac"]:
         return None
+    came = False
     if Ptd["onball_nearer_holder"] and not np.nanmean(dh_) < np.nanmean(ds_):
-        return None  # d sits on the screener, not on the ball (a help defender dropping with his own man)
-    return h, float(frac)
+        if not _screener_came(scene, s, d, a):
+            return None  # d sits on the screener, not on the ball (a help defender dropping with his own man)
+        came = True
+    return h, float(frac), came
+
+
+def _screener_came(scene, s, d, a) -> bool:
+    """SCR-M2-09 (own-man veto revisited): the screener closed the distance to d himself - over [a - came_s, a] his
+    displacement toward d's position at a is >= came_m and d's own displacement toward him is <= came_ratio of that. A
+    defender who guards s follows s; one whom s runs at to screen does not (judged J34: D stood beside the handler's path,
+    the screener ran 2.5 m to him, and the 2 s matchup proxy / joint assignment called D the screener's man)."""
+    P = prm("ball_screen_model")
+    a0, a1 = _win(scene, a, -P["came_s"], 0)
+    s0, s1, d0, d1 = _pos(scene, s, a0), _pos(scene, s, a1), _pos(scene, d, a0), _pos(scene, d, a1)
+    if not _fin(*s0, *s1, *d0, *d1):
+        return False
+    u_sd = _unit(d1 - s0)
+    u_ds = _unit(s0 - d0)
+    if not (np.all(np.isfinite(u_sd)) and np.all(np.isfinite(u_ds))):
+        return False
+    adv_s = float((s1 - s0) @ u_sd)
+    adv_d = float((d1 - d0) @ u_ds)
+    # and d was not with s when he set off (a roller meeting his own dropping defender): at a - came_s, d is no nearer s
+    # than the nearest other attacker is to d
+    near_other = min((float(_dist(scene, d, o)[a0]) for o in scene.offense if o != s), default=float("inf"))
+    return bool(adv_s >= P["came_m"] and adv_d <= P["came_ratio"] * adv_s
+                and not float(_dist(scene, d, s)[a0]) < near_other)
 
 
 def _still_user_rows(scene) -> list:
@@ -846,10 +1229,10 @@ def _role_reversal(scene, s, u, ts, tf, Pset) -> bool:
     return False
 
 
-def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
-    """Measure one (s, u, D) candidate around its screen moment."""
+def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr, force_on_ball=False) -> Rec | None:
+    """Measure one (s, u, D) candidate around its screen moment (force_on_ball: a contact candidate, SCR-M1-02)."""
     Pf, Ptd, Pr, Pi = prm("screen_frame"), prm("screen_target_defender"), prm("screen_read"), prm("screen_interaction")
-    Pa = prm("screen_angle")
+    Pa, Pb = prm("screen_angle"), prm("ball_screen_model")
     # screen point: mean of the standing screener within +-ps_avg_s of t_s (s(t_s) outside the stop)
     pa_, pb_ = max(st.a, _win(scene, ts, -Pf["ps_avg_s"], 0)[0]), min(st.b, _win(scene, ts, 0, Pf["ps_avg_s"])[1])
     ks_ = scene.k(s)
@@ -867,10 +1250,38 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
     bpos = _pos(scene, "ball", ts)
     inbound = bool(_fin(*bpos) and (abs(bpos[0]) >= prm("screen_inbound_context")["side_x_m"]
                                     or bpos[1] <= prm("screen_inbound_context")["end_y_m"]))
-    on_ball = (not inbound) and _holds(scene, u, ts - 4, ts + 4) >= Pscr["onball_frames"]
+    # on-ball kind from the noise-robust possession (SCR-M1-01; the cleaned holder lost the dribble under noise)
+    on_ball = force_on_ball or ((not inbound) and _poss_holds(scene, u, ts - 4, ts + 4) >= Pscr["onball_frames"])
     handoff = any(x["frm"] == s and x["to"] == u and x["type"] == "dho"
                   and _win(scene, st.a, -Pset["pad_s"], 0)[0] <= x["catch"] <= _win(scene, st.b, 0, Pset["pad_s"])[1]
                   for x in _transfers(scene))
+    # SCR-M1-06: s handed the ball to u at close range just before t_s (a pitch-typed exchange of a handoff): a handoff
+    # row, not a ball screen (judged SportVU sample: handoffs were 2 of the stand-based ball-screen FPs)
+    hx0, hx1 = _win(scene, ts, -Pb["handoff_s"], 0.3)
+    handoff = handoff or any(x["frm"] == s and x["to"] == u and hx0 <= x["catch"] <= hx1 and x["d_ab"] <= Pb["handoff_d_m"]
+                             and x["air_s"] <= Pb["handoff_air_s"] + 1e-9 for x in _transfers(scene))
+    if not handoff:
+        # the same from the noise-robust possession (the transfer list loses the exchange under noise): s owned the
+        # ball in [t_s - handoff_s, t_s + 0.3] and u right after, with the pair within handoff_d_m at the change
+        ps_ = _poss(scene)
+        for t in range(max(hx0, 1), hx1 + 1):
+            if ps_[t] == u and ps_[t - 1] != u:
+                k = t - 1
+                while k >= max(0, t - frames(Pb["handoff_air_s"])) and ps_[k] is None:
+                    k -= 1
+                if k >= 0 and ps_[k] == s:
+                    ca_, cb_ = _cl(scene, k - 3), _cl(scene, t + 3)
+                    if np.nanmin(_dist(scene, s, u)[ca_:cb_ + 1]) <= Pb["handoff_d_m"]:
+                        handoff = True
+                        break
+    tg_ = _gives_to(scene, u, s, ts, Pb) if on_ball else None
+    if tg_ is not None and not _rolling_catch(scene, s, tg_, Pb, h=u):
+        # SCR-M2-04: the 'handler' hands the ball to the 'screener' right after t_s: a DHO (u -> s), not a screen; a
+        # catch while the screener rolls to the rim is a pocket pass to the roller and keeps the screen (SCR-M3-01)
+        return None
+    xf = [x for x in _transfers(scene) if x["frm"] == s and x["to"] == u
+          and _win(scene, ts, -Pb["pass_screen_s"], 0)[0] <= x["catch"] <= ts]
+    m["pass_and_screen"] = bool(xf) and not handoff  # SCR-M2-06: s passed to u, then screened for him
     r_s = float(math.hypot(xs, ys))
     if on_ball and not (Pset["on_ball_r_min_m"] <= r_s <= Pset["on_ball_r_max_m"]):
         return None
@@ -928,14 +1339,20 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
         if len(after):
             zero = int(np.flatnonzero(lam[below[0]:] >= 0)[0])
             k0 = below[0] + zero
-            if lat[k0] <= Pf["pass_lateral_m"]:  # the crossing happens within reach of the screener
+            # the crossing happens within reach of the screener (on-ball: a handler going wide at up to use_near_m still
+            # uses the screen, SCR-M1-03)
+            if lat[k0] <= (max(Pf["pass_lateral_m"], Pb["use_near_m"]) if on_ball else Pf["pass_lateral_m"]):
                 passed = True
                 t_h = pa + k0
     inter = _interaction(scene, s, u, D, ts, dsD_ts, Ps, d_hat, Pi)
     # away use (off-ball flare / fade, SCR-T05; on the ball moving away is a reject): the user starts beside the screener and moves straight away from him while
     # gaining separation from D_u; he never crosses the screen line, which the passed test needs
+    # SCR-M1-08: 'straight away' is read from the gain of the user-screener distance over the displacement (radial
+    # component >= cos(away_use_deg) x |displacement|), not from the angle to u0 - P_s, whose direction is noise when the
+    # user starts within about 1 m of the screener (V0 sigma_p 0.3: 70-84 deg on true 0-deg fades)
     away_use = bool(not passed and not on_ball and np.hypot(*disp) >= Pa["flare_disp_m"]
-                    and _ang(disp, u0 - Ps) <= Pf["away_use_deg"]
+                    and np.hypot(*(u1 - Ps)) - np.hypot(*(u0 - Ps)) >= math.cos(math.radians(Pf["away_use_deg"]))
+                    * np.hypot(*disp)
                     and np.isfinite(inter["sep_gain_m"]) and inter["sep_gain_m"] >= Pi["sep_gain_m"])
     if away_use:
         passed, t_h = True, ts
@@ -988,7 +1405,17 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
         gen = "other"
     # ---- read (screen_read) ----
     gate_speed = Pscr["user_speed_on_mps"] if on_ball else Pscr["user_speed_off_mps"]
-    use = bool(dsu_ca <= Pscr["d_su_max_m"] and passed and blocking and user_speed >= gate_speed)
+    if on_ball:
+        # SCR-M1-03: the handler's use is the crossing of the screen line within use_near_m of the screener with the
+        # screener on D_h's route or in contact (the 1.2 m centre gate dropped real screens where the handler goes
+        # wide at 1.3-1.8 m: 4 real and 2 ambiguous of 8 judged not_geo rows)
+        # SCR-M2-10: the use distance tightens with the pair's distance sigma (use_near_m - use_k x sigma_d): under noise a
+        # handler passing 1.7-2.0 m from the screener is as likely a reject or a pass-by (noise-only rows at sigma_p 0.3 /
+        # 0.5 judged mostly ambiguous or not screens)
+        use = bool(dsu_ca <= Pb["use_near_m"] - min(Pb["use_k"] * sig_su, Pb["use_k_cap_m"]) and passed and (blocking or contact != "none")
+                   and user_speed >= gate_speed)
+    else:
+        use = bool(dsu_ca <= Pscr["d_su_max_m"] and passed and blocking and user_speed >= gate_speed)
     ra, rb = _win(scene, ts, -1.0, 1.5)
     approach_min = float(np.nanmin(dsu[ra:rb + 1]))
     # attack direction: the user's mean velocity over 0.5 s from the first frame (from t_s - 0.5) at which he moves
@@ -997,9 +1424,18 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
     t_go = next((t for t in range(ga, gb + 1) if usp[t] >= prm("screen_moment")["tsu_min_speed_mps"]), tc)
     v_post = _mean_v(scene, u, *_win(scene, t_go, 0, 0.5))
     turn = _ang(v_post, Ps - _pos(scene, u, t_go))
-    reject = bool((not use) and approach_min <= Pr["reject_approach_m"] and dsu_ca > Pscr["d_su_max_m"]
+    # on-ball (SCR-M1-03): the use is the crossing, so a handler who comes close but turns away without crossing is a
+    # reject at any closest approach (an ICE handler can brush the screener at 0.9 m)
+    reject = bool((not use) and approach_min <= Pr["reject_approach_m"] and (on_ball or dsu_ca > Pscr["d_su_max_m"])
                   and not passed and np.isfinite(turn) and turn >= Pr["reject_turn_deg"]
                   and _peak_speed(scene, u, ts, Pset) >= Pset["still_user_mps"])  # loop 2: a reject is a move
+    if reject and on_ball:
+        # mastery r3 (SCR-M3-07): an on-ball reject is a move - the handler gets >= reject_disp_m from h(t_s - 0.5) within
+        # [t_s - 0.5, t_s + use_disp_post_s] (smoothed positions); at sigma_p 0.5 a handler standing through an unused
+        # set-up read a reject from his speed noise (0.9-1.1 m/s peak) and became a ball_screen_coverage row
+        ra2, rb2 = _win(scene, ts, -0.5, Pb["use_disp_post_s"])
+        dd2 = np.hypot(ku.x[ra2:rb2 + 1] - ku.x[ra2], ku.y[ra2:rb2 + 1] - ku.y[ra2])
+        reject = bool(np.any(np.isfinite(dd2)) and np.nanmax(dd2) >= Pr["reject_disp_m"])
     read = "use" if use else "reject" if reject else "unused"
     if on_ball:
         rta, rtb = _win(scene, ts, 0.1, 0.1 + Pr["retreat_s"])
@@ -1033,6 +1469,63 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
     # ---- flags (R-ST-17) ----
     u_moving = bool(_disp_speed(scene, u, prm("screen_moment")["tsu_half_s"])[tc] >= Pscr["user_moving_mps"])
     geo = bool(dsu_ca <= Pscr["d_su_max_m"] and dsD_ts <= Pset["set_def_radius_m"] and u_moving)
+    onb = None
+    if not on_ball:
+        # SCR-M1-08 (research OFF-BALL USED): an off-ball screen row is a used screen - besides the closest approach of
+        # the screen test (d_su_ca <= d_su_max_m, user moving), the user comes through it (passed, or the away use of a
+        # fade) at >= screen.user_speed_off_mps: peak 5-frame median speed within +-offball_use_win_s of his closest
+        # approach (a fade: also the peak over its first away_speed_s; research: 2.0 m/s around the screen);
+        # the rest stays in the screen_set / screen_read layer. Judged SportVU off-ball screen rows that failed this
+        # were post scrums, pairs jogging side by side, slow drifts (user 1.1-1.9 m/s) and users who turned back
+        # before the screener. No blocking term (a second stagger screener's defender already trails).
+        spu = _kv(scene, u)["speed"]
+        ua_, ub_ = _win(scene, tc, -Pb["offball_use_win_s"], Pb["offball_use_win_s"])
+        upk = max([user_speed] + [_med(spu, t) for t in range(ua_, ub_ + 1)])
+        m["user_peak_mps"] = upk
+        # SCR-M1-10: no off-ball screen under the rim (P_s within offball_r_min_m: rebound / post scrums)
+        # SCR-M2-07: and the offense has the ball around t_s (box-outs and rebound scrums after a shot are not screens)
+        ob_ = _offense_has_ball(scene, ts, Pb)
+        m["ball_unobserved"] = ob_ is None
+        m["offense_ball"] = bool(ob_) or (ob_ is None and dr_u >= Pb["offball_dropout_dr_m"])
+        # SCR-M2-11: the screener blocks D_u's route or interacts with him, or the user sprints by (>= offball_fast_use_mps:
+        # a second stagger screener's defender already trails; judged SportVU used rows with none of the three, users at
+        # 2.0-2.7 m/s, were 1 ambiguous and 2 not screens of 3),
+        # and D_u guarded u before the screen (Hojo: the assignment, the nearest defender, or within offball_du_close_m of
+        # him on average - judged rows with D_u 1.5-2 m off u while another defender guarded him were not screens)
+        # (tested on precise tracks only, pair sigma <= offball_guard_sigma_max_m: with sigma_p >= 0.2 the 1.2 s mean
+        # distances blur and stack / stagger users lost their screens to it in the synthetic sweep)
+        m["guards_user"] = (_sigd(scene, D, u, ts) > Pb["offball_guard_sigma_max_m"]
+                            or _guards_user(scene, D, u, ts, Pb, used=True))
+        # SCR-M2-12 (research OFF-BALL: s makes CONTACT on D_u): min 5-frame median d(s, D_u) over t_s +- contact_win_s
+        # <= contact_on_m + contact_k x sigma_d, as for ball screens (rows with D_u 1.3-1.5 m off the screener throughout
+        # were judged mostly ambiguous: the defender went under or was never on the screener's line)
+        ca_, cb_ = _win(scene, ts, -Pb["contact_win_s"], Pb["contact_win_s"])
+        cm_ = [_med(dd, t) for t in range(ca_, cb_ + 1)]
+        m["contact_min_m"] = float(np.nanmin(cm_)) if np.any(np.isfinite(cm_)) else float("nan")
+        # mastery r3 (SCR-M3-03): the off-ball contact is tighter than the on-ball one - offball_contact_m + contact_k x
+        # sigma_d (judged SportVU used rows: every real one had D_u within 0.80 m of the screener; rows whose D_u never came
+        # nearer than 0.9-1.2 m were 6 ambiguous and 1 not a screen - the defender went under or trailed wide)
+        m["contact_thr_m"] = float(Pb["offball_contact_m"] + Pb["offball_contact_k"] * sig_sD)
+        m["sigma_sD"] = float(sig_sD)
+        contact_ok = bool(m["contact_min_m"] <= m["contact_thr_m"])
+        # SCR-M3-04: the user passes the screener - the displacement of u relative to s over t_s +- offball_rel_win_s is
+        # >= offball_rel_pass_m + offball_rel_k x sigma_d (two teammates jogging or stopping side by side never pass each other; a user cutting off
+        # a screen at 2 m/s moves about 2.4 m relative to him)
+        ra_, rb_ = _win(scene, ts, -Pb["offball_rel_win_s"], Pb["offball_rel_win_s"])
+        ks2_ = scene.k(s)
+        rel_ = np.array([ku.x[rb_] - ks2_.x[rb_] - (ku.x[ra_] - ks2_.x[ra_]),
+                         ku.y[rb_] - ks2_.y[rb_] - (ku.y[ra_] - ks2_.y[ra_])])
+        m["rel_pass_m"] = float(np.hypot(*rel_))
+        rel_ok = not m["rel_pass_m"] < Pb["offball_rel_pass_m"] + Pb["offball_rel_k"] * sig_su
+        geo = bool(geo and passed and (user_speed >= gate_speed or (upk >= gate_speed and inter["interaction"]
+                                                                    and blocking))
+                   and r_s >= Pb["offball_r_min_m"] and m["offense_ball"]
+                   and (blocking or inter["interaction"] or user_speed >= Pb["offball_fast_use_mps"])
+                   and m["guards_user"] and contact_ok and rel_ok)
+    if on_ball:
+        onb = _onball_decision(scene, s, u, D, st, ts, read, dsu_ca, sig_sD, sig_su, Pb, Pscr,
+                               blocking=blocking, interacts=inter["interaction"], Pset=Pset)
+        geo = onb["screen"]
     loose_rule = (None if st.loose is None else bool(st.loose)) if geo else False
     terms = [st.strict, dsu_ca <= Pscr["d_su_max_m"], user_speed >= gate_speed,
              inter["interaction"] and (dsD_ts <= Pscr["strict_contact_m"] or inter["deflect"] or inter["delay"])]
@@ -1042,6 +1535,8 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
     p_stat = st.p_loose if np.isfinite(st.p_loose) else 0.0
     p_set = p_stat * _pb(dsD_min, Pset["set_def_radius_m"], sig_sD) * amb
     p = p_stat * _pb(dsu_ca, Pscr["d_su_max_m"], sig_su) * _pb(dsD_ts, Pset["set_def_radius_m"], sig_sD) * amb
+    if onb is not None:
+        p = onb["p"] * amb  # SCR-M1-03: plant is a likelihood term (floored), contact and use are sigma-aware
     Pc = prm("screen_confidence")
     z = [(prm("screen_stationarity")["loose_v_mps"] - st.v_ls) / st.sigma, (Pscr["d_su_max_m"] - dsu_ca) / sig_su,
          (1.0 - dsD_ts) / sig_sD, float(inter["deflect"]), float(inter["delay"]),
@@ -1061,14 +1556,168 @@ def _build(scene, s, u, D, st, ts, half, tf, probs, Pset, Pscr) -> Rec | None:
         blocking_margin_m=bmargin, n=n, n_r=n_r, screen_angle_deg=angle, orientation_deg=orient,
         angle_class=angle_class, orientation_class=orient_class,
         orientation_source="xy", dir_class_generic=gen, dr_u=dr_u, dx_u=float(disp[0]), dy_u=float(disp[1]),
-        u_start=u0, interaction=inter, away_use=away_use, read=read, exit=exit_cls, loose_rule_fired=loose_rule,
+        u_start=u0, interaction=inter, away_use=away_use, read=read, approach_min_m=approach_min, exit=exit_cls, loose_rule_fired=loose_rule,
         strict_rule_fired=strict_rule, v_ls_mps=st.v_ls, sigma_win_mps=st.sigma, dwell_s=st.dwell,
         p_loose=st.p_loose, p_strict=st.p_strict, D_u_ambiguous=ambiguous, top2=top2, P_D_u=float(max(probs.values())),
         pre_switch=pre_switch, p_logit=float(1 / (1 + math.exp(-logit))), features=z, rescreen_count=0,
-        rescreen_of=None, merged_into=None)
+        rescreen_of=None, merged_into=None, source="contact" if st.synthetic else "stand",
+        plant=_plant_class(st), **({} if onb is None else {k: onb[k] for k in ("contact_min_m", "d_sh_min_m",
+                                                                                 "handler_peak_mps", "screener_mps",
+                                                                                 "handler_disp_m")}))
     is_screen = geo
     kind = "handoff" if handoff else ("on_ball" if on_ball else "off_ball")
     return Rec(s, u, D, Ds, st, ts, kind, is_screen, p_set, p, m)
+
+
+def _rolling_catch(scene, s, tc, Pb, h=None) -> bool:
+    """SCR-M3-01: a pocket pass to the roller, not a handoff back to the screener (confirm r2: the reverse-handoff veto and
+    the SET receive veto removed a true pocket pass, 10 -> 6 of 10 at sigma_p 0.05, 2 -> 0 at 0.2 / 0.3). The screener
+    moves toward the rim at >= pocket_roll_mps (median radial speed over [catch - pocket_win_s / 2, catch + pocket_win_s])
+    and, when the passer h is known, the pair separates into the catch (min 5-frame median d(s, h) over [catch -
+    pocket_sep_win_s, catch - 0.15 s] <= d(s, h) at the catch - pocket_sep_m) while h still attacks the rim (median radial
+    speed over [catch - pocket_win_s, catch] >= pocket_handler_vr_mps): the handler went past the screener and passed back
+    to him. A handoff is exchanged at the pair's closest approach and the giver steps away (under noise the detected catch
+    of a handoff lags by up to 0.35 s, when the pair has already separated)."""
+    # radial speeds from smoothed positions over the window (the CA-RTS velocity of a manoeuvring player is unreliable on
+    # precise tracks, see noise_driven_design)
+    a, b = _win(scene, tc, -0.5 * Pb["pocket_win_s"], Pb["pocket_win_s"])
+    ks = scene.k(s)
+    vs = (math.hypot(ks.x[a], ks.y[a]) - math.hypot(ks.x[b], ks.y[b])) / max(DT, (b - a) * DT)
+    if not vs >= Pb["pocket_roll_mps"]:
+        return False
+    if h is None:
+        return True
+    # the passer attacks the rim through the catch (a handoff giver steps out or away after the exchange)
+    ha, hb = _win(scene, tc, -Pb["pocket_win_s"], 0)
+    kh = scene.k(h)
+    vh = (math.hypot(kh.x[ha], kh.y[ha]) - math.hypot(kh.x[hb], kh.y[hb])) / max(DT, (hb - ha) * DT)
+    if not vh >= Pb["pocket_handler_vr_mps"]:
+        return False
+    dsh = _dist(scene, s, h)
+    pa, pb = _win(scene, tc, -Pb["pocket_sep_win_s"], -0.15)
+    pre = [_med(dsh, t) for t in range(pa, pb + 1)]
+    return bool(np.any(np.isfinite(pre)) and np.nanmin(pre) <= _med(dsh, tc) - Pb["pocket_sep_m"])
+
+
+def _gives_to(scene, a, b, ts, Pb):
+    """SCR-M2-04: a hands the ball to b within [t_s - 0.3, t_s + handoff_rev_post_s] at close range (a transfer with d_ab <=
+    handoff_d_m and air <= handoff_air_s, or a possession change a -> b with the pair within handoff_d_m). Returns the
+    catch frame, or None."""
+    x0, x1 = _win(scene, ts, -0.3, Pb["handoff_rev_post_s"])
+    xs = _transfers(scene)
+    keep = frames(Pb["handoff_keep_s"])
+    for x in xs:
+        if (x["frm"] == a and x["to"] == b and x0 <= x["catch"] <= x1 and x["d_ab"] <= Pb["handoff_d_m"]
+                and x["air_s"] <= Pb["handoff_air_s"] + 1e-9
+                and not any(y["frm"] == b and y["to"] == a and x["catch"] < y["catch"] <= x["catch"] + keep for y in xs)):
+            return int(x["catch"])  # (a ball that comes straight back to a within handoff_keep_s is a possession flip)
+    ps_ = _poss(scene)
+    for t in range(max(x0, 1), x1 + 1):
+        if ps_[t] == b and ps_[t - 1] != b:
+            k = t - 1
+            while k >= max(0, t - frames(Pb["handoff_air_s"])) and ps_[k] is None:
+                k -= 1
+            if k >= 0 and ps_[k] == a:
+                # b keeps the ball (a noise flip of the possession between two players at a screen lasts a few frames)
+                hb = ps_[t:_cl(scene, t + frames(Pb["handoff_keep_s"])) + 1]
+                if np.mean([x == b for x in hb]) < 0.8 or any(x == a for x in hb):
+                    continue
+                ca_, cb_ = _cl(scene, k - 3), _cl(scene, t + 3)
+                if np.nanmin(_dist(scene, a, b)[ca_:cb_ + 1]) <= Pb["handoff_d_m"]:
+                    return int(t)
+    return None
+
+
+def _offense_has_ball(scene, ts, Pb):
+    """SCR-M2-07: an attacker owns the ball (noise-robust possession) on >= offball_poss_frac of [t_s - offball_poss_pre_s,
+    t_s + offball_poss_post_s]: box-outs and rebound scrums after a shot are not off-ball screens."""
+    a, b = _win(scene, ts, -Pb["offball_poss_pre_s"], Pb["offball_poss_post_s"])
+    ps_ = _poss(scene)[a:b + 1]
+    braw = getattr(scene, "ball_raw", None)
+    obs = (np.mean(np.isfinite(np.asarray(braw[0], dtype=float)[a:b + 1])) if braw is not None
+           else (np.mean(np.isfinite(scene.ball.x[a:b + 1])) if scene.ball is not None else 0.0))
+    if not obs >= Pb["offball_ball_obs_min"]:
+        # SCR-M3-05: the tracker lost the ball (production dropout) - no evidence either way; the caller then accepts only
+        # a user who leaves the rim (confirm r2: a down screen with the ball missing went 8 -> 0 of 10 at every sigma_p,
+        # while a box-out crash with the ball lost after the shot must stay out)
+        return None
+    return bool(np.mean([x is not None for x in ps_]) >= Pb["offball_poss_frac"]) if len(ps_) else False
+
+
+def _plant_class(st: Stop) -> str:
+    """Screener plant as an attribute (SCR-M1-02): strict / loose / moving from the window LS speed and the dwell."""
+    P = prm("screen_stationarity")
+    if not np.isfinite(st.v_ls):
+        return "unknown"
+    if st.v_ls <= P["strict_v_mps"] and st.dwell >= P["strict_dwell_s"] - 1e-9 and not st.synthetic:
+        return "strict"
+    return "loose" if st.v_ls <= P["loose_v_mps"] else "moving"
+
+
+def _onball_decision(scene, s, h, D, st, ts, read, dsu_ca, sig_sD, sig_su, Pb, Pscr, blocking=True, interacts=True,
+                     Pset=None) -> dict:
+    """On-ball screen decision (SCR-M1-03, ball_screen_model): a probabilistic score instead of the off-ball centre gate.
+
+    screen = CONTACT on D_h (min 5-frame median d(s, D_h) within +-contact_win_s of t_s <= contact_on_m + contact_k x
+    sigma_d: 1.2 m on precise tracks, about 1.5 m at sigma_p 0.3) AND d(s, h) <= near_m somewhere in t_s +- contact_win_s
+    AND the handler holds the ball (possession on >= hold_frac of [t_s - 0.5, t_s + 0.3]) AND he moves (peak 5-frame
+    median speed over [t_s - 0.5, t_s + handler_post_s] >= screen.user_speed_on_mps) AND he uses it (read use / snake /
+    split, or a retreat with the old centre gate) AND the screener is not running through (5-frame median speed at the
+    contact <= screener_max_mps; rolling and brush screens run 0.6-1.5 m/s). The plant enters p as max(p_loose,
+    plant_floor), so a rolling screener is a lower-confidence screen, not a missing one.
+    A contact candidate (synthetic stop: the screener never stood) needs more evidence that he screened rather than ran
+    by: his speed at the contact <= moving_screener_max_mps, the blocking test, and an interaction with D_h (contact,
+    deflection, delay or separation gain) or a close contact (<= screen_set.contact_likely_m + contact_k x sigma_d / 2).
+    On the judged SportVU sample the moving rows without these were drives with a big running alongside, pass-and-cut
+    traffic and drifts past a trailing defender."""
+    ca, cb = _win(scene, ts, -Pb["contact_win_s"], Pb["contact_win_s"])
+    dd = _dist(scene, s, D)
+    cm = [_med(dd, t) for t in range(ca, cb + 1)]
+    cmin = float(np.nanmin(cm)) if np.any(np.isfinite(cm)) else float("nan")
+    c_on = Pb["contact_on_m"] + Pb["contact_k"] * sig_sD
+    dsh_seg = _dist(scene, s, h)[ca:cb + 1]
+    dsh = float(np.nanmin(dsh_seg)) if np.any(np.isfinite(dsh_seg)) else float("nan")
+    sp = _kv(scene, h)["speed"]
+    ha, hb = _win(scene, ts, -0.5, Pb["handler_post_s"])
+    hv = [_med(sp, t) for t in range(ha, hb + 1)]
+    hpk = float(np.nanmax(hv)) if np.any(np.isfinite(hv)) else float("nan")
+    # screener speed at the contact (mastery r2, SCR-M2-05): the median of the 5-frame median speed over t_s +-
+    # screener_win_s, not the single value at t_s - a 0.15 s track jump of the screener read 4.5 m/s at t_s and removed a
+    # planted screen (confirm r1: 10 -> 0 of 10 at sigma_p 0.05); runners through the ball keep their speed over the window
+    ssp = _kv(scene, s)["speed"]
+    wa_, wb_ = _win(scene, ts, -Pb["screener_win_s"], Pb["screener_win_s"])
+    sv_ = [_med(ssp, t) for t in range(wa_, wb_ + 1)]
+    s_sp = float(np.nanmedian(sv_)) if np.any(np.isfinite(sv_)) else float("nan")
+    if not st.synthetic and st.b >= ca and st.a <= cb and np.isfinite(st.v_ls):
+        # a stand row whose stand overlaps the contact window: the screener stood at the contact, so his speed is the
+        # stand's window speed (judged J34: planted 0.5 s before the handler's closest approach, rolling at 2.6 m/s by it)
+        s_sp = min(s_sp, st.v_ls) if np.isfinite(s_sp) else st.v_ls
+    pa, pb = _win(scene, ts, -0.5, 0.3)
+    hold = _poss_holds(scene, h, pa, pb) >= Pb["hold_frac"] * (pb - pa + 1)
+    used = read in ("use", "snake", "split") or (read == "retreat" and dsu_ca <= Pscr["d_su_max_m"])
+    # the handler travels through the screen (SCR-M2-03): his largest displacement from h(t_s - 0.5) over [t_s - 0.5,
+    # t_s + use_disp_post_s] >= use_disp_m (judged SportVU rows of a handler who dribbles in place next to the screener,
+    # stops at him or receives and stands were not screens); smoothed positions, so the test keeps its meaning at sigma_p 0.5;
+    # a retreat read needs retreat_travel_m (SCR-M3-06: at sigma_p 0.5 a handler standing beside the screener near the rim
+    # read a retreat from the velocity noise and kept a stand on the screener's own defender)
+    ka_, kb_ = _win(scene, ts, -0.5, Pb["use_disp_post_s"])
+    kh_ = scene.k(h)
+    dd_ = np.hypot(kh_.x[ka_:kb_ + 1] - kh_.x[ka_], kh_.y[ka_:kb_ + 1] - kh_.y[ka_])
+    hdisp = float(np.nanmax(dd_)) if np.any(np.isfinite(dd_)) else float("nan")
+    screen = bool(np.isfinite(cmin) and cmin <= c_on and dsh <= Pb["near_m"] and hold and used
+                  and hpk >= Pscr["user_speed_on_mps"] and not s_sp > Pb["screener_max_mps"]
+                  and ((read == "retreat" and not hdisp < Pb["retreat_travel_m"]) or not hdisp < Pb["use_disp_m"]))
+    if screen and st.synthetic:
+        close = cmin <= (Pset or prm("screen_set"))["contact_likely_m"] + 0.5 * Pb["contact_k"] * sig_sD
+        # a screener moving between moving_screener_max_mps and screener_max_mps through the contact (a brush screen at
+        # 2.0-2.5 m/s) is kept only with a close contact and a close use (SCR-M2-02; judged SportVU rows: 4 real, 1
+        # ambiguous with both; 3 ambiguous without)
+        fast_ok = bool(close and dsu_ca <= Pscr["d_su_max_m"])
+        screen = bool((not s_sp > Pb["moving_screener_max_mps"] or fast_ok) and blocking and (interacts or close))
+    p_plant = max(st.p_loose if np.isfinite(st.p_loose) else 0.0, Pb["plant_floor"])
+    p = p_plant * _pb(cmin, c_on, sig_sD) * _pb(dsu_ca, Pb["use_near_m"], sig_su)
+    return dict(screen=screen, p=p, contact_min_m=cmin, d_sh_min_m=dsh, handler_peak_mps=hpk, screener_mps=s_sp,
+                handler_disp_m=hdisp)
 
 
 def _interaction(scene, s, u, D, ts, dsD_ts, Ps, d_hat, Pi) -> dict:
@@ -1118,6 +1767,12 @@ def _merge(scene, recs) -> list:
         dup = [q for q in prev if abs(q.ts - r.ts) <= frames(P["dedupe_s"])]
         if dup:
             continue
+        # SCR-M1-09: a used on-ball screen whose stand is cut in two by noise (the second stop starts within
+        # fragment_gap_s of the first one's end, same spot within split_move_m) is one screen, not a re-screen
+        if r.kind != "off_ball" and any(
+                q.is_screen and q.kind == r.kind and 0 <= (r.stop.a - q.stop.b) * DT <= P["fragment_gap_s"]
+                and math.hypot(*(np.array(r.m["P_s"]) - np.array(q.m["P_s"]))) <= P["split_move_m"] for q in prev):
+            continue
         # a re-screen is linked by its t_s gap (<= window_s) or, beyond that, by the gap between the two stands
         # (<= rescreen_gap_s; REG-re_screen loop 2: a screener who steps off and comes back sets t_s 3.3 s apart)
         win = frames(P["window_s"])
@@ -1130,6 +1785,14 @@ def _merge(scene, recs) -> list:
             else:
                 r.m["merged_into"] = (q.s, q.u, q.ts)
                 q.m["rescreen_count"] += 1
+        else:
+            # SCR-M2-13: the pair's latest contact may be a row already merged into an earlier one (a reset of the same
+            # screen); a used screen within window_s of that contact, from a new stand, is its re-screen
+            late = [q for q in out if q.s == r.s and q.u == r.u and q.m["merged_into"] is not None
+                    and 0 < r.ts - q.ts <= win and r.stop.a > q.stop.b]
+            if late and r.is_screen and _rescreen_split(scene, late[-1], r, P):
+                q = late[-1]
+                r.m["rescreen_of"] = (q.s, q.u, q.ts)
         out.append(r)
     return out
 
@@ -1172,8 +1835,10 @@ def _screen_attrs(r: Rec) -> dict:
             "dir_class_generic", "dr_u",
             "read", "exit", "loose_rule_fired", "strict_rule_fired", "v_ls_mps", "sigma_win_mps", "dwell_s",
             "p_loose", "p_strict", "D_u_ambiguous", "top2", "P_D_u", "pre_switch", "p_logit", "rescreen_count",
-            "rescreen_of")
+            "rescreen_of", "source", "plant")
     a = {k: m[k] for k in keep}
+    a.update({k: m[k] for k in ("contact_min_m", "d_sh_min_m", "handler_peak_mps", "screener_mps", "handler_disp_m",
+                                "pass_and_screen", "screener_came", "rel_pass_m", "contact_thr_m", "sigma_sD") if k in m})
     a.update(kind=r.kind, screener_defender=r.Ds, interaction=m["interaction"]["interaction"],
              strict=m["strict_rule_fired"], loose=m["loose_rule_fired"])
     return a
@@ -1404,9 +2069,10 @@ def detect_screen_set(scene, **params) -> list:
     for r in _records(scene, set_over=params):
         if r.m["merged_into"] is not None:
             continue
-        a, b = r.stop.a, max(r.stop.b, r.ts)
-        e = _event(scene, "screen_set", {"screener": r.s, "user": r.u, "defender": r.D}, r.stop.a, a, b, r.p_set,
-                   dict(stop=(r.stop.a, r.stop.b), dwell_s=r.stop.dwell, v_ls_mps=r.stop.v_ls,
+        sa, sb = r.m.get("set_stop") or (r.stop.a, r.stop.b)  # SCR-M3-08: a contact row keeps the replaced stand
+        a, b = sa, max(sb, r.ts)
+        e = _event(scene, "screen_set", {"screener": r.s, "user": r.u, "defender": r.D}, sa, a, b, r.p_set,
+                   dict(stop=(sa, sb), dwell_s=r.stop.dwell, v_ls_mps=r.stop.v_ls,
                         strict=r.stop.strict, loose=r.stop.loose, contact_distance_m=r.m["d_sD_ts"],
                         contact_class=r.m["contact_class"], court_region=r.m["court_region"], t_s=r.ts,
                         own_man=False, D_u_ambiguous=r.m["D_u_ambiguous"]))
@@ -2494,7 +3160,13 @@ def detect_hammer_screen(scene, **params) -> list:
         he = _pos(scene, h, dv["end"])
         if _m_deg(*he) > P["drive_m_max"]:
             continue
-        for r in _screens(scene, "off_ball"):
+        # SCR-M1-08: the weak-side screen of a hammer may be an off-ball SET row whose user came through it at speed
+        # without a used-screen reading (he fades to the corner; the drive, the corner and the kick-out pass carry the
+        # evidence)
+        rows = _screens(scene, "off_ball") + [x for x in _records(scene) if x.kind == "off_ball" and not x.is_screen
+                                              and x.m["merged_into"] is None and x.m["passed"]
+                                              and x.m.get("user_peak_mps", 0.0) >= prm("screen")["user_speed_off_mps"]]
+        for r in rows:
             if np.sign(r.m["P_s"][0]) == np.sign(he[0]) or not (dv["start"] - frames(1.0) <= r.ts <= dv["end"] + frames(1.5)):
                 continue
             t5, u0 = _u_start(scene, r)
