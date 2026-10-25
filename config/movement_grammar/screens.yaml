@@ -1,6 +1,6 @@
 family: screens
-version: 0.6.0
-date: '2026-10-24'
+version: 0.6.1
+date: '2026-10-25'
 owner: Mac session
 status: proposal under the build freeze (items marked canonical are the family's canonical definitions; every numeric value is an engineering proposal until fitted on MSU film)
 scope: one canonical screen detector with strict and loose outputs (R-ST-17), the screen moment, ball screens, off-ball screens, handoffs, screen angle, and defender response as attributes
@@ -432,6 +432,47 @@ open_mastery_r3:
 - 'In-sample tuning (CR1-07): offball_contact_m was set on judged rows of the same 3 games as every r1 / r2 threshold; all stay provisional until a held-out source is labelled.'
 - 'Confirm-r2 adversarial a_offreb_crash (1 / 3 / 5 of 10 at sigma_p 0.2 / 0.3 / 0.5) is not fixable from the scene: its ball flies from the shooter to himself along his own path, so the tracking shows him holding it; on real tracks a shot leaves no owner and SCR-M2-07 applies. a_snake_short (info) stays out: the handler gets 1.9-2.3 m from his start, inside the SCR-M2-03 band of judged not-screens.'
 - 'Two false-positive cells above the pre-r1 base at sigma_p 0.5 (high_ball_screen, screen_the_screener, one run each) are unchanged from r1 / r2.'
+changes_mastery_r4:
+  # Mastery r4 (25 Oct 2026): the SCR-T22 gap closed. Branches that had no V0 scene since loop 1 / 2 (zoom, handback
+  # positive, double_high trade / sink / plain, pin_in, baseline_exit, boundary_parallel) each get a positive scene and a
+  # near miss in tests/movement/test_screens.py (sc_zoom, sc_handback, sc_double_high, sc_pin_in, sc_baseline_exit,
+  # sc_baseline_wall), counted over seeds 1-10 at sigma_p 0.2 / 0.3 / 0.5 (hits of 10). One detector bug found and fixed
+  # (SCR-M4-03); every other branch fired as written. No real-data change (SCR-M4-03 sub_labels: 0 real double_ball_screen events).
+  - id: SCR-M4-01-zoom
+    severity: low
+    what: 'Scene sc_zoom: pin-down for the block player, who comes straight off it into a DHO from the slot (0.9 s after t_s); near miss zoom_late: the same DHO 2.5 s later (outside zoom_s 1.5 s). No code change.'
+    why: SCR-T22 (loop 1 / 2) listed zoom as a branch with no scenario.
+    evidence: 'handoff_chain zoom 9 / 8 / 5 of 10 (sigma_p 0.2 / 0.3 / 0.5); zoom_late 0 / 0 / 0 while its DHO is still found 10 / 9 / 6. Tests test_m4_rare_branch_positive_rate[zoom-*], test_m4_rare_branch_near_miss[zoom-*], test_m4_near_misses_keep_the_parent_event.'
+  - id: SCR-M4-02-handback
+    severity: low
+    what: 'Scene sc_handback: a 3 m pass at the top (0.45 s in the air) returned after 0.5 s; near miss handback_hold: returned after 2.0 s (outside handback_s). No code change.'
+    why: SCR-T22 had only handback negatives (Detroit sets at sigma_p 0.5, test_t13_t22); the positive branch was never exercised.
+    evidence: 'handback 10 / 7 / 4 of 10; handback_hold 0 / 0 / 0. The measured air time of a 0.45 s pass is 0.2-0.35 s (the holder radius trims the flight); a 2.4 m / 0.3 s pass reads 0.13-0.2 s and fails handback_min_air_s 0.2, as intended (pitch, not a pass). Tests test_m4_rare_branch_*[handback-*].'
+  - id: SCR-M4-03-double-high-trade-needs-movement
+    severity: medium
+    what: 'double_ball_screen: double_high_trade also needs the first screener to move >= trade_move_m (new param, 1.5 m) from his t_s1 position while r >= trade_r_m (6.75 m) within 2.0 s; a first screener who stays is plain double_high.'
+    why: 'The pre-screen gate admits first screeners at r 4.5-8.0 m, and the usual double-high spot is above the arc (r 7-8 m), so "reaches r >= 6.75" was true from t_s1 on: in sc_double_high with s1 standing at r 7.9 m every detected double high read double_high_trade (8 / 7 / 7 of 10) and plain double_high was unreachable for any first screener set above the arc. The YAML rule says the screener reaches the arc, i.e. moves there.'
+    evidence: 'sc_double_high (s1 at the top, s2 at the right slot 2.9 m apart, uses 1.1 s apart): trade (s1 pops 2.9 m to the left slot) double_high_trade 8 / 7 / 7 before and after; sink (s1 rolls) double_high_sink 8 / 7 / 5 (unchanged); stay: double_high_trade 8 / 7 / 7 -> 0 / 0 / 0, double_high 0 / 0 / 0 -> 8 / 7 / 7. Detroit counts unchanged (sub_label branch order is detroit first). No downstream family reads double_ball_screen. Real data: changes sub_labels only, never the event count; measured on 3 SportVU games (194 chunks, 6855 s, team_ends): double_ball_screen fires 0 times before and after, clean and at added noise 0.3 (all screens rates identical, ball_screen 45.0 / 47.1 per 48 clean / n0.3), so no real event changes. Tests test_m4_rare_branch_*[double_high*], test_m4_03_trade_needs_the_first_screener_to_move.'
+  - id: SCR-M4-04-pin-in
+    severity: low
+    what: 'Scene sc_pin_in: u spots up on the right wing, his defender sags to the top and sprints back, the screener comes out of the lane (r 1.3 -> 6.1 m) and pins him inside; u jabs and steps out. Near miss pin_in_cut: u cuts to the rim (moves more than pin_in_user_move_m). No code change.'
+    why: SCR-T22 listed pin_in as a branch with no scenario. Its gates need the defender delayed at the screen (speed_post <= 0.7 speed_pre, drop >= 0.8 m/s) at a t_s near the contact, so the scene times the user's jab to the contact.
+    evidence: 'pin_in 7 / 7 / 2 of 10; pin_in_cut 0 / 0 / 0. The sigma_p 0.5 misses are the delay test (the smoothed defender speed after the stop stays above 0.7 x before) and t_s moving with the noisy closest approach. Tests test_m4_rare_branch_*[pin_in-*].'
+  - id: SCR-M4-05-baseline-exit
+    severity: low
+    what: 'Scene sc_baseline_exit: u runs along the baseline from under the rim to the left corner off a screen at the left block (P_s y 0.9 m); near miss baseline_exit_wing: the same screen, u curls up to the left wing. No code change.'
+    why: SCR-T22 listed baseline_exit as a branch with no scenario.
+    evidence: 'baseline_exit 10 / 9 / 8 of 10; baseline_exit_wing 0 / 0 / 0 while its screen (screener s, user u) is found 10 / 10 / 10. Tests test_m4_rare_branch_*[baseline_exit-*], test_m4_near_misses_keep_the_parent_event.'
+  - id: SCR-M4-06-boundary-parallel
+    severity: low
+    what: 'Scene sc_baseline_wall: two screeners 0.8 m apart on a line parallel to the baseline, 1.45 m inside it (screen_boundary_6ft_band), u runs along the baseline behind them; near miss baseline_wall_angled: the second screener 0.75 m higher (pair line about 50 deg off the baseline). No code change.'
+    why: SCR-T22 listed boundary_parallel (Rule 4-35.7) as a branch with no scenario.
+    evidence: 'blind_screen_hint boundary_parallel 9 / 8 / 5 of 10; angled 0 / 0 / 0. The misses are a second screener row with no u record (the user passes s2 beyond the contact radius) or a P_s read beyond the 6 ft band (1.83 m) at sigma_p 0.5. Tests test_m4_rare_branch_*[boundary_parallel-*].'
+  - id: mastery-r4-summary
+    severity: info
+    what: 'version 0.6.0 -> 0.6.1, date 2026-10-25. Rule text of double_ball_screen updated (trade_move_m). 13 scenes, 50 tests added; test_screens.py 286 -> 336 tests, all pass.'
+    why: Close SCR-T22 (rare branches without a V0 scene) as an (a) item of the minor_left inventory.
+    evidence: 'Floors in R4_POS are the measured counts minus one (minimum 1); near misses must stay at 0. Still without a scene: none of the SCR-T22 list (zoom, handback positive, double_high trade / sink, pin_in, baseline_exit, boundary_parallel).'
 v0_results: 'sigma_p 0.3, seeds 1-5, 53 positive cases (48 detectors): 242 / 265 = 91 % pass kind + actors + t0 within 0.3 s + conf 0.2-1 + attributes; no detector fires on the null scenario (10 moving players, ball passed) for any of the 5 seeds. Weakest: side/step-up PnR 3/5 (handler wraps the screener, closest approach ambiguous), the rest 4-5/5. Synthetic only (V0): no claim about film until gold labels exist. Loop 1 (independent tester report, 22 failures): 196 tests pass (163 + 33 regression tests); on the tester''s 175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5 (5250 runs) 0 crashes (4 before); per-item before/after numbers are in changes_loop1. Loop 2 (confirmer report on loop 1): on the same sweep hits 12539 -> 12612, strict 11756 -> 11832, FPs 1818 -> 1139, no detector worse at any sigma_p; see changes_loop2.'
 noise_driven_design (V0 findings of this task, each documented at its item):
 - 'smoothed positions under V0 noise (white + AR(1) 0.9, sigma_p 0.3) have 0.17 m per-axis error (median 2-D error 0.23 m, p90 0.44 m) with slow drift; pair distances wander 0.3-0.5 m for up to 1 s, so every distance gate has a probability and the screen moment uses a contact window, not a bare argmin'
@@ -1480,7 +1521,8 @@ items:
     DETROIT: two ball SETs on the same h (at least one used: the handler goes off one side), screeners <= detroit_gap_m apart at t_s, and |t_s1 - t_s2| <= detroit_dt_s or both stops overlapping
     for >= detroit_overlap_s (both loose-stationary at the same time; t_s is ill-defined when both screeners share one defender dip).
     DOUBLE_HIGH: pre-screen two bigs at r pre_r_lo_m..pre_r_hi_m, m >= pre_m_min, <= pre_gap_m apart at t_s1 - 1.0; two ball screens on the same h by different screeners
-    with dh_dt_lo_s <= t_s2 - t_s1 <= dh_dt_hi_s; trade = first screener reaches r >= 6.75 within 2.0 s; sink = first screener reaches r < 2.5.
+    with dh_dt_lo_s <= t_s2 - t_s1 <= dh_dt_hi_s; trade = first screener reaches r >= trade_r_m (6.75) within 2.0 s after moving >= trade_move_m (1.5 m) from his t_s1
+    position (SCR-M4-03); sink = first screener reaches r < sink_r_m (2.5); otherwise double_high.
   params:
     detroit_gap_m: {value: 1.2, unit: m}
     detroit_dt_s: {value: 0.3, unit: s}
@@ -1493,6 +1535,7 @@ items:
     dh_dt_hi_s: {value: 3.0, unit: s}
     sink_r_m: {value: 2.5, unit: m, note: 'double_high_sink when the first screener reaches r < sink_r_m within 2 s (was hard-coded)'}
     trade_r_m: {value: 6.75, unit: m, note: 'double_high_trade when the first screener reaches r >= trade_r_m'}
+    trade_move_m: {value: 1.5, unit: m, note: 'SCR-M4-03: ... and has moved at least this far from his t_s1 position (a first screener set above the arc who stays is a plain double_high)'}
   min_duration_s: 0.3
   outputs: [sub_label (detroit | double_high_trade | double_high_sink | double_high), per-screener post-action]
   confidence: {level: medium, p_terms: [product of both screen p terms]}

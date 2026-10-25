@@ -1,6 +1,6 @@
 family: bigs
-version: 0.3.0
-date: '2026-10-20'
+version: 0.3.1
+date: '2026-10-25'
 owner: Mac session
 status: proposal under the build freeze; numbers are V0-sim-checked proposals until fitted on R-ST-10 labels
 scope: screener actions after a screen (roll, short roll, pop mid, pop arc, slip, slip to arc, ghost, replace, seal, crash,
@@ -2025,3 +2025,39 @@ changes_loop4:
     60 deg arc-fade unit ghost reads >= 26 deg at sigma_p 0.5 (16 seeds).'
   evidence: 'Real ghost 9.7 -> 6.3 /48 (noise 0.3: 6.7). Harness ghost unchanged (TP 34 / 28 / 24, P 1.00). Tests
     test_l4_8_ghost_straight_run_past_is_a_cut, test_l4_8_turning_ghost_sigma_0p5, test_b7_ghost_out_along_the_arc.'
+changes_loop5:
+# Loop 5 (25 Oct 2026, minor-items pass): the B17 note left four rare branches without a dedicated scene. Each now has a
+# positive and a near-miss scene, run on seeds 1-10 at sigma_p 0.2 / 0.3 / 0.5 (tests test_l5_rare_branch_rates,
+# test_l5_branch_parents_still_found). No parameter or detector code changed, so real SportVU rates are unchanged
+# (checked: bigs rates identical before / after on the 3 games, see L5-4).
+- id: L5-1
+  what: 'Test only: short_roll trap_context. Positive: the screener''s defender jumps out to the handler while the
+    handler''s defender trails him (two defenders within trap_dist_m 2.0 m for >= trap_min_s 0.5 s in [t0 + 0.3, t0 +
+    1.0] s). Near miss: the screener''s defender drops to 2.6 m below the screen with the roller.'
+  why: B17 left trap without a dedicated test; trap_context is passed on to short_roll_playmaking.
+  evidence: 'trap_context True on the trap scene 10 / 10 / 9 of 10 (sigma_p 0.2 / 0.3 / 0.5; the 0.5 miss is a missed
+    short_roll), on the drop scene 0 / 0 / 0; short_roll found 10 / 10 / 9 in both. A first drop path that passed 0.8 m
+    from the handler at the use read trap 3 / 5 / 4, correctly by the rule (two defenders inside 2.0 m), so the
+    near miss keeps the dropping defender > 2 m away.'
+- id: L5-2
+  what: 'Test only: slip touch. Positive: the screener stops 0.4 s at the top and slips while the handler''s defender
+    meets him 0.6 m away; near miss: the handler''s defender trails on the high side, never within 1.5 m of the screener.'
+  why: B17 left slip touch without a test.
+  evidence: 'touch True 10 / 9 / 1 of 10 at sigma_p 0.2 / 0.3 / 0.5, far scene 0 / 0 / 0; the slip is found 10 / 10 / 10
+    in both. With a 0.2 s stop (SLIP_WP) touch read 8 / 3 / 0: the minimum smoothed screener speed of a 0.2 s stop
+    is 0.6-1.5 m/s at 0.2-0.3 and 1.5-3.1 m/s at 0.5 (q 10 tier), above never_set_speed_mps 1.0, and at 0.5 t_rel is
+    read 0.2-0.4 s early so the window ends before the brush. Documented limit, not changed: at the q 10 tier
+    touch = false means unknown (a tier-aware touch is a judgment for gold labels, see the report).'
+- id: L5-3
+  what: 'Test only: dunker_relocation angle_short. Positive: a third attacker reaches the screen-side dunker spot
+    0.6-0.8 s before the ball screen and stays; near misses: parked in the spot from the start (arrival > angle_short_before_s
+    1.0 s earlier) and the opposite-side dunker spot.'
+  why: B17 left angle_short without a test.
+  evidence: 'angle_short 10 / 10 / 10 of 10 at sigma_p 0.2 / 0.3 / 0.5; parked 0 / 0 / 0; other side 0 / 0 / 0.'
+- id: L5-4
+  what: 'Test only: high_low lob. Positive: high-post passer at (0.5, 4.5), receiver cutting from (3.8, 3.4) to (0.4, 0.3)
+    at >= 3 m/s into the catch (r < lob_r 1.5 m); near miss: the same pass to a standing receiver at r 1.28 m.'
+  why: B17 left the high-low lob flag without a test.
+  evidence: 'lob True 10 / 9 / 7 of 10 at sigma_p 0.2 / 0.3 / 0.5 (high_low itself 10 / 10 / 10; the misses read the
+    0.3 s mean v_r just under 3.0 m/s), standing receiver lob 0 / 0 / 0 and high_low found 10 / 10 / 10. Real SportVU (3
+    games, team_ends, clean): bigs rates identical before / after this loop (no code or parameter change).'

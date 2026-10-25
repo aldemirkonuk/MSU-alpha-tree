@@ -1758,3 +1758,15 @@ def test_loop5_positive(case, seed):
 @pytest.mark.parametrize("case", L5_NEGATIVE, ids=lambda c: f"{c[0]}-{c[1]}")
 def test_loop5_negative(case, seed):
     test_negative(case, seed)
+
+
+def test_loop6_hidden_dribble_measurement_recorded():
+    """changes_loop6 BA-L6-01: the hidden-dribble priors were measured on SportVU ball z and kept (no parameter change)."""
+    assert BA.DOC["version"] == "0.1.6"
+    ch = {c["id"].split()[0]: c for c in BA.DOC["changes_loop6"]}
+    assert set(ch) == {"BA-L6-01"} and all(ch["BA-L6-01"][k] for k in ("what", "why", "evidence"))
+    items = {it["id"]: it for it in BA.DOC["items"]}
+    assert items["catch_and_shoot"]["params"]["p_hidden_dribble_short"]["value"] == 0.05
+    assert items["catch_and_shoot"]["params"]["p_hidden_dribble_long"]["value"] == 0.2
+    assert "BA-L6-01" in items["held_jumper"]["params"]["p_hidden_dribble"]["note"]
+    assert BA.DOC["open_after_loop6"]

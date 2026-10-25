@@ -113,7 +113,7 @@ def roll_scene(seed, extra=None, s_wp=None, dur=5.5):
 # --------------------------------------------------------------------------------------
 def test_yaml_is_single_source_and_items_complete():
     doc = bigs.DOC
-    assert doc["family"] == "bigs" and doc["version"] == "0.3.0" and str(doc["date"]) == "2026-10-20"
+    assert doc["family"] == "bigs" and doc["version"] == "0.3.1" and str(doc["date"]) == "2026-10-25"
     req = {"id", "level", "name", "aliases", "actors", "t0", "rule", "params", "min_duration_s", "outputs", "confidence",
            "noise", "conflicts_resolved", "sources", "status"}
     for it in doc["items"]:
@@ -1348,3 +1348,99 @@ def test_changes_loop4_recorded():
     assert [c["id"] for c in ch] == ["L4-1", "L4-2", "L4-3", "L4-4", "L4-5", "L4-6", "L4-7", "L4-8"]
     assert all({"id", "what", "why", "evidence"} <= set(c) for c in ch)
     assert not any("TBD" in str(c[k]) for c in ch for k in ("what", "why", "evidence"))
+
+
+# ---- changes_loop5 (B17 rare branches): trap context, slip touch, angle_short, high-low lob ----
+# Each branch gets a positive scene and a near-miss scene, run on seeds 1-10 at sigma_p 0.2 / 0.3 / 0.5. The floors are
+# the measured hit counts of 10 minus one (L5-1 .. L5-4 in bigs.yaml changes_loop5); near misses must never fire.
+L5_SIGMAS = (0.2, 0.3, 0.5)
+L5_SEEDS = range(1, 11)
+# trap: h's defender trails him over the screen; the screener's defender jumps out to him (trap) or drops with the
+# roller to 2.6 m below the screen (drop: never within 2 m of h in [t0 + 0.3, t0 + 1.0] s)
+L5_DH_TRAIL = [(0.0, -4.6, 7.8), (0.5, -3.6, 7.6), (2.6, 2.0, 5.4)]
+L5_DS_TRAP = [(0.0, 1.3, 7.0), (1.7, 1.3, 7.0), (2.4, 2.7, 6.9)]
+L5_DS_DROP = [(0.0, 1.3, 6.4), (1.7, 1.0, 5.6), (2.2, 0.6, 4.0), (3.0, 0.4, 3.0)]
+# slip touch: the screener stops 0.4 s at the top and slips; h's defender meets him there (0.6 m) or trails h on the
+# high side (never within 1.5 m of the screener)
+L5_SLIP_TOUCH_WP = [(0.0, 2.5, 9.5), (1.0, *S_SET), (1.4, *S_SET), (3.2, 0.3, 1.0)]
+L5_DH_BRUSH = [(0.0, -4.6, 7.8), (0.5, -3.6, 7.6), (1.0, -0.1, 7.9), (1.5, 0.2, 7.9), (2.6, 2.0, 5.4)]
+L5_DH_FAR = [(0.0, -4.6, 9.6), (0.5, -3.6, 9.4), (1.5, -1.0, 9.6), (2.6, 2.0, 7.4)]
+# angle_short: a third attacker reaches the screen-side dunker spot 0.6-0.8 s before the ball screen and stays; near
+# misses: parked there from the start (arrived > angle_short_before_s earlier) or the opposite dunker spot
+L5_K_ARRIVE = [(0.0, 5.2, 1.6), (0.6, 5.2, 1.6), (1.3, 2.6, -0.5)]
+L5_K_PARKED = [(0.0, 2.6, -0.5)]
+L5_K_OTHER_SIDE = [(0.0, -5.2, 1.6), (0.6, -5.2, 1.6), (1.3, -2.6, -0.5)]
+# high-low lob: high-post passer, receiver cutting rimward at >= 3 m/s into a catch at r < 1.5 m (lob) or standing
+L5_B_CUT = [(0.0, 3.8, 3.4), (0.9, 3.8, 3.4), (2.1, 0.4, 0.3)]
+L5_B_STAND = [(0.0, 1.0, 0.8)]
+
+
+def _l5_top(seed, sigma, s_wp, extra):
+    truth, sc = build(spec_top(s_wp, extra=extra), 5.5, seed, sigma=sigma)
+    return sc, screen_ev(truth, "s", "h", 1.0, 3.0)
+
+
+def _l5_trap(seed, sigma, ds):
+    sc, ev = _l5_top(seed, sigma, SHORT_WP, {"Dh": {"team": "D", "wp": L5_DH_TRAIL}, "Ds": {"team": "D", "wp": ds}})
+    return [e.attrs["trap_context"] for e in bigs.detect_short_roll(sc, screens=[ev])]
+
+
+def _l5_touch(seed, sigma, dh):
+    sc, ev = _l5_top(seed, sigma, L5_SLIP_TOUCH_WP, {"Dh": {"team": "D", "wp": dh}})
+    return [e.attrs["touch"] for e in bigs.detect_slip(sc, screens=[ev])]
+
+
+def _l5_angle_short(seed, sigma, k_wp):
+    sc, ev = _l5_top(seed, sigma, ROLL_WP, {"k": {"team": "O", "wp": k_wp}})
+    return [e for e in bigs.detect_dunker_relocation(sc, screens=[ev])
+            if e.attrs.get("subtype") == "angle_short" and e.actors.get("dunker") == "k"]
+
+
+def _l5_lob(seed, sigma, b_wp):
+    spec = {"actors": {"a": {"team": "O", "wp": [(0.0, 0.5, 4.5)]}, "b": {"team": "O", "wp": b_wp}},
+            "ball": {"held": [(0.0, 1.5, "a"), (1.9, 99.0, "b")], "flights": [(1.5, 1.9, "a", "b")]}}
+    truth, sc = build(spec, 3.0, seed, sigma=sigma)
+    return [e.attrs["lob"] for e in bigs.detect_high_low(sc) if e.actors == {"passer": "a", "receiver": "b"}]
+
+
+# (name, positive hit, near-miss hit, floors at sigma_p 0.2 / 0.3 / 0.5); measured hits of 10 in the comments
+L5_BRANCHES = {
+    # trap scene 10 / 10 / 9; drop scene 0 / 0 / 0 (short_roll itself found 10 / 10 / 9 in both)
+    "trap_context": (lambda sd, sg: True in _l5_trap(sd, sg, L5_DS_TRAP),
+                     lambda sd, sg: True in _l5_trap(sd, sg, L5_DS_DROP), (9, 9, 8)),
+    # brush 10 / 9 / 1 (sigma 0.5: the q 10 smoother floors the 0.4 s stop above never_set_speed_mps, documented
+    # limit L5-2); far 0 / 0 / 0; the slip itself is found 10 / 10 / 10 in both
+    "slip_touch": (lambda sd, sg: True in _l5_touch(sd, sg, L5_DH_BRUSH),
+                   lambda sd, sg: True in _l5_touch(sd, sg, L5_DH_FAR), (9, 8, 0)),
+    # arrive 10 / 10 / 10; parked 0 / 0 / 0, other side 0 / 0 / 0
+    "angle_short": (lambda sd, sg: bool(_l5_angle_short(sd, sg, L5_K_ARRIVE)),
+                    lambda sd, sg: bool(_l5_angle_short(sd, sg, L5_K_PARKED)) or bool(_l5_angle_short(sd, sg, L5_K_OTHER_SIDE)),
+                    (9, 9, 9)),
+    # cut 10 / 9 / 7 (high_low found 10 / 10 / 10, lob False on the rest); standing receiver lob 0 / 0 / 0
+    "high_low_lob": (lambda sd, sg: True in _l5_lob(sd, sg, L5_B_CUT),
+                     lambda sd, sg: True in _l5_lob(sd, sg, L5_B_STAND), (9, 8, 6)),
+}
+
+
+@pytest.mark.parametrize("branch", sorted(L5_BRANCHES))
+@pytest.mark.parametrize("sigma", L5_SIGMAS)
+def test_l5_rare_branch_rates(branch, sigma):
+    pos, neg, floors = L5_BRANCHES[branch]
+    hits = sum(bool(pos(seed, sigma)) for seed in L5_SEEDS)
+    false = [seed for seed in L5_SEEDS if neg(seed, sigma)]
+    assert hits >= floors[L5_SIGMAS.index(sigma)], (branch, sigma, hits)
+    assert false == [], (branch, sigma, false)
+
+
+def test_l5_branch_parents_still_found():
+    """The near misses change only the attribute / subtype: the parent event is still emitted."""
+    for seed in (1, 2, 3):
+        assert _l5_trap(seed, 0.3, L5_DS_DROP) and _l5_touch(seed, 0.3, L5_DH_FAR) and _l5_lob(seed, 0.3, L5_B_STAND)
+        assert not any(_l5_trap(seed, 0.3, L5_DS_DROP)) and not any(_l5_touch(seed, 0.3, L5_DH_FAR))
+        assert _l5_lob(seed, 0.3, L5_B_STAND) == [False]
+
+
+def test_changes_loop5_recorded():
+    ch = bigs.DOC["changes_loop5"]
+    assert [c["id"] for c in ch] == ["L5-1", "L5-2", "L5-3", "L5-4"]
+    assert all({"id", "what", "why", "evidence"} <= set(c) for c in ch)

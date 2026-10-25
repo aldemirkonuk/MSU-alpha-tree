@@ -2651,8 +2651,13 @@ def detect_double_ball_screen(scene, **params) -> list:
                 if pre:
                     wa, wb = _win(scene, r1.ts, 0, 2.0)
                     rr = _kv(scene, r1.s)["r"][wa:wb + 1]
+                    # SCR-M4-03: trade = the first screener MOVES to the arc (>= trade_move_m from where he stood at
+                    # t_s1); a screener who set above the arc and stays there is a plain double high, not a trade
+                    k1, p1s = scene.k(r1.s), _pos(scene, r1.s, r1.ts)
+                    mv = np.hypot(k1.x[wa:wb + 1] - p1s[0], k1.y[wa:wb + 1] - p1s[1])
+                    trade = bool(np.any(np.nan_to_num((rr >= P["trade_r_m"]) & (mv >= P["trade_move_m"]), nan=False)))
                     sub = ("double_high_sink" if np.nanmin(rr) < P["sink_r_m"] else
-                           "double_high_trade" if np.nanmax(rr) >= P["trade_r_m"] else "double_high")
+                           "double_high_trade" if trade else "double_high")
             if sub is None:
                 continue
             e = _event(scene, "double_ball_screen", {"screener_1": r1.s, "screener_2": r2.s, "handler": r1.u},

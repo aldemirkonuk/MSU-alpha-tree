@@ -2423,3 +2423,10 @@ def test_detect_all_runs():
     out = DF.detect_all(sc)
     assert set(out) == set(DF.DETECTORS) | {"abstained"}
     assert out["closeout"] and all(0.0 <= e.conf <= 1.0 for evs in out.values() for e in evs)
+
+
+def test_changes_loop5_recorded():
+    """L5-DEF-T22: shared BLAS setup (tests/movement/conftest.py) and the batched RTS inverse are journalled."""
+    ch = DF.SPEC["changes_loop5"]
+    assert [c["id"].split()[0] for c in ch] == ["L5-DEF-T22"] and all(ch[0][k] for k in ("what", "why", "evidence"))
+    assert str(DF.SPEC["version"]) == "0.3.1"

@@ -1,6 +1,6 @@
 family: ball_actions
 research_family: BALL ACTIONS
-version: 0.1.5
+version: 0.1.6
 date: '2026-10-25'
 owner: Mac session (msu-colab) for Aldemir
 status: proposal under the build freeze
@@ -1224,7 +1224,7 @@ items:
     changes_loop1 BA-T17: none when the inferred travel exceeds max_one_dribble_travel_m.
   params:
     max_catch_to_shot_s: {value: 2.0, unit: s, note: R-EV-03 project addition}
-    p_le_one_dribble_if_dribbled: {value: 0.5, unit: probability, note: proposal prior until z}
+    p_le_one_dribble_if_dribbled: {value: 0.5, unit: probability, note: 'proposal prior until z; changes_loop6 BA-L6-01: only 2 dribbled potential assists on SportVU (both <= 1 dribble), not measurable, kept'}
     max_one_dribble_travel_m: {value: 4.5, unit: m, note: 'changes_loop1 BA-T17: inferred travel beyond this needs >= 2 dribbles; no potential assist'}
   min_duration_s: null
   outputs: shooter, catch_to_shot_s, dribbles (unknown_needs_ball_z), assist (needs_pbp_made_fg)
@@ -1514,8 +1514,8 @@ items:
     min_r_m: {value: 3.048, unit: m}
     max_touch_s: {value: 2.0, unit: s}
     short_touch_s: {value: 1.0, unit: s}
-    p_hidden_dribble_short: {value: 0.05, unit: probability, note: proposal prior}
-    p_hidden_dribble_long: {value: 0.2, unit: probability, note: proposal prior}
+    p_hidden_dribble_short: {value: 0.05, unit: probability, note: 'proposal prior; changes_loop6 BA-L6-01: SportVU ball z measures 1 / 71 (0.014; 0.00-0.06 over the threshold sweep), kept'}
+    p_hidden_dribble_long: {value: 0.2, unit: probability, note: 'proposal prior; changes_loop6 BA-L6-01: SportVU ball z measures 10 / 42 (0.24; 0.17-0.33 over the threshold sweep), kept'}
     set_speed_mps: {value: 1.0, unit: m/s}
     move_speed_mps: {value: 2.0, unit: m/s}
     one_motion_s: {value: 0.6, unit: s}
@@ -1572,7 +1572,7 @@ items:
   params:
     min_r_m: {value: 3.048, unit: m}
     max_touch_cs_s: {value: 2.0, unit: s}
-    p_hidden_dribble: {value: 0.4, unit: probability, note: proposal prior}
+    p_hidden_dribble: {value: 0.4, unit: probability, note: 'proposal prior; changes_loop6 BA-L6-01: SportVU ball z 3 / 6 held jumpers had a dribble (n too small to refit), kept'}
   min_duration_s: null
   outputs: touch_time_s, jab (needs_pose), alternatives
   confidence: shot conf x (1 - p_hidden_dribble) x c_edge x c_gap
@@ -2444,6 +2444,31 @@ open_after_loop5:
   - 'live_ball_turnover still 1.6 events per PBP live turnover on SportVU: 24 of 31 unmatched events follow a shot (ball z >= 9 ft in the free interval or the 3 s before; z read for diagnosis only); 11 of them reach the rim at 0.75-1.3 m in XY and 20 have a loser control >= 1.5 s (a putback or tip held inside the radius, past the scramble test). Ball z or a better shot proxy resolves them; widening rim_visit_r_m to 0.9 trades 2 more matched turnovers for 8 fewer events.'
   - 'Steal credit is checked only against NBA PBP (different rule); the NCAA deflector / recoverer split needs MSU tracking with labels.'
   - 'held_ball_arrow abstentions on real motion are contested_ball false runs (10, none near a jump ball); PBP resolves them, so they never count.'
+changes_loop6:
+  # Loop 6 (25 Oct 2026, minor-items pass): the open question 'hidden-dribble priors must be measured on SportVU (z)
+  # before use'. Measurement only, no parameter or code change. Real data: 3 NBA 2015-16 SportVU games, 194 chunks,
+  # 6855 s, team_ends, sigma told 0.15, ball_actions run on XY only (realdata.py does not pass ball z to the scene);
+  # ball z read afterwards from the private files for diagnosis, aggregates only. Dribble = the ball z dropping below
+  # 2.0 ft from above 2.5 ft and coming back above 2.5 ft inside [start + 0.15 s, release - 0.15 s]; threshold sweep
+  # (1.5 / 2.5, 2.5 / 3.0 ft, 0.25 s skip) gives the ranges quoted.
+  - id: BA-L6-01 hidden-dribble priors measured on SportVU ball z
+    what: >-
+      Measured, not changed: catch_and_shoot p_hidden_dribble_short 0.05 (touch <= 1.0 s), p_hidden_dribble_long
+      0.2, held_jumper p_hidden_dribble 0.4, potential_assist p_le_one_dribble_if_dribbled 0.5. Param notes record the
+      measured values.
+    why: >-
+      open_questions item 8: the priors multiply every C&S / held jumper / potential-assist confidence and set the
+      alternatives; they were proposals. NBA tracking is the only source with ball z; MSU (NCAA) rates may differ, so a
+      value inside the measured range is kept rather than refitted on 3 games.
+    evidence: >-
+      XY catch_and_shoot with touch <= 1.0 s: 1 of 71 had a dribble by z (0.014; sweep 0.00-0.06); touch 1.0-2.0 s: 10 of
+      42 (0.24; sweep 0.17-0.33); both priors inside the range. held_jumper 3 of 6 (n too small). potential assists with
+      an inferred dribble: 2 (both <= 1 dribble), the prior cannot be measured here; potential assists without an
+      inferred dribble: 21 of 157 had one by z (0.13; sweep 0.10-0.15), always <= 1, so the NBA '<= 1 dribble' rule
+      holds for them. New finding (open_after_loop6): pull_up (dribble inferred from XY) had no dribble by z on 7 of
+      50 (0.14; sweep 0.16-0.20 at the other thresholds). Real rates unchanged (no code or parameter change).
+open_after_loop6:
+  - 'pull_up false dribble inference: 7-10 of 50 XY pull-ups show no bounce in ball z (catch-and-shoot or held jumpers whose holder travel read as a dribble). With floor-only production ball this is a resolution limit unless the CV ball track gives a bounce signal; tests would need z-labelled clips.'
 v0_sweep:
   description: >-
     Every positive / negative case of tests/movement/test_ball_actions.py re-run on 30 seeds (sigma_p
@@ -2469,4 +2494,4 @@ open_questions:
   - Post moves (BA-63 back-down with median contact <= 0.9 m and dr <= -0.5 m over >= 1.0 s, BA-64 drop step, BA-65 spin) and post double teams (BA-67) are deferred to 0.2.0.
   - Handoff family items (BA-75..BA-77) are owned by the SCREENS family; the pass detector only excludes the exchanges.
   - Shot-family finishes (floater, layup, dunk, hook, step-back, fadeaway) need the shot family or z / pose; the floater range is resolved in drive_depth only.
-  - The hidden-dribble priors of catch_and_shoot / held_jumper and the potential-assist dribble prior must be measured on SportVU (z) before use.
+  - The hidden-dribble priors of catch_and_shoot / held_jumper and the potential-assist dribble prior must be measured on SportVU (z) before use. (changes_loop6 BA-L6-01: measured; C&S priors confirmed, held_jumper and potential-assist priors not measurable on 3 games.)

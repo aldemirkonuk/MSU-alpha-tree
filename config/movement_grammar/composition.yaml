@@ -1,6 +1,6 @@
 family: composition
-version: 0.8.0
-date: '2026-10-23'
+version: 0.8.1
+date: '2026-10-25'
 owner: Mac session (msu-colab) for Aldemir
 status: proposal under the build freeze
 scope: >-
@@ -715,6 +715,21 @@ changes_loop8:
   why: Parameters (set_window.inbound_reach_m added; drag.wide_reach_test replaces drag.wide_reach_k / wide_reach_p) and rules (set_window, drag) changed; set_window.inbound_oob_k unit text rewritten.
   evidence: test_yaml_contract.
 
+changes_loop9:
+# Loop 9 (25 Oct 2026, minor-items pass): stale known-limit note closed; no rule or parameter change.
+- id: C8-wiring-closed
+  what: 'Recorded, no code change: changes_loop6 C8-known-limits-and-decisions (3) said the official realdata.py run
+    still gets the proxy CUT because it does not pass cuts. realdata.py (since the 0.1.0 commit) calls
+    composition.detect_all(scene, cuts=events["cuts"]) whenever the cuts family runs in the same pass, so the official
+    run uses the cuts family''s cut events for motion; the proxy remains only for callers that pass no cuts.'
+  why: The note predates the realdata.py wiring and would send a later loop after a fixed problem.
+  evidence: 'Official realdata.py run (3 SportVU games, 194 chunks, 6855 s, team_ends, clean, all eight families, HEAD
+    code): 84 motion events (35.3 / 48), every one with cut_source cuts_family, none proxy; same on the 25 Oct working
+    tree. Test test_yaml_contract (loop-9 entry).'
+- id: version
+  what: version 0.8.0 -> 0.8.1, date 2026-10-25.
+  why: Journal-only change (changes_loop9).
+  evidence: test_yaml_contract.
 sim_validation:
   tier: V0 synthetic (tools/specgen/movement/sim.py, minimum-jerk paths, white + AR(1) noise, sigma_p 0.3 m)
   method: >-

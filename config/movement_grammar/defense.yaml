@@ -3,8 +3,8 @@
 # Tests: tests/movement/test_defense.py (synthetic scenarios, validation tier V0).
 family: DEFENSIVE MOVEMENT
 id: defense
-version: 0.3.0
-date: 2026-10-23
+version: 0.3.1
+date: 2026-10-25
 owner: Mac session
 status: proposal
 frame: >-
@@ -299,6 +299,12 @@ changes_loop4:
     why: "No PBP truth for these kinds and no measured root-cause fix within this pass; flagged for the next real-data loop (hand labels)."
     evidence: "Rates above; box_out vs PBP missed FG precision 0.60 -> 0.63, recall 0.24 -> 0.22 (unchanged within noise)."
 
+changes_loop5:
+  # Loop 5 (25 Oct 2026, minor-items pass): the DEF-T22 / L2-DEF-T22 to-do left for the mvlib / test-tree owner.
+  - id: L5-DEF-T22 shared-blas-setup-and-batched-rts-inverse
+    what: "tests/movement/conftest.py (new) sets OMP / OPENBLAS / MKL / VECLIB thread counts to 1 for every movement suite before numpy loads (test_defense.py keeps its own setdefault). mvlib.ca_rts inverts all predicted covariances in one batched np.linalg.inv call before the RTS pass instead of one call per frame. No defence rule or parameter changed."
+    why: "DEF-T22: multithreaded BLAS made each small inverse in ca_rts pay a thread start-up (one scene ~16 s under load) and only this family's test file guarded against it. The batched inverse uses the same LAPACK routine per matrix, so the smoother output is unchanged."
+    evidence: "Bitwise: HEAD vs new ca_rts on 300 random tracks (2-400 frames, gaps, 8 m outliers that trigger the re-init, both q) 0 mismatches in means, covariances and the rejected mask. Real SportVU (3 games, 194 chunks, 6855 s, all eight families, clean): 137,618 dumped events identical before / after. Speed: 600-frame axis 9.3 -> 7.9 ms (1 BLAS thread), 9.9 -> 8.3 ms (8 threads); the full real run's family timings were within machine-load noise (another job was running). Movement suites pass."
 validation_v0:
   method: >-
     tests/movement/test_defense.py scenes (sim.scenario, sigma_p 0.3 m, white + AR(1) rho 0.9, every leg physically

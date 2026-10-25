@@ -699,6 +699,98 @@ def sc_miami(pass1=False):
     return spec(a, held=[(0, 1.77, "a"), (1.77, 5.5, "b")], skip=("o4",)), 5.5
 
 
+# --------------------------------------------------------------------------------------
+# Mastery r4 (SCR-T22 gap closed): scenes for the branches that had none (zoom, handback, double high trade / sink /
+# plain, pin_in, baseline_exit, boundary_parallel), each with a near miss
+# --------------------------------------------------------------------------------------
+def sc_zoom(late=False):
+    """Zoom (Chicago): a pin-down for the block player u, who comes straight off it into a DHO from h at the right
+    slot (within zoom_s of t_s). Near miss (late): the same DHO 2.5 s later (outside zoom_s)."""
+    d = 2.5 if late else 0.0
+    a = {"u": Off((0, 4.6, 0.6), (2.0, 4.6, 0.6), (2.5, 5.6, 2.4), (3.0 + d, 4.6, 5.6), (3.5 + d, 3.2, 6.9), (4.4 + d, 0.8, 7.6)),
+         "s": Off((0, 5.5, 5.5), (1.4, 4.8, 2.5), (3.6, 4.8, 2.5), (4.6, 2.5, 4.0)),
+         "Du": Def((0, 4.3, 1.6), (2.0, 4.3, 1.6), (2.5, 4.2, 2.0), (2.9, 4.0, 3.2), (3.4 + d, 3.6, 5.2), (4.4 + d, 1.2, 6.6)),
+         "Ds": Def((0, 4.8, 4.6), (1.4, 4.2, 3.2), (3.6, 4.2, 3.2), (4.6, 2.3, 3.2)),
+         "h": Off((0, 1.0, 8.5), (2.2, 2.6, 7.3), (4.0 + d, 2.6, 7.3), (5.0 + d, 2.0, 3.5)),
+         "Dh": Def((0, 1.0, 7.5), (2.2, 2.0, 6.5), (4.0 + d, 2.0, 6.5), (5.2 + d, 1.6, 4.2))}
+    th = 3.33 + d
+    return spec(a, held=[(0, th, "h"), (th, 6.0 + d, "u")], skip=("o3",)), 6.0 + d
+
+
+def sc_handback(hold=0.5):
+    """Handback: a passes 3 m to b at the top (0.45 s in the air) and b passes straight back after `hold` s (both legs
+    real passes, ball travel <= handback_travel_m, both above the arc). Near miss: b holds 2.0 s (return outside
+    handback_s)."""
+    a = {"a": Off((0, -1.5, 8.0), (2.5 + hold, -1.5, 8.0), (3.5 + hold, 0.2, 8.4)),
+         "b": Off((0, 1.5, 7.8), (0.8, 1.5, 7.7)),
+         "Da": Def((0, -1.3, 7.0), (2.5 + hold, -1.3, 7.0), (3.5 + hold, 0.1, 7.4)),
+         "Db": Def((0, 1.5, 6.8), (0.8, 1.4, 6.7))}
+    r2 = 1.45 + hold
+    return spec(a, held=[(0, 1.0, "a"), (1.45, r2, "b"), (r2 + 0.45, 5.0 + hold, "a")],
+                flights=[(1.0, 1.45, "a", "b"), (r2, r2 + 0.45, "b", "a")], skip=("o3",)), 5.0 + hold
+
+
+def sc_double_high(post="trade"):
+    """Double high: two bigs set above the arc (s1 at the top, s2 at the right slot, 2.9 m apart); the handler uses s1,
+    then s2 1.1 s later. post: trade (s1 pops out to the left slot, >= trade_move_m), sink (s1 rolls to the rim),
+    stay (s1 stays at his screen spot above the arc: plain double_high, the near miss of trade)."""
+    s1_after = {"trade": [(4.4, -2.6, 8.4)], "sink": [(4.4, 0.0, 1.4)], "stay": []}[post]
+    ds1_after = {"trade": [(4.5, -2.2, 7.5)], "sink": [(4.5, 0.4, 2.3)], "stay": []}[post]
+    a = {"h": Off((0, -0.5, 8.8), (2.0, -0.5, 8.8), (2.5, 0.9, 8.75), (3.1, 2.2, 8.3), (3.8, 3.9, 6.4), (4.6, 3.4, 3.6)),
+         "s1": Off((0, -1.2, 5.6), (1.0, 0.3, 7.9), (3.2, 0.3, 7.9), *s1_after),
+         "Ds1": Def((0, -1.3, 4.8), (1.0, 0.1, 6.9), (3.2, 0.1, 6.9), *ds1_after),
+         "s2": Off((0, 2.2, 4.4), (1.0, 3.0, 6.6), (4.6, 3.0, 6.6), (5.6, 5.4, 5.6)),
+         "Ds2": Def((0, 2.0, 3.6), (1.0, 2.7, 5.7), (4.6, 2.7, 5.7), (5.6, 4.8, 4.8)),
+         "Dh": Def((0, -0.4, 7.8), (2.0, -0.4, 7.8), (2.4, -0.2, 8.5), (2.8, 0.6, 9.1), (3.3, 1.8, 8.9), (3.8, 2.6, 7.6),
+                 (4.4, 3.0, 5.2))}
+    return spec(a, held=[(0, 6.5, "h")], skip=("o4",)), 6.5
+
+
+def sc_pin_in(user_cuts=False):
+    """Pin-in: u spots up on the right wing; his defender has sagged to the top and sprints back; s comes out of the
+    lane (r 1.3 -> 6.1 m) and pins him inside at r ~6.2 m; u jabs and steps out to the arc. Near miss (user_cuts): u
+    cuts to the rim instead (moves more than pin_in_user_move_m)."""
+    u = ((0, 5.8, 5.4), (2.2, 5.8, 5.4), (3.2, 3.2, 1.4)) if user_cuts else \
+        ((0, 5.8, 5.4), (1.8, 5.8, 5.4), (2.3, 5.2, 5.0), (3.0, 6.3, 6.2))
+    a = {"u": Off(*u),
+         "s": Off((0, 0.8, 1.4), (1.6, 4.0, 4.7), (4.2, 4.0, 4.7)),
+         "Du": Def((0, 4.9, 4.7), (0.5, 4.9, 4.7), (1.1, 1.8, 6.5), (1.5, 1.8, 6.5), (2.3, 3.6, 5.25), (3.2, 3.6, 5.25),
+                   (3.8, 4.4, 6.4), (4.3, 5.4, 6.0)),
+         "Ds": Def((0, 0.6, 2.4), (1.6, 3.4, 4.0), (4.2, 3.4, 4.0)),
+         "p": Off((0, -1.0, 8.0)), "Dp": Def((0, -0.8, 7.0))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o3",)), 5.0
+
+
+def sc_baseline_exit(wing=False):
+    """Baseline exit: u runs along the baseline from under the rim to the left corner off s at the left block (P_s y
+    0.9 m). Near miss (wing): the same screen, but u curls up to the left wing (ends above y 2.5 m)."""
+    u_end = [(3.0, -4.3, 0.9), (3.7, -5.6, 3.4)] if wing else [(2.9, -4.6, 0.4), (3.6, -6.8, 0.5)]
+    du_end = [(3.6, -4.5, 2.4), (4.2, -5.0, 3.6)] if wing else [(3.5, -4.6, 1.7), (4.0, -6.0, 1.3)]
+    a = {"u": Off((0, -1.2, 0.2), (2.0, -1.2, 0.2), *u_end),
+         "s": Off((0, -1.5, 4.0), (1.3, -3.6, 0.9), (3.8, -3.6, 0.9)),
+         "Du": Def((0, -1.4, 1.0), (2.0, -1.4, 1.0), (2.5, -2.6, 1.2), (2.9, -3.0, 1.5), *du_end),
+         "Ds": Def((0, -1.0, 3.3), (1.3, -3.2, 1.8), (3.8, -3.2, 1.8)),
+         "p": Off((0, 5.0, 5.0)), "Dp": Def((0, 4.3, 4.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o5", "o4")), 5.0
+
+
+def sc_baseline_wall(angled=False):
+    """Boundary-parallel pair (Rule 4-35.7): s1 and s2 stand 0.8 m apart on a line parallel to the baseline, 1.45 m
+    inside it; u runs along the baseline behind them and D_u is caught on s1. Near miss (angled): s2 stands 0.75 m
+    higher, so the pair's line is about 50 deg off the baseline."""
+    wy = -0.15
+    s2 = (-3.55, wy + 0.75) if angled else (-3.7, wy)
+    a = {"u": Off((0, -1.6, -1.15), (2.0, -1.6, -1.15), (3.0, -4.6, -1.15), (3.8, -6.8, -0.7)),
+         "s1": Off((0, -1.0, 4.0), (1.3, -2.9, wy), (3.8, -2.9, wy)),
+         "s2": Off((0, -1.8, 4.6), (1.3, *s2), (3.8, *s2)),
+         "Du": Def((0, -1.9, -0.5), (2.0, -1.9, -0.5), (2.4, -2.3, -0.6), (2.8, -2.6, -0.75), (3.3, -3.3, -0.8),
+                   (4.0, -5.2, -0.8)),
+         "Ds1": Def((0, -0.6, 3.2), (1.3, -2.6, wy + 1.0), (3.8, -2.6, wy + 1.0)),
+         "Ds2": Def((0, -1.4, 3.8), (1.3, -3.7, wy + 1.1), (3.8, -3.7, wy + 1.1)),
+         "p": Off((0, 5.0, 5.0)), "Dp": Def((0, 4.3, 4.4))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o5", "o4")), 5.0
+
+
 def shifted(name, dx=0.0, dy=0.0):
     """A scenario with every actor waypoint moved by (dx, dy) m (SCR-T18 brittleness check)."""
     sp, dur = SCEN[name]()
@@ -780,6 +872,20 @@ SCEN = {
     "weave_pass": lambda: sc_weave(pass2=True),
     "miami": lambda: sc_miami(),
     "miami_pass": lambda: sc_miami(pass1=True),
+    # mastery r4 scenes (SCR-T22 gap closed)
+    "zoom": lambda: sc_zoom(),
+    "zoom_late": lambda: sc_zoom(late=True),
+    "handback": lambda: sc_handback(),
+    "handback_hold": lambda: sc_handback(hold=2.0),
+    "double_high_trade": lambda: sc_double_high("trade"),
+    "double_high_sink": lambda: sc_double_high("sink"),
+    "double_high_stay": lambda: sc_double_high("stay"),
+    "pin_in": lambda: sc_pin_in(),
+    "pin_in_cut": lambda: sc_pin_in(user_cuts=True),
+    "baseline_exit": lambda: sc_baseline_exit(),
+    "baseline_exit_wing": lambda: sc_baseline_exit(wing=True),
+    "baseline_wall": lambda: sc_baseline_wall(),
+    "baseline_wall_angled": lambda: sc_baseline_wall(angled=True),
 }
 
 
@@ -2070,3 +2176,72 @@ def test_m3_08_contact_row_keeps_the_stand_onset():
                 assert r.stop.synthetic and r.m["set_stop"][0] >= r.stop.a
         evs = [e for e in S.detect_screen_set(sc) if e.actors["screener"] == "s" and e.actors["user"] == "h"]
         assert evs and min(abs(e.t0 * DT - 1.4) for e in evs) <= 0.6, [e.t0 * DT for e in evs]
+
+
+# --------------------------------------------------------------------------------------
+# Mastery r4 (SCR-T22 gap closed): rare-branch scenes, rates over seeds 1-10 at sigma_p 0.2 / 0.3 / 0.5
+# --------------------------------------------------------------------------------------
+def _is(key, val):
+    return lambda e: e.attrs.get(key) == val
+
+
+# (scene, detector, predicate, actors, minimum hits of 10 at sigma_p 0.2 / 0.3 / 0.5); measured on 0.6.1:
+# zoom 9 / 8 / 5, handback 10 / 7 / 4, double_high_trade 8 / 7 / 7, double_high_sink 8 / 7 / 5, double_high 8 / 7 / 7,
+# pin_in 7 / 7 / 2, baseline_exit 10 / 9 / 8, boundary_parallel 9 / 8 / 5
+R4_POS = {
+    "zoom": ("zoom", "handoff_chain", _is("chain", "zoom"), {"a": "h", "b": "u", "screener": "s"}, (8, 7, 4)),
+    "handback": ("handback", "handoff_chain", _is("chain", "handback"), {"a": "a", "b": "b"}, (9, 6, 3)),
+    "double_high_trade": ("double_high_trade", "double_ball_screen", _is("sub_label", "double_high_trade"),
+                          {"screener_1": "s1", "screener_2": "s2", "handler": "h"}, (7, 6, 6)),
+    "double_high_sink": ("double_high_sink", "double_ball_screen", _is("sub_label", "double_high_sink"),
+                         {"screener_1": "s1", "screener_2": "s2", "handler": "h"}, (7, 6, 4)),
+    "double_high": ("double_high_stay", "double_ball_screen", _is("sub_label", "double_high"),
+                    {"screener_1": "s1", "screener_2": "s2", "handler": "h"}, (7, 6, 6)),
+    "pin_in": ("pin_in", "off_ball_screen_other", _is("geometry", "pin_in"), {"screener": "s", "user": "u"}, (6, 6, 1)),
+    "baseline_exit": ("baseline_exit", "off_ball_screen_other", _is("geometry", "baseline_exit"),
+                      {"screener": "s", "user": "u"}, (9, 8, 7)),
+    "boundary_parallel": ("baseline_wall", "blind_screen_hint", _is("hint", "boundary_parallel"),
+                          {"screener": "s1", "screener_2": "s2"}, (8, 7, 4)),
+}
+# near misses: the branch must never fire (0 of 10 at every sigma_p, measured 0 everywhere)
+R4_NEG = {
+    "zoom": ("zoom_late", "handoff_chain", _is("chain", "zoom")),
+    "handback": ("handback_hold", "handoff_chain", _is("chain", "handback")),
+    "double_high_trade": ("double_high_stay", "double_ball_screen", _is("sub_label", "double_high_trade")),
+    "double_high_sink": ("double_high_trade", "double_ball_screen", _is("sub_label", "double_high_sink")),
+    "double_high": ("double_high_sink", "double_ball_screen", _is("sub_label", "double_high")),
+    "pin_in": ("pin_in_cut", "off_ball_screen_other", _is("geometry", "pin_in")),
+    "baseline_exit": ("baseline_exit_wing", "off_ball_screen_other", _is("geometry", "baseline_exit")),
+    "boundary_parallel": ("baseline_wall_angled", "blind_screen_hint", _is("hint", "boundary_parallel")),
+}
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+@pytest.mark.parametrize("branch", sorted(R4_POS))
+def test_m4_rare_branch_positive_rate(branch, sigma):
+    scen, det, pred, actors, floors = R4_POS[branch]
+    n = _rate(scen, det, seeds=SEEDS10, sigma=sigma, pred=pred, **actors)
+    assert n >= floors[(0.2, 0.3, 0.5).index(sigma)], (branch, sigma, n)
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+@pytest.mark.parametrize("branch", sorted(R4_NEG))
+def test_m4_rare_branch_near_miss(branch, sigma):
+    scen, det, pred = R4_NEG[branch]
+    assert _rate(scen, det, seeds=SEEDS10, sigma=sigma, pred=pred) == 0, (branch, sigma)
+
+
+def test_m4_near_misses_keep_the_parent_event():
+    # the near misses differ only in the tested branch: the DHO, the screen and the double screen are still there
+    assert _rate("zoom_late", "dho", seeds=SEEDS10, hander="h", receiver="u") >= 8
+    assert _rate("baseline_exit_wing", "screen", seeds=SEEDS10, screener="s", user="u") >= 9
+    assert _rate("double_high_stay", "double_ball_screen", seeds=SEEDS10, handler="h") >= 6
+
+
+def test_m4_03_trade_needs_the_first_screener_to_move():
+    # SCR-M4-03: a first screener set above the arc (r 7.9 m) who stays there read double_high_trade on every run (r >=
+    # trade_r_m from the start); trade now also needs >= trade_move_m of movement from his t_s1 position
+    assert S.prm("double_ball_screen")["trade_move_m"] >= 1.0
+    for sd in SEEDS10:
+        for e in run("double_high_stay", "double_ball_screen", sd, 0.3):
+            assert e.attrs["sub_label"] != "double_high_trade", sd

@@ -135,8 +135,11 @@ def ca_rts(z: np.ndarray, r: np.ndarray, q: float = Q_DEFAULT, gate: float = 13.
                 P = P - np.outer(K, H @ P)
         xs_f[k], Ps_f[k] = x, P
     xs, Ps = xs_f.copy(), Ps_f.copy()
+    # DEF-T22 (minor-items pass 25 Oct): one batched inverse of the predicted covariances instead of one LAPACK call
+    # per frame (each 3x3 call paid the BLAS thread start-up; batched results are bitwise identical)
+    Pp_inv = np.linalg.inv(Ps_p[1:]) if n > 1 else Ps_p[:0]
     for k in range(n - 2, -1, -1):
-        C = Ps_f[k] @ F.T @ np.linalg.inv(Ps_p[k + 1])
+        C = Ps_f[k] @ F.T @ Pp_inv[k]
         xs[k] = xs_f[k] + C @ (xs[k + 1] - xs_p[k + 1])
         Ps[k] = Ps_f[k] + C @ (Ps[k + 1] - Ps_p[k + 1]) @ C.T
     return xs, Ps, rejected

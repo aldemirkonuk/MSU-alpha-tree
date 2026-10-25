@@ -111,13 +111,14 @@ def test_yaml_contract():
     """Every item has the required fields; detectable items are in DETECTORS; needs_data items return []."""
     need = ["id", "level", "name", "aliases", "actors", "t0", "rule", "params", "min_duration_s", "outputs",
             "confidence", "noise_notes", "conflicts_resolved", "sources", "status"]
-    assert C.DOC["version"] == "0.8.0" and C.DOC["date"] == "2026-10-23" and C.DOC["family"] == "composition"
+    assert C.DOC["version"] == "0.8.1" and C.DOC["date"] == "2026-10-25" and C.DOC["family"] == "composition"
     for ch in (C.DOC["changes_loop1"] + C.DOC["changes_loop2"] + C.DOC["changes_loop4"] + C.DOC["changes_loop5"]
-               + C.DOC["changes_loop6"] + C.DOC["changes_loop7"] + C.DOC["changes_loop8"]):  # change logs: one entry per item (+ version)
+               + C.DOC["changes_loop6"] + C.DOC["changes_loop7"] + C.DOC["changes_loop8"] + C.DOC["changes_loop9"]):  # change logs: one entry per item (+ version)
         assert {"id", "what", "why", "evidence"} <= set(ch), ch
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop7"]} >= {"C1", "C3", "C7", "C9", "version"}
     assert "provisional" in next(c for c in C.DOC["changes_loop7"] if c["id"] == "C9-overfit-caveat")["why"]
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop8"]} >= {"C1", "C3", "C7", "version"}
+    assert {c["id"] for c in C.DOC["changes_loop9"]} == {"C8-wiring-closed", "version"}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop5"]} >= {f"C{i}" for i in range(1, 9)}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop6"]} >= {"C1", "C2", "C3", "C4", "C7", "C8"}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop1"]} >= {f"F{i}" for i in range(1, 18)}
