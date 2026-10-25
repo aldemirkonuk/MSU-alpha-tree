@@ -8,11 +8,11 @@
 # and validity gates per MP-07, sigmas per MP-09, confidence factors per MP-16). Spot labels come
 # from config/named_spots.yaml through tools/specgen/named_spots/spotlib.py (never redefined here).
 family: kinematics
-version: 0.5.1
-date: '2026-10-23'
+version: 0.5.2
+date: '2026-10-25'
 owner: Mac session
 status: proposal
-scheme_version: kin-0.5.1
+scheme_version: kin-0.5.2
 frame: >-
   attacked-rim frame of named_spots (metres, rim at the origin, +y toward half court, +x to the attacker's right
   while he faces the basket); defenders defend the rim at the origin. The frame is MIRRORED seen from above
@@ -362,13 +362,18 @@ items:
     lo: {value: 5.0, unit: m/s}
     hi: {value: 5.83, unit: m/s}
     min_s: {value: 1.0, unit: s, note: 'KIN2-BAND: 0.5 -> 1.0; the 0.5 s window-mean noise (0.25-0.40 m/s) exceeds the 0.15-0.3 m/s gap of a 4.7 m/s run to the 5.0 edge, so 0.5 s excursions entered; p_enter stays 0.7 (the band is 0.83 m/s wide, 0.85 dropped recall to 0)'}
+    abstain_unresolvable: {value: true, unit: bool, note: 'decision 25 Oct (D1): a track whose median best attainable membership 2 Phi(0.415 / sigma_L) - 1 is below p_enter gets no band machine; the speed_L-in-band stretches (>= min_s) are reported as abstain_unresolvable:high_speed (conf 0). Synthetic median: 0.896 / 0.816 / 0.724 / 0.696 / 0.685 at sigma told 0.2 / 0.3 / 0.45 / 0.5 / 0.52'}
   min_duration_s: 1.0
-  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives]
-  confidence: P_cond = window mean of P(high_speed) x c_edge x c_gap x c_id.
+  outputs: [band, mean_speed, peak_speed, distance_m, mean_posterior, alternatives, 'abstention report abstain_unresolvable:high_speed (unresolvable track) with reason, tier, p_max_median, sigma_L_median and p_enter']
+  confidence: P_cond = window mean of P(high_speed) x c_edge x c_gap x c_id; abstention reports carry conf 0.
   noise_notes: >-
     The band is only 0.83 m/s wide; with sigma_L 0.31 the maximum attainable P is about 0.82 at its
-    centre, so segments are short and often shared with run or sprint (alternatives carry it).
-  conflicts_resolved: []
+    centre, so segments are short and often shared with run or sprint (alternatives carry it). At the q 10
+    tier with sigma_p about 0.5 (sigma_L >= 0.40 m/s) the best attainable P falls below p_enter 0.7, so the
+    band is unresolvable there and is reported as an abstention (decision D1, changes_decisions_oct25),
+    not thresholded with a tier-aware p_enter.
+  conflicts_resolved:
+  - 'Unresolvable band at sigma_p 0.5 (tier-aware p_enter vs explicit abstention): abstention with a report (owner decision 25 Oct, following the 23 Oct abstain-but-report decision).'
   sources:
   - {url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11467009/', supports: 'HSR edge 5.0 m/s'}
   status: canonical
@@ -1543,6 +1548,36 @@ changes_loop5:
     MP-09 sigma, and the start / stop / stand noise inflation it would touch is a detection-power limit (open finding),
     not a sigma-scale error. The new KIN5-OOB gate does not depend on K_CAL (oob_z 0).
   evidence: 'Loop-4 measurement E[v^2] / (2 sigma_speed^2) 0.76-0.83 on synthetic stills; nothing re-measured here.'
+changes_decisions_oct25:
+# Owner decision of 25 Oct 2026 (Aldemir delegated clear judgment calls), following the 23 Oct movement decision
+# 'abstain, but report abstentions'. Real data: 3 SportVU games, 194 chunks, 6855 s, team_ends, sigma told 0.15,
+# realdata.py clean / --noise 0.3 / --noise 0.5, before / after event dumps compared (aggregates only).
+- id: D1-HIGH-SPEED-UNRESOLVABLE
+  what: >-
+    high_speed.abstain_unresolvable (true): per track, when the median over valid frames of the best attainable band
+    membership 2 Phi(0.415 / sigma_L) - 1 is below p_enter (0.7), the band machine does not run; every stretch of >=
+    min_s (1.0 s) whose speed_L lies in [5.0, 5.83) is reported as an 'abstain_unresolvable:high_speed' event (conf 0;
+    attrs reason, tier, p_max_median, sigma_L_median, p_enter, mean / peak speed, mean_posterior, alternatives).
+    Resolvable tracks are unchanged; no tier-aware p_enter.
+  why: >-
+    validation_v1b_real open finding: at noise 0.5 (sigma told 0.52 m, q 10 tier) high_speed emitted nothing because the
+    0.83 m/s band cannot reach P 0.7 once sigma_L >= 0.40 m/s, so an empty list was indistinguishable from 'no high-speed
+    running'. Decision (25 Oct): report the band as unresolvable instead of lowering p_enter per tier (a lower p_enter
+    would emit segments whose own membership is below the evidence bar the other bands use).
+  evidence: >-
+    Synthetic steady 5.6 m/s (hs_5p6, 10 seeds): median best membership 0.896 / 0.816 / 0.724 / 0.696 / 0.685 at sigma
+    told 0.2 / 0.3 / 0.45 / 0.5 / 0.52; high_speed segments 11 / 12 at 0.2 / 0.3 (unchanged), at 0.5 9 knife-edge
+    segments before -> 0 segments and 11 reports in 10 of 10 clips; 4.7 m/s run 0 reports at 0.2 / 0.3. Tester harness (80 scenes x 10
+    seeds), high_speed precision / recall: 0.2 1.00 / 0.975 and 0.3 1.00 / 0.825 unchanged; 0.5 0.914 / 0.70 (35 events)
+    -> 0.824 / 0.35 (17 events on tracks whose median best membership is still >= 0.7; the rest are reported). Real SportVU (3 games, 194 chunks, 6855 s, team_ends, clean / noise 0.3 / noise 0.5), before / after event dumps: high_speed 198.3 / 179.4 per 48 unchanged at clean / 0.3 with no report; at 0.5 high_speed 0 -> 0 and
+    abstain_unresolvable:high_speed 0 -> 168.5 per 48 (401 reports on 60 player tracks, 601 s, every one q10, p_max_median
+    0.689-0.697). Every other kinematics event identical (only scheme_version changes). Tests
+    test_d1_high_speed_unresolvable_is_reported_not_emitted, test_d1_high_speed_resolvable_tiers_unchanged,
+    test_d1_switch_off_restores_the_band_machine, test_d1_no_report_on_a_4p7_run_at_low_noise, test_d1_decision_recorded.
+- id: version
+  what: version 0.5.1 -> 0.5.2, scheme kin-0.5.2, date 2026-10-25.
+  why: Parameter high_speed.abstain_unresolvable and a new reported kind (abstain_unresolvable:high_speed).
+  evidence: test_kin5_changes_recorded, test_d1_decision_recorded.
 validation_v1b_real:
   data: 'SportVU, 3 NBA 2015-16 games, 194 chunks, 6855 s (114.3 min) of clock-running play, 1143 player-minutes; truth as changes_loop4'
   physical_plausibility:
@@ -1590,8 +1625,8 @@ validation_v1b_real:
   - >-
     high_speed emits nothing at noise 0.5 with sigma told hypot(0.15, 0.5) = 0.52 m (also before this loop; 132 per 48
     with told 0.50 in the loop-3 rates): the band is 0.83 m/s wide and its best membership 2 Phi(0.415 / sigma_L) - 1
-    stays below p_enter 0.7 once sigma_L >= 0.40 m/s at the q 10 tier. Not changed here (no real truth for the band
-    machine yet); a tier-aware p_enter or reporting the band as unresolvable is the next step.
+    stays below p_enter 0.7 once sigma_L >= 0.40 m/s at the q 10 tier. Decided 25 Oct (changes_decisions_oct25 D1):
+    reported as abstain_unresolvable:high_speed, no tier-aware p_enter.
 confirmer_disputed:
 # Items of the loop-1 confirmer report not changed, with the evidence.
 - id: KIN-STAND-FP (1) creep

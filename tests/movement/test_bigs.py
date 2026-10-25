@@ -113,7 +113,7 @@ def roll_scene(seed, extra=None, s_wp=None, dur=5.5):
 # --------------------------------------------------------------------------------------
 def test_yaml_is_single_source_and_items_complete():
     doc = bigs.DOC
-    assert doc["family"] == "bigs" and doc["version"] == "0.3.1" and str(doc["date"]) == "2026-10-25"
+    assert doc["family"] == "bigs" and doc["version"] == "0.3.2" and str(doc["date"]) == "2026-10-25"
     req = {"id", "level", "name", "aliases", "actors", "t0", "rule", "params", "min_duration_s", "outputs", "confidence",
            "noise", "conflicts_resolved", "sources", "status"}
     for it in doc["items"]:
@@ -1444,3 +1444,68 @@ def test_changes_loop5_recorded():
     ch = bigs.DOC["changes_loop5"]
     assert [c["id"] for c in ch] == ["L5-1", "L5-2", "L5-3", "L5-4"]
     assert all({"id", "what", "why", "evidence"} <= set(c) for c in ch)
+
+
+# ---- changes_decisions_oct25 (owner decisions 25 Oct): D2 slip touch unknown at the high-noise tier; D3 short-roll
+# stop variant kept (A11.18 needs a catch), ghost and slip_to_arc separate, four sub-labels in the screens enum
+import screens as SCR  # noqa: E402
+
+
+@pytest.mark.parametrize("sigma", L5_SIGMAS)
+def test_d2_slip_touch_is_unknown_not_false_at_the_high_tier(sigma):
+    """Measured (seeds 1-10): brush True 10 / 9 / 1, far False 10 / 10 at sigma_p 0.2 / 0.3; at 0.5 (high tier)
+    brush None 9 + True 1, far None 10. A high-tier track never reports touch False."""
+    brush = [v for sd in L5_SEEDS for v in _l5_touch(sd, sigma, L5_DH_BRUSH)]
+    far = [v for sd in L5_SEEDS for v in _l5_touch(sd, sigma, L5_DH_FAR)]
+    if sigma == 0.5:
+        assert False not in brush + far and far.count(None) == len(far) == 10, (brush, far)
+    else:
+        assert None not in brush + far and far == [False] * 10, (brush, far)
+        assert brush.count(True) >= (9 if sigma == 0.2 else 8), brush
+
+
+def test_d2_switch_off_restores_false():
+    sc, ev = _l5_top(1, 0.5, L5_SLIP_TOUCH_WP, {"Dh": {"team": "D", "wp": L5_DH_FAR}})
+    assert [e.attrs["touch"] for e in bigs.detect_slip(sc, screens=[ev], touch_unknown_high_tier=False)] == [False]
+    assert bigs.noise_tier(sc.k("s")) == "high"
+
+
+@pytest.mark.parametrize("seed", (1, 2, 3))
+def test_d3_short_roll_stop_variant_kept_and_a11_18_flag(seed):
+    truth, sc, ev = roll_scene(seed, s_wp=SHORT_WP)
+    e = check(bigs.detect_short_roll(sc, screens=[ev]), "short_roll", {"screener": "s", "handler": "h"}, ev.t0)
+    assert e.attrs["variant"] == "stop" and e.attrs["a11_18_catch"] is False
+    truth, sc, ev = srp_scene(seed)
+    sr = [x for x in bigs.detect_short_roll(sc, screens=[ev]) if x.attrs["variant"] == "catch"]
+    assert sr and all(x.attrs["a11_18_catch"] is True for x in sr)
+
+
+def test_d3_screens_enum_matches_bigs():
+    """The screens enum (screens.yaml screen_record_schema) holds every bigs label; sub-labels roll up to base values."""
+    sub = bigs.ITEMS["screener_post_action"]["sub_label_parent"]
+    assert sub == SCR.SCREENER_ACTION_SUB_LABELS
+    assert set(sub) == {"slip_to_arc", "crash", "move_to_screen", "roll_into_post"}
+    enum = set(SCR.SCREENER_ACTION_AFTER)
+    assert set(bigs.PRECEDENCE) | {"none"} <= enum
+    base = enum - set(sub)
+    assert set(sub.values()) <= base
+    assert {"roll", "short_roll", "pop_arc", "pop_mid"} <= base  # screens' own post_action values
+    assert {"ghost", "slip_to_arc"} <= set(bigs.PRECEDENCE)  # kept as separate labels (D3)
+
+
+@pytest.mark.parametrize("seed", (1, 2, 3))
+def test_d3_post_action_writes_the_enum_value_and_its_parent(seed):
+    truth, sc, ev = elbow_scene(seed, SLIP_ARC_WP)
+    e = bigs.detect_screener_post_action(sc, screens=[ev])[0]
+    assert e.attrs["screener_action_after"] == e.attrs["top1"] in SCR.SCREENER_ACTION_AFTER
+    assert e.attrs["screener_action_parent"] == SCR.SCREENER_ACTION_SUB_LABELS.get(e.attrs["top1"], e.attrs["top1"])
+    truth, sc, ev = roll_scene(seed)
+    e = bigs.detect_screener_post_action(sc, screens=[ev])[0]
+    assert e.attrs["screener_action_after"] == "roll" and e.attrs["screener_action_parent"] == "roll"
+
+
+def test_changes_decisions_oct25_recorded():
+    ch = bigs.DOC["changes_decisions_oct25"]
+    assert {"D2-SLIP-TOUCH-UNKNOWN", "D3-SHORT-ROLL-STOP", "D3-GHOST-SLIP-TO-ARC", "D3-SCREENS-ENUM", "version"} <= {c["id"] for c in ch}
+    assert all({"id", "what", "why", "evidence"} <= set(c) for c in ch)
+    assert not any("enum" in q or "Ghost vs slip_to_arc" in q or "stop variant" in q for q in bigs.DOC["open_questions"])

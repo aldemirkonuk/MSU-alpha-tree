@@ -54,6 +54,11 @@ def prm(item: str, over: dict | None = None) -> dict:
     return d
 
 
+# D3 (25 Oct): the screens-table enum screener_action_after (base values + the bigs sub-labels) and each sub-label's
+# base parent. This family's own post_action values are base values; bigs.screener_post_action fills the sub-labels.
+SCREENER_ACTION_AFTER = tuple(prm("screen_record_schema")["screener_action_after"])
+SCREENER_ACTION_SUB_LABELS = dict(prm("screen_record_schema")["screener_action_sub_labels"])
+
 _SPOT_DOC, SPOTS = spotlib.load()
 PNR_LOCATION_IDS = sorted((s for s in SPOTS.values() if s.d["layer"] == "zone_scheme:pnr_location"),
                           key=lambda s: s.d.get("rank", 0))

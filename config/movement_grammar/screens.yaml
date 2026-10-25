@@ -1,5 +1,5 @@
 family: screens
-version: 0.6.1
+version: 0.6.2
 date: '2026-10-25'
 owner: Mac session
 status: proposal under the build freeze (items marked canonical are the family's canonical definitions; every numeric value is an engineering proposal until fitted on MSU film)
@@ -473,6 +473,30 @@ changes_mastery_r4:
     what: 'version 0.6.0 -> 0.6.1, date 2026-10-25. Rule text of double_ball_screen updated (trade_move_m). 13 scenes, 50 tests added; test_screens.py 286 -> 336 tests, all pass.'
     why: Close SCR-T22 (rare branches without a V0 scene) as an (a) item of the minor_left inventory.
     evidence: 'Floors in R4_POS are the measured counts minus one (minimum 1); near misses must stay at 0. Still without a scene: none of the SCR-T22 list (zoom, handback positive, double_high trade / sink, pin_in, baseline_exit, boundary_parallel).'
+changes_decisions_oct25:
+  # Owner decisions of 25 Oct 2026 (Aldemir delegated clear judgment calls; recorded here with the evidence). D3 is
+  # shared with bigs.yaml, D4 / D5 are this family's. Screens detector outputs are unchanged: real SportVU screens events
+  # identical before / after (see D3-SCREENS-ENUM evidence).
+  - id: D3-SCREENS-ENUM
+    severity: low
+    what: 'screen_record_schema params: screener_action_after = the schema/tables/screens.yaml values (roll, short_roll, pop_mid, pop_arc, slip, ghost, replace, seal, none) + touch, fake_other + the sub-labels slip_to_arc, crash, move_to_screen, roll_into_post; screener_action_sub_labels maps each sub-label to its base value (slip_to_arc -> slip, crash -> none, move_to_screen -> none, roll_into_post -> roll). screens.py reads both (SCREENER_ACTION_AFTER, SCREENER_ACTION_SUB_LABELS); bigs.screener_post_action writes screener_action_after (= top1) and screener_action_parent.'
+    why: 'Decision (25 Oct): add the four bigs labels to the screens enum as sub-labels rather than as new base values, so CTG / schema base counts stay comparable and the finer label is kept. schema/tables/screens.yaml is generated and not edited under the freeze (schema/tables_proposed_changes.yaml route); this family file is the enum of record until the schema owner merges it.'
+    evidence: 'test_d3_post_action_values_are_in_the_enum (this family''s post_action values are base values), bigs test_d3_screens_enum_matches_bigs (bigs sub_label_parent == screener_action_sub_labels; every bigs PRECEDENCE label + none is in the enum; parents are base values). Real SportVU (3 games, 194 chunks, team_ends, clean / noise 0.3 / 0.5): screens events identical before / after (constants only). (dumps compared event by event; the only attribute differences are NaN drop_depth_m / route_margin_m values that compare unequal to themselves).'
+  - id: D4-BLIND-HINT-RELABEL
+    severity: low
+    what: 'No threshold change (blind_deg 120, blind_p_min 0.8, step_m 0.9). The loop-1 tester scene blind_back_left (screener stopped 0.3 m from D_u, 122 deg off D_u''s facing in truth geometry, 111-121 deg measured) is relabelled from a blind_no_step positive to a not-blind near miss under the Rule 4-35.3 visual-field reading, and copied into the tests as sc_blind_back_left; its blind counterpart is sc_back_blind_left (the left mirror of back_blind, squarely behind at 0.5 m, 145-180 deg).'
+    why: 'Decision (25 Oct): fix the label, not the threshold. Rule 4-35.3 makes a screen blind when it is set outside the stationary opponent''s visual field; 122 deg is inside the +-120 deg field the probability gate uses, and the loop-1 / loop-2 sweeps showed the remaining tester "FPs" were screeners squarely behind D_u (157-179 deg) that the rule calls blind (declined-loop2). A grid over 90-120 deg x p 0.5-0.8 never beat precision 0.12 against the old labels.'
+    evidence: 'Seeds 1-10 at sigma_p 0.2 / 0.3 / 0.5: blind_back_left blind_screen_hint 0 / 0 / 0 (relabelled negative; back_screen still 9 / 7 / 5); back_blind_left 10 / 6 / 2 (right-side back_blind 10 / 7 / 1). Under the relabel the tester''s only positive becomes a correct reject, and the blind-hint precision problem of SCR-T14 was a label artefact. Tests test_d4_blind_back_left_relabelled_not_blind, test_d4_squarely_behind_left_is_blind, test_d4_thresholds_not_moved.'
+  - id: D5-RESCREEN-WINDOW
+    severity: info
+    what: 'No change: screen_window.window_s stays 3.0 s (CTG) and composition location.re_screen_within_s stays 3.0 s; rescreen_gap_s 1.5 s keeps linking re-screens whose t_s gap exceeds 3 s when the second stand starts within 1.5 s after the first ends.'
+    why: 'Decision (25 Oct): keep CTG''s 3 s; align a 3.3 s value only if the YAML documented it as a deviation without evidence. No file carries a 3.3 s parameter: 3.3-3.5 s is the measured t_s gap of the tester scene rescreen_same_side (SCR-T04, loop 1 / 2), which SCR-T04-re_screen-window already handles with the stand-gap link (evidence: re_screen R .47/.55/.38 -> .95/.85/.45 at sigma_p 0.2 / 0.3 / 0.5, P 1.0/1.0/.94 -> 1.0/1.0/.95). Widening window_s to 3.5 s would also merge distinct screens of the same pair, which CTG splits at 3 s.'
+    evidence: 'grep of config/movement_grammar/*.yaml: window_s 3.0 (screens screen_window), re_screen_within_s 3.0 (composition), move_to_screen within_s 2.0 from release (bigs, a different window documented in bigs conflicts_resolved); 3.3 appears only as the scene measurement in SCR-T04 and loop-1 SCR-T04. Test test_d5_rescreen_window_stays_ctg_3s.'
+  - id: version
+    severity: info
+    what: 'version 0.6.1 -> 0.6.2, date 2026-10-25. screen_record_schema gets its first params (D3); journal entries D4 / D5 (no rule or threshold change); 7 tests added.'
+    why: Owner decisions of 25 Oct.
+    evidence: test_changes_decisions_oct25_recorded.
 v0_results: 'sigma_p 0.3, seeds 1-5, 53 positive cases (48 detectors): 242 / 265 = 91 % pass kind + actors + t0 within 0.3 s + conf 0.2-1 + attributes; no detector fires on the null scenario (10 moving players, ball passed) for any of the 5 seeds. Weakest: side/step-up PnR 3/5 (handler wraps the screener, closest approach ambiguous), the rest 4-5/5. Synthetic only (V0): no claim about film until gold labels exist. Loop 1 (independent tester report, 22 failures): 196 tests pass (163 + 33 regression tests); on the tester''s 175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5 (5250 runs) 0 crashes (4 before); per-item before/after numbers are in changes_loop1. Loop 2 (confirmer report on loop 1): on the same sweep hits 12539 -> 12612, strict 11756 -> 11832, FPs 1818 -> 1139, no detector worse at any sigma_p; see changes_loop2.'
 noise_driven_design (V0 findings of this task, each documented at its item):
 - 'smoothed positions under V0 noise (white + AR(1) 0.9, sigma_p 0.3) have 0.17 m per-axis error (median 2-D error 0.23 m, p90 0.44 m) with slow drift; pair distances wander 0.3-0.5 m for up to 1 s, so every distance gate has a probability and the screen moment uses a contact window, not a bare argmin'
@@ -924,12 +948,16 @@ items:
   rule: |
     screen_kind (on_ball | off_ball | handoff | fake_handoff) and screen_geometry (down, pin_down, wide_pin_down, other_pin_down, flare, back, ucla, rip, wedge_offball, cross,
     stagger, double, elevator, hammer, flex, zipper, iverson, shuffle, sts, pin_in, out, baseline_exit, middle, other) are separate columns. On-ball pre_action: none, step_up,
-    sprint_up, drag, ram, wedge_ram, flip. screener_action_after adds touch and fake_other; handler_read adds unused.
+    sprint_up, drag, ram, wedge_ram, flip. screener_action_after adds touch and fake_other, and the sub-labels slip_to_arc,
+    crash, move_to_screen and roll_into_post (D3, 25 Oct; each rolls up to the base value in screener_action_sub_labels,
+    stored as screener_action_parent; bigs.yaml screener_post_action fills both); handler_read adds unused.
     Token = <location|geometry>-<kind>[(<pre_action>)][-><post_action>][/<read>], e.g. 'side-PnR(step_up)->roll/use'. Every set stores the name and the ordered screen ids (R-ST-06).
     Composite set links (named by the composition engine, not detected here): Chicago = pin_down -> dho (handoff_chain zoom); pick-the-picker = screen_the_screener;
     Floppy = double_screen on one side + single down/pin_down on the other; Horns = two high bigs (double_ball_screen pre-screen gate) + ball screen; Pistol/21 = drag_screen
     or dho in early offense on the wing.
-  params: {}
+  params:
+    screener_action_after: {value: [roll, short_roll, pop_mid, pop_arc, slip, ghost, replace, seal, touch, fake_other, none, slip_to_arc, crash, move_to_screen, roll_into_post], unit: enum, note: 'D3 (25 Oct): schema/tables/screens.yaml values + touch, fake_other (this family) + the four sub-labels (bigs screener_post_action); bigs also writes ambiguous:<a>|<b> in label (top1 here) and null for unknown_post_action'}
+    screener_action_sub_labels: {value: {slip_to_arc: slip, crash: none, move_to_screen: none, roll_into_post: roll}, unit: enum, note: 'D3 (25 Oct): sub-label -> base value (screener_action_parent); must equal bigs.yaml screener_post_action.sub_label_parent'}
   min_duration_s: null
   outputs: [schema]
   confidence: {level: high, model: n/a}
@@ -1348,6 +1376,7 @@ items:
   noise: Relies on two separate stops; a screener who drifts without a second stop is merged.
   conflicts_resolved:
   - F5.2 'same pair, second screen <= 3 s' kept; CTG merge/split decides the row
+  - 'CTG 3 s window kept (owner decision 25 Oct, D5); 3.3-3.5 s pairs are linked by screen_window.rescreen_gap_s, not a longer window'
   sources:
   - {url: 'https://docs.cleaningtheglass.com/pro/data-sets/ball-screens', supports: re-screen split at 4 ft / 10 ft}
   status: canonical
@@ -2376,6 +2405,7 @@ items:
   noise: Facing from velocity is unreliable for slow defenders; pose improves it.
   conflicts_resolved:
   - A5 blind spacing 0.7-1.0 m vs fouls.yaml 0.9 m -> 0.9 m, flagged unverified
+  - 'Tester blind_back_left (122 deg off D_u''s facing) labelled blind vs Rule 4-35.3 visual field: relabelled not blind, thresholds kept (owner decision 25 Oct, D4)'
   sources:
   - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: Rule 4-35.3 blind screens and 4-35.7}
   - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/config/named_spots.yaml', supports: screen_boundary_6ft_band}

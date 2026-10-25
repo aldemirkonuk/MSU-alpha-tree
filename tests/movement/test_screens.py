@@ -2245,3 +2245,77 @@ def test_m4_03_trade_needs_the_first_screener_to_move():
     for sd in SEEDS10:
         for e in run("double_high_stay", "double_ball_screen", sd, 0.3):
             assert e.attrs["sub_label"] != "double_high_trade", sd
+
+
+# ======================================================================================
+# Owner decisions 25 Oct (changes_decisions_oct25 in screens.yaml)
+# ======================================================================================
+def sc_blind_back_left():
+    """D4: the loop-1 tester's blind_back_left scene (truth paths copied): the screener stops 0.3 m from D_u, 122 deg
+    off D_u's facing (midpoint of user and ball) - inside the +-120 deg visual field read of Rule 4-35.3, so NOT
+    blind. The tester labelled it a blind_no_step positive; the label is changed, the thresholds are not."""
+    a = {"u": Off((0, -5.0, 5.0), (2.0, -5.0, 5.0), (3.6, -0.2, 1.8)),
+         "s": Off((0, -1.5, 7.2), (1.4, -4.3, 3.9), (3.6, -4.3, 3.9)),
+         "Du": Def((0, -4.6, 4.3), (2.0, -4.6, 4.3), (2.4, -4.4, 4.2), (2.9, -4.4, 4.2), (3.4, -3.2, 4.6), (4.0, -1.6, 2.4)),
+         "Ds": Def((0, -1.0, 6.4), (1.4, -3.3, 2.7), (3.6, -3.3, 2.7)),
+         "p": Off((0, 0.0, 8.0)), "Dp": Def((0, 0.0, 7.0))}
+    return spec(a, held=[(0, 5.0, "p")], skip=("o4",)), 5.0
+
+
+def sc_back_blind_left():
+    """D4: the left-side mirror of back_blind - the screener squarely behind a stationary D_u at 0.5 m (blind by Rule
+    4-35.3: outside the visual field, no step)."""
+    sp, dur = sc_back(rip=False, blind=True)
+    for v in sp["actors"].values():
+        v["wp"] = [(w[0], -w[1], w[2]) for w in v["wp"]]
+    return sp, dur
+
+
+SCEN.update({"blind_back_left": sc_blind_back_left, "back_blind_left": sc_back_blind_left})
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_d4_blind_back_left_relabelled_not_blind(sigma):
+    # measured seeds 1-10: blind_screen_hint 0 / 0 / 0 at sigma_p 0.2 / 0.3 / 0.5; back_screen still 9 / 7 / 5
+    assert _rate("blind_back_left", "blind_screen_hint", seeds=SEEDS10, sigma=sigma, screener="s") == 0
+    assert _rate("blind_back_left", "back_screen", seeds=SEEDS10, sigma=sigma, screener="s") >= {0.2: 8, 0.3: 6, 0.5: 4}[sigma]
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_d4_squarely_behind_left_is_blind(sigma):
+    # measured seeds 1-10: 10 / 6 / 2 (right side back_blind 10 / 7 / 1); facing angles 145-180 deg
+    hits = _rate("back_blind_left", "blind_screen_hint", seeds=SEEDS10, sigma=sigma, screener="s", defender="Du")
+    assert hits >= {0.2: 9, 0.3: 5, 0.5: 1}[sigma], hits
+    for sd in SEEDS10:
+        for e in _evs("back_blind_left", "blind_screen_hint", sd, sigma, screener="s"):
+            assert e.attrs["facing_deg"] > S.prm("blind_screen_hint")["blind_deg"]
+
+
+def test_d4_thresholds_not_moved():
+    p = S.prm("blind_screen_hint")
+    assert p["blind_deg"] == 120.0 and p["blind_p_min"] == 0.8 and p["step_m"] == 0.9
+
+
+def test_d5_rescreen_window_stays_ctg_3s():
+    """D5: the re-screen / merge window stays CTG's 3 s; 3.3-3.5 s pairs (tester rescreen_same_side) are linked by
+    rescreen_gap_s (stand gap), not by a longer window; composition's location re_screen uses the same 3 s."""
+    import yaml
+    assert S.prm("screen_window")["window_s"] == 3.0 and S.prm("screen_window")["rescreen_gap_s"] == 1.5
+    comp = yaml.safe_load((ROOT / "config" / "movement_grammar" / "composition.yaml").read_text())
+    loc = [it for it in comp["items"] if it.get("params", {}) and "re_screen_within_s" in it["params"]]
+    assert loc and all(it["params"]["re_screen_within_s"]["value"] == 3.0 for it in loc)
+
+
+def test_d3_post_action_values_are_in_the_enum():
+    assert {"roll", "short_roll", "pop_arc", "pop_mid", "touch", "fake_other", "none"} <= set(S.SCREENER_ACTION_AFTER)
+    assert set(S.SCREENER_ACTION_SUB_LABELS) <= set(S.SCREENER_ACTION_AFTER)
+    for sd in (1, 2, 3):
+        for e in run("high_pnr", "screener_post_action", sd):
+            assert e.attrs["action"] in S.SCREENER_ACTION_AFTER
+
+
+def test_changes_decisions_oct25_recorded():
+    ch = S.DOC["changes_decisions_oct25"]
+    assert {"D3-SCREENS-ENUM", "D4-BLIND-HINT-RELABEL", "D5-RESCREEN-WINDOW", "version"} <= {c["id"] for c in ch}
+    assert all(c["what"] and c["why"] and c["evidence"] for c in ch)
+    assert S.DOC["version"] == "0.6.2"

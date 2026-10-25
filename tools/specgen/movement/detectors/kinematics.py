@@ -435,6 +435,35 @@ def detect_stand(scene, **params) -> list[Event]:
     return out
 
 
+def _band_p_max_median(f: _F, c: dict) -> float | None:
+    """Median over valid frames of the best attainable band membership 2 Phi(half width / sigma_L) - 1 (the
+    membership of a frame whose speed_L sits exactly at the band centre); None when no frame is valid."""
+    sl = f.sL[f.ok & np.isfinite(f.sL)]
+    if sl.size == 0:
+        return None
+    return float(np.median(2.0 * phi(0.5 * (c["hi"] - c["lo"]) / np.maximum(sl, 1e-6)) - 1.0))
+
+
+def _unresolvable_reports(scene, oid, band: str, f: _F, probs: dict, c: dict, p_max_med: float) -> list[Event]:
+    """Abstention reports (conf 0, kind 'abstain_unresolvable:<band>') for the stretches of >= min_s whose
+    speed_L lies in [lo, hi): the band is unresolvable on this track, so the time it would cover is reported."""
+    inband = f.ok & np.nan_to_num((f.vL >= c["lo"]) & (f.vL < c["hi"]), nan=False).astype(bool)
+    sl = f.sL[f.ok & np.isfinite(f.sL)]
+    out = []
+    for a, b in mvlib.hysteresis(inband, inband, c["min_s"], frames(c["bridge_s"])):
+        alts = {o: round(mvlib.window_conf(probs[o], a, b), 2) for o in probs if o != band}
+        attrs = dict(band=band, reason="unresolvable", tier=f.tier, p_max_median=_r(p_max_med, 3),
+                     p_enter=c["p_enter"], sigma_L_median=_r(float(np.median(sl)), 3),
+                     mean_speed=_r(_nanmean(f.vL, a, b)), peak_speed=_r(_nanmax(f.vL, a, b)),
+                     mean_posterior=_r(mvlib.window_conf(probs[band], a, b), 3),
+                     alternatives={o: v for o, v in alts.items() if v >= 0.2}, scheme_version=SCHEME,
+                     reasons=[f"median best attainable P({band}) {p_max_med:.3f} < p_enter {c['p_enter']} "
+                              f"(band {c['lo']}-{c['hi']} m/s, median sigma_L {float(np.median(sl)):.2f} m/s)",
+                              f"speed_L in [{c['lo']}, {c['hi']}) m/s for {(b - a) * DT:.2f} s >= {c['min_s']} s"])
+        out.append(Event(f"abstain_unresolvable:{band}", {"player": oid}, a, a, b, 0.0, attrs))
+    return out
+
+
 def _band_detector(band: str, scene, params) -> list[Event]:
     """MP-10 band segments: enter P(band) >= 0.7, stay >= 0.3, min 0.5 s; t0 back-dated to P >= 0.5."""
     c = _cfg(band, params)
@@ -448,6 +477,13 @@ def _band_detector(band: str, scene, params) -> list[Event]:
             his[BANDS[BANDS.index(band) - 1]] = c["lo"]
         probs = f.band_probs(his)
         p = np.nan_to_num(probs[band], nan=0.0)
+        if c.get("abstain_unresolvable", False):
+            p_max_med = _band_p_max_median(f, c)
+            if p_max_med is not None and p_max_med < c["p_enter"]:
+                # decision 25 Oct (abstain but report): the band cannot reach p_enter on this track, so it is
+                # reported as unresolvable over the stretches whose speed_L lies in the band, never emitted
+                out += _unresolvable_reports(scene, oid, band, f, probs, c, p_max_med)
+                continue
         enter = f.ok & (p >= c["p_enter"])
         stay = f.ok & (p >= c["p_stay"])
         for a, b in mvlib.hysteresis(enter, stay, c["min_s"], frames(c["bridge_s"])):

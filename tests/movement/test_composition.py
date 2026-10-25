@@ -111,14 +111,16 @@ def test_yaml_contract():
     """Every item has the required fields; detectable items are in DETECTORS; needs_data items return []."""
     need = ["id", "level", "name", "aliases", "actors", "t0", "rule", "params", "min_duration_s", "outputs",
             "confidence", "noise_notes", "conflicts_resolved", "sources", "status"]
-    assert C.DOC["version"] == "0.8.1" and C.DOC["date"] == "2026-10-25" and C.DOC["family"] == "composition"
+    assert C.DOC["version"] == "0.8.2" and C.DOC["date"] == "2026-10-25" and C.DOC["family"] == "composition"
     for ch in (C.DOC["changes_loop1"] + C.DOC["changes_loop2"] + C.DOC["changes_loop4"] + C.DOC["changes_loop5"]
-               + C.DOC["changes_loop6"] + C.DOC["changes_loop7"] + C.DOC["changes_loop8"] + C.DOC["changes_loop9"]):  # change logs: one entry per item (+ version)
+               + C.DOC["changes_loop6"] + C.DOC["changes_loop7"] + C.DOC["changes_loop8"] + C.DOC["changes_loop9"]
+               + C.DOC["changes_decisions_oct25"]):  # change logs: one entry per item (+ version)
         assert {"id", "what", "why", "evidence"} <= set(ch), ch
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop7"]} >= {"C1", "C3", "C7", "C9", "version"}
     assert "provisional" in next(c for c in C.DOC["changes_loop7"] if c["id"] == "C9-overfit-caveat")["why"]
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop8"]} >= {"C1", "C3", "C7", "version"}
     assert {c["id"] for c in C.DOC["changes_loop9"]} == {"C8-wiring-closed", "version"}
+    assert {c["id"] for c in C.DOC["changes_decisions_oct25"]} == {"D6-early-offense-names", "version"}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop5"]} >= {f"C{i}" for i in range(1, 9)}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop6"]} >= {"C1", "C2", "C3", "C4", "C7", "C8"}
     assert {c["id"].split("-")[0] for c in C.DOC["changes_loop1"]} >= {f"F{i}" for i in range(1, 18)}
@@ -1487,8 +1489,10 @@ def test_c5_motion_from_cuts_family_events():
 
 
 def test_c6_transition_windows_carry_a_fixed_name():
-    """C6 (lead decision): name / style events only for half-court set windows; a transition_early window keeps its
-    set_window and segment events with the name 'transition_early' and no style."""
+    """C6 (lead decision) as amended by D6 (owner decision 25 Oct): the transition_early window keeps its fixed
+    set_window name and gets no style event, but its name and segment events keep their own names, marked
+    early_offense (true there, false on half-court windows), so a consumer that counts one name per half-court
+    possession filters on the flag."""
     p = {"o1": [(0.0, 0.0, 22.0), (7.0, 0.0, 8.0)], "o2": [(0.0, 4.0, 24.0), (6.6, 5.3, 5.3)],
          "o3": [(0.0, -4.0, 24.0), (6.8, -5.3, 5.3)], "o4": [(0.0, 3.0, 26.0), (7.0, 6.6, 0.6)],
          "o5": [(0.0, -3.0, 26.0), (7.0, -6.6, 0.6), (14.0, -6.6, 0.6), (15.2, -1.5, 1.0), (16.0, -1.5, 1.0)]}
@@ -1498,11 +1502,17 @@ def test_c6_transition_windows_carry_a_fixed_name():
         wins = C.detect_set_window(sc)
         assert [w.attrs["segment_kind"] for w in wins] == ["transition_early", "halfcourt"]
         assert wins[0].attrs["name"] == "transition_early"
+        assert [w.attrs["early_offense"] for w in wins] == [True, False]
         names, styles = C.detect_compositional_name(sc), C.detect_style_measures(sc)
-        assert len(names) == len(styles) == 1 and names[0].start == wins[1].start
-        assert not any(n.attrs["name"].startswith("Early") for n in names)
+        assert len(styles) == 1 and styles[0].start == wins[1].start
+        assert [n.attrs["early_offense"] for n in names] == [True, False]
+        assert [n.start for n in names] == [wins[0].start, wins[1].start]
+        assert all(n.attrs["row"]["early_offense"] == n.attrs["early_offense"] for n in names)
+        assert not any(n.attrs["name"].startswith(("Early", "Free")) for n in names if n.attrs["early_offense"])
+        assert len([n for n in names if not n.attrs["early_offense"]]) == 1  # one per half-court possession
         early = [s for s in C.detect_segments(sc) if s.start <= wins[0].end]
-        assert early and all(s.attrs["name"] == "transition_early" for s in early)
+        assert early and all(s.attrs["early_offense"] for s in early)
+        assert all(not s.attrs["early_offense"] for s in C.detect_segments(sc) if s.start > wins[0].end)
 
 
 def _wide_drag(defense=True):

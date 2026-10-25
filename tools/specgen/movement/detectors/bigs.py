@@ -1017,6 +1017,9 @@ def detect_short_roll(scene, screens=None, **params_):
         conf = _conf(k, [pr, ps], f.t0, f.t_rel, hi, ev.conf)
         out.append(Event("short_roll", {"screener": f.s, "handler": f.h}, f.t0, f.t_rel, hi, conf,
                          dict(variant=variant, frame=tf, r=round(_r(x, y), 2), theta=round(math.degrees(math.atan2(y, x)), 1),
+                              # D3 (25 Oct): the stop variant stays a short roll (CTG 'stops short'); offense A11.18
+                              # SHORT_ROLL needs a catch, so consumers on that definition keep a11_18_catch only
+                              a11_18_catch=variant == "catch",
                               t_minus_t0_s=round((tf - f.t0) * DT, 2), r_min=round(rmin, 2),
                               in_short_roll_zone=in_spot("short_roll_zone", x, y), short_roll_pocket=in_spot("short_roll_pocket", x, y),
                               strict=bool(P["strict_r_min"] <= _r(x, y) <= P["strict_r_max"]),
@@ -1190,6 +1193,10 @@ def detect_slip(scene, screens=None, **params_):
             dd = M.dist(k, scene.k(f.D_h))
             w0, w1 = max(0, f.t_rel - frames(P["touch_window_s"])), f.t_rel
             touch = bool(np.nanmin(dd[w0:w1 + 1]) <= P["touch_dist_m"] and f.min_speed < P["never_set_speed_mps"])
+            if not touch and P["touch_unknown_high_tier"] and noise_tier(k, P) == "high":
+                # decision 25 Oct (D2): at the high-noise tier a short stop reads above never_set_speed_mps and t_rel
+                # early, so a failed test is no evidence of 'no touch': touch is unknown (None), not False
+                touch = None
         conf = _conf(k, [pv, f.p_early], f.t_rel, f.t_rel, comp, ev.conf)
         out.append(Event("slip", {"screener": f.s, "handler": f.h}, f.t_rel, f.t_rel, comp, conf,
                          dict(destination=dest, slip_type="ghost_in" if f.never_set else ("slow" if f.p_slow >= P["slow_p_min"] else "quick"),
@@ -2105,7 +2112,8 @@ def detect_screener_post_action(scene, screens=None, shots=None, **params_):
         k = scene.k(f.s)
         if gap_factor(k, max(0, f.t0 - frames(P["gap_check_before_s"])), f.w_end) == 0.0:
             out.append(Event("screener_post_action", {"screener": f.s, "user": f.h}, f.t0, f.t0, f.w_end, 0.0,
-                             dict(label="unknown_post_action", reason="cut_or_long_gap", **_frame_attrs(f))))
+                             dict(label="unknown_post_action", reason="cut_or_long_gap", screener_action_after=None,
+                                  screener_action_parent=None, **_frame_attrs(f))))
             continue
         # L4-5: the labels compete CONDITIONAL on the screen: each label detector sees the screen with conf 1 (its
         # standalone event multiplies the screen's conf in, so a sure 6 m roll behind a conf-0.45 screen read 0.45
@@ -2158,7 +2166,9 @@ def detect_screener_post_action(scene, screens=None, shots=None, **params_):
         p1 = probs[label]
         stored = label if p1 >= P["ambiguous_below"] else f"ambiguous:{label}|{lab2}"
         out.append(Event("screener_post_action", {"screener": f.s, "user": f.h}, f.t0, f.t0, f.w_end, float(p1) * p_scr,
-                         dict(label=stored, top1=label, p_screen=round(p_scr, 3), precedence_label=prec_label, p_label=round(p1, 3), label_2=lab2,
+                         dict(label=stored, top1=label, screener_action_after=label,
+                              screener_action_parent=P["sub_label_parent"].get(label, label),
+                              p_screen=round(p_scr, 3), precedence_label=prec_label, p_label=round(p1, 3), label_2=lab2,
                               p_label_2=round(p2, 3),
                               margin=round(p1 - p2, 3), probs={k_: round(v, 3) for k_, v in probs.items()},
                               ctg_compat_label=CTG_COMPAT.get(label, "none"),

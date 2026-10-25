@@ -1,5 +1,5 @@
 family: composition
-version: 0.8.1
+version: 0.8.2
 date: '2026-10-25'
 owner: Mac session (msu-colab) for Aldemir
 status: proposal under the build freeze
@@ -729,6 +729,32 @@ changes_loop9:
 - id: version
   what: version 0.8.0 -> 0.8.1, date 2026-10-25.
   why: Journal-only change (changes_loop9).
+  evidence: test_yaml_contract.
+changes_decisions_oct25:
+# Owner decision of 25 Oct 2026 (Aldemir delegated clear judgment calls). Real data as changes_loop9 (3 SportVU games, 194
+# chunks, 6855 s, team_ends, sigma told 0.15, realdata.py with cuts wired), before / after event dumps compared.
+- id: D6-early-offense-names
+  what: >-
+    Names are kept in early-offense windows and marked: detect_compositional_name runs on every set window (half-court
+    and transition_early); name, segment and set_window events and the storage row carry early_offense (true for the
+    transition_early window, false for half-court windows). Transition segments keep their own compositional name
+    (loop 5 C6 overwrote it with 'transition_early'); an early window renders no alignment head and falls back to
+    'transition_early' when nothing in it is nameable. Unchanged: the set_window's fixed name 'transition_early', no
+    style event for it, set / departure on half-court windows only.
+  why: >-
+    Decision (25 Oct) on loop 5 C6 (lead decision, L11 item 4): dropping the names lost what the offense ran early (drag,
+    pistol, early ISO); the double counting that motivated C6 (~1.6 names per possession) is handled by the flag, so a
+    consumer that wants one name per half-court possession keeps early_offense == false.
+  evidence: >-
+    Synthetic C6 scene (3 seeds): windows [transition_early, halfcourt] with early_offense [true, false]; names
+    [ISO (early), 5-out -> basket cut] (before: the half-court name only); one style event; half-court name unchanged.
+    Real SportVU (3 games, 194 chunks, 6855 s, team_ends, clean / noise 0.3 / noise 0.5), before / after event dumps: half-court names 121.4 / 120.6 / 122.3 per 48 unchanged; early_offense names added 72.3 /
+    73.9 / 71.8 per 48 (one per transition_early window); transition segments 72.3 / 73.9 / 71.8 per 48 now name
+    34.0 / 35.7 / 34.0 by their own tokens and keep 'transition_early' for 38.2 / 38.2 / 37.8 (nothing nameable);
+    every other composition event identical (set_window / segment / name gain the early_offense attr). Test test_c6_transition_windows_carry_a_fixed_name (amended).
+- id: version
+  what: version 0.8.1 -> 0.8.2, date 2026-10-25.
+  why: Rules (compositional_name, set_window, segmentation outputs, storage row column early_offense) changed by D6.
   evidence: test_yaml_contract.
 sim_validation:
   tier: V0 synthetic (tools/specgen/movement/sim.py, minimum-jerk paths, white + AR(1) noise, sigma_p 0.3 m)
@@ -1504,7 +1530,7 @@ items:
     min_s: {value: 1.0, unit: s}
     lambda_seg: {value: 1.0, unit: cost}
   min_duration_s: 1.0
-  outputs: [segment_seq, name, set_code, segment_cost]
+  outputs: [segment_seq, name, set_code, segment_cost, early_offense]
   confidence: conf = P(segment set) x window conf, or 0.5 x window conf for compositional segments
   noise_notes: lambda_seg penalises over-segmentation when a pause looks like a boundary.
   conflicts_resolved: []
@@ -1533,10 +1559,12 @@ items:
     counter)' and ' [broke at k: cause]'; at most max_tokens tokens after the alignment, extras ' -> (+n)'.
     Spacer actions (relocate, lift, drift, non-basket cuts, ordinary passes, roll / pop reads) are not named but
     stay in action_sequence. A component overlapping a matched component with >= 2 shared actors is an
-    alternative reading of the same action (stored, not named). Loop 5 C6 (lead decision): names are
-    emitted for half-court set windows only; a transition_early window carries the fixed name 'transition_early'
-    (on its set_window and segment events) and gets no name or style event, so names count about one per
-    half-court possession (the 'Early: ' prefix is no longer rendered). When no set is accepted, special classes found in the window (motion label,
+    alternative reading of the same action (stored, not named). Loop 5 C6 (lead decision) as amended by D6
+    (owner decision 25 Oct): every set window is named, and every name, segment and set_window carries
+    early_offense (true for the transition_early window, false for half-court windows), so a consumer that counts
+    one name per half-court possession keeps early_offense == false. A transition_early window renders no
+    alignment head and falls back to 'transition_early' when nothing in it is nameable; its set_window keeps the
+    fixed name 'transition_early' and it gets no style event (the 'Early: ' prefix is not rendered). When no set is accepted, special classes found in the window (motion label,
     '<Motif> xN' continuity, 'ISO' / 'Clear-out ISO') lead the name and primary_name_kind = special_class.
     Same lattice + library version -> same string.
   params:
@@ -1545,7 +1573,7 @@ items:
     join_s: {value: 0.5, unit: s}
     max_tokens: {value: 4, unit: tokens}
   min_duration_s: null
-  outputs: [compositional_name, name_tokens, primary_name_kind, storage row]
+  outputs: [compositional_name, name_tokens, primary_name_kind, storage row, early_offense]
   confidence: deterministic; conf = P(set) when a set is primary, else 1 - P(top template), times window conf
   noise_notes: When two covers are within 0.3 cost, store the runner-up in alternatives rather than flip.
   conflicts_resolved: []
@@ -1741,7 +1769,8 @@ items:
     HALF_Y for 10 consecutive frames. t_open = min(ALIGN t_snap, t_ref of the first lattice event after the
     frontcourt frame). Lattice events between team control (first holder frame) and t_open (backcourt, named_spots
     rule_transition_window / early phase) form a separate transition_early window (state_machine flow states S4a /
-    S4b; window_index -1); it carries attrs.name 'transition_early' and gets no name / style event (loop 5 C6).
+    S4b; window_index -1); it carries attrs.name 'transition_early' and early_offense true (half-court windows
+    false) and gets no style event (loop 5 C6); its name and segment events are emitted with early_offense true (D6).
     Loop 5 C3: a first half-court window shorter than scramble_max_s that opens within scramble_lookback_s of the
     ball at the rim (XY: within scramble_rim_r_m; optionally ball_z above rim height with use_ball_z) is a putback /
     tip scramble, not a set, and is not emitted. Loop 6 C3 (scramble_inbound_excl): lookback frames with the ball
@@ -1777,7 +1806,7 @@ items:
     inbound_oob_k: {value: 1.0, unit: 'sigma (loop 7 C3, loop 8 C3: out of bounds = beyond the line by this many calibrated position sigmas, each sigma the median per-frame K_CAL sqrt(var_p) over the holder run. The inbound test passes by either route: (a) the ball median out of bounds (no margin) and the mean of the holder and ball medians beyond the line by inbound_oob_k x 0.5 hypot(sigma_holder, sigma_ball); or (b) the holder median alone beyond the line by inbound_oob_k x sigma_holder with the ball median within inbound_reach_m of the line. _rim_before drops a lookback frame as out of bounds when the ball is beyond the line by inbound_oob_k x its own sigma. One sigma, so that at SportVU precision (~0.05 m) the margin is about the 5 cm line width, which itself is out of bounds)'}
     inbound_reach_m: {value: 0.75, unit: 'm (loop 8 C3: arm reach, body centre to the centre of a ball held out in front - half torso depth ~0.1 m + an extended arm to the ball centre ~0.65 m; on the holder route the ball median may be up to this far in bounds, because an inbounder just behind the line holds the ball over the plane; geometry, not fitted)'}
   min_duration_s: 1.0
-  outputs: [t_open_f, t_close_f, 'close_reason {shot_proxy, backcourt, reset, clip_end, halfcourt_open} (offense_retreat windows are not emitted)', 'segment_kind {halfcourt, transition_early}', window_index, transition_early_f]
+  outputs: [t_open_f, t_close_f, 'close_reason {shot_proxy, backcourt, reset, clip_end, halfcourt_open} (offense_retreat windows are not emitted)', 'segment_kind {halfcourt, transition_early}', window_index, transition_early_f, 'early_offense (D6: segment_kind == transition_early)']
   confidence: conf = gap factor over the window x edge factor at the window midpoint, worst attacker (loop 1 F8; the edge factor of a window that opens at clip frame 0 is not evidence)
   noise_notes: Ball-control noise moves the half-court crossing; the 10-frame hold guards it. A missing ball track at the shot gives a late t_close; fall back to the PBP shot time.
   conflicts_resolved:
@@ -1982,7 +2011,7 @@ items:
     template_version, mirrored, situation, classifier_probs, synergy_outcome_code; proposed new columns:
     name_tokens, alignment_path [{step_id, action_id | null, cost parts}], insertions, role_binding,
     strong_side_sign, side_ambiguous, top_k (5 x {set_code, p, C_hat, mirrored}), primary_name_kind,
-    departure_cause, segment_seq, revision_number, revision_reason, label_status {provisional, committed, final,
+    departure_cause, segment_seq, early_offense (D6, 25 Oct), revision_number, revision_reason, label_status {provisional, committed, final,
     coach_confirmed}, lattice / matcher / library versions, sequence_string (e.g. 'ALIGN(horns)|SCR.on[screener=
     s1,user=h]@0.0|ROLL[...]@0.0'). action_sequence lists EVERY lattice event id of the window, spacer actions and
     insertions included; nothing is dropped when names disagree. Schema change needs approval under the build

@@ -255,7 +255,7 @@ def none_of(events, player=None, near_s=None):
 # --------------------------------------------------------------------------------------
 def test_yaml_and_registry_consistent():
     doc = yaml.safe_load(K.YAML_PATH.read_text())
-    assert doc["family"] == "kinematics" and doc["version"] == "0.5.1"
+    assert doc["family"] == "kinematics" and doc["version"] == "0.5.2"
     for it in doc["items"]:
         for key in ("id", "level", "name", "aliases", "actors", "t0", "rule", "params", "min_duration_s", "outputs",
                     "confidence", "noise_notes", "conflicts_resolved", "sources", "status"):
@@ -1473,6 +1473,58 @@ def test_kin5_changes_recorded():
     assert {"KIN5-OOB", "KIN5-BRIDGE", "KIN5-FRAME", "KIN5-BALLZ", "KIN5-EFFORT-NOT-KEPT", "KIN5-FRAME-REMEASURE", "KIN5-BALLZ-NAN"} <= ids
     for c in doc["changes_loop5"]:
         assert c["what"] and c["why"] and c["evidence"]
-    assert doc["version"] == "0.5.1" and doc["scheme_version"] == "kin-0.5.1"
+    assert doc["version"] == "0.5.2" and doc["scheme_version"] == "kin-0.5.2"  # D1 (changes_decisions_oct25)
     assert K.PARAMS["jump"]["ball_z_path"] is False  # XY is the default path
 
+
+
+# ======================================================================================
+# Owner decisions 25 Oct (changes_decisions_oct25): D1 high_speed is reported as unresolvable where the band
+# cannot reach p_enter (abstain but report, 23 Oct), not thresholded with a tier-aware p_enter.
+# ======================================================================================
+def test_d1_high_speed_unresolvable_is_reported_not_emitted():
+    """Steady 5.6 m/s at sigma_p 0.5 (q 10): median best attainable P(high_speed) 0.696 < p_enter 0.7, so no
+    band segment; an abstention report (conf 0) covers the run instead (measured 10 of 10 clips)."""
+    reported = 0
+    for s in SEEDS10:
+        ev = K.detect_high_speed(S2("hs_5p6", s, 0.5))
+        assert not [e for e in ev if e.kind == "high_speed"]
+        rep = [e for e in ev if e.kind == "abstain_unresolvable:high_speed"]
+        for e in rep:
+            assert e.conf == 0.0 and e.actors == {"player": "a"} and e.attrs["reason"] == "unresolvable"
+            assert e.attrs["p_max_median"] < e.attrs["p_enter"] == K._cfg("high_speed", {})["p_enter"] and e.attrs["tier"] == "q10"
+            assert e.duration_s >= K.PARAMS["high_speed"]["min_s"] and 5.0 <= e.attrs["mean_speed"] < 5.83
+        reported += bool(rep)
+    assert reported >= 9, reported
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3])
+def test_d1_high_speed_resolvable_tiers_unchanged(sigma):
+    """At sigma_p 0.2 / 0.3 the band resolves (median best P 0.90 / 0.82): segments as before, no reports."""
+    hits = 0
+    for s in SEEDS10:
+        ev = K.detect_high_speed(S2("hs_5p6", s, sigma))
+        assert not [e for e in ev if e.kind.startswith("abstain_")]
+        hits += bool([e for e in ev if e.kind == "high_speed"])
+    assert hits >= 9, hits
+
+
+def test_d1_switch_off_restores_the_band_machine():
+    n = sum(len([e for e in K.detect_high_speed(S2("hs_5p6", s, 0.5), abstain_unresolvable=False)
+                 if e.kind == "high_speed"]) for s in SEEDS10)
+    assert n >= 5, n  # knife-edge segments where a frame's sigma_L dips (9 in 10 clips measured)
+
+
+def test_d1_no_report_on_a_4p7_run_at_low_noise():
+    for sigma in (0.2, 0.3):
+        assert not [e for s in SEEDS10 for e in K.detect_high_speed(S_tester("run_4p7", s, sigma))
+                    if e.kind.startswith("abstain_")]
+
+
+def test_d1_decision_recorded():
+    doc = yaml.safe_load(K.YAML_PATH.read_text())
+    ids = {c["id"] for c in doc["changes_decisions_oct25"]}
+    assert {"D1-HIGH-SPEED-UNRESOLVABLE", "version"} <= ids
+    for c in doc["changes_decisions_oct25"]:
+        assert c["what"] and c["why"] and c["evidence"]
+    assert K.PARAMS["high_speed"]["abstain_unresolvable"] is True

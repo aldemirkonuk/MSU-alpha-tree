@@ -2220,7 +2220,7 @@ def detect_set_window(scene, **params):
             # style event (names count about one per half-court possession)
             out.append(Event("set_window", {}, a, a, t_open - 1, _window_conf(scene, a, t_open - 1),
                              {"close_reason": "halfcourt_open", "segment_kind": "transition_early", "window_index": -1,
-                              "transition_early_f": [tc, t_open - 1], "name": TRANSITION_NAME}))
+                              "transition_early_f": [tc, t_open - 1], "name": TRANSITION_NAME, "early_offense": True}))
     for i, (a, b) in enumerate(zip(bounds, bounds[1:])):
         if (b - a) * DT < p["min_window_s"] and out and out[-1].attrs["segment_kind"] == "halfcourt":
             out[-1].end = b  # merge a too-short window into its neighbour
@@ -2233,7 +2233,8 @@ def detect_set_window(scene, **params):
         conf = _window_conf(scene, a, b)
         out.append(Event("set_window", {}, a, a, b, conf,
                          {"close_reason": why, "segment_kind": "halfcourt", "window_index": i,
-                          "transition_early_f": [_t_control(scene, params), a - 1] if i == 0 else None}))
+                          "transition_early_f": [_t_control(scene, params), a - 1] if i == 0 else None,
+                          "early_offense": False}))
     return out
 
 
@@ -2693,8 +2694,10 @@ def _single_token(scene, e):
         ("skip" if e.kind == "PASS" and e.attrs.get("skip") else ("basket cut" if e.kind == "CUT" and e.attrs.get("cls") == "basket" else None)))
 
 
-def compositional_name(scene, lat, set_res=None, align_ev=None, prefix="", **params):
-    """MDL chunk cover + deterministic rendering (CE-R14). Returns (display name, canonical tokens, cost)."""
+def compositional_name(scene, lat, set_res=None, align_ev=None, prefix="", early=False, **params):
+    """MDL chunk cover + deterministic rendering (CE-R14). Returns (display name, canonical tokens, cost).
+    early (D6): a transition_early window renders no alignment head ('Free' / ALIGN) and falls back to
+    'transition_early' when nothing in it is nameable."""
     p = _prm("compositional_name", params)
     explained = set()
     items = []  # (t_ref, display token, canonical code, is_ball)
@@ -2752,8 +2755,8 @@ def compositional_name(scene, lat, set_res=None, align_ev=None, prefix="", **par
             groups.append([it])
     toks = [" + ".join(z[1] for z in sorted(g, key=lambda z: (not z[3], z[1]))) for g in groups]
     codes = [z[2] for g in groups for z in g]
-    head = "Free" if set_res is None and not prefix else None  # no alignment head in a transition / early window
-    if align_ev is not None and align_ev.attrs["accepted"]:
+    head = "Free" if set_res is None and not prefix and not early else None  # no alignment head in a transition / early window
+    if align_ev is not None and align_ev.attrs["accepted"] and not early:
         head = align_ev.attrs["display"]
         if set_res is not None and align_ev.attrs["code"] in (set_res["T"].get("alignments") or []):
             head = None  # the set name already carries its alignment
@@ -2762,7 +2765,7 @@ def compositional_name(scene, lat, set_res=None, align_ev=None, prefix="", **par
     if len(toks) > mx:
         body.append(f"(+{len(toks) - mx})")
     parts = ([head] if head else []) + body
-    name = prefix + " -> ".join(parts) if parts else prefix + "Free"
+    name = prefix + " -> ".join(parts) if parts else prefix + (TRANSITION_NAME if early else "Free")
     return name, codes, cost
 
 
@@ -2828,11 +2831,18 @@ def storage_row(scene, w, lat, scored, p_null, align_ev, name, tokens, kind, set
     return row
 
 
+def _early_offense(w) -> bool:
+    """D6 (25 Oct): a transition_early window (team control to the half-court open) is early offense."""
+    return w.attrs.get("segment_kind") == "transition_early"
+
+
 def detect_compositional_name(scene, **params):
-    """One 'name' event per set window: display name, canonical tokens, primary-name kind and storage row."""
+    """One 'name' event per set window: display name, canonical tokens, primary-name kind and storage row.
+    D6 (25 Oct): transition_early windows are named too and every name carries early_offense (true there), so a
+    consumer that counts one name per half-court possession filters early_offense == false."""
     lat = build_lattice(scene)
     out = []
-    for w in _halfcourt_windows(scene):
+    for w in detect_set_window(scene):
         wl = _window_lattice(lat, w)
         al = _align_in(scene, w)
         scored, p_null = score_templates(scene, wl, al)
@@ -2848,7 +2858,8 @@ def detect_compositional_name(scene, **params):
         cov = _coverage(top, wl) if top else 0.0
         kind = name_precedence(top, cov, departed_prefix=dep_res is not None)
         prefix = ""
-        name, toks, cost = compositional_name(scene, [e for e in wl if e.kind != "align"], use, al, prefix=prefix)
+        name, toks, cost = compositional_name(scene, [e for e in wl if e.kind != "align"], use, al, prefix=prefix,
+                                              early=_early_offense(w))
         if top is None:
             # special classes (CE-R16 / CE-R17) name the window when no set is accepted
             spec = [(e, e.attrs["label"]) for e in detect_motion(scene) if w.start <= e.t0 <= w.end]
@@ -2857,15 +2868,19 @@ def detect_compositional_name(scene, **params):
             spec += [(e, "Clear-out ISO" if e.attrs["clear_out"] else "ISO") for e in detect_iso(scene) if w.start <= e.t0 <= w.end]
             if spec:
                 lab = " -> ".join(z[1] for z in sorted(spec, key=lambda z: z[0].t0))
-                rest = name[len(prefix):].split(" -> ", 1)  # drop the alignment / 'Free' head, keep the chunks
-                name = prefix + lab + (" -> " + rest[1] if len(rest) > 1 else "")
+                if _early_offense(w):  # D6: no head to drop; keep every chunk token
+                    name = lab + (" -> " + name if name != TRANSITION_NAME else "")
+                else:
+                    rest = name[len(prefix):].split(" -> ", 1)  # drop the alignment / 'Free' head, keep the chunks
+                    name = prefix + lab + (" -> " + rest[1] if len(rest) > 1 else "")
                 toks = [z[0].kind for z in spec] + toks
                 kind = "special_class"
         row = storage_row(scene, w, [e for e in wl if e.kind != "align"], scored, p_null, al, name, toks, kind, use)
+        row["early_offense"] = _early_offense(w)
         conf = (top["P"] if top else 1.0 - (scored[0]["P"] if scored else 0.0)) * w.conf
         out.append(Event("name", {}, w.start, w.start, w.end, float(conf),
                          {"name": name, "tokens": toks, "primary_name_kind": kind, "coverage": cov, "chunk_cost": cost,
-                          "row": row}))
+                          "row": row, "early_offense": _early_offense(w)}))
     return out
 
 
@@ -2911,14 +2926,14 @@ def detect_segments(scene, **params):
         for k, (i, j) in enumerate(reversed(segs)):
             sub = ev[cuts[i]:cuts[j]]
             sr, c = seg_info.get((i, j), (None, 0.0))
-            name, toks, _ = compositional_name(scene, sub, sr, al if i == 0 else None)
-            if w.attrs.get("segment_kind") == "transition_early":
-                name = TRANSITION_NAME  # loop 5 C6: transition segments carry the fixed name, no chunk name
+            name, toks, _ = compositional_name(scene, sub, sr, al if i == 0 else None, early=_early_offense(w))
+            # D6 (25 Oct): transition_early segments keep their own name (loop 5 C6 replaced it with 'transition_early')
+            # and are marked early_offense so consumers can filter them
             t0 = sr["t0"] if sr else sub[0].t0  # a set segment starts at its first matched step (CE-R04)
             out.append(Event("segment", dict(sr["binding"]) if sr else {}, t0, sub[0].t0, max(e.end for e in sub),
                              float(sr["P"] * w.conf) if sr else float(w.conf * 0.5),
                              {"segment_seq": k, "name": name, "set_code": (sr["T"]["namespace"] + sr["template"]) if sr else None,
-                              "segment_cost": c}))
+                              "segment_cost": c, "early_offense": _early_offense(w)}))
     return out
 
 

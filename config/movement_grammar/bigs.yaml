@@ -1,5 +1,5 @@
 family: bigs
-version: 0.3.1
+version: 0.3.2
 date: '2026-10-25'
 owner: Mac session
 status: proposal under the build freeze; numbers are V0-sim-checked proposals until fitted on R-ST-10 labels
@@ -518,8 +518,8 @@ items:
     trap_dist_m: {value: 2.0, unit: m}
     trap_min_s: {value: 0.5, unit: s}
   min_duration_s: 0.3
-  outputs: variant (catch/stop), frame, r, theta, t_minus_t0_s, r_min, in_short_roll_zone, short_roll_pocket, strict, trap_context,
-    frame attrs
+  outputs: variant (catch/stop), a11_18_catch (variant == catch; offense A11.18 SHORT_ROLL needs a catch), frame, r, theta,
+    t_minus_t0_s, r_min, in_short_roll_zone, short_roll_pocket, strict, trap_context, frame attrs
   confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
     conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
     (MP-16) x the input screen's conf when there is one.
@@ -529,8 +529,9 @@ items:
   - 'E5 (band gap 2.5-3.0, overlap with pop_mid, no side-PnR pocket): the band is the exhaustive (2.5, 6.0] at any angle and
     first_move separates pocket (rimward) from mid pop (outward/lateral); short_roll_zone (m >= 55) is a flag. named_spots
     ticket: short_roll_zone excludes side pick-and-roll pockets.'
-  - Catch required? Label fires on a stop without a catch (CTG 'stops short'), catch stored as the variant; owner decision
-    still open (R-ST-18 F1 counts).
+  - 'Catch required? Decided 25 Oct (D3): the label fires on a stop without a catch too (CTG ''stops short''); the
+    variant (catch / stop) and a11_18_catch record that offense A11.18 SHORT_ROLL requires a catch, so A11.18 counts
+    (R-ST-18 F1) use a11_18_catch = true.'
   - 'E6: slow_slip removed from the preconditions (slip owns early releases).'
   sources:
   - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
@@ -669,8 +670,9 @@ items:
     starting in [t_rel - 0.2, t_rel + 0.5] s with mean v_r >= v_r_gate_mps (2.0 m/s). Destination rim: r <= 3.0 within
     t_rel + T_roll (roll formula, travel 3.0 m/s); else pocket: 1.0 s-support speed < 1.5 for >= 0.3 s at 2.5 < r <=
     6.0. slip_type = ghost_in (never_set), slow (p_slow >= slow_p_min 0.5) or quick. Flags slip_strict (peak speed >= 3.0 m/s),
-    touch (min |s - D_h| <= 1.0 m in the touch_window_s (1.0 s) before t_rel and min speed < 1.0). The pocket stop must
-    start inside the window and may run past its end.
+    touch (min |s - D_h| <= 1.0 m in the touch_window_s (1.0 s) before t_rel and min speed < 1.0; on a high-noise-tier
+    screener track a failed test gives touch = null, unknown, never false: D2). The pocket stop must start inside the
+    window and may run past its end.
   params:
     v_r_gate_mps: {value: 2.0, unit: m/s}
     onset_before_s: {value: 0.2, unit: s}
@@ -686,9 +688,10 @@ items:
     strict_speed_mps: {value: 3.0, unit: m/s}
     touch_dist_m: {value: 1.0, unit: m}
     touch_window_s: {value: 1.0, unit: s}
+    touch_unknown_high_tier: {value: true, unit: bool, note: 'decision 25 Oct (D2): on a high-noise-tier screener track (shared high_noise_sig_p_m) a failed touch test is reported as touch = null (unknown) instead of false; a passed test stays true'}
     slow_p_min: {value: 0.5, unit: '1'}
   min_duration_s: 0.5
-  outputs: destination, slip_type, lead_s (t_use - t_rel), mean_v_r_gate, peak_speed, slip_strict, touch, r_min, frame attrs
+  outputs: destination, slip_type, lead_s (t_use - t_rel), mean_v_r_gate, peak_speed, slip_strict, touch (true | false | null = unknown at the high-noise tier), r_min, frame attrs
   confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
     conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
     (MP-16) x the input screen's conf when there is one.
@@ -704,6 +707,8 @@ items:
   - 'Dwell < 0.5 s vs < 0.3 s: not used as the slip test; CTG''s ''leaves before use'' (t_rel vs t_use) is, with quick/slow
     reported as p_slow.'
   - 'E19: touch drops the 0.2 s dwell clause.'
+  - 'Touch at the high-noise tier (tier-aware touch test vs unknown): unknown (null) when the test fails (owner decision
+    25 Oct, D2); a tier-aware test waits for gold labels.'
   sources:
   - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
     supports: slip = screener leaves before the handler uses or rejects; quick vs slow
@@ -1481,23 +1486,31 @@ items:
     camera_cut_policy: gap_factor 0 over [t0 - gap_check_before_s 0.5 s, end of W] ->
     'unknown_post_action'. Compatibility: ctg_compat_label (roll, short_roll, pop, mid_post, move_to_screen, crash,
     none; slips map to roll/pop by destination) and synergy_compat (roll_man for roll, short roll, pops, slips, seal).
+    Screens enum (D3, 25 Oct): screener_action_after = top1 (a base value of screens.yaml screen_record_schema or one
+    of its sub-labels slip_to_arc, crash, move_to_screen, roll_into_post); screener_action_parent = the base value a
+    sub-label rolls up to (sub_label_parent), the label itself for a base value.
   params:
     ambiguous_below: {value: 0.5, unit: '1'}
+    sub_label_parent: {value: {slip_to_arc: slip, crash: none, move_to_screen: none, roll_into_post: roll}, unit: enum, note: 'D3 (25 Oct): sub-labels of the screens enum screener_action_after and the base value each rolls up to; identical to screens.yaml screen_record_schema screener_action_sub_labels (test_d3_screens_enum_matches_bigs). slip_to_arc: an early release (CTG slip timing) to the arc; crash: the screener held, no action off the screen until the shot; move_to_screen: the next screen is its own row; roll_into_post: a roll that ends in a post seal'}
     label_given_screen: {value: true, unit: bool, note: 'L4-5: label probabilities conditional on the screen (screen conf 1 inside), output conf = p_label x screen conf'}
     precedence_margin: {value: 0.15, unit: '1'}
     ghost_never_set_min: {value: 0.5, unit: '1'}
     gap_check_before_s: {value: 0.5, unit: s}
     ghost_match_s: {value: 1.0, unit: s}
   min_duration_s: null
-  outputs: label, top1, precedence_label, p_label, label_2, p_label_2, margin, probs, ctg_compat_label, synergy_compat, frame attrs
+  outputs: label, top1, screener_action_after, screener_action_parent, precedence_label, p_label, label_2, p_label_2, margin, probs,
+    ctg_compat_label, synergy_compat, frame attrs
   confidence: conf = product of the item's test probabilities (window_conf of a per-frame Phi(margin / sigma) for per-frame
     conditions, Phi(margin / sigma) for point tests; sigma from the smoother covariance x K_CAL) x edge_factor(t0) x gap_factor(window)
     (MP-16) x the input screen's conf when there is one.
   noise: Labels flip near band edges and timing edges; these show up as low margins, not hard errors.
   conflicts_resolved:
   - 'E6: slip owns every early release; short_roll and pop_arc need post_use, so no branch is unreachable.'
-  - screens.yaml enum extended with slip_to_arc, crash, move_to_screen, roll_into_post (owner decision open); 'replace' pinned
-    to the screener-level sink-then-pop.
+  - 'screens.yaml enum: slip_to_arc, crash, move_to_screen, roll_into_post are sub-labels of screener_action_after with a
+    base parent each (owner decision 25 Oct, D3; screens.yaml screen_record_schema and sub_label_parent here); ''replace''
+    pinned to the screener-level sink-then-pop.'
+  - 'Ghost vs slip_to_arc: kept separate (owner decision 25 Oct, D3); ghost = never set (p_never_set), slip_to_arc = set,
+    then an early release to the arc, with (1 - p_never_set) in its conf.'
   sources:
   - url: https://docs.cleaningtheglass.com/pro/data-sets/ball-screens
     supports: screener action categories
@@ -1720,9 +1733,7 @@ items:
   detector: detect_lob_ball_height
   needs_data: ball height (z)
 open_questions:
-- Short roll without a catch (stop variant) counts as short_roll here; A11.18 requires a catch.
-- 'Ghost vs slip_to_arc: kept separate with p_never_set; merge into one early-release-to-arc label?'
-- 'screens.yaml enum: add slip_to_arc, crash, move_to_screen, roll_into_post or keep them as sub-labels.'
+# The short-roll catch, ghost vs slip_to_arc and screens-enum questions were decided on 25 Oct (changes_decisions_oct25 D3).
 - T_roll / T_pop travel speeds (2.5 m/s) need fitting on MSU/UConn film; no published NCAA roll-speed distribution found.
 - Dwell calibration (split 0.4 s measured, lag 0.1 s) is for sigma_p 0.3; at 0.5 quick/slow is unresolvable in sim.
 - Defender-relative outputs (behind_def, seal, 4-on-3) need the matchup model; they use nearest-defender proxies here.
@@ -2061,3 +2072,50 @@ changes_loop5:
   evidence: 'lob True 10 / 9 / 7 of 10 at sigma_p 0.2 / 0.3 / 0.5 (high_low itself 10 / 10 / 10; the misses read the
     0.3 s mean v_r just under 3.0 m/s), standing receiver lob 0 / 0 / 0 and high_low found 10 / 10 / 10. Real SportVU (3
     games, team_ends, clean): bigs rates identical before / after this loop (no code or parameter change).'
+changes_decisions_oct25:
+# Owner decisions of 25 Oct 2026 (Aldemir delegated clear judgment calls). Synthetic counts are seeds 1-10 at sigma_p 0.2 /
+# 0.3 / 0.5 (the changes_loop5 scenes); real SportVU = 3 NBA 2015-16 games, 194 chunks, 6855 s, team_ends, sigma told
+# 0.15, realdata.py with kinematics, screens, cuts, bigs, composition, before / after event dumps compared (aggregates only).
+- id: D2-SLIP-TOUCH-UNKNOWN
+  what: 'slip.touch_unknown_high_tier (true): on a screener track in the high-noise tier (shared high_noise_sig_p_m 0.15 m,
+    the bigs noise_tier) a failed touch test gives touch = null (unknown) instead of false; a passed test stays true.
+    Low-tier tracks are unchanged.'
+  why: 'L5-2 measured that at the q 10 tier the minimum smoothed speed of a 0.4 s stop reads 1.5-3.1 m/s (above
+    never_set_speed_mps 1.0) and t_rel 0.2-0.4 s early, so false there is no evidence of "no touch" (brush scene True 1
+    of 10). Decision (25 Oct): report unknown rather than build a tier-aware touch test before gold labels exist.'
+  evidence: 'Synthetic (seeds 1-10): sigma_p 0.2 brush True 10, far False 10; 0.3 brush True 9 / False 1, far False 10
+    (unchanged); 0.4 brush True 8 / None 2, far None 10; 0.5 brush None 9 / True 1, far None 10 (before: False on all of
+    these). Real SportVU (3 games, 194 chunks, 6855 s, team_ends, clean / noise 0.3 / noise 0.5), before / after event dumps: slip touch False 3 / 1 / 2 -> 3 / 1 / 0 and None 0 / 0 / 2 (True 2 / 1 / 3 unchanged); no other bigs
+    event or attribute changes apart from the D3 attrs. Tests test_d2_slip_touch_is_unknown_not_false_at_the_high_tier, test_d2_switch_off_restores_false.'
+- id: D3-SHORT-ROLL-STOP
+  what: 'short_roll keeps the stop variant (a roller who stops short in the pocket without a catch is a short roll, CTG
+    "stops short"); new attr a11_18_catch = (variant == catch) because offense A11.18 SHORT_ROLL requires a catch.'
+  why: 'Decision (25 Oct): keep the CTG reading as the label and record the A11.18 difference on every event, so A11.18 /
+    R-ST-18 F1 counts filter a11_18_catch = true instead of losing the stop variant.'
+  evidence: 'SHORT_WP stop scene: variant stop, a11_18_catch false; srp_scene catch: variant catch, a11_18_catch true (seeds
+    1-3). No detection change. Real SportVU (3 games, 194 chunks, 6855 s, team_ends, clean / noise 0.3 / noise 0.5), before / after event dumps: short_roll events unchanged; catch / stop 6 / 7, 7 / 6, 15 / 5 events. Test test_d3_short_roll_stop_variant_kept_and_a11_18_flag.'
+- id: D3-GHOST-SLIP-TO-ARC
+  what: 'No change: ghost and slip_to_arc stay separate labels (ghost = never set, scored by p_never_set; slip_to_arc = a
+    set screen, then an early release to the arc with (1 - p_never_set) in its conf; precedence ghost > slip_to_arc).'
+  why: 'Decision (25 Oct): the two differ in whether a screen was set at all, which the screens table records; merging
+    them would lose that.'
+  evidence: 'Open question removed from open_questions; test_d3_screens_enum_matches_bigs keeps both in PRECEDENCE.'
+- id: D3-SCREENS-ENUM
+  what: 'screener_post_action.sub_label_parent {slip_to_arc: slip, crash: none, move_to_screen: none, roll_into_post: roll};
+    every screener_post_action event writes screener_action_after (= top1, a value of the screens enum) and
+    screener_action_parent (the base value; the label itself for a base value; both null for unknown_post_action).
+    The same enum and map are in screens.yaml screen_record_schema (screener_action_after, screener_action_sub_labels).'
+  why: 'Decision (25 Oct): add slip_to_arc, crash, move_to_screen and roll_into_post to the screens enum as sub-labels with
+    a base parent, so base counts stay comparable with the schema / CTG categories. Parents: slip_to_arc is an early
+    release (CTG slip timing); crash is a screener who held (no action off the screen until the shot); move_to_screen
+    becomes its own screen row; roll_into_post is a roll that ends in a post seal.'
+  evidence: 'test_d3_screens_enum_matches_bigs (bigs map == screens map; every PRECEDENCE label + none in the enum),
+    test_d3_post_action_writes_the_enum_value_and_its_parent (roll -> roll / roll; elbow slip-to-arc scene: parent from
+    the map). Real SportVU (3 games, 194 chunks, 6855 s, team_ends, clean / noise 0.3 / noise 0.5), before / after event dumps: screener_post_action events unchanged; sub-labels written slip_to_arc 1 / 1 / 3, move_to_screen 2 / 1 / 3,
+    roll_into_post 1 / 1 / 1, crash 0 (parents slip / none / roll).'
+- id: version
+  what: 'version 0.3.1 -> 0.3.2, date 2026-10-25. Params slip.touch_unknown_high_tier and
+    screener_post_action.sub_label_parent; attrs short_roll.a11_18_catch, screener_post_action.screener_action_after /
+    screener_action_parent; three open questions closed.'
+  why: Owner decisions of 25 Oct.
+  evidence: test_changes_decisions_oct25_recorded.
