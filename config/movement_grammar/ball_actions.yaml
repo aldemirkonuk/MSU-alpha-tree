@@ -1,7 +1,7 @@
 family: ball_actions
 research_family: BALL ACTIONS
-version: 0.1.4
-date: '2026-10-22'
+version: 0.1.5
+date: '2026-10-25'
 owner: Mac session (msu-colab) for Aldemir
 status: proposal under the build freeze
 detectors: tools/specgen/movement/detectors/ball_actions.py
@@ -50,6 +50,7 @@ checker_fixes:
 missing_items_added:
   - shot family (catch_and_shoot, pull_up, held_jumper, shot_release with gather) as XY proxies with alternatives
   - turnover / steal (live_ball_turnover, pass_incomplete) and violations (violation_turnover, needs_data)
+  - 'changes_loop5: NCAA turnover rules (ba_turnover_rules), turnover_abstention, reconcile_turnovers (PBP hook)'
   - rebounds (rebound_control); tip and box-out deferred to needs_ball_z / defense family
   - fakes and footwork declared needs_data (pose)
   - noise model and ball sigma tiers (ba_kinematics_noise)
@@ -163,6 +164,8 @@ items:
        ball z, so held_jumper carries both alternatives.
     7. drive_outcome uses the first of: shot, kick_out, dump_off, other pass, turnover, reset within 1.0 s.
     8. A team change of control without a shot is a live_ball_turnover; after a shot it is a rebound.
+       changes_loop5: a change the NCAA rules of ba_turnover_rules cannot decide from tracking (rim visit,
+       rebound battle after a rim visit, gap, dead before secured, held ball) is a turnover_abstention instead.
   params: {}
   min_duration_s: null
   outputs: n/a
@@ -1606,28 +1609,170 @@ items:
   validation: Rebounds vs PBP rows.
 
 - id: live_ball_turnover
-  research_id: new (checker missing item)
+  research_id: new (checker missing item); changes_loop5 (NCAA official-statistics rules)
   level: primitive
-  name: Live-ball turnover (strip, interception, loose-ball recovery)
-  aliases: [steal, strip, interception]
-  actors: {lost_by: player, gained_by: opponent}
-  t0: first control frame of the opponent
+  name: Live-ball turnover (strip, interception, deflection, loose-ball recovery) with steal credit
+  aliases: [steal, strip, interception, deflection, bad pass stolen, lost ball stolen]
+  actors: {lost_by: last controller of the losing team, gained_by: the gaining team's securing controller (recoverer)}
+  t0: first control frame of the gaining team (the deflector's touch when a teammate secures the ball)
   status: proposal
   detectable: xy
   rule: |
-    Control passes to the other team without a shot: strip (takeover with no free frame), interception (a
-    flight with no LOOSE phase), loose_recovery (otherwise). PBP steal / turnover rows within 2.0 s anchor it.
+    Control passes to the other team without a try (rule ba_turnover_rules): strip (takeover with no free frame),
+    interception (a flight with no LOOSE phase), deflection (a gaining-team touch shorter than deflect_touch_max_s
+    whose teammate secures the ball within deflect_recover_max_s, or a tap / dropped contact by a gaining-team
+    player inside the free interval), loose_recovery (otherwise). PBP steal / turnover rows within 2.0 s anchor it.
     changes_loop4 BA-R4f: not when the lost control is a rebound-scramble touch (rebound_control
     scramble_window_s / secure_min_s).
-  params: {}
+    changes_loop5 (NCAA SM 4 and 6; TO-* ids in ba_turnover_rules):
+    TO-C1 control gate, losing side: the losing team must have had control. A touch shorter than
+    rebound_control.secure_min_s starting <= rebound_control.scramble_window_s after a shot's rim frame is a
+    rebound battle (no event, BA-R4f); after an XY rim visit (ball within rim_visit_r_m of either basket, a try
+    the shot proxy missed) it is a turnover_abstention (rim_visit_scramble). Otherwise control is assumed (SM B.I.4:
+    doubt = control).
+    TO-C2 control gate, gaining side: the gaining team must secure control: a securing control shorter than
+    gain_secure_min_s that ends the clip or runs into a gap is a turnover_abstention (dead_before_secured: a bat
+    out of bounds or a whistle, only PBP knows).
+    TO-D1 no try: the shot proxy's tries are rebounds (no event); a ball passing within rim_visit_r_m of a basket
+    over [loss - rim_visit_pad_s, gain + rim_visit_pad_s] is a try or a pass off the rim, which XY cannot tell
+    apart (ball z may be missing): turnover_abstention (rim_visit). A throw-in (releaser out of bounds) is never
+    a try.
+    TO-E1 end of period: when the scene carries a game clock (scene.game_clock, seconds left per frame), a gain at
+    clock <= period_end_eps_s is no turnover (SM 4 Art.1 exception); without a clock attrs.period_end_check =
+    needs_game_clock.
+    TO-S1 steal credit (SM 6): strip -> the taker (take_away); interception -> the interceptor when he moved to
+    the ball (>= intercept_move_min_m over the flight and intercept_move_window_s before it), else no steal
+    (errant pass straight to him, A.R.4(b)); deflection -> the deflector (clean deflection A.R.5(a); doubt
+    A.R.5(c)), the recoverer when the touch was a slight tip (ball keeps flight speed and turns <= tip_max_turn_deg)
+    and he intercepted (A.R.5(b)); loose ball -> the gaining-team player within knock_reach_m of the ball within
+    knock_window_s of the loss (knocked loose, 6(c)/(d)), else no steal (unforced fumble, A.R.7). Deflector and
+    recoverer are always recorded separately (attrs.deflector, attrs.recoverer).
+    TO-K1 charged player (SM 4 Art.1, A.R.4(d)): the last controller; a receiver who loses a teammate's pass loose
+    within muff_max_s of the catch (refined catch to refined release) muffed it: charged to him, the passer in
+    attrs.alt_charged. A pass barely touched (no control segment) stays the passer's.
+    TO-T1 throw-in: a pass released from out of bounds that the opponent intercepts is a live-ball turnover on the
+    inbounder with the steal to the interceptor (SM 4 A.R.17(a)); attrs.throw_in.
+    TO-M1 duplicates: two counted changes in the same direction within dedupe_window_s are one turnover (the change
+    back between them was not counted); attrs.merged_t0.
+  params:
+    rim_visit_r_m: {value: 0.75, unit: m, note: 'changes_loop5 TO-D1 / TO-C1: ball XY this close to a basket centre is a rim visit (a try or a pass off the rim; = shot_release.rim_reach_m and touch.rim_finish_reach_m). Real SportVU trade 0.6 / 0.75 / 0.9 in changes_loop5 TO-D1'}
+    rim_visit_pad_s: {value: 0.33, unit: s, note: 'TO-D1: the rim-visit window extends this far before the loss and after the gain (a finisher keeps the ball inside his radius at the rim; a made shot drops into the gainer''s radius)'}
+    gain_secure_min_s: {value: 0.5, unit: s, note: 'TO-C2: a securing control shorter than this that ends the clip or runs into a gap is not shown to be secured'}
+    deflect_touch_max_s: {value: 0.6, unit: s, note: 'TO-S1: a first gaining-team touch shorter than this (= touch.team_change_confirm_s) followed by a teammate''s control is a deflection, not the securing control'}
+    deflect_recover_max_s: {value: 2.0, unit: s, note: 'TO-S1: the teammate''s control must start within this after the deflection'}
+    tip_max_turn_deg: {value: 30.0, unit: deg, note: 'TO-S1: slight tip = the ball keeps >= touch.flight_min_speed_mps through the touch and turns by at most this (SM 6 A.R.5(b))'}
+    intercept_move_min_m: {value: 0.5, unit: m, note: 'TO-S1: an interceptor who moved less than this did not initiate (SM 6 A.R.4(b): no steal)'}
+    intercept_move_window_s: {value: 0.5, unit: s, note: 'TO-S1: the interceptor''s displacement is measured from this long before the release to his catch'}
+    knock_reach_m: {value: 1.0, unit: m, note: 'TO-S1: a gaining-team player this close to the ball at the loss knocked it loose (= touch.enter_radius_m)'}
+    knock_window_s: {value: 0.2, unit: s, note: 'TO-S1: frames around the end of the loser''s control searched for the knock'}
+    muff_max_s: {value: 1.0, unit: s, note: 'TO-K1: a receiver who loses a teammate''s pass loose within this of the catch (refined catch to refined release) muffed it: charged to him, passer in alt_charged. Synthetic muff (0.35 s in the hands, slow roll) is found 10 / 8 / 6 of 10 at sigma 0.2 / 0.3 / 0.5 with 1.0 s, 7 / 6 / 5 with 0.8 s (the refined release lags the true one on a slow roll)'}
+    period_end_eps_s: {value: 0.1, unit: s, note: 'TO-E1: game clock at or below this at the gain = the period has expired'}
+    dedupe_window_s: {value: 2.0, unit: s, note: 'TO-M1: two counted same-direction changes this close are one turnover (= ba_pbp_anchor turnover_window_s)'}
+    held_prior_max_gap_s: {value: 0.5, unit: s, note: 'TO-H1 (turnover_abstention): the tied-up player''s control must reach to within this of the tie-up start ...'}
+    held_prior_min_s: {value: 0.5, unit: s, note: 'TO-H1: ... and have begun at least this long before it (a control that starts with the tie-up is the tie-up, e.g. two players reaching a rebound together)'}
   min_duration_s: null
-  outputs: label, pbp_check
+  outputs: label {strip, interception, deflection, loose_recovery}, deflector, recoverer, steal_to, steal_basis, charged_to, charged_basis, alt_charged, throw_in, live, secured_t, merged_t0, period_end_check, pbp_check
   confidence: min(both touch confs) x c_edge x c_gap (ball)
-  noise: A false defender touch (contact) creates a false strip; the takeover margin and frames limit it.
-  conflicts_resolved: []
+  noise: A false defender touch (contact) creates a false strip; the takeover margin and frames limit it. Real SportVU (changes_loop5) false events cluster at the rim (tries the shot proxy missed, made shots picked out of the net).
+  conflicts_resolved:
+    - NCAA vs NBA / FIBA steal credit (SM 6 A.R.4(b), A.R.5, A.R.7 vs NBA 'otherwise obtains possession' and FIBA 'first deflector'): NCAA kept; NBA PBP steal credit differs by design (see changes_loop5).
   sources:
     - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: defender proximity without a touch is a known failure mode}
-  validation: Against PBP steals and turnovers.
+    - {url: 'http://fs.ncaa.org/Docs/stats/Stats_Manuals/Basketball.pdf', supports: 'NCAA Statisticians'' Manual 2025-26: turnover (4 Art.1, A.R.10, A.R.17-21), steal (6, A.R.4-9), control in doubt (B.I.4)'}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: 'NCAA rules 4-9 (player / team control), 4-24 (loose ball), 6-4 (held ball)'}
+  validation: Against PBP steals and turnovers (live / dead split); MSU gold turnover set (private) for the rule audit.
+
+- id: turnover_abstention
+  research_id: new (changes_loop5)
+  level: primitive
+  name: Possible turnover tracking cannot decide (abstention, reported)
+  aliases: [turnover candidate, unresolved turnover]
+  actors: {lost_by: candidate charged player, gained_by: candidate recoverer or tying defender}
+  t0: first control frame of the gaining team (held ball - the tie-up start)
+  status: proposal
+  detectable: xy
+  rule: |
+    Emitted instead of a live_ball_turnover when the rules of ba_turnover_rules need something tracking does not
+    have; attrs.reason says which, attrs.resolve_with what resolves it (reconcile_turnovers takes PBP rows):
+    rim_visit (TO-D1: the ball over a basket between loss and gain: try or pass off the rim; ball z or PBP),
+    rim_visit_scramble (TO-C1: the loser's short touch follows a rim visit: rebound battle or control; ball z or
+    PBP), dead_before_secured (TO-C2: the gainer's control ends in a clip end or gap before gain_secure_min_s;
+    PBP), gap (control changes across an unobserved stretch or a camera cut; PBP), held_ball_arrow (TO-H1: a
+    contested_ball held_ball_candidate whose tied-up player had control just before; arrow to the defence =
+    turnover + steal to the tying defender, arrow to the controlling team = nothing, SM 4 A.R.10; after a rebound
+    or a loose ball with no control = no turnover, SM 3 Art.2 A.R.1, not emitted). Carries the same role attrs as
+    live_ball_turnover. Uses the live_ball_turnover params (its keyword overrides go to that item).
+  params: {}
+  min_duration_s: null
+  outputs: reason, resolve_with, label, charged_to, steal_to, deflector, recoverer (as live_ball_turnover)
+  confidence: as live_ball_turnover; held ball - contested_ball conf
+  noise: rim_visit depends on the ball XY at the rim (a lob or bounce pass under the basket also passes over the cylinder in XY).
+  conflicts_resolved:
+    - 'Movement decision (Aldemir 23 Oct): abstain, but report abstentions.'
+  sources:
+    - {url: 'http://fs.ncaa.org/Docs/stats/Stats_Manuals/Basketball.pdf', supports: 'SM 4 A.R.10 (held ball and the arrow), SM 1 Art.1 / 3 Art.1 (a try and its rebound)'}
+  validation: Share of abstentions that PBP resolves as turnovers, per reason.
+
+- id: ba_turnover_rules
+  research_id: new (changes_loop5)
+  level: rule
+  name: NCAA turnover / steal rules and the PBP reconciliation hook
+  aliases: [turnover rules, steal credit, NCAA statisticians manual]
+  actors: n/a
+  t0: n/a
+  status: proposal
+  detectable: rule
+  rule: |
+    Official-statistics definitions (Aldemir 23 Oct: NCAA Statisticians' Manual, SM 2025-26) for live_ball_turnover,
+    turnover_abstention and reconcile_turnovers (ball_actions.py). Ids:
+    TO-C1 team control first (SM 4 Art.1; RB 4-9): no turnover unless the losing team had control; a loose ball
+      nobody controlled, a rebound battle, a fumble never secured, a deflection with nobody in control are not
+      turnovers; doubt = control (B.I.4).
+    TO-C2 the opponent gains control (SM 4 Art.1); a ball batted out of bounds or a whistle before that is PBP's.
+    TO-D1 no turnover after a try (SM 1 Art.1, 3 Art.1); a pass off the rim picked up by the opponent is one (no
+      steal unless a defender initiated it).
+    TO-E1 no turnover when the period / game clock expires with the team in control (SM 4 Art.1 exception).
+    TO-S1 steal: take-away -> taker; clean deflection -> deflector; slight tip then interception -> recoverer;
+      doubt -> deflector; interception -> interceptor; errant pass or unforced fumble picked up -> no steal
+      (A.R.4(b), A.R.7); deflector and recoverer recorded separately (Aldemir R3). Live-ball turnovers without a
+      steal exist (Aldemir R9 answered: yes, SM 6 A.R.4(b), A.R.7, A.R.8).
+    TO-K1 charged player: the player primarily responsible (the last controller; a muffed catchable pass ->
+      receiver, A.R.4(d)); team when nobody is.
+    TO-T1 throw-in interception = turnover on the inbounder + steal to the interceptor (A.R.17(a)).
+    TO-F1 offensive foul = turnover charged to the fouler, also off the ball (A.R.19(e)/(f)); a pass that forces
+      the receiver into a charge -> passer (A.R.21); no steal (6 A.R.9). Needs the whistle: PBP only.
+    TO-H1 held ball with player control, arrow to the defence = turnover + steal to the tying defender; arrow to the
+      controlling team = nothing (A.R.10); no prior control (rebound) = no turnover (3 Art.2 A.R.1).
+    TO-R1 follow the final ruling after a replay review (RB 11-1.1; derived): an overturned call is not counted.
+    TO-M1 duplicates merge (Aldemir R7).
+    reconcile_turnovers(scene, rows): PBP rows aligned to the clip (t seconds from the clip start; type turnover |
+    foul | held_ball | review | period_end; team offense | defense = the scene lists; player). Applies TO-R1 (a
+    review row with outcome overturned within review_window_s after the event drops it), TO-M1 (PBP turnover rows
+    of one team within dup_window_s), TO-F1 (a turnover row of type offensive_foul or an offensive foul row within
+    foul_link_s: charged to the fouler; forced_by_pass -> the passer, from the row or the tracking pass caught
+    <= pass_forced_charge_s before the whistle; a catch in that window without the flag is reported as
+    needs_review), TO-H1 (held_ball rows with arrow_team against a held_ball_arrow abstention), TO-E1 (a PBP-only
+    turnover row within period_end_eps_s of the period_end row is dropped), and matches tracking turnovers and
+    abstentions to PBP turnover rows within match_window_s (same losing team). Output records: t, team,
+    charged_to, steal_to, deflector, recoverer, live, fouler, source (tracking | pbp | both | abstention+pbp), rule.
+  params:
+    match_window_s: {value: 2.0, unit: s, note: '= ba_pbp_anchor turnover_window_s (after the caller''s clock alignment)'}
+    review_window_s: {value: 60.0, unit: s, note: 'TO-R1: a review row this soon after an event can overturn it (reviews follow the next dead ball)'}
+    dup_window_s: {value: 3.0, unit: s, note: 'TO-M1: PBP turnover rows of one team this close are one turnover'}
+    foul_link_s: {value: 1.0, unit: s, note: 'TO-F1: an offensive-foul row this close to a turnover row explains it'}
+    pass_forced_charge_s: {value: 0.7, unit: s, note: 'TO-F1: a pass caught by the fouler this soon before the whistle may have forced the charge'}
+    period_end_eps_s: {value: 0.5, unit: s, note: 'TO-E1: a PBP-only turnover row this close to the period end is the expired clock'}
+  min_duration_s: null
+  outputs: n/a
+  confidence: n/a
+  noise: n/a
+  conflicts_resolved:
+    - 'NCAA vs NBA / FIBA steal credit (NBA: steal to whoever obtains possession inbounds; FIBA: always the first deflector, steal for picking up a loose ball after a mistake). ESPN / NBA PBP may follow NBA habits.'
+    - 'Aldemir R1 (not controlled -> not a turnover) matches the SM only when control was definitely absent; in doubt the SM assumes control (B.I.4). Tracking keeps the rebound-scramble test (TO-C1) because a 1.0 m proximity touch is not evidence of hand control.'
+  sources:
+    - {url: 'http://fs.ncaa.org/Docs/stats/Stats_Manuals/Basketball.pdf', supports: NCAA Statisticians' Manual 2025-26 sections 1, 3, 4, 6}
+    - {url: 'file:///Users/aldemirkonuk/Projects/MSU-Alpha-3/docs/rules/PRMBB_RulesBook.pdf', supports: 'NCAA rules 4-9, 4-24, 6-4, 11-1'}
+  validation: Synthetic scenes per TO id (test_ball_actions.py changes_loop5); real SportVU turnovers vs PBP; MSU gold v0 (private, 202 reviewed turnovers) for the rule audit.
 
 - id: violation_turnover
   research_id: new (checker missing item)
@@ -1642,6 +1787,9 @@ items:
   rule: |
     Taken from PBP rows (turnover type) aligned to the touch in progress; travel needs foot keypoints,
     closely-guarded counts need the referee's count. XY gives context only (the touch, its duration).
+    changes_loop5: the charging rules for PBP turnovers (offensive foul -> the fouler, also off the ball; a pass
+    that forces the charge -> the passer; final ruling after review; duplicates; end of period) live in
+    reconcile_turnovers (rule ba_turnover_rules TO-F1 / TO-R1 / TO-M1 / TO-E1); this detector stays [] on XY.
   params: {}
   min_duration_s: null
   outputs: turnover_type from PBP, touch_id
@@ -2151,6 +2299,151 @@ open_after_loop4:
   - 'live_ball_turnover 50 / 48 against 10.5 steals and 0.8 dead-ball turnovers / 48: 44 remaining false events follow an undetected shot''s rim visit, about 60 have no rim visit (half are next to a PBP rebound row).'
   - 'team_possession 243 / 48 includes 81 / 48 chunk starts; changes inside chunks 161 / 48 against ~188 possessions / 48 minus possession changes at dead balls (chunk breaks); 56 of 578 possessions last < 2 s (scramble flicker).'
   - 'post_up 19-20 / 48 is of the order of play-type tracking post-up shares (well under 10 % of ~100 possessions per team; approximate, not re-verified here); the bigs family''s 78 / 48 counts a different, broader event.'
+changes_loop5:
+  # Loop 5 (25 Oct 2026): turnover logic brought in line with the NCAA official-statistics rules (Statisticians'
+  # Manual 2025-26, SM; NCAA rules book, RB; Aldemir's movement decision 23 Oct: official-stat definitions, floor-only
+  # ball, abstain but report abstentions). Rule ids TO-* are defined in ba_turnover_rules. The rule audit used a
+  # private hand-reviewed MSU turnover set (real video) and private notes; nothing of them is in this repo.
+  # Real data: SportVU, 3 NBA 2015-16 games, 194 clock-running chunks, 6855 s (private, aggregates only; game clock
+  # attached per frame by realdata.py). PBP truth: turnover rows inside tracked play, 33 with a steal (live) and 39
+  # without (dead); detection clock shifted 2.5 s (PBP lag), tolerance 2.5 s, greedy one-to-one, same period.
+  # 0.1.4 -> 0.1.5: live_ball_turnover 119 -> 53 events (50.0 -> 22.3 / 48 min), matched 22 -> 20 live and 3 -> 2
+  # dead PBP turnovers, precision 0.21 -> 0.42, live recall 0.67 -> 0.61, events per PBP live turnover 3.61 -> 1.61.
+  # 76 abstentions are reported (rim_visit 41, rim_visit_scramble 24, held_ball_arrow 10, dead_before_secured 1);
+  # 4 of them lie within 2.5 s of a PBP turnover (the 2 lost live turnovers among them). With added noise 0.3 m:
+  # 54 events, 19 live + 2 dead matched (P 0.39). Synthetic: every earlier test unchanged; new scenes per rule at
+  # sigma_p 0.2 / 0.3 / 0.5, seeds 1-10 pass counts in tests (L5_RATES).
+  - id: TO-C1 control gate, losing side (team control first)
+    what: >-
+      _rim_scramble: the loser's touch shorter than rebound_control.secure_min_s that starts within
+      rebound_control.scramble_window_s of a shot's rim frame stays a rebound battle (BA-R4f, no event); after an XY
+      rim visit (ball within rim_visit_r_m of either basket, a try the shot proxy missed) it is a
+      turnover_abstention (rim_visit_scramble). Otherwise control is assumed (SM B.I.4).
+    why: >-
+      SM 4 Art.1 / RB 4-9: a turnover needs team control first; a rebound battle, a fumble never secured or a
+      deflection with nobody in control is not one (Aldemir R1). On 0.1.4 real events, a loser's touch < 1.5 s
+      starting <= 3 s after a ball XY visit within 0.75 m of a basket was 19 unmatched against 1 PBP-matched
+      (ball z, read for diagnosis only, shows a shot within the 3 s before on those).
+    evidence: >-
+      Real: 24 events move to rim_visit_scramble abstentions (1 within 2.5 s of a PBP turnover). Synthetic
+      l5_rim_scramble 10 / 10 / 9 of 10 (sigma 0.2 / 0.3 / 0.5), guard l5_rim_secured (1.9 s control, then an
+      interception) 10 / 10 / 10. Tests test_loop5_turnover_rules[l5_rim_*].
+  - id: TO-C2 control gate, gaining side (the opponent secures control)
+    what: >-
+      A securing control shorter than gain_secure_min_s that ends the clip or runs into a gap is a
+      turnover_abstention (dead_before_secured); a gap (unknown free interval) between the teams' controls is a
+      turnover_abstention (gap) instead of being dropped silently.
+    why: >-
+      SM 4 Art.1: the opponent must gain control; a ball batted out of bounds or a whistle before that (offence
+      keeps it, or a dead-ball turnover) is only in PBP.
+    evidence: >-
+      Real 1 event. Synthetic l5_dead_unsecured 10 / 10 / 10. Test test_loop5_turnover_rules[l5_dead_unsecured].
+  - id: TO-D1 no turnover after a try; the rim visit abstains
+    what: >-
+      A ball XY within rim_visit_r_m (0.75 m) of a basket over [loss - rim_visit_pad_s, gain + rim_visit_pad_s] is a
+      turnover_abstention (rim_visit): a try the shot proxy missed (rebound, made shot taken out of the net) or a
+      pass off the rim (turnover), which XY cannot tell apart without ball z. Not for a throw-in (TO-T1).
+    why: >-
+      SM 1 Art.1 / 3 Art.1: after a try the opponent's control is a rebound. On 0.1.4 real events, the ball came
+      within 0.6 m of a basket between loss and gain on 36 of 94 unmatched events and 1 of 25 matched; their free
+      intervals peak at 8-17 ft (z, diagnosis only): undetected shots and made baskets read as strips or interceptions.
+    evidence: >-
+      Real sweep of rim_visit_r_m (events / matched live / precision): 0.6 61 / 21 / 0.38, 0.75 53 / 20 / 0.42,
+      0.9 45 / 18 / 0.44; 0.75 kept (= shot_release.rim_reach_m and touch.rim_finish_reach_m); 41 rim_visit
+      abstentions, 2 within 2.5 s of a PBP turnover. Synthetic l5_pass_over_rim 10 / 10 / 9 (abstains), guard
+      l5_pass_across_lane (the same pass 3.2 m up the lane) 10 / 10 / 10 (turnover + steal).
+  - id: TO-E1 end of period
+    what: >-
+      When the scene carries scene.game_clock (seconds left per frame; realdata.py now attaches it), a gain at
+      clock <= period_end_eps_s is no turnover; without a clock attrs.period_end_check = needs_game_clock.
+      reconcile_turnovers drops a PBP-only turnover row within ba_turnover_rules.period_end_eps_s of the period end.
+    why: >-
+      SM 4 Art.1 exception (Aldemir Q1 / Q7). Tracking alone cannot know the clock.
+    evidence: >-
+      Real 0 events (clock-running chunks stop at 0.0). Test test_loop5_end_of_period (sigma 0.2 / 0.3 / 0.5).
+  - id: TO-S1 steal credit, deflector and recoverer
+    what: >-
+      attrs deflector / recoverer / steal_to / steal_basis: strip -> taker; interception -> the interceptor when he
+      moved >= intercept_move_min_m (else errant_pass_no_steal); a short first touch (< deflect_touch_max_s) whose
+      ball goes on loose or keeps flight speed and line, secured by a teammate within deflect_recover_max_s, is a
+      deflection: gained_by = the recoverer, steal to the deflector, to the recoverer after a slight tip (<=
+      tip_max_turn_deg at flight speed); a short touch followed by a pass is a catch and quick pass (doubt =
+      control). Loose ball: a gaining-team player within knock_reach_m of the ball within knock_window_s of the
+      refined release knocked it loose (deflector, steal); else unforced_no_steal.
+    why: >-
+      SM 6 and A.R.2, 4, 5, 7 (Aldemir R3, R9, Q2, Q4): record deflector and recoverer separately; the steal goes to
+      the deflector unless the recoverer intercepted after a slight tip; doubt goes to the deflector; live-ball
+      turnovers without a steal exist. NBA PBP credits whoever obtains possession, so agreement with NBA steal
+      names is a partial check only.
+    evidence: >-
+      Real: steal_to equals the NBA PBP stealer on 14 of 20 matched steals (0.1.4 gained_by 14 of 22); the 3
+      deflector credits agree; 1 unforced_no_steal where NBA credits the recoverer; 7 of 53 events carry no steal.
+      Synthetic (seeds 1-10, sigma 0.2 / 0.3 / 0.5): strip 10 / 9 / 7, intercept 10 / 10 / 10, l5_errant_pass
+      10 / 10 / 7, l5_bat_to_teammate 9 / 7 / 7, l5_slight_tip 10 / 10 / 10, l5_knocked_loose 8 / 8 / 7,
+      l5_fumble_unforced 9 / 9 / 9. Tried: a 0.6 s deflection test without the ball-path condition read a strip
+      with a quick outlet as a deflection (l3_strip_outlet at 0.5 failed); a knock window around the 1.5 m exit
+      frame missed knocks (1 / 10).
+  - id: TO-K1 charged player
+    what: >-
+      attrs charged_to / charged_basis / alt_charged: the last controller; a receiver who loses a teammate's pass
+      loose within muff_max_s (1.0 s) of the catch (refined catch to refined release) is charged (receiver_muff)
+      with the passer as the alternative.
+    why: >-
+      SM 4 Art.1 and 6 A.R.4(d) / (e) (catchable pass muffed -> receiver; barely touched -> passer, which the
+      decode gives naturally: no control segment).
+    evidence: >-
+      Synthetic l5_muff 10 / 8 / 6 (0.8 s gave 7 / 6 / 5). Real 3 events labelled receiver_muff.
+  - id: TO-T1 throw-in interception
+    what: >-
+      attrs.throw_in when the releaser stands out of bounds (named_spots region); a throw-in is never a try (no rim_visit abstention).
+    why: >-
+      SM 4 A.R.17(a) (Aldemir Q3): turnover on the inbounder, steal to the interceptor; a baseline throw-in can pass over the rim in XY.
+    evidence: >-
+      Synthetic l5_throw_in_side 10 / 10 / 10, l5_throw_in_baseline (path over the rim) 10 / 10 / 9. Real 0 (SportVU
+      chunks start when the clock starts, after the throw-in).
+  - id: TO-H1 held ball (turnover_abstention held_ball_arrow; reconcile_turnovers)
+    what: >-
+      A contested_ball held_ball_candidate whose tied-up player had control reaching the tie-up (within
+      held_prior_max_gap_s) and starting >= held_prior_min_s before it emits a held_ball_arrow abstention
+      (charged_to the holder, steal_to the tying player); reconcile_turnovers turns it into a dead-ball turnover +
+      steal when the PBP arrow goes to the other team, nothing when it goes to the controlling team; a tie-up with
+      no prior control (rebound) gives nothing.
+    why: >-
+      SM 4 A.R.10, 6(b), 3 Art.2 A.R.1 (Aldemir Q5); the arrow is not in tracking.
+    evidence: >-
+      Synthetic tie_up 9 / 10 / 4, l2_drive_tieup 10 / 8 / 3 (contested_ball is noise-limited at 0.5, BA-T4c),
+      l5_rebound_tieup (no control) 10 / 10 / 10. Real: 10 abstentions, none within 3 s of a PBP jump-ball row
+      (contested_ball false runs on real motion; reported, never counted).
+  - id: TO-F1 offensive foul charging (PBP hook)
+    what: >-
+      reconcile_turnovers: a PBP turnover row of type offensive_foul, or one with an offensive foul row within
+      foul_link_s, is a dead-ball turnover on the fouler (also off the ball), no steal; flagged forced_by_pass ->
+      the passer (from the row or the tracking pass caught <= pass_forced_charge_s before the whistle); a catch in
+      that window without the flag is reported (needs_review).
+    why: >-
+      SM 4 A.R.19(e)/(f), A.R.21, 6 A.R.9 (Aldemir R4); whistles are not in tracking, and 'forced' is a judgment.
+    evidence: >-
+      Tests test_loop5_reconcile_offensive_foul_charged_to_fouler, test_loop5_reconcile_pass_forced_charge.
+  - id: TO-R1 final ruling after review (PBP hook)
+    what: >-
+      reconcile_turnovers drops a PBP turnover row and a tracking turnover followed within review_window_s by a review row with outcome overturned.
+    why: >-
+      RB 11-1.1 (derived; Aldemir R6). Replay footage itself (R5) is a video-pipeline concern, not tracking.
+    evidence: >-
+      Test test_loop5_reconcile_review_duplicates_period_end.
+  - id: TO-M1 duplicates merge
+    what: >-
+      _merge_duplicates: two counted same-direction changes within dedupe_window_s are one turnover (a decided
+      turnover replaces an abstention of the same loss; attrs.merged_t0); reconcile_turnovers merges PBP turnover
+      rows of one team within dup_window_s.
+    why: >-
+      Aldemir R7. The decode's team-change confirmation already removes most flicker; this is the backstop.
+    evidence: >-
+      Real 0 merges. Tests test_loop5_duplicates_merge, test_loop5_reconcile_review_duplicates_period_end.
+open_after_loop5:
+  - 'live_ball_turnover still 1.6 events per PBP live turnover on SportVU: 24 of 31 unmatched events follow a shot (ball z >= 9 ft in the free interval or the 3 s before; z read for diagnosis only); 11 of them reach the rim at 0.75-1.3 m in XY and 20 have a loser control >= 1.5 s (a putback or tip held inside the radius, past the scramble test). Ball z or a better shot proxy resolves them; widening rim_visit_r_m to 0.9 trades 2 more matched turnovers for 8 fewer events.'
+  - 'Steal credit is checked only against NBA PBP (different rule); the NCAA deflector / recoverer split needs MSU tracking with labels.'
+  - 'held_ball_arrow abstentions on real motion are contested_ball false runs (10, none near a jump ball); PBP resolves them, so they never count.'
 v0_sweep:
   description: >-
     Every positive / negative case of tests/movement/test_ball_actions.py re-run on 30 seeds (sigma_p

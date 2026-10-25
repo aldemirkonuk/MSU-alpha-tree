@@ -1325,3 +1325,436 @@ def test_changes_loop4_recorded_in_yaml():
         assert any(x.startswith(tag) for x in ids), f"{tag} missing from changes_loop4"
     for c in BA.DOC["changes_loop4"]:
         assert {"id", "what", "why", "evidence"} <= set(c), c
+
+
+# --------------------------------------------------------------------------------------
+# changes_loop5: turnovers under the NCAA official-statistics rules (rule ba_turnover_rules, TO-* ids). Synthetic
+# scenes only: the MSU gold turnover set and the SportVU play-by-play used for the audit stay private.
+# Each check runs at sigma_p 0.2 / 0.3 / 0.5 on listed seeds; docstrings give seeds 1-10 pass counts.
+# --------------------------------------------------------------------------------------
+SCENARIOS.update({
+    # TO-C1 (no control): the ball comes off the rim (no shot release in the clip) to A, who touches it 0.7 s and
+    # loses it to D: a rebound battle after a rim visit -> abstention rim_visit_scramble, no live-ball turnover.
+    "l5_rim_scramble": dict(dur=3.5, spec={"actors": {
+        "A": {"team": "O", "wp": _still(1.2, 1.0)},
+        "B": {"team": "O", "wp": _still(-5.0, 4.0)},
+        "D": {"team": "D", "wp": [(0.0, 3.6, 3.5), (1.2, 3.6, 3.5), (1.8, 3.0, 2.6), (3.5, 3.0, 2.6)]},
+        "DB": {"team": "D", "wp": _still(-4.3, 3.5)},
+        "spotR": {"team": "X", "wp": _still(0.0, 0.0)}},
+        "ball": {"held": [(0.0, 0.4, "spotR"), (0.7, 1.4, "A"), (1.8, 3.5, "D")],
+                 "flights": [(0.4, 0.7, "spotR", "A"), (1.4, 1.8, "A", "D")]}}),
+    # TO-C1 (control assumed): the same rebound, A secures it for 1.9 s, then his pass is intercepted by D.
+    "l5_rim_secured": dict(dur=4.2, spec={"actors": {
+        "A": {"team": "O", "wp": _still(1.2, 1.0, 4.2)},
+        "B": {"team": "O", "wp": _still(-5.0, 4.0, 4.2)},
+        "D": {"team": "D", "wp": [(0.0, -2.0, 2.0), (2.2, -2.0, 2.0), (2.9, -2.2, 2.7), (4.2, -2.2, 2.7)]},
+        "DB": {"team": "D", "wp": _still(-4.3, 3.5, 4.2)},
+        "spotR": {"team": "X", "wp": _still(0.0, 0.0, 4.2)}},
+        "ball": {"held": [(0.0, 0.4, "spotR"), (0.7, 2.6, "A"), (3.0, 4.2, "D")],
+                 "flights": [(0.4, 0.7, "spotR", "A"), (2.6, 3.0, "A", "D")]}}),
+    # TO-C2: D intercepts and the clip ends 0.3 s later (whistle / out of bounds?): not shown to be secured.
+    "l5_dead_unsecured": dict(dur=2.25, spec={"actors": {
+        "A": {"team": "O", "wp": _still(6.0, 5.0)},
+        "B": {"team": "O", "wp": _still(-1.0, 8.5)},
+        "D": {"team": "D", "wp": [(0.0, 3.5, 5.0), (1.2, 3.5, 5.0), (1.9, 2.6, 6.8), (3.5, 2.6, 6.8)]}},
+        "ball": {"held": [(0.0, 1.5, "A"), (1.9, 2.25, "D")], "flights": [(1.5, 1.9, "A", "D")]}}),
+    # TO-D1: a pass across the lane under the basket passes over the rim (XY) and D picks it up: try or pass off
+    # the rim cannot be told apart without ball z -> abstention rim_visit.
+    "l5_pass_over_rim": dict(dur=3.5, spec={"actors": {
+        "A": {"team": "O", "wp": _still(-4.0, 0.3)},
+        "B": {"team": "O", "wp": _still(4.6, 0.5)},
+        "D": {"team": "D", "wp": [(0.0, 2.6, 2.0), (1.0, 2.6, 2.0), (1.8, 2.5, 0.5), (3.5, 2.5, 0.5)]},
+        "DA": {"team": "D", "wp": _still(-3.3, 0.9)}},
+        "ball": {"held": [(0.0, 1.5, "A"), (2.0, 3.5, "D")], "flights": [(1.5, 2.0, "A", "D")]}}),
+    # TO-D1 guard: the same pass 3.2 m up the lane, D moves into it: an interception (turnover + steal).
+    "l5_pass_across_lane": dict(dur=3.5, spec={"actors": {
+        "A": {"team": "O", "wp": _still(-4.0, 3.3)},
+        "B": {"team": "O", "wp": _still(4.6, 3.5)},
+        "D": {"team": "D", "wp": [(0.0, 2.6, 5.2), (1.0, 2.6, 5.2), (1.8, 2.5, 3.5), (3.5, 2.5, 3.5)]},
+        "DA": {"team": "D", "wp": _still(-3.3, 2.7)}},
+        "ball": {"held": [(0.0, 1.5, "A"), (2.0, 3.5, "D")], "flights": [(1.5, 2.0, "A", "D")]}}),
+    # TO-S1: overthrown pass straight to a defender standing still: turnover, no steal (SM 6 A.R.4(b)).
+    "l5_errant_pass": dict(dur=3.5, spec={"actors": {
+        "A": {"team": "O", "wp": _still(6.0, 5.0)},
+        "B": {"team": "O", "wp": _still(-1.0, 8.5)},
+        "D": {"team": "D", "wp": _still(2.6, 6.8)}},
+        "ball": {"held": [(0.0, 1.5, "A"), (1.9, 3.5, "D")], "flights": [(1.5, 1.9, "A", "D")]}}),
+    # TO-S1: D1 bats A's pass (0.3 s touch), the ball rolls loose and D2 recovers: steal to the deflector D1
+    # (clean deflection, SM 6 A.R.5(a)); deflector and recoverer recorded separately.
+    "l5_bat_to_teammate": dict(dur=4.0, spec={"actors": {
+        "A": {"team": "O", "wp": _still(6.0, 4.0)},
+        "B": {"team": "O", "wp": _still(0.0, 7.5)},
+        "D1": {"team": "D", "wp": _still(4.0, 5.0)},
+        "D2": {"team": "D", "wp": [(0.0, 0.5, 10.0), (1.4, 0.5, 10.0), (2.5, 3.4, 7.9), (4.0, 3.4, 7.9)]},
+        "spotB": {"team": "X", "wp": _still(4.6, 6.4)},
+        "spot": {"team": "X", "wp": _still(3.6, 7.6)}},
+        "ball": {"held": [(0.0, 1.0, "A"), (2.4, 2.5, "spot"), (2.5, 4.0, "D2")],
+                 "flights": [(1.0, 1.2, "A", "D1"), (1.2, 1.6, "D1", "spotB"), (1.6, 2.4, "spotB", "spot")]}}),
+    # TO-S1: the pass flies past D1 with a slight tip (11 deg turn, full speed) and D2 cuts in to intercept: steal
+    # to the recoverer D2 (SM 6 A.R.5(b)).
+    "l5_slight_tip": dict(dur=3.5, spec={"actors": {
+        "A": {"team": "O", "wp": _still(6.0, 4.0)},
+        "B": {"team": "O", "wp": _still(-5.5, 8.3)},
+        "D1": {"team": "D", "wp": _still(2.5, 5.7)},
+        "D2": {"team": "D", "wp": [(0.0, -2.0, 9.5), (0.9, -2.0, 9.5), (1.75, -0.87, 7.47), (3.5, -0.87, 7.47)]},
+        "spotT": {"team": "X", "wp": _still(2.5, 5.31)}},
+        "ball": {"held": [(0.0, 1.0, "A"), (1.75, 3.5, "D2")],
+                 "flights": [(1.0, 1.3, "A", "spotT"), (1.3, 1.75, "spotT", "D2")]}}),
+    # TO-S1: D, 0.8 m from A, knocks the ball loose; it rolls to D2: steal to D (knocked loose, SM 6(c)).
+    "l5_knocked_loose": dict(dur=4.0, spec={"actors": {
+        "A": {"team": "O", "wp": _still(4.0, 6.0)},
+        "B": {"team": "O", "wp": _still(-5.0, 4.0)},
+        "D": {"team": "D", "wp": _still(3.4, 5.5)},
+        "D2": {"team": "D", "wp": [(0.0, 0.0, 9.5), (1.8, 0.0, 9.5), (2.9, 1.9, 8.5), (4.0, 1.9, 8.5)]},
+        "spot": {"team": "X", "wp": _still(2.2, 8.3)}},
+        "ball": {"held": [(0.0, 1.5, "A"), (2.7, 2.95, "spot"), (2.95, 4.0, "D2")],
+                 "flights": [(1.5, 2.7, "A", "spot")]}}),
+    # TO-S1: the same fumble with no defender near the ball: turnover, no steal (unforced, SM 6 A.R.7).
+    "l5_fumble_unforced": dict(dur=4.0, spec={"actors": {
+        "A": {"team": "O", "wp": _still(4.0, 6.0)},
+        "B": {"team": "O", "wp": _still(-5.0, 4.0)},
+        "D": {"team": "D", "wp": _still(5.5, 3.2)},
+        "D2": {"team": "D", "wp": [(0.0, 0.0, 9.5), (1.8, 0.0, 9.5), (2.9, 1.9, 8.5), (4.0, 1.9, 8.5)]},
+        "spot": {"team": "X", "wp": _still(2.2, 8.3)}},
+        "ball": {"held": [(0.0, 1.5, "A"), (2.7, 2.95, "spot"), (2.95, 4.0, "D2")],
+                 "flights": [(1.5, 2.7, "A", "spot")]}}),
+    # TO-K1: B muffs A's pass (0.35 s touch), the ball rolls to D: charged to the receiver B (SM 6 A.R.4(d)).
+    "l5_muff": dict(dur=4.0, spec={"actors": {
+        "A": {"team": "O", "wp": _still(6.0, 5.0)},
+        "B": {"team": "O", "wp": _still(2.0, 7.5)},
+        "D": {"team": "D", "wp": [(0.0, -1.0, 10.8), (1.8, -1.0, 10.8), (2.8, 0.6, 9.4), (4.0, 0.6, 9.4)]},
+        "spot": {"team": "X", "wp": _still(0.9, 9.1)}},
+        "ball": {"held": [(0.0, 1.0, "A"), (1.4, 1.75, "B"), (2.7, 2.85, "spot"), (2.85, 4.0, "D")],
+                 "flights": [(1.0, 1.4, "A", "B"), (1.75, 2.7, "B", "spot")]}}),
+    # TO-T1: sideline throw-in (T out of bounds) intercepted by D: turnover on the inbounder + steal (A.R.17(a)).
+    "l5_throw_in_side": dict(dur=3.0, spec={"actors": {
+        "T": {"team": "O", "wp": _still(8.3, 6.0)},
+        "B": {"team": "O", "wp": _still(4.0, 8.0)},
+        "D": {"team": "D", "wp": [(0.0, 5.0, 5.6), (0.7, 5.0, 5.6), (1.3, 5.9, 6.9), (3.0, 5.9, 6.9)]}},
+        "ball": {"held": [(0.0, 1.0, "T"), (1.35, 3.0, "D")], "flights": [(1.0, 1.35, "T", "D")]}}),
+    # TO-T1 + TO-D1: baseline throw-in whose path crosses the rim (XY): a throw-in is never a try, so the
+    # interception is a turnover, not a rim_visit abstention.
+    "l5_throw_in_baseline": dict(dur=3.0, spec={"actors": {
+        "T": {"team": "O", "wp": _still(-0.3, -2.4)},
+        "B": {"team": "O", "wp": _still(0.6, 3.8)},
+        "D": {"team": "D", "wp": [(0.0, 1.6, 3.0), (0.7, 1.6, 3.0), (1.3, 0.4, 2.3), (3.0, 0.4, 2.3)]}},
+        "ball": {"held": [(0.0, 1.0, "T"), (1.4, 3.0, "D")], "flights": [(1.0, 1.4, "T", "D")]}}),
+    # TO-H1 guard: a tie-up on a rebound (nobody had control after the shot): no held-ball abstention.
+    "l5_rebound_tieup": dict(dur=4.0, spec={"actors": {
+        "S": {"team": "O", "wp": _still(5.0, 5.0)},
+        "A": {"team": "O", "wp": [(0.0, 2.5, 3.0), (1.2, 2.5, 3.0), (1.8, 1.5, 1.15), (4.0, 1.5, 1.15)]},
+        "D": {"team": "D", "wp": [(0.0, 0.5, 2.5), (1.2, 0.5, 2.5), (1.8, 1.5, 1.85), (4.0, 1.5, 1.85)]},
+        "DS": {"team": "D", "wp": _still(4.3, 4.4)},
+        "rim": RIM, "spot": {"team": "X", "wp": _still(1.5, 1.5)}},
+        "ball": {"held": [(0.0, 0.5, "S"), (1.8, 4.0, "spot")],
+                 "flights": [(0.5, 1.4, "S", "rim"), (1.4, 1.8, "rim", "spot")]}}),
+})
+
+
+def _lbt(sc, **kw):
+    return BA.DETECTORS["live_ball_turnover"](sc, **kw)
+
+
+def _abst(sc, reason=None):
+    return [e for e in BA.DETECTORS["turnover_abstention"](sc) if reason is None or e.attrs["reason"] == reason]
+
+
+def _fresh(name, seed, sigma):
+    """An uncached scene (tests that set scene.game_clock must not touch the lru_cache'd scene)."""
+    sc = SCENARIOS[name]
+    _, tracks = sim.scenario(sc["spec"], sc["dur"], sigma, seed)
+    return build_scene([t for t in tracks if t.oid != "rim" and not t.oid.startswith("spot")])
+
+
+def _one(evs, **actors):
+    return [e for e in evs if all(e.actors.get(k) == v for k, v in actors.items())]
+
+
+def _chk_rim_scramble(sc):
+    return not _lbt(sc) and bool(_one(_abst(sc, "rim_visit_scramble"), lost_by="A", gained_by="D"))
+
+
+def _chk_rim_secured(sc):
+    return bool(_one(_lbt(sc), lost_by="A", gained_by="D")) and not _abst(sc, "rim_visit_scramble")
+
+
+def _chk_dead_unsecured(sc):
+    return not _lbt(sc) and bool(_one(_abst(sc, "dead_before_secured"), lost_by="A", gained_by="D"))
+
+
+def _chk_pass_over_rim(sc):
+    return not _lbt(sc) and bool(_one(_abst(sc, "rim_visit"), lost_by="A", gained_by="D"))
+
+
+def _chk_pass_across_lane(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D")
+    return bool(e) and e[0].attrs["steal_to"] == "D" and not _abst(sc)
+
+
+def _chk_errant_pass(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D")
+    return bool(e) and e[0].attrs["steal_to"] is None and e[0].attrs["steal_basis"] == "errant_pass_no_steal"
+
+
+def _chk_interception_steal(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D")
+    return bool(e) and e[0].attrs["steal_to"] == "D" and e[0].attrs["steal_basis"] == "interception"
+
+
+def _chk_bat_to_teammate(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D2")
+    return bool(e) and e[0].attrs["deflector"] == "D1" and e[0].attrs["recoverer"] == "D2" \
+        and e[0].attrs["steal_to"] == "D1" and len(_lbt(sc)) == 1
+
+
+def _chk_slight_tip(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D2")
+    return bool(e) and e[0].attrs["steal_to"] == "D2" and len(_lbt(sc)) == 1
+
+
+def _chk_knocked_loose(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D2")
+    return bool(e) and e[0].attrs["deflector"] == "D" and e[0].attrs["steal_to"] == "D"
+
+
+def _chk_fumble_unforced(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D2")
+    return bool(e) and e[0].attrs["steal_to"] is None and e[0].attrs["steal_basis"] == "unforced_no_steal"
+
+
+def _chk_muff(sc):
+    e = _one(_lbt(sc), lost_by="B", gained_by="D")
+    return bool(e) and e[0].attrs["charged_to"] == "B" and e[0].attrs["charged_basis"] == "receiver_muff" \
+        and e[0].attrs["alt_charged"] == "A"
+
+
+def _chk_strip_take_away(sc):
+    e = _one(_lbt(sc), lost_by="A", gained_by="D")
+    return bool(e) and e[0].attrs["steal_to"] == "D" and e[0].attrs["steal_basis"] == "take_away" \
+        and e[0].attrs["charged_to"] == "A"
+
+
+def _chk_throw_in(sc):
+    e = _one(_lbt(sc), lost_by="T", gained_by="D")
+    return bool(e) and e[0].attrs["throw_in"] is True and e[0].attrs["steal_to"] == "D" and not _abst(sc)
+
+
+def _chk_held_ball(sc):
+    return bool(_one(_abst(sc, "held_ball_arrow"), lost_by="A", gained_by="D")) and not _lbt(sc)
+
+
+def _chk_rebound_tieup(sc):
+    return not _abst(sc, "held_ball_arrow") and not _lbt(sc)
+
+
+def _chk_no_turnover_deflection(sc):
+    return not _lbt(sc) and not _abst(sc)
+
+
+L5_CHECKS = {
+    "l5_rim_scramble": _chk_rim_scramble, "l5_rim_secured": _chk_rim_secured,
+    "l5_dead_unsecured": _chk_dead_unsecured, "l5_pass_over_rim": _chk_pass_over_rim,
+    "l5_pass_across_lane": _chk_pass_across_lane, "l5_errant_pass": _chk_errant_pass,
+    "intercept": _chk_interception_steal, "l5_bat_to_teammate": _chk_bat_to_teammate,
+    "l5_slight_tip": _chk_slight_tip, "l5_knocked_loose": _chk_knocked_loose,
+    "l5_fumble_unforced": _chk_fumble_unforced, "l5_muff": _chk_muff, "strip": _chk_strip_take_away,
+    "l5_throw_in_side": _chk_throw_in, "l5_throw_in_baseline": _chk_throw_in,
+    "tie_up": _chk_held_ball, "l2_drive_tieup": _chk_held_ball, "l5_rebound_tieup": _chk_rebound_tieup,
+    "l1_deflect": _chk_no_turnover_deflection, "loose": _chk_no_turnover_deflection,
+}
+
+# Seeds 1-10 pass counts at sigma_p 0.2 / 0.3 / 0.5 (changes_loop5 evidence); each test runs three passing seeds
+# per tier. Scenes below 7 / 10 at 0.5 are noise-limited there (contested_ball tie-ups: BA-T4c).
+L5_RATES = {
+    "l5_rim_scramble": (10, 10, 9), "l5_rim_secured": (10, 10, 10), "l5_dead_unsecured": (10, 10, 10),
+    "l5_pass_over_rim": (10, 10, 9), "l5_pass_across_lane": (10, 10, 10), "l5_errant_pass": (10, 10, 7),
+    "intercept": (10, 10, 10), "l5_bat_to_teammate": (9, 7, 7), "l5_slight_tip": (10, 10, 10),
+    "l5_knocked_loose": (8, 8, 7), "l5_fumble_unforced": (9, 9, 9), "l5_muff": (10, 8, 6), "strip": (10, 9, 7),
+    "l5_throw_in_side": (10, 10, 10), "l5_throw_in_baseline": (10, 10, 9), "tie_up": (9, 10, 4),
+    "l2_drive_tieup": (10, 8, 3), "l5_rebound_tieup": (10, 10, 10), "l1_deflect": (10, 10, 10), "loose": (10, 10, 10),
+}
+L5_SEEDS = {
+    "l5_rim_scramble": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_rim_secured": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+    "l5_dead_unsecured": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_pass_over_rim": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+    "l5_pass_across_lane": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_errant_pass": ((1, 2, 3), (1, 2, 3), (1, 3, 4)),
+    "intercept": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_bat_to_teammate": ((1, 2, 3), (1, 2, 4), (1, 2, 4)),
+    "l5_slight_tip": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_knocked_loose": ((1, 3, 4), (1, 3, 4), (1, 4, 5)),
+    "l5_fumble_unforced": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "l5_muff": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+    "strip": ((1, 2, 3), (1, 2, 3), (1, 2, 5)), "l5_throw_in_side": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+    "l5_throw_in_baseline": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "tie_up": ((1, 2, 3), (1, 2, 3), (1, 2, 7)),
+    "l2_drive_tieup": ((1, 2, 3), (1, 2, 4), (1, 2, 4)), "l5_rebound_tieup": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+    "l1_deflect": ((1, 2, 3), (1, 2, 3), (1, 2, 3)), "loose": ((1, 2, 3), (1, 2, 3), (1, 2, 3)),
+}
+L5_CASES = [(name, sg, seed) for name, tiers in L5_SEEDS.items() for sg, seeds in zip((0.2, 0.3, 0.5), tiers)
+            for seed in seeds]
+
+
+@pytest.mark.parametrize("name,sigma,seed", L5_CASES, ids=lambda v: str(v))
+def test_loop5_turnover_rules(name, sigma, seed):
+    """changes_loop5: one check per NCAA rule scene (see L5_CHECKS and the scene comments): control gates
+    (TO-C1 rim_scramble / rim_secured, TO-C2 dead_unsecured), no try (TO-D1 pass_over_rim / pass_across_lane,
+    throw_in_baseline), steal credit (TO-S1 strip, intercept, errant_pass, bat_to_teammate, slight_tip,
+    knocked_loose, fumble_unforced), charged player (TO-K1 muff), throw-in (TO-T1), held ball (TO-H1 tie_up,
+    l2_drive_tieup; rebound_tieup = no control), deflection / fumble the offence keeps (l1_deflect, loose)."""
+    sc = scene(name, seed, sigma)
+    ok = L5_CHECKS[name](sc)
+    assert ok, (name, sigma, seed, [(e.kind, e.actors, e.attrs.get("label"), e.attrs.get("reason"),
+                                     e.attrs.get("steal_to"), e.attrs.get("steal_basis"))
+                                    for e in _lbt(sc) + _abst(sc)])
+
+
+def _clocked(name, seed, sigma, clock_at_0):
+    sc = _fresh(name, seed, sigma)
+    sc.game_clock = BA.np.maximum(clock_at_0 - BA.np.arange(sc.n) * DT, 0.0)
+    return sc
+
+
+@pytest.mark.parametrize("sigma,seed", [(0.2, 1), (0.3, 1), (0.3, 2), (0.5, 1)])
+def test_loop5_end_of_period(sigma, seed):
+    """TO-E1 (SM 4 Art.1 exception): D strips A at 2.0 s. With the game clock expiring at 1.9 s it is no turnover
+    (and no abstention); with 10 s left it is one; without a clock the event says the check needs one."""
+    assert not _lbt(_clocked("strip", seed, sigma, 1.9)) and not _abst(_clocked("strip", seed, sigma, 1.9))
+    e = _one(_lbt(_clocked("strip", seed, sigma, 10.0)), lost_by="A", gained_by="D")
+    assert e and e[0].attrs["period_end_check"] == "ok"
+    e = _one(_lbt(_fresh("strip", seed, sigma)), lost_by="A", gained_by="D")
+    assert e and e[0].attrs["period_end_check"] == "needs_game_clock"
+
+
+def test_loop5_duplicates_merge():
+    """TO-M1 (Aldemir R7): two counted same-direction changes within dedupe_window_s are one loss; a decided
+    turnover replaces an abstention of the same loss; opposite directions or a wider gap are kept apart."""
+    from types import SimpleNamespace as NS
+    w = BA.PARAMS["live_ball_turnover"]["dedupe_window_s"]
+
+    def rec(dec, off, t):
+        return NS(decision=dec, L=NS(off=off), G=NS(a=int(round(t / DT))), merged=[])
+    a, b = rec("turnover", True, 1.0), rec("turnover", True, 1.0 + w / 2)
+    assert BA._merge_duplicates([a, b], w) == [a] and a.merged == [b.G.a]
+    a, b = rec("abstain", True, 1.0), rec("turnover", True, 1.5)
+    assert BA._merge_duplicates([a, b], w) == [b] and b.merged == [a.G.a]
+    a, b = rec("turnover", True, 1.0), rec("turnover", False, 1.5)
+    assert BA._merge_duplicates([a, b], w) == [a, b]
+    a, b = rec("turnover", True, 1.0), rec("turnover", True, 1.0 + 2 * w)
+    assert BA._merge_duplicates([a, b], w) == [a, b]
+    a, n, b = rec("turnover", True, 1.0), rec("no_turnover", False, 1.2), rec("turnover", True, 1.5)
+    assert BA._merge_duplicates([a, n, b], w) == [a, n]
+
+
+# PBP reconciliation hook (reconcile_turnovers): synthetic PBP rows on synthetic scenes (t = seconds from the clip
+# start, team = the scene list of the team charged).
+def _rec(name, rows, seed=1, sigma=0.3):
+    return BA.reconcile_turnovers(scene(name, seed, sigma), rows)
+
+
+def test_loop5_reconcile_offensive_foul_charged_to_fouler():
+    """TO-F1 (SM 4 A.R.19(e)/(f), 6 A.R.9): an offensive foul is a dead-ball turnover on the fouler with no steal,
+    also when the fouler is off the ball (B's illegal screen while A holds the ball)."""
+    for fouler in ("A", "B"):
+        out = _rec("hold", [{"t": 2.0, "type": "turnover", "team": "offense", "player": fouler,
+                             "turnover_type": "offensive_foul"},
+                            {"t": 2.0, "type": "foul", "team": "offense", "player": fouler, "offensive": True}])
+        assert [(r["charged_to"], r["fouler"], r["steal_to"], r["live"], r["rule"]) for r in out["turnovers"]] == \
+            [(fouler, fouler, None, False, "offensive_foul")]
+
+
+@pytest.mark.parametrize("sigma,seed", [(0.2, 1), (0.3, 1), (0.5, 1)])
+def test_loop5_reconcile_pass_forced_charge(sigma, seed):
+    """TO-F1 (SM 4 A.R.21): B charges 0.3 s after catching A's pass; flagged as forced by the pass, the turnover
+    is the passer's; unflagged it stays the fouler's and the catch is reported for review."""
+    row = {"t": 2.4, "type": "turnover", "team": "offense", "player": "B", "turnover_type": "offensive_foul"}
+    foul = {"t": 2.4, "type": "foul", "team": "offense", "player": "B", "offensive": True}
+    out = _rec("pass_cs", [row, dict(foul, forced_by_pass=True)], seed, sigma)["turnovers"]
+    assert [(r["charged_to"], r["fouler"], r["rule"]) for r in out] == [("A", "B", "pass_forced_charge")]
+    out = _rec("pass_cs", [row, foul], seed, sigma)["turnovers"]
+    assert [(r["charged_to"], r.get("needs_review"), r.get("passer")) for r in out] == \
+        [("B", "pass_forced_charge?", "A")]
+
+
+@pytest.mark.parametrize("sigma,seed", [(0.2, 1), (0.3, 1), (0.3, 2)])
+def test_loop5_reconcile_held_ball_arrow(sigma, seed):
+    """TO-H1 (SM 4 A.R.10): A, in control, is tied up by D. Arrow to the defence: turnover on A, steal to D; arrow
+    to the offence: nothing; no held-ball abstention (rebound tie-up): nothing either way."""
+    out = _rec("tie_up", [{"t": 1.3, "type": "held_ball", "arrow_team": "defense"}], seed, sigma)
+    assert [(r["charged_to"], r["steal_to"], r["live"], r["rule"]) for r in out["turnovers"]] == \
+        [("A", "D", False, "held_ball_arrow_to_defence")]
+    out = _rec("tie_up", [{"t": 1.3, "type": "held_ball", "arrow_team": "offense"}], seed, sigma)
+    assert not out["turnovers"] and out["dropped"][0][1] == "held_ball_arrow_to_controlling_team"
+    out = _rec("l5_rebound_tieup", [{"t": 2.0, "type": "held_ball", "arrow_team": "defense"}], seed, sigma)
+    assert not out["turnovers"] and out["dropped"][0][1] == "held_ball_without_control"
+
+
+def test_loop5_reconcile_review_duplicates_period_end():
+    """TO-R1: a review that overturns the call removes the PBP row and the tracking turnover; upheld keeps one
+    record (both sources). TO-M1: one turnover logged twice is one. TO-E1: a PBP-only turnover at the period end
+    (the clock expired with the team in control) is dropped."""
+    row = {"t": 2.1, "type": "turnover", "team": "offense", "player": "A"}
+    out = _rec("strip", [row, {"t": 30.0, "type": "review", "outcome": "overturned"}])
+    assert not out["turnovers"] and {d[1] for d in out["dropped"]} == {"final_ruling_overturned"}
+    out = _rec("strip", [row, {"t": 30.0, "type": "review", "outcome": "upheld"}])
+    assert [(r["source"], r["charged_to"], r["steal_to"]) for r in out["turnovers"]] == [("both", "A", "D")]
+    out = _rec("hold", [{"t": 1.0, "type": "turnover", "team": "offense", "player": "A"},
+                        {"t": 2.0, "type": "turnover", "team": "offense", "player": "A"}])
+    assert len(out["turnovers"]) == 1 and out["dropped"][0][1] == "duplicate"
+    out = _rec("hold", [{"t": 3.8, "type": "turnover", "team": "offense", "player": "A"},
+                        {"t": 4.0, "type": "period_end"}])
+    assert not out["turnovers"] and out["dropped"][0][1] == "end_of_period"
+
+
+@pytest.mark.parametrize("sigma,seed", [(0.2, 1), (0.3, 1), (0.5, 1)])
+def test_loop5_reconcile_abstention_resolved_by_pbp(sigma, seed):
+    """An abstention (rim_visit: try or pass off the rim) becomes a turnover only when PBP lists one; tracking-only
+    turnovers are kept as blind records."""
+    out = _rec("l5_pass_over_rim", [{"t": 2.0, "type": "turnover", "team": "offense", "player": "A"}], seed, sigma)
+    assert [(r["source"], r["charged_to"], r["live"]) for r in out["turnovers"]] == [("abstention+pbp", "A", True)]
+    assert not _rec("l5_pass_over_rim", [], seed, sigma)["turnovers"]
+    assert [r["source"] for r in _rec("strip", [], seed, sigma)["turnovers"]] == ["tracking"]
+
+
+def test_loop5_params_are_yaml_params():
+    expect = {"live_ball_turnover": ["rim_visit_r_m", "rim_visit_pad_s", "gain_secure_min_s", "deflect_touch_max_s",
+                                     "deflect_recover_max_s", "tip_max_turn_deg", "intercept_move_min_m",
+                                     "intercept_move_window_s", "knock_reach_m", "knock_window_s", "muff_max_s",
+                                     "period_end_eps_s", "dedupe_window_s", "held_prior_max_gap_s", "held_prior_min_s"],
+              "ba_turnover_rules": ["match_window_s", "review_window_s", "dup_window_s", "foul_link_s",
+                                    "pass_forced_charge_s", "period_end_eps_s"]}
+    for item, names in expect.items():
+        assert set(names) == set(BA.PARAMS[item]), item
+    # overrides reach the rules: a zero rim-visit radius turns the pass over the rim back into a turnover
+    sc = scene("l5_pass_over_rim", 1, 0.3)
+    assert not _lbt(sc) and _one(_lbt(sc, rim_visit_r_m=0.0), lost_by="A", gained_by="D")
+    assert _one(BA.DETECTORS["turnover_abstention"](sc), lost_by="A")
+    assert not [e for e in BA.DETECTORS["turnover_abstention"](sc, rim_visit_r_m=0.0) if e.attrs["reason"] == "rim_visit"]
+
+
+def test_changes_loop5_recorded_in_yaml():
+    ids = {c["id"] for c in BA.DOC["changes_loop5"]}
+    for tag in ("TO-C1", "TO-C2", "TO-D1", "TO-E1", "TO-S1", "TO-K1", "TO-T1", "TO-H1", "TO-F1", "TO-R1", "TO-M1"):
+        assert any(x.startswith(tag) for x in ids), f"{tag} missing from changes_loop5"
+    for c in BA.DOC["changes_loop5"]:
+        assert {"id", "what", "why", "evidence"} <= set(c), c
+
+
+L5_POSITIVE = [
+    ("turnover_abstention", "l5_pass_over_rim", "turnover_abstention", {"lost_by": "A", "gained_by": "D"}, 2.0, 0.5,
+     1.0, {"reason": "rim_visit", "label": "interception"}),
+    ("live_ball_turnover", "l5_throw_in_side", "live_ball_turnover", {"lost_by": "T", "gained_by": "D"}, 1.35, 0.5,
+     1.0, {"throw_in": True, "steal_to": "D"}),
+]
+L5_NEGATIVE = [
+    ("turnover_abstention", "pass_cs", None), ("turnover_abstention", "intercept", None),
+    ("live_ball_turnover", "l5_pass_over_rim", None), ("live_ball_turnover", "l5_rim_scramble", None),
+]
+POSITIVE.extend(L5_POSITIVE)  # read at run time by test_every_detector_has_positive_and_negative_cases
+NEGATIVE.extend(L5_NEGATIVE)
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("case", L5_POSITIVE, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_loop5_positive(case, seed):
+    test_positive(case, seed)
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("case", L5_NEGATIVE, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_loop5_negative(case, seed):
+    test_negative(case, seed)

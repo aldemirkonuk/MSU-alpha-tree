@@ -9,7 +9,8 @@ Layering (BA design note 1):
   L1  touch, catch, release, flight, loose ball, contested ball, team possession, dribble presence.
   L2  drives (+ direction, depth, paint touch, defender reaction), passes (+ lob / skip / swing / entry /
       kick-out / dump-off / outlet), post seal and post-up, isolation, shot release and shot families.
-  L3  pass chains (potential / hockey assist), drive outcome, reversals, rebounds, live-ball turnovers.
+  L3  pass chains (potential / hockey assist), drive outcome, reversals, rebounds, live-ball turnovers under the
+      NCAA official-statistics rules (control gates, steal credit, abstentions, PBP reconciliation; changes_loop5).
 
 Without ball z (and without pose) dribble bounces, dribble-move types, bounce / chest / overhead passes,
 fakes and footwork cannot be observed: those detectors return [] and the YAML marks them needs_data.
@@ -2114,27 +2115,388 @@ def _scramble(m, seg, P=None):
     return rim is not None and (seg.a - rim) * DT <= P["scramble_window_s"] and (seg.b - seg.a) * DT < P["secure_min_s"]
 
 
+# --------------------------------------------------------------------------------------
+# L3: turnovers under the NCAA official-statistics rules (changes_loop5; rule ba_turnover_rules)
+# --------------------------------------------------------------------------------------
+@dataclass
+class _TO:
+    """One possible turnover: control of team A (seg L) followed by control of team B (seg G)."""
+    f: Free
+    L: Ctl  # last control of the losing team
+    G: Ctl  # first control of the gaining team (the deflector's touch when a teammate secures the ball)
+    S: Ctl  # the gaining team's securing control (G, or the recoverer's after a deflection)
+    decision: str  # turnover | abstain | no_turnover
+    reason: str
+    label: str = ""
+    deflector: str | None = None
+    steal_to: str | None = None
+    steal_basis: str = ""
+    charged_to: str | None = None
+    charged_basis: str = ""
+    alt_charged: str | None = None
+    throw_in: bool = False
+    merged: list = field(default_factory=list)
+
+
+def _rim_min(scene, a, b, rims=(True, False)):
+    """(frame, distance) of the ball's closest XY approach over frames [a, b] to the listed team baskets."""
+    ball = scene.ball
+    a, b = max(0, int(a)), min(scene.n - 1, int(b))
+    best = (None, float("inf"))
+    if b < a:
+        return best
+    for o in rims:
+        r = _rim_dist(scene, o, ball.x[a:b + 1], ball.y[a:b + 1])
+        if np.any(np.isfinite(r)):
+            j = int(np.nanargmin(r))
+            if float(r[j]) < best[1]:
+                best = (a + j, float(r[j]))
+    return best
+
+
+def _rim_scramble(scene, m, seg, P):
+    """changes_loop5 TO-C1 (control gate, losing side): `seg` is a rebound-battle touch, not team control, when it
+    lasts < rebound_control.secure_min_s and starts <= rebound_control.scramble_window_s after a shot's rim frame
+    (BA-R4f) or after an XY rim visit (ball within rim_visit_r_m of either basket: a try the shot proxy missed;
+    floor-only ball, no z)."""
+    R = PARAMS["rebound_control"]
+    if (seg.b - seg.a) * DT >= R["secure_min_s"]:
+        return None
+    if _scramble(m, seg):
+        return "shot"
+    t, r = _rim_min(scene, seg.a - _frames(R["scramble_window_s"]), seg.a + _frames(P.rim_visit_pad_s))
+    return "rim_visit" if t is not None and r <= P.rim_visit_r_m else None
+
+
+def _next_seg(m, s):
+    for j, x in enumerate(m.segs):
+        if x is s:
+            return m.segs[j + 1] if j + 1 < len(m.segs) else None
+    return None
+
+
+def _team_of(scene, pid):
+    return pid in scene.offense
+
+
+def _touches_between(scene, m, team_off, a, b):
+    """Opponent touches inside a free interval: taps (< min_touch_s) and contact segments the decode dropped,
+    by players of team `team_off`, overlapping frames [a, b]; earliest first."""
+    out = [(c.a, c.pid) for c in m.taps if c.off == team_off and c.b >= a and c.a <= b]
+    out += [(qa, pid) for pid, qa, qb in m.contacts if _team_of(scene, pid) == team_off and qb >= a and qa <= b]
+    return [pid for _, pid in sorted(out)]
+
+
+def _slight_tip(scene, a, b, P):
+    """A deflection over frames [a, b] is a slight tip when the ball keeps flight speed through it and its heading
+    turns by <= tip_max_turn_deg (SM 6 A.R.5(b)); else it is a clean deflection (A.R.5(a))."""
+    ball = scene.ball
+    n = scene.n
+    a0, b0 = max(1, a - 3), min(n - 2, b + 3)
+    sp = ball.speed[a:b + 1]
+    if not np.any(np.isfinite(sp)) or float(np.nanmin(sp)) < PARAMS["touch"]["flight_min_speed_mps"]:
+        return False
+    u = (ball.x[a] - ball.x[a0], ball.y[a] - ball.y[a0])
+    v = (ball.x[b0] - ball.x[b], ball.y[b0] - ball.y[b])
+    turn = _ang(u, v)
+    return bool(np.isfinite(turn) and turn <= P.tip_max_turn_deg)
+
+
+def _initiated(scene, pid, t_rel, t_cat, P):
+    """The interceptor moved to the ball (SM 6(e), A.R.4(a)/(c)): his displacement over [t_rel -
+    intercept_move_window_s, t_cat] is >= intercept_move_min_m. A defender the pass reaches standing still got an
+    errant pass (A.R.4(b): turnover, no steal)."""
+    k = scene.kins[pid]
+    a = max(0, t_rel - _frames(P.intercept_move_window_s))
+    if not (np.isfinite(k.x[a]) and np.isfinite(k.x[t_cat])):
+        return True  # doubt: credit the defender
+    return math.hypot(k.x[t_cat] - k.x[a], k.y[t_cat] - k.y[a]) >= P.intercept_move_min_m
+
+
+def _knocked_loose(scene, L, f, team_off, P):
+    """A gaining-team player within knock_reach_m of the ball around the refined release (+- knock_window_s): the ball was
+    knocked loose (SM 6(c)/(d)), he is the deflector; else the fumble was unforced (A.R.7: no steal)."""
+    ball = scene.ball
+    w = _frames(P.knock_window_s)
+    t_rel = f.t_release if f.t_release is not None else L.b  # the refined release (L.b is 1.5 m out)
+    best, bd = None, float("inf")
+    for t in range(max(0, t_rel - w), min(scene.n - 1, t_rel + w) + 1):
+        if not np.isfinite(ball.x[t]):
+            continue
+        o, d = _nearest(scene, scene.offense if team_off else scene.defense, t, *_xy(ball, t))
+        if o is not None and d < bd:
+            best, bd = o, d
+    return best if bd <= P.knock_reach_m else None
+
+
+def _merge_duplicates(recs, window_s):
+    """TO-M1 (Aldemir R7): two counted records (turnover or abstention) in the same direction within window_s are
+    one loss seen twice (the change back between them was not counted): keep one, preferring a decided turnover
+    over an abstention, and list the other's t0 in .merged."""
+    keep = []
+    for to in recs:
+        prev = next((x for x in reversed(keep) if x.decision != "no_turnover"), None)
+        if to.decision != "no_turnover" and prev is not None and prev.L.off == to.L.off and \
+                (to.G.a - prev.G.a) * DT <= window_s:
+            if prev.decision == "abstain" and to.decision == "turnover":
+                keep[keep.index(prev)] = to
+                to.merged.append(int(prev.G.a))
+            else:
+                prev.merged.append(int(to.G.a))
+            continue
+        keep.append(to)
+    return keep
+
+
+def _turnovers(scene, **ov):
+    """Every change of control between the teams, classified by the NCAA turnover rules (cached)."""
+    P = _params("live_ball_turnover", ov)
+
+    def build():
+        m = _model(scene)
+        ball = scene.ball
+        clock = getattr(scene, "game_clock", None)
+        out = []
+        for f in m.frees:
+            L, G = f.prev, f.nxt
+            if G is None or G.off == L.off:
+                continue
+            to = _TO(f, L, G, G, "turnover", "")
+            if f.shot:  # a try: the opponent's control is a rebound (SM 3), never a turnover
+                continue
+            # throw-in: the releaser stands out of bounds (SM 4 A.R.17(a): an intercepted throw-in is a turnover)
+            to.throw_in = bool(np.isfinite(scene.kins[L.pid].x[L.b]) and
+                               "out_of_bounds" in region(*_xy(scene.kins[L.pid], L.b)))
+            # TO-C1 control gate, losing side: a rebound-battle touch is not team control
+            why = _rim_scramble(scene, m, L, P)
+            if why == "shot":
+                continue  # BA-R4f: a decided rebound battle (the shot proxy saw the try)
+            if why == "rim_visit":
+                to.decision, to.reason = "abstain", "rim_visit_scramble"
+            if f.kind == "unknown":
+                to.decision, to.reason = "abstain", "gap"
+            # TO-D1: the ball passes over a basket between the loss and the gain: a try the proxy missed (rebound)
+            # or a pass off the rim (turnover); XY cannot tell them apart without ball z
+            t_v, r_v = _rim_min(scene, L.b - _frames(P.rim_visit_pad_s), G.a + _frames(P.rim_visit_pad_s))
+            if to.decision == "turnover" and not to.throw_in and t_v is not None and r_v <= P.rim_visit_r_m:
+                to.decision, to.reason = "abstain", "rim_visit"
+            # deflection: the first gaining-team touch is short and a teammate secures the ball
+            nx = _next_seg(m, G)
+            defl, tip = None, False
+            fg = _free_after(m, G)
+            short = (G.b - G.a) * DT < P.deflect_touch_max_s and nx is not None and nx.off == G.off \
+                and nx.pid != G.pid and (nx.a - G.b) * DT <= P.deflect_recover_max_s and fg is not None
+            # a bat (the ball goes on loose) or a slight tip (it keeps flight speed and line) is a deflection; a short
+            # touch followed by a pass is a catch and a quick pass (doubt = control, SM B.I.4): he secured it
+            if short and (fg.kind in ("loose", "exchange") or fg.loose_s >= PARAMS["touch"]["loose_min_s"]
+                          or _slight_tip(scene, G.a, G.b, P)):
+                defl, to.S = G.pid, nx
+                tip = _slight_tip(scene, G.a, G.b, P)
+            else:
+                taps = [p for p in _touches_between(scene, m, G.off, L.b - 2, G.a - 1) if p != G.pid]
+                if taps:
+                    defl = taps[0]
+                    tip = f.kind == "flight" and f.loose_s < PARAMS["touch"]["loose_min_s"]
+            S = to.S
+            # TO-C2 control gate, gaining side: the opponent must secure control before the ball goes dead
+            ns = _next_seg(m, S)
+            fs = _free_after(m, S)
+            if to.decision == "turnover" and (S.b - S.a) * DT < P.gain_secure_min_s and \
+                    (ns is None or (fs is not None and fs.kind == "unknown")):
+                to.decision, to.reason = "abstain", "dead_before_secured"
+            # TO-E1: end of period (SM 4 Art.1 exception): the gain comes with the game clock expired
+            if clock is not None and np.isfinite(clock[S.a]) and clock[S.a] <= P.period_end_eps_s:
+                to.decision, to.reason = "no_turnover", "end_of_period"
+            # label and steal credit (SM 6)
+            if f.kind == "exchange":
+                to.label = "strip"
+            elif f.kind == "flight" and f.loose_s < PARAMS["touch"]["loose_min_s"]:
+                to.label = "interception"
+            else:
+                to.label = "loose_recovery"
+            if defl is not None and defl != S.pid:
+                to.label = "deflection"
+                to.deflector = defl
+                if tip:  # slight tip, the recoverer intercepts (A.R.5(b))
+                    to.steal_to, to.steal_basis = S.pid, "recoverer_after_slight_tip"
+                else:  # clean deflection, or doubt (A.R.5(a), A.R.5(c) tie-break)
+                    to.steal_to, to.steal_basis = defl, "deflector"
+            elif to.label == "strip":
+                to.deflector = defl
+                to.steal_to, to.steal_basis = S.pid, "take_away"
+            elif to.label == "interception":
+                to.deflector = defl
+                if defl == S.pid or _initiated(scene, S.pid, f.t_release or L.b, S.t_catch or S.a, P):
+                    to.steal_to, to.steal_basis = S.pid, "interception"
+                else:
+                    to.steal_basis = "errant_pass_no_steal"
+            else:  # loose ball: knocked loose by a defender, or an unforced fumble
+                k = defl or _knocked_loose(scene, L, f, G.off, P)
+                to.deflector = k
+                if k is not None:
+                    to.steal_to, to.steal_basis = k, "knocked_loose"
+                else:
+                    to.steal_basis = "unforced_no_steal"
+            # charged player (SM 4 Art.1, A.R.4(d)/(e)): the last controller; a receiver who loses a teammate's pass
+            # loose within muff_max_s of the catch (refined catch to refined release: the ball in his hands; the
+            # segment also holds the roll out of his 1.5 m radius) muffed it: charged to him, passer as the alternative
+            to.charged_to, to.charged_basis = L.pid, "last_control"
+            fb = _free_before(m, L)
+            hands = ((f.t_release if f.t_release is not None else L.b) - (L.t_catch if L.t_catch is not None else L.a)) * DT
+            lost_loose = f.kind == "loose" or f.loose_s >= PARAMS["touch"]["loose_min_s"]
+            if fb is not None and fb.prev is not None and fb.prev.off == L.off and fb.prev.pid != L.pid \
+                    and fb.kind in ("flight", "exchange") and lost_loose and hands < P.muff_max_s:
+                to.charged_basis, to.alt_charged = "receiver_muff", fb.prev.pid
+            out.append(to)
+        return _merge_duplicates(out, P.dedupe_window_s)
+    return _cache(scene, _key("turnovers", ov), build)
+
+
+def _to_event(scene, to, kind):
+    s = to.S
+    pc = min(s.conf, to.L.conf)
+    clock = getattr(scene, "game_clock", None)
+    attrs = {"label": to.label, "live": True, "deflector": to.deflector, "recoverer": s.pid,
+             "steal_to": to.steal_to, "steal_basis": to.steal_basis, "charged_to": to.charged_to,
+             "charged_basis": to.charged_basis, "alt_charged": to.alt_charged, "throw_in": to.throw_in,
+             "secured_t": int(s.a), "merged_t0": to.merged,
+             "period_end_check": "ok" if clock is not None else "needs_game_clock",
+             "pbp_check": "steal/turnover rows within 2.0 s", "research_id": "missing:turnover"}
+    actors = {"lost_by": to.L.pid, "gained_by": s.pid}
+    if kind == "turnover_abstention":
+        attrs["reason"] = to.reason
+        attrs["resolve_with"] = {"rim_visit": "ball_z_or_pbp", "rim_visit_scramble": "ball_z_or_pbp",
+                                 "gap": "pbp", "dead_before_secured": "pbp"}.get(to.reason, "pbp")
+    return Event(kind, actors, to.G.a, to.L.b, s.b, _conf(pc, scene.ball, to.G.a, to.L.b, s.b), attrs)
+
+
 def detect_live_ball_turnover(scene, **params) -> list[Event]:
-    """New (checker missing item): control passes to the other team without a shot (strip, interception, loose)."""
-    _params("live_ball_turnover", params)
+    """Live-ball turnover under the NCAA rules (changes_loop5): the losing team had control (TO-C1), the
+    gaining team secured it (TO-C2), no try (shot proxy; an XY rim visit abstains), not at an expired clock
+    (TO-E1); duplicates merged (TO-M1). Steal credit and charged player in attrs (SM 4, SM 6)."""
+    return [_to_event(scene, t, "live_ball_turnover") for t in _turnovers(scene, **params) if t.decision == "turnover"]
+
+
+def detect_turnover_abstention(scene, **params) -> list[Event]:
+    """Possible turnovers tracking cannot decide (rim visit: try or pass; rebound battle after a rim visit; a gap;
+    the ball dead before the gainer secured it; a held ball whose arrow decides). Shares the live_ball_turnover
+    params; resolved by ball z or PBP (reconcile_turnovers)."""
+    P = _params("live_ball_turnover", params)
+    out = [_to_event(scene, t, "turnover_abstention") for t in _turnovers(scene, **params) if t.decision == "abstain"]
+    # TO-H1 held ball: a tie-up of a player in control; the alternating-possession arrow (PBP) decides the
+    # turnover (arrow to the defence: turnover to the tied-up player, steal to the tying defender, SM 4 A.R.10)
     m = _model(scene)
-    out = []
-    for f in m.frees:
-        if f.nxt is None or f.shot or f.kind == "unknown" or f.nxt.off == f.prev.off:
+    for e in detect_contested_ball(scene):
+        if not e.attrs.get("held_ball_candidate"):
             continue
-        if _scramble(m, f.prev):  # changes_loop4 BA-R4f: lost in the rebound scramble -> the opponent's rebound
-            continue
-        if f.kind == "exchange":
-            lab = "strip"
-        elif f.kind == "flight" and f.loose_s < PARAMS["touch"]["loose_min_s"]:
-            lab = "interception"
+        a = int(e.start)
+        prior = next((s for s in reversed(m.segs) if s.a < a and s.b >= a - _frames(P.held_prior_max_gap_s)), None)
+        # player control before the tie-up: a segment that reaches the tie-up and began >= held_prior_min_s before
+        # it (a segment that starts with the tie-up is the tie-up itself, e.g. two players reaching a rebound)
+        if prior is None or prior.pid not in (e.actors.get("offense"), e.actors.get("defense")) \
+                or (a - prior.a) * DT < P.held_prior_min_s or _rim_scramble(scene, m, prior, P) is not None:
+            continue  # no player control before the tie-up (rebound / loose ball): no turnover either way
+        tier = e.actors["defense"] if prior.off else e.actors["offense"]
+        out.append(Event("turnover_abstention", {"lost_by": prior.pid, "gained_by": tier}, a, a, int(e.end), e.conf,
+                         {"label": "held_ball", "reason": "held_ball_arrow", "resolve_with": "pbp_arrow",
+                          "charged_to": prior.pid, "steal_to": tier, "steal_basis": "tying_defender_if_arrow_to_defence",
+                          "live": False, "research_id": "missing:turnover"}))
+    return sorted(out, key=lambda e: e.t0)
+
+
+def reconcile_turnovers(scene, rows, **ov) -> dict:
+    """PBP reconciliation hook (rule ba_turnover_rules): applies the NCAA rules tracking cannot see to the tracking
+    turnovers and abstentions of one clip. `rows`: PBP rows aligned to the clip (t = seconds from the clip start),
+    each {t, type: turnover | foul | held_ball | review | period_end, team: offense | defense (the scene lists),
+    player, ...}; turnover rows may carry turnover_type, fouler, live; foul rows offensive (bool) and
+    forced_by_pass; held_ball rows arrow_team, tying_player; review rows outcome (overturned | upheld).
+    Returns {'turnovers': final records, 'dropped': [(record or row, rule)]}."""
+    R = _params("ba_turnover_rules", ov)
+    tos = detect_live_ball_turnover(scene)
+    abst = detect_turnover_abstention(scene)
+    m = _model(scene)
+    rows = sorted(rows, key=lambda r: r["t"])
+    team = lambda pid: "offense" if pid in scene.offense else "defense"  # noqa: E731
+    dropped = []
+    reviews = [r for r in rows if r["type"] == "review" and r.get("outcome") == "overturned"]
+
+    def overturned(t):  # TO-R1 final ruling: an event a review overturns does not count
+        return any(0.0 <= rv["t"] - t <= R.review_window_s for rv in reviews)
+    pbp = []
+    for r in (r for r in rows if r["type"] == "turnover"):
+        if overturned(r["t"]):
+            dropped.append((r, "final_ruling_overturned"))
+        elif pbp and pbp[-1]["team"] == r["team"] and r["t"] - pbp[-1]["t"] <= R.dup_window_s:
+            dropped.append((r, "duplicate"))  # TO-M1: the same turnover logged twice
         else:
-            lab = "loose_recovery"
-        s = f.nxt
-        out.append(Event("live_ball_turnover", {"lost_by": f.prev.pid, "gained_by": s.pid}, s.a, f.prev.b, s.b,
-                         _conf(min(s.conf, f.prev.conf), scene.ball, s.a, f.prev.b, s.b),
-                         {"label": lab, "pbp_check": "steal/turnover rows within 2.0 s", "research_id": "missing:turnover"}))
-    return out
+            pbp.append(dict(r))
+    fouls = [r for r in rows if r["type"] == "foul" and r.get("offensive")]
+    pend = next((r["t"] for r in rows if r["type"] == "period_end"), None)
+    final, used = [], set()
+    for e in tos:
+        t = e.t0 * DT
+        if overturned(t):
+            dropped.append((e, "final_ruling_overturned"))
+            continue
+        j = min((i for i, r in enumerate(pbp) if i not in used and abs(r["t"] - t) <= R.match_window_s
+                 and r["team"] == team(e.actors["lost_by"])), key=lambda i: abs(pbp[i]["t"] - t), default=None)
+        if j is not None:
+            used.add(j)
+        final.append({"t": round(t, 3), "team": team(e.actors["lost_by"]), "charged_to": e.attrs["charged_to"],
+                      "steal_to": e.attrs["steal_to"], "deflector": e.attrs["deflector"],
+                      "recoverer": e.attrs["recoverer"], "live": True, "fouler": None,
+                      "source": "both" if j is not None else "tracking", "rule": e.attrs["steal_basis"]})
+    for i, r in enumerate(pbp):
+        if i in used:
+            continue
+        rec = {"t": r["t"], "team": r["team"], "charged_to": r.get("player"), "steal_to": r.get("stealer"),
+               "deflector": None, "recoverer": None, "live": bool(r.get("live", False)), "fouler": None,
+               "source": "pbp", "rule": r.get("turnover_type", "")}
+        ab = min((a for a in abst if abs(a.t0 * DT - r["t"]) <= R.match_window_s
+                  and team(a.actors["lost_by"]) == r["team"]), key=lambda a: abs(a.t0 * DT - r["t"]), default=None)
+        if ab is not None and ab.attrs["reason"] != "held_ball_arrow":
+            rec.update(charged_to=ab.attrs["charged_to"], steal_to=ab.attrs["steal_to"],
+                       deflector=ab.attrs.get("deflector"), recoverer=ab.attrs.get("recoverer"),
+                       live=ab.attrs["reason"] != "dead_before_secured", source="abstention+pbp")
+        fl = next((x for x in fouls if abs(x["t"] - r["t"]) <= R.foul_link_s), None)
+        if r.get("turnover_type") == "offensive_foul" or fl is not None:
+            # TO-F1: an offensive foul is a turnover charged to the fouler, also off the ball (SM 4 A.R.19(e)/(f));
+            # a pass that forces the receiver into the charge is charged to the passer (A.R.21); no steal (6 A.R.9)
+            fouler = (fl or {}).get("player") or r.get("fouler") or r.get("player")
+            rec.update(fouler=fouler, charged_to=fouler, steal_to=None, live=False, rule="offensive_foul")
+            k = int(round(r["t"] / DT))
+            seg = next((s for s in m.segs if s.pid == fouler and s.a <= k + _frames(R.foul_link_s)
+                        and k - _frames(R.pass_forced_charge_s) <= s.a), None)
+            fb = _free_before(m, seg) if seg is not None else None
+            passer = r.get("passer") or (fb.prev.pid if fb is not None and fb.prev is not None
+                                         and fb.prev.off == seg.off and fb.kind == "flight" else None)
+            if (fl or r).get("forced_by_pass") and passer is not None:
+                rec.update(charged_to=passer, rule="pass_forced_charge")
+            elif passer is not None:
+                rec["needs_review"] = "pass_forced_charge?"  # a catch just before the charge: judgment call
+                rec["passer"] = passer
+        if pend is not None and r["t"] >= pend - R.period_end_eps_s and rec["source"] == "pbp" \
+                and rec["rule"] != "offensive_foul":
+            dropped.append((rec, "end_of_period"))  # TO-E1: the clock expired with the team in control
+            continue
+        final.append(rec)
+    for h in (r for r in rows if r["type"] == "held_ball"):
+        # TO-H1: held ball with player control: arrow to the opponent = turnover + steal to the tying defender;
+        # arrow to the controlling team = nothing (SM 4 A.R.10); no prior control (rebound) = no turnover (3 A.R.1)
+        ab = min((a for a in abst if a.attrs["reason"] == "held_ball_arrow" and
+                  abs(a.t0 * DT - h["t"]) <= R.match_window_s), key=lambda a: abs(a.t0 * DT - h["t"]), default=None)
+        if ab is None:
+            dropped.append((h, "held_ball_without_control"))
+            continue
+        lost = team(ab.actors["lost_by"])
+        if h.get("arrow_team") == lost or h.get("arrow_team") is None:
+            dropped.append((h, "held_ball_arrow_to_controlling_team" if h.get("arrow_team") else "held_ball_no_arrow"))
+            continue
+        final.append({"t": round(ab.t0 * DT, 3), "team": lost, "charged_to": h.get("player") or ab.actors["lost_by"],
+                      "steal_to": h.get("tying_player") or ab.actors["gained_by"], "deflector": None,
+                      "recoverer": None, "live": False, "fouler": None, "source": "abstention+pbp",
+                      "rule": "held_ball_arrow_to_defence"})
+    return {"turnovers": sorted(final, key=lambda x: x["t"]), "dropped": dropped}
 
 
 # --------------------------------------------------------------------------------------
@@ -2572,6 +2934,7 @@ DETECTORS = {
     "held_jumper": detect_held_jumper,
     "rebound_control": detect_rebound_control,
     "live_ball_turnover": detect_live_ball_turnover,
+    "turnover_abstention": detect_turnover_abstention,
     "violation_turnover": detect_violation_turnover,
     "fakes": detect_fakes,
     "footwork": detect_footwork,

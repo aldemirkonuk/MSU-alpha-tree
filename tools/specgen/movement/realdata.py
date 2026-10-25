@@ -110,6 +110,9 @@ def main():
                     tr.x = tr.x + noise(len(tr.x), a.noise, rng)
                     tr.y = tr.y + noise(len(tr.y), a.noise, rng)
             scene = build_scene(tracks)
+            # game clock (s left in the period) per frame: chunks are clock-running stretches, so it runs down
+            # with the frames (ball_actions TO-E1 end-of-period rule reads it when present)
+            scene.game_clock = meta["clock_start"] - np.arange(scene.n) * DT
             seconds += (scene.n - 1) * DT
             n_chunks += 1
             evs = run_chunk(scene, mods, timing, errors, {})
