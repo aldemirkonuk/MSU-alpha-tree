@@ -1,5 +1,5 @@
 family: screens
-version: 0.6.2
+version: 0.6.3
 date: '2026-10-25'
 owner: Mac session
 status: proposal under the build freeze (items marked canonical are the family's canonical definitions; every numeric value is an engineering proposal until fitted on MSU film)
@@ -497,6 +497,18 @@ changes_decisions_oct25:
     what: 'version 0.6.1 -> 0.6.2, date 2026-10-25. screen_record_schema gets its first params (D3); journal entries D4 / D5 (no rule or threshold change); 7 tests added.'
     why: Owner decisions of 25 Oct.
     evidence: test_changes_decisions_oct25_recorded.
+  # Second set of owner decisions of 25 Oct 2026 (Aldemir accepted the ten proposals of the 25 Oct review; item 7 is this
+  # family's, item 6 is defense.yaml's). Ids OD-n follow the owner's numbering (ball_actions.yaml OD-1 .. OD-5).
+  - id: OD-7-DETROIT-STAGGER
+    severity: medium
+    what: 'double_ball_screen.stagger_min_dy_m (0.4 m), new: Detroit also needs the two screeners side by side - their court-length offset |dy| (attacked-rim frame y; mean over the shared stand like gap_m, else at t_s1) below 0.4 m. attrs.dy_m added. double_drag, drag_screen and every other detector unchanged.'
+    why: 'Owner decision 25 Oct 2026: two staggered drag screeners close together are NOT Detroit. In the double_drag scene (sc_drag(double=True): s at y 7.9, s2 at y 7.2, 1.3 m apart, stands overlapping) the shared-stand mean gap fell below detroit_gap_m 1.2 m on noisy seeds and the pair read as Detroit as well as double drag (3 of 10 seeds at sigma_p 0.5, 2 / 2 at 0.2 / 0.3).'
+    evidence: 'Measured shared-stand |dy| (seeds 1-10): double_drag 0.59-1.01 / 0.54-1.19 / 0.45-1.63 m at sigma_p 0.2 / 0.3 / 0.5, detroit 0.02-0.14 / 0.03-0.41 / 0.03-0.32 m. Detroit reads on the double_drag scene, seeds 1-10: 2 / 2 / 3 -> 0 / 0 / 0; held-out seeds 11-40: 4 / 8 / 8 -> 0 / 1 / 3 of 30 (noise-limited at 0.5). True Detroit kept: seeds 1-10 10 / 8 / 4 -> 10 / 7 / 4, seeds 11-40 30 / 29 / 21 -> 30 / 28 / 17. Sweep (seeds 11-40, double_drag reads / detroit kept at 0.3 and 0.5): 0.35 1, 2 / 28, 16; 0.4 1, 3 / 28, 17; 0.45 2, 3 / 28, 18; 0.5 4, 3 / 28, 19; 0.4 is about the midpoint of the 0 / 0.7 m truths. No other screens scene reads Detroit before or after (all SCEN scenes, seeds 1-10, three tiers). double_drag hits on its scene unchanged 10 / 10 / 9. Real SportVU (3 games, 194 chunks, team_ends; clean and added noise 0.3): double_ball_screen 0 -> 0 and double_drag 0 -> 0 (ball_screen 107 / 109, drag_screen 4 / 3 events, unchanged). Tests test_od7_double_drag_is_not_detroit[*], test_od7_detroit_still_found, test_od7_stagger_param.'
+  - id: version-0.6.3
+    severity: info
+    what: 'version 0.6.2 -> 0.6.3, date 2026-10-25. double_ball_screen gets stagger_min_dy_m and attrs.dy_m (OD-7).'
+    why: Owner decisions of 25 Oct (second set).
+    evidence: test_od7_stagger_param.
 v0_results: 'sigma_p 0.3, seeds 1-5, 53 positive cases (48 detectors): 242 / 265 = 91 % pass kind + actors + t0 within 0.3 s + conf 0.2-1 + attributes; no detector fires on the null scenario (10 moving players, ball passed) for any of the 5 seeds. Weakest: side/step-up PnR 3/5 (handler wraps the screener, closest approach ambiguous), the rest 4-5/5. Synthetic only (V0): no claim about film until gold labels exist. Loop 1 (independent tester report, 22 failures): 196 tests pass (163 + 33 regression tests); on the tester''s 175 scenes x 10 seeds x sigma_p 0.2/0.3/0.5 (5250 runs) 0 crashes (4 before); per-item before/after numbers are in changes_loop1. Loop 2 (confirmer report on loop 1): on the same sweep hits 12539 -> 12612, strict 11756 -> 11832, FPs 1818 -> 1139, no detector worse at any sigma_p; see changes_loop2.'
 noise_driven_design (V0 findings of this task, each documented at its item):
 - 'smoothed positions under V0 noise (white + AR(1) 0.9, sigma_p 0.3) have 0.17 m per-axis error (median 2-D error 0.23 m, p90 0.44 m) with slow drift; pair distances wander 0.3-0.5 m for up to 1 s, so every distance gate has a probability and the screen moment uses a contact window, not a bare argmin'
@@ -1548,7 +1560,8 @@ items:
   t0: t_s of the first screen
   rule: |
     DETROIT: two ball SETs on the same h (at least one used: the handler goes off one side), screeners <= detroit_gap_m apart at t_s, and |t_s1 - t_s2| <= detroit_dt_s or both stops overlapping
-    for >= detroit_overlap_s (both loose-stationary at the same time; t_s is ill-defined when both screeners share one defender dip).
+    for >= detroit_overlap_s (both loose-stationary at the same time; t_s is ill-defined when both screeners share one defender dip), and side by side: their court-length
+    offset |dy| (mean over the shared stand, else at t_s1) < stagger_min_dy_m (OD-7, owner decision 25 Oct: two staggered drag screeners close together are a double drag, not Detroit).
     DOUBLE_HIGH: pre-screen two bigs at r pre_r_lo_m..pre_r_hi_m, m >= pre_m_min, <= pre_gap_m apart at t_s1 - 1.0; two ball screens on the same h by different screeners
     with dh_dt_lo_s <= t_s2 - t_s1 <= dh_dt_hi_s; trade = first screener reaches r >= trade_r_m (6.75) within 2.0 s after moving >= trade_move_m (1.5 m) from his t_s1
     position (SCR-M4-03); sink = first screener reaches r < sink_r_m (2.5); otherwise double_high.
@@ -1556,6 +1569,7 @@ items:
     detroit_gap_m: {value: 1.2, unit: m}
     detroit_dt_s: {value: 0.3, unit: s}
     detroit_overlap_s: {value: 0.3, unit: s, note: 'simultaneity by overlapping stops when t_s is ill-defined in a shared dip'}
+    stagger_min_dy_m: {value: 0.4, unit: m, note: 'OD-7 (owner decision 25 Oct): two screeners offset along the court length (|dy| in the attacked-rim frame, mean over the shared stand, else at t_s1) by at least this are staggered (double drag / stagger), never Detroit (side by side)'}
     pre_r_lo_m: {value: 4.5, unit: m}
     pre_r_hi_m: {value: 8.0, unit: m}
     pre_m_min: {value: 60.0, unit: deg}
@@ -1566,7 +1580,7 @@ items:
     trade_r_m: {value: 6.75, unit: m, note: 'double_high_trade when the first screener reaches r >= trade_r_m'}
     trade_move_m: {value: 1.5, unit: m, note: 'SCR-M4-03: ... and has moved at least this far from his t_s1 position (a first screener set above the arc who stays is a plain double_high)'}
   min_duration_s: 0.3
-  outputs: [sub_label (detroit | double_high_trade | double_high_sink | double_high), per-screener post-action]
+  outputs: [sub_label (detroit | double_high_trade | double_high_sink | double_high), per-screener post-action, gap_m, dy_m (court-length offset, OD-7)]
   confidence: {level: medium, p_terms: [product of both screen p terms]}
   noise: Two bodies about 1 m apart; ID swaps. The 0.8 s gap separates Detroit from double high.
   conflicts_resolved:

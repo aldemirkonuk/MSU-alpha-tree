@@ -1,5 +1,5 @@
 pack: identity_pack
-version: 0.1.0
+version: 0.1.1
 date: '2026-10-25'
 owner: Mac session for Aldemir
 status: proposal under the build freeze (baseline 3 of 8). Every numeric value is an engineering proposal until measured on MSU film; the harness numbers below come from simulated cues on real NBA SportVU motion.
@@ -16,6 +16,14 @@ requirement:
     Zero ID swaps means zero committed wrong labels: a detection may carry a player id only when the evidence makes that id
     near certain; otherwise it carries HOLD (a candidate set) and no id. An abstention is a coverage loss, never a swap.
     Coverage is maximised subject to the zero-swap constraint, not traded against it.
+  zero_swaps: 'Owner decision 25 Oct 2026 (OD-8): zero swaps stays absolute for locked labels. Coverage is raised by planned work (planned_work), never by lowering p_lock; a separately flagged probable tier (assignment rule, offline only) may show more boxes to viewers but never feeds stats.'
+  recording_standard:
+    rule: 'Owner decision 25 Oct 2026 (OD-9): any game that feeds player-level numbers must be recorded at >= 1080p and >= 60 fps (59.94). Below that standard the game feeds team-level numbers only, or its player labels are shown probable-only (no locked labels, no player-level stats).'
+    min_resolution: 1080p
+    min_fps: 59.94
+    below_standard: team-level numbers only, or probable-only player labels (flagged, viewer-only)
+    why: 'harness: on poor video (720p, dim, blur) locked coverage falls to 2-12 % of player boxes and an assigner not refitted for it swaps (profile poor_uncalibrated); 60 fps doubles jersey-read chances and halves motion blur (cues.jersey validity)'
+    acceptance: ACC-R1
   docs_requirements: docs/requirements.md lines 132-180 (identity layer), 742 (no face recognition), 801 (flag low identity confidence), 911-912 (HOTA, ID switches, identity accuracy)
 implementation: tools/specgen/identity/ (idlib.py reference assigner and metrics, obsmodel.py cue simulator, sportvu_truth.py, harness.py, gen_doc.py). Every param below is read at import; this file is the single source of truth.
 tests: tests/identity/ (synthetic rule tests for every state-machine rule and hard case; spec-schema checks; a SportVU smoke test that skips when the private data is absent)
@@ -308,6 +316,14 @@ assignment:
     >= twin_jersey_nats against that teammate; the box itself is not merged and does not show another team's colour.
     Offline label of a chain: the label with the highest mean marginal over its frames, emitted on the frames where all
     the conditions hold (one label per chain, so no within-chain flicker).
+    PROBABLE TIER (owner decision 25 Oct 2026, OD-8; offline only, never live): on a frame of that chain where the lock
+    conditions fail, the same label is emitted as a separate, flagged probable label when joint posterior >= p_probable,
+    chain margin >= probable_min_evidence_nats, own cues (>= one sample) favour it by >= probable_own_margin_nats and the
+    jersey evidence against a confusable teammate is >= probable_twin_jersey_nats. A probable label never repeats a locked
+    or another probable label in the frame (dropped to HOLD). It lives in its own output field: the locked label field,
+    swap_events, idsw, IDF1, HOTA, coverage and every stat read locked labels only; probable labels are shown to viewers
+    flagged as probable, and a wrong probable label is logged (harness: probable_wrong_frames / probable_wrong_events)
+    but is not a locked swap.
   params:
     p_lock: {value: 0.995, unit: probability, why: 'emission and lock threshold; at the harness'' 1e5 chain decisions per game a 0.5 % residual error would still be too many, so the posterior must also be calibrated (calibration metric) - the threshold is the knob, not the guarantee'}
     p_unlock: {value: 0.5, unit: probability, why: 'a locked chain is demoted (swap alarm) when its locked label falls below this; at 0.5 no other chain can hold the same label, so exclusivity is never broken by stickiness'}
@@ -318,7 +334,11 @@ assignment:
     twin_jersey_nats: {value: 5.0, unit: nats, why: 'a label with a confusable teammate among the candidates locks only when the chain''s own jersey evidence favours it over that teammate by this much (more than one capped sighting: one misread confusable with the twin''s number, 7 read as 80 for 30, locked a twin in the harness); template bias made the SportVU twins swap on appearance alone (review round 1)'}
     own_margin_nats: {value: 0.5, unit: nats, why: 'OWN-CUE SUPPORT: a chain locks a label only if it has at least one cue sample of its own and its own cues favour that label over every other candidate by at least this; priors (group mixture, children, elimination) can speed a lock up, never decide it (a group child inherited a teammate''s label when a hidden teammate stepped out; tolerance 1.0 against still let it through)'}
     class_window_s: {value: 1.0, unit: s, why: 'live swap catch for opponents: a locked chain whose last 1 s of team-colour evidence is confidently the other class raises a class alarm (opponent pairs are not cut by the tracklet layer, see tracklets.rule)'}
-  outputs: [label or HOLD, posterior, candidate set (labels with posterior >= 0.05), lock state, evidence breakdown per cue]
+    p_probable: {value: 0.9, unit: probability, why: 'PROBABLE TIER (owner decision 25 Oct 2026, OD-8; offline only): a detection the locked tier leaves on HOLD gets a flagged probable label when the chain''s joint posterior for its offline label is >= this and the lower bars below hold. Probable labels are shown to viewers flagged as probable and never feed stats or any metric that counts locked identity'}
+    probable_min_evidence_nats: {value: 1.0, unit: nats, why: 'probable tier: chain margin without the one-label constraint (min_evidence_nats is 2.0 for a lock); elimination alone still never gives a probable label'}
+    probable_own_margin_nats: {value: 0.0, unit: nats, why: 'probable tier: at least one own cue sample and the chain''s own cues may not favour another candidate (own_margin_nats is 0.5 for a lock)'}
+    probable_twin_jersey_nats: {value: 0.0, unit: nats, why: 'probable tier: against a confusable teammate the own jersey evidence may not point to the twin (twin_jersey_nats is 5.0 for a lock)'}
+  outputs: [label or HOLD, posterior, candidate set (labels with posterior >= 0.05), lock state, evidence breakdown per cue, 'probable label (offline only, flagged; OD-8)']
 
 state_machine:
   summary: Per chain; identities are locked on entry (after confirmation), held through occlusions, re-confirmed after every crossing and released on exit.
@@ -380,6 +400,9 @@ confidence_and_abstention:
     own team-colour observation contradicts its chain's team (a one-frame swap with an opponent or an official at a
     chain edge, or a colour misread; costs about e_team of the boxes). HOLD carries the candidate set (labels with posterior >= 0.05). Downstream consumers use
     candidate sets for counting (a HOLD in a two-player group still counts both players on the floor) and never guess.
+    Live panel (owner decision 25 Oct 2026, OD-10): when unsure the live panel shows HOLD with the candidate list; no
+    provisional or probable label is ever shown live. The probable tier (assignment rule, OD-8) exists offline only and is
+    flagged as probable wherever it is shown; it never feeds stats.
     Calibration: on the gold sample the emitted posteriors are binned and the observed error rate per bin must stay below
     the bin's mean (1 - posterior) x calibration_slack.
   params:
@@ -438,7 +461,14 @@ hard_cases:
 
 outputs:
   per_frame:
-    fields: [game_id, frame, pts, detection_id, chain_id, label (player_id or HOLD), posterior, candidates, lock_state, class, class_posterior, evidence_by_cue, merged_flag]
+    fields: [game_id, frame, pts, detection_id, chain_id, label (player_id or HOLD), posterior, candidates, lock_state, class, class_posterior, evidence_by_cue, merged_flag, 'tier (locked | probable | hold)', 'probable_label (player_id or null; offline only)', probable_posterior]
+    rule: 'label holds locked identities only; every stat, every count of locked identity and every metric of the metrics section reads label. probable_label is filled offline only (OD-8), flagged probable wherever it is shown, and never feeds stats.'
+  live_panel:
+    fields: [frame, detection_id, label (player_id or HOLD), candidates (when HOLD, posterior >= candidate_min_p), lock_state]
+    rule: 'Owner decision 25 Oct 2026 (OD-10): the live panel shows a locked label or HOLD with the candidate list; it never shows a provisional, unconfirmed or probable label.'
+  probable_log:
+    fields: [game_id, frame_start, frame_end, chain_id, probable_label, mean_posterior, review_status]
+    rule: 'OD-8: every probable run is logged; when truth exists (gold sample, harness) a wrong probable run is counted as probable_wrong_events, never as a locked swap.'
   per_possession:
     fields: [possession_id, lineup_pbp (10 ids), lineup_seen (labels emitted at least once), agreement (labels seen subset of lineup), unexplained_holds_s, abstention_share]
     rule: agreement must be 1.0 (ID-INV-3); a disagreement goes to review with the PBP row.
@@ -478,6 +508,15 @@ metrics:
 - id: calibration
   name: Posterior calibration
   definition: error rate per posterior bin of emitted labels vs 1 - mean posterior.
+- id: probable_coverage_gain
+  name: Probable-tier coverage gain (OD-8)
+  definition: share of player detections that carry a probable label where the locked tier abstains (offline); coverage_with_probable = coverage + this gain. Reported apart from coverage.
+- id: probable_error_rate
+  name: Probable-tier error rate (OD-8)
+  definition: 'wrong probable labels / probable labels (offline); wrong runs (merged within 1 s) are probable_wrong_events. Logged, never added to swap_events.'
+- id: recording_standard
+  name: Recording standard (OD-9)
+  definition: per game, the source resolution and frame rate of the main wide recording.
 
 acceptance:
 - {id: ACC-1, metric: swap_events, scope: 'gold sample (>= 5 MSU games, >= 20 min of labelled live play each, all 10 players labelled per frame)', threshold: '== 0 (offline labels)', on_fail: 'every swap gets a review record; the root cause (cue, rule, threshold) is fixed and the gold sample re-run; a swap is never waived'}
@@ -489,6 +528,8 @@ acceptance:
 - {id: ACC-7, metric: invariants, scope: every game, threshold: 'ID-INV-1..5 zero breaks', on_fail: quarantine affected frames (identity_review queue, R-IV-01)}
 - {id: ACC-8, metric: calibration, scope: gold sample, threshold: 'observed error <= calibration_slack x (1 - mean posterior) in every bin with >= 1,000 labels', on_fail: raise p_lock and re-tune taus}
 - {id: ACC-H1, metric: swap_events, scope: 'SportVU harness, cue profile good, sigma_p 0.15 and 0.30 m, all three games, config full (offline)', threshold: '== 0', on_fail: spec defect - fix before 0.1.x is accepted}
+- {id: ACC-P1, metric: probable_error_rate, scope: 'SportVU harness (every cue profile and sigma_p, config full) and the gold sample, offline', threshold: 'reported with probable_coverage_gain on every run; probable labels never enter swap_events, idsw, IDF1, HOTA, coverage or any stat', on_fail: 'a probable label found in a stat input is a defect; a probable error rate above 1 % on the gold sample raises p_probable'}
+- {id: ACC-R1, metric: recording_standard, scope: every game that feeds player-level numbers, threshold: '>= 1080p and >= 59.94 fps (OD-9)', on_fail: 'team-level numbers only, or probable-only player labels for that game'}
 - {id: ACC-H2, metric: idsw, scope: 'SportVU harness, config naive_tracker, cue profile good, sigma_p 0.30 m', threshold: '> 0 (the harness must be able to produce swaps; otherwise it cannot test the rules)', on_fail: harness defect}
 gold_sample:
   plan: >-
@@ -604,20 +645,105 @@ journal:
   - First version of the identity pack (baseline 3), from the requirements identity section, Aldemir's zero-swap rule (23 Oct) and a short survey of broadcast identification work.
   - Reference assigner, cue simulator, SportVU harness and synthetic rule tests written against this file; the design was iterated on the harness (RV-01 to RV-10 below).
   - 'Independent review pass (requirements and hard cases): standing-constraint YAML item fixed (it parsed as a mapping), assignment rule text completed (directional priors, lock conditions), DP4 split into teammate and opponent crossings, game card refreshed at substitution entries, low-confidence review trigger (review_hold_s), orientation and blur noted for jersey sightings, ID-INV-2 and posterior calibration added to the harness metrics.'
+- version: 0.1.1
+  date: '2026-10-25'
+  changes:
+  - 'Owner decisions of 25 Oct 2026 (OD-8 .. OD-10; answers to OQ-2, OQ-4, OQ-5, OQ-6): zero swaps absolute with a flagged offline probable tier; minimum recording standard and the ShotTracker action item; live panel HOLD with candidates.'
+  - 'harness.py writes G1 / G2 / G3 codes (game_code) in the repo results and keeps real ids in the private output only; the repo results record game counts per run.'
+  decisions:
+  - id: OD-8
+    what: >-
+      Zero swaps stays absolute (requirement.zero_swaps). New probable tier (assignment rule and params p_probable 0.9,
+      probable_min_evidence_nats 1.0, probable_own_margin_nats 0.0, probable_twin_jersey_nats 0.0): offline only, emitted
+      on frames where the locked tier abstains but the chain's offline label passes the lower bar; its own output field
+      (Result.probable; outputs per_frame tier / probable_label, probable_log), never repeated in a frame, never written
+      to the locked label, so swap_events, idsw, IDF1, HOTA, coverage and stats are unchanged. New metrics
+      probable_coverage_gain and probable_error_rate (metrics.probable_metrics, harness rows and summary), acceptance
+      ACC-P1. Coverage levers recorded as planned work PW-1 (60 fps), PW-2 (more jersey reads), PW-3 (position
+      precision).
+    why: >-
+      owner decision 25 Oct 2026 (OQ-5): keep the zero-swap rule absolute and treat coverage as the thing to improve; a
+      separately flagged probable tier may be shown to viewers but never feeds stats or any metric that counts locked
+      identity; its coverage gain and its error rate are both reported, and wrong probable labels are logged, not
+      counted as locked swaps.
+    evidence: >-
+      SportVU harness (3 games G1-G3, config full, offline, 251 s wall, 4 workers): every locked metric of all 228 result
+      rows identical before / after (swap_events, idsw, wrong-label frames, IDF1, HOTA, coverage, re-confirm, alarms,
+      splits). Probable tier, good video, sigma_p 0.15 / 0.30 / 0.50 m: coverage 0.593 / 0.463 / 0.255 -> with probable
+      0.694 / 0.547 / 0.319 (gain +0.102 / +0.084 / +0.064); probable labels wrong 161 of 176,224 / 182 of 145,295 / 82 of
+      111,230 (error rate 0.09 / 0.13 / 0.07 %; 13 / 14 / 10 wrong runs; 2 probable frames on officials at 0.50).
+      Poor video (calibrated): gain +0.299 / +0.202 / +0.117 (coverage 0.120 / 0.091 / 0.024 -> 0.419 / 0.293 / 0.141),
+      error rate 0.18 / 0.06 / 0.06 % (42 / 18 / 15 wrong runs). Poor video read with good-video parameters
+      (poor_uncalibrated): error rate 1.39 / 1.00 / 1.28 % (148 / 87 / 86 wrong runs), so calibration per recording
+      quality applies to the probable tier too. Threshold check on 12 min of G1 (good 0.15 / 0.30 / 0.50, poor 0.30):
+      (p 0.8, margin 0.5) raised the gain by 0.01-0.04 but wrong labels rose 32 -> 54 at good 0.30 and 11 -> 129 on poor;
+      (0.95, 1.5, own 0.25) cut the gain by about a fifth with the same 32 wrong at good 0.30. Tests test_od8_single_sighting_gives_a_probable_label_not_a_lock,
+      test_od8_elimination_never_gives_a_probable_label, test_od8_probable_tier_never_changes_locked_labels,
+      test_owner_decisions_25_oct_recorded.
+  - id: OD-9
+    what: >-
+      requirement.recording_standard: any game that feeds player-level numbers needs >= 1080p and >= 59.94 fps; below it
+      the game feeds team-level numbers only or probable-only player labels (acceptance ACC-R1, metric
+      recording_standard). Action items AI-1 (ask MSU staff for ShotTracker player ids as identity truth) and AI-2
+      (agree the recording standard with whoever records MSU games), both owned by Aldemir.
+    why: >-
+      owner decision 25 Oct 2026 (OQ-6, OQ-4): poor recordings stop appearance from separating teammates, and exact
+      identity truth for MSU games would replace hand labels in the gold sample.
+    evidence: >-
+      Harness, full offline, poor vs good video at sigma_p 0.30 m: locked coverage 0.091 vs 0.463; read with good-video
+      parameters (poor_uncalibrated) 1 / 1 / 4 swap events at 0.50 / 0.30 / 0.15 m (section 1). Test
+      test_owner_decisions_25_oct_recorded.
+  - id: OD-10
+    what: >-
+      outputs.live_panel: the live panel shows a locked label or HOLD with the candidate list (candidate_min_p); never a
+      provisional, unconfirmed or probable label. confidence_and_abstention rule and outputs per_frame say so; the
+      solver's live result carries no probable label (Result.probable is None live).
+    why: 'owner decision 25 Oct 2026 (OQ-2): HOLD with candidates is acceptable live; provisional labels would invite stats from guesses.'
+    evidence: Live labels and live metrics unchanged (harness rows identical). Tests test_od8_single_sighting_gives_a_probable_label_not_a_lock (live carries no probable label), test_owner_decisions_25_oct_recorded.
 
 open_questions:
 - id: OQ-1
   question: Hair (style, colour) is listed as an appearance cue in requirements line 151 but can act as an ethnicity proxy; 0.1.0 excludes hair and skin entirely (head and skin masked). Keep the exclusion?
 - id: OQ-2
   question: 'Live labels: is HOLD acceptable on the live panel (with the candidate set), or do you want a provisional label marked "unconfirmed"? The zero-swap rule is met only if provisional labels never feed stats.'
+  decision: 'Decided 25 Oct 2026 (OD-10): the live panel shows HOLD with the candidate list when unsure; no provisional labels (outputs.live_panel).'
 - id: OQ-3
   question: Jersey read rate and OCR error at our recording quality are the largest unknowns (the harness assumes 0.6 sightings per second and 5 % error for good video). Measure them on the first labelled MSU game before tuning anything else?
 - id: OQ-4
   question: ShotTracker ids from MSU staff would give exact identity truth for MSU home games; ask staff?
+  decision: 'Decided 25 Oct 2026 (OD-9): yes - action item AI-1 (open_items).'
 - id: OQ-5
+  decision: 'Decided 25 Oct 2026 (OD-8): zero swaps stays absolute; a flagged probable tier is added (offline, viewer-only, never feeds stats; coverage gain and error rate measured on the harness); coverage levers (60 fps, more jersey reads) are planned work PW-1 / PW-2.'
   question: 'Zero swaps costs coverage. On the harness the spec labels about 59 % / 46 % / 26 % of player boxes offline at sigma_p 0.15 / 0.30 / 0.50 m (good video) and only 2-12 % on poor video, against ACC-3/ACC-4 targets of IDF1 >= 0.80 and coverage >= 0.85. Keep the zero-swap rule absolute and treat coverage as the thing to improve (better position precision during encounters, 60 fps, more jersey reads), or allow a separately flagged "probable" label tier for analysis that never feeds stats?'
 - id: OQ-6
   question: 'Poor recordings (720p, low bitrate, dim): appearance stops separating teammates, so labels wait for two jersey sightings. Should we set a minimum recording standard (1080p, 60 fps) for any game that feeds player-level numbers?'
+  decision: 'Decided 25 Oct 2026 (OD-9): yes - requirement.recording_standard and acceptance ACC-R1 (below it: team-level only or probable-only).'
+
+open_items:
+- id: AI-1
+  action: Ask MSU staff for ShotTracker player ids (per-player tracking ids of MSU home games) as identity truth for the gold sample and for re-measuring coverage and probable-tier errors on MSU video.
+  owner: Aldemir (owner decision 25 Oct 2026, OD-9)
+  status: open
+  feeds: [gold_sample, ACC-1, ACC-P1]
+- id: AI-2
+  action: 'Agree the recording standard (1080p, 59.94 fps main wide camera) with whoever records MSU games; until a game meets it, it feeds team-level numbers only or probable-only labels (ACC-R1).'
+  owner: Aldemir (owner decision 25 Oct 2026, OD-9)
+  status: open
+  feeds: [requirement.recording_standard, ACC-R1]
+
+planned_work:
+- id: PW-1
+  lever: 60 fps recordings
+  why: 'Coverage lever (OD-8): twice the frames per jersey sighting window and less motion blur raise jersey_sightings_per_s; the zero-swap bar stays.'
+  measure: re-run the harness with a 60 fps cue profile once MSU 60 fps footage gives a measured read rate (OQ-3)
+- id: PW-2
+  lever: more jersey reads (OCR on front and back, partial digits, more crops per sighting)
+  why: 'Coverage lever (OD-8): jersey sightings are the only cue that separates same-build teammates (twin rule) and the main driver of re-confirmation after crossings.'
+  measure: jersey read rate and OCR error on the first labelled MSU game (OQ-3), then the harness coverage at the measured rate
+- id: PW-3
+  lever: better position precision during encounters
+  why: 'Coverage falls with sigma_p (section 1); two players closer than about 4 sigma cannot be kept apart by motion.'
+  measure: tracker sigma_p on MSU film (movement noise model)
 
 review_round_1:
 - id: RV-01

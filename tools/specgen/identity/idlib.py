@@ -771,6 +771,7 @@ class Result:
     chains: list
     det_chain: np.ndarray
     stats: dict
+    probable: np.ndarray = None  # (D,) offline-only flagged 'probable' label (OD-8) or HOLD; never part of `label`
 
 
 def _cum_tables(chains, EV, CL, n_dets):
@@ -942,18 +943,20 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
         for c in chains:
             CUMJ[ptr[c.cid]:ptr[c.cid + 1]] = np.cumsum(J[c.dets], 0)
 
-    def twin_ok(cid, k, L, cand):
+    def twin_ok(cid, k, L, cand, need=None):
         """A label with a confusable teammate among the candidates needs jersey evidence against that teammate."""
+        need = prm["twin_jersey_nats"] if need is None else need
         tw = [t for t in cand if conf[L, t]]
         if not tw:
             return True
         if CUMJ is None:
-            return False
+            return need <= 0
         a = ptr[cid]
         jv = CUMJ[ptr[cid + 1] - 1] if mode == "offline" else CUMJ[a + k] - (CUMJ[a + k_off[cid] - 1] if k_off[cid] > 0 else 0)
-        return all(jv[L] - jv[t] >= prm["twin_jersey_nats"] for t in tw)
+        return all(jv[L] - jv[t] >= need for t in tw)
 
     label = np.full(d.n, HOLD, dtype=np.int64)
+    probable = np.full(d.n, HOLD, dtype=np.int64)  # OD-8: offline viewer tier, never merged into `label`
     post = np.zeros(d.n)
     log = []
     starts = {}
@@ -1141,9 +1144,16 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
                 cand_c = np.where(np.isfinite(SNEF[js]).any(0))[0]
                 ok = np.isfinite(sL) & (pL >= p_lock) & (margin >= prm["min_evidence_nats"]) & own_ok \
                     & twin_ok(c.cid, 0, L, cand_c)
+                # OD-8 probable tier (offline only): where the locked tier abstains but the posterior and the chain's
+                # own cues pass the lower bar; flagged, shown to viewers only, never written to `label`
+                own_p = (ow[:, L] - ow_oth.max(1) >= prm["probable_own_margin_nats"]) & (CUMN[ptr[c.cid + 1] - 1] >= 1)
+                pr = np.isfinite(sL) & ~ok & (pL >= prm["p_probable"]) & (margin >= prm["probable_min_evidence_nats"]) \
+                    & own_p & twin_ok(c.cid, 0, L, cand_c, prm["probable_twin_jersey_nats"])
+                probable[js[pr]] = L
             else:
                 ok = np.isfinite(sL)
             label[js[ok]] = L
+        stats["probable_dup_guard"] = 0
         for f in range(d.n_frames):
             lo, hi = d.fstart[f], d.fstart[f + 1]
             lab = label[lo:hi]
@@ -1151,7 +1161,16 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
             for v in vals[cnt > 1]:
                 stats["dup_guard"] += 1
                 label[lo:hi][lab == v] = HOLD
-    return Result(label, post, log, chains, det_chain, stats)
+            # OD-8: a probable label never repeats a locked label or another probable label in the frame
+            pb = probable[lo:hi]
+            if np.any(pb >= 0):
+                both = np.concatenate([label[lo:hi][label[lo:hi] >= 0], pb[pb >= 0]])
+                vals, cnt = np.unique(both, return_counts=True)
+                for v in vals[cnt > 1]:
+                    stats["probable_dup_guard"] += 1
+                    pb[pb == v] = HOLD
+        stats["probable_labels"] = int(np.sum(probable >= 0))
+    return Result(label, post, log, chains, det_chain, stats, probable)
 
 
 # --------------------------------------------------------------------------------------

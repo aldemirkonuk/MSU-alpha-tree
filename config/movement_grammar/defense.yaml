@@ -3,7 +3,7 @@
 # Tests: tests/movement/test_defense.py (synthetic scenarios, validation tier V0).
 family: DEFENSIVE MOVEMENT
 id: defense
-version: 0.3.1
+version: 0.3.2
 date: 2026-10-25
 owner: Mac session
 status: proposal
@@ -305,6 +305,16 @@ changes_loop5:
     what: "tests/movement/conftest.py (new) sets OMP / OPENBLAS / MKL / VECLIB thread counts to 1 for every movement suite before numpy loads (test_defense.py keeps its own setdefault). mvlib.ca_rts inverts all predicted covariances in one batched np.linalg.inv call before the RTS pass instead of one call per frame. No defence rule or parameter changed."
     why: "DEF-T22: multithreaded BLAS made each small inverse in ca_rts pay a thread start-up (one scene ~16 s under load) and only this family's test file guarded against it. The batched inverse uses the same LAPACK routine per matrix, so the smoother output is unchanged."
     evidence: "Bitwise: HEAD vs new ca_rts on 300 random tracks (2-400 frames, gaps, 8 m outliers that trigger the re-init, both q) 0 mismatches in means, covariances and the rejected mask. Real SportVU (3 games, 194 chunks, 6855 s, all eight families, clean): 137,618 dumped events identical before / after. Speed: 600-frame axis 9.3 -> 7.9 ms (1 BLAS thread), 9.9 -> 8.3 ms (8 threads); the full real run's family timings were within machine-load noise (another job was running). Movement suites pass."
+changes_decisions_oct25:
+  # Owner decisions of 25 Oct 2026 (Aldemir accepted the ten proposals of the 25 Oct review; item 6 is this family's).
+  - id: OD-6 hard-vs-soft-switch-definition-pending
+    what: "No behaviour change: switch.intensity (hard / soft / neutral) keeps its rule and params (hard_window_s 0.8, hard_from_min 1.5, hard_to_max 0.8, soft_hold_s 1.0, soft_cushion_min 1.2, soft_lambda_min 0.5). The definition is recorded as pending agreement with MSU staff (switch.conflicts_resolved, open_questions); the open item is owned by the owner (Aldemir)."
+    why: "Owner decision 25 Oct 2026: hard vs soft switch is coaching vocabulary; the label is fixed with MSU staff, not by the spec. Until then the intensity attribute is an engineering proposal and must not be read as the staff's definition."
+    evidence: "Defense detectors untouched (only this file's version, journal and two text lines change). Test test_od6_switch_definition_pending_recorded."
+  - id: version
+    what: "version 0.3.1 -> 0.3.2, date 2026-10-25."
+    why: "OD-6 recorded."
+    evidence: "test_od6_switch_definition_pending_recorded."
 validation_v0:
   method: >-
     tests/movement/test_defense.py scenes (sim.scenario, sigma_p 0.3 m, white + AR(1) rho 0.9, every leg physically
@@ -1498,6 +1508,7 @@ items:
       - "Persistence 1.5 s (event) vs 2.0 s (coverage label) kept as two outputs."
       - "Timing at the geometric exchange, not the lagging HMM flip (check, high); very_late / unclassified close the band gap."
       - "Hard switch 3.0 m/s in 0.5 s and jump switch 4 m/s were unreachable (check, high): replaced by closing distance in 0.8 s and lambda."
+      - "Hard vs soft switch definition (owner decision 25 Oct, OD-6): pending agreement with MSU staff; open item owned by Aldemir. The intensity rule and its thresholds above are engineering proposals and stay unchanged until then."
     sources:
       - {url: "repo:docs/taxonomy/defense_full.md 0.4 SWITCH, F3.4, BS-6, BS-12", supports: "reciprocal 1.0 s / 1.5 s; late switch; attack / passive numbers"}
     status: proposal
@@ -2433,5 +2444,5 @@ open_questions:
   - "Measure a_first_step and t_react on MSU film / LPS; both currently set every physics-adjusted window."
   - "Measure sigma_p and AR(1) rho of our tracker (noise_model) and refit k_floor, K_CAL, the *_q10 tier values and the sub-noise abstain policy."
   - "Refit the matchup HMM (weights, sigma_fit, rho) by EM on MSU half-court data; decide the transition emission."
-  - "Hard vs soft switch needs a coach-agreed definition (MSU staff vocabulary)."
+  - "Hard vs soft switch needs a coach-agreed definition (MSU staff vocabulary). Owner decision 25 Oct (OD-6): open item owned by Aldemir, pending agreement with MSU staff; no behaviour change until then (changes_decisions_oct25)."
   - "Second Spectrum / Synergy coverage definitions are not public; benchmarking needs licensed access."

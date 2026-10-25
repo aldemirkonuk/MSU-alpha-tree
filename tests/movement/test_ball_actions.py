@@ -1714,7 +1714,8 @@ def test_loop5_params_are_yaml_params():
     expect = {"live_ball_turnover": ["rim_visit_r_m", "rim_visit_pad_s", "gain_secure_min_s", "deflect_touch_max_s",
                                      "deflect_recover_max_s", "tip_max_turn_deg", "intercept_move_min_m",
                                      "intercept_move_window_s", "knock_reach_m", "knock_window_s", "muff_max_s",
-                                     "period_end_eps_s", "dedupe_window_s", "held_prior_max_gap_s", "held_prior_min_s"],
+                                     "period_end_eps_s", "dedupe_window_s", "held_prior_max_gap_s", "held_prior_min_s",
+                                     "no_steal_clear_m", "no_steal_clear_s"],  # OD-3 (changes_decisions_oct25)
               "ba_turnover_rules": ["match_window_s", "review_window_s", "dup_window_s", "foul_link_s",
                                     "pass_forced_charge_s", "period_end_eps_s"]}
     for item, names in expect.items():
@@ -1762,7 +1763,7 @@ def test_loop5_negative(case, seed):
 
 def test_loop6_hidden_dribble_measurement_recorded():
     """changes_loop6 BA-L6-01: the hidden-dribble priors were measured on SportVU ball z and kept (no parameter change)."""
-    assert BA.DOC["version"] == "0.1.6"
+    assert BA.DOC["version"] in ("0.1.6", "0.1.7")  # 0.1.7: changes_decisions_oct25
     ch = {c["id"].split()[0]: c for c in BA.DOC["changes_loop6"]}
     assert set(ch) == {"BA-L6-01"} and all(ch["BA-L6-01"][k] for k in ("what", "why", "evidence"))
     items = {it["id"]: it for it in BA.DOC["items"]}
@@ -1770,3 +1771,62 @@ def test_loop6_hidden_dribble_measurement_recorded():
     assert items["catch_and_shoot"]["params"]["p_hidden_dribble_long"]["value"] == 0.2
     assert "BA-L6-01" in items["held_jumper"]["params"]["p_hidden_dribble"]["note"]
     assert BA.DOC["open_after_loop6"]
+
+
+# --------------------------------------------------------------------------------------
+# Owner decisions of 25 Oct 2026 (changes_decisions_oct25 OD-1 .. OD-5)
+# --------------------------------------------------------------------------------------
+SCENARIOS.update({
+    # OD-3: the errant pass of l5_errant_pass (D stands still) with a second defender DP 1.4 m behind the passer:
+    # somebody is near the loss, so the steal is credited by default to the interceptor.
+    "od3_errant_pressured": dict(dur=3.5, spec={"actors": {
+        **SCENARIOS["l5_errant_pass"]["spec"]["actors"], "DP": {"team": "D", "wp": _still(7.0, 4.0)}},
+        "ball": SCENARIOS["l5_errant_pass"]["spec"]["ball"]}),
+    # OD-3: the fumble of l5_fumble_unforced with D 1.9 m from the ball (beyond knock_reach_m 1.0): not clearly
+    # unforced, so the recoverer D2 gets the steal by default.
+    "od3_fumble_pressured": dict(dur=4.0, spec={"actors": {
+        **SCENARIOS["l5_fumble_unforced"]["spec"]["actors"], "D": {"team": "D", "wp": _still(5.6, 5.0)}},
+        "ball": SCENARIOS["l5_fumble_unforced"]["spec"]["ball"]}),
+})
+OD3_CASES = [(name, sg, seed) for name in ("od3_errant_pressured", "od3_fumble_pressured")
+             for sg in (0.2, 0.3, 0.5) for seed in (1, 2, 3)]
+
+
+@pytest.mark.parametrize("name,sigma,seed", OD3_CASES, ids=lambda v: str(v))
+def test_od3_steal_by_default(name, sigma, seed):
+    """OD-3 (owner decision 25 Oct): a steal is credited by default; no steal only when nobody of the gaining team was
+    within no_steal_clear_m of the ball before the loss (l5_errant_pass / l5_fumble_unforced keep their no-steal call,
+    test_loop5_turnover_rules). Seeds 1-10 credit the steal 10 / 10 / 10 in both scenes."""
+    sc = scene(name, seed, sigma)
+    lost, rec = ("A", "D") if name == "od3_errant_pressured" else ("A", "D2")
+    e = _one(_lbt(sc), lost_by=lost, gained_by=rec)
+    assert e and e[0].attrs["steal_to"] == rec and "no_steal" not in e[0].attrs["steal_basis"], \
+        [(x.actors, x.attrs["steal_to"], x.attrs["steal_basis"]) for x in _lbt(sc)]
+
+
+def test_od3_no_steal_needs_nobody_near_the_loss():
+    """OD-3: with no_steal_clear_m 0 the old calls return (the pressure test is the only change); the params exist."""
+    p = BA.PARAMS["live_ball_turnover"]
+    assert p["no_steal_clear_m"] == 2.5 and p["no_steal_clear_s"] == 0.5
+    sc = scene("od3_errant_pressured", 1, 0.2)
+    e = _one(_lbt(sc, no_steal_clear_m=0.0), lost_by="A", gained_by="D")
+    assert e and e[0].attrs["steal_to"] is None and e[0].attrs["steal_basis"] == "errant_pass_no_steal"
+    sc = scene("od3_fumble_pressured", 1, 0.2)
+    e = _one(_lbt(sc, no_steal_clear_m=0.0), lost_by="A", gained_by="D2")
+    assert e and e[0].attrs["steal_to"] is None and e[0].attrs["steal_basis"] == "unforced_no_steal"
+
+
+def test_od_decisions_recorded():
+    """OD-1 .. OD-5 journalled with what / why / evidence; recorded-only decisions leave their params unchanged."""
+    assert BA.DOC["version"] == "0.1.7"
+    ch = {c["id"].split()[0]: c for c in BA.DOC["changes_decisions_oct25"]}
+    assert set(ch) == {"OD-1", "OD-2", "OD-3", "OD-4", "OD-5", "version"}
+    assert all(c[k] and "25 Oct" in ch[i]["why"] for i, c in ch.items() if i != "version" for k in ("what", "why", "evidence"))
+    rc, lbt = BA.PARAMS["rebound_control"], BA.PARAMS["live_ball_turnover"]
+    assert rc["secure_min_s"] == 1.5 and rc["scramble_window_s"] == 3.0  # OD-1
+    assert lbt["rim_visit_r_m"] == 0.75  # OD-2
+    assert lbt["muff_max_s"] == 1.0  # OD-4
+    assert BA.PARAMS["ba_turnover_rules"]["pass_forced_charge_s"] == 0.7  # OD-5
+    items = {it["id"]: it for it in BA.DOC["items"]}
+    assert "OD-3" in items["live_ball_turnover"]["rule"] and "OD-5" in items["ba_turnover_rules"]["rule"]
+    assert any("OD-1" in c for c in items["live_ball_turnover"]["conflicts_resolved"])

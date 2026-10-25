@@ -99,6 +99,25 @@
    "seeds": 1,
    "max_minutes": 0.0,
    "wall_s": 173.3
+  },
+  {
+   "games": 3,
+   "profiles": [
+    "good",
+    "poor",
+    "poor_uncalibrated"
+   ],
+   "sigmas": [
+    0.15,
+    0.3,
+    0.5
+   ],
+   "configs": [
+    "full"
+   ],
+   "seeds": 1,
+   "max_minutes": 0.0,
+   "wall_s": 251.0
   }
  ],
  "frames_note": "SportVU 25 Hz; truth ids from SportVU; cues simulated (obsmodel.py)",
@@ -217,7 +236,14 @@
    "reconfirm_median_s": 1.2,
    "reconfirm_p90_s": 5.64,
    "min_player_coverage": 0.128,
-   "swap_context": {}
+   "swap_context": {},
+   "probable_labels": 176224,
+   "probable_wrong_frames": 161,
+   "probable_wrong_events": 13,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00091,
+   "probable_coverage_gain": 0.1015,
+   "coverage_with_probable": 0.6941
   },
   {
    "config": "full",
@@ -335,7 +361,14 @@
    "reconfirm_median_s": 2.24,
    "reconfirm_p90_s": 7.16,
    "min_player_coverage": 0.101,
-   "swap_context": {}
+   "swap_context": {},
+   "probable_labels": 145295,
+   "probable_wrong_frames": 182,
+   "probable_wrong_events": 14,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00125,
+   "probable_coverage_gain": 0.0836,
+   "coverage_with_probable": 0.5468
   },
   {
    "config": "full",
@@ -455,7 +488,14 @@
    "min_player_coverage": 0.062,
    "swap_context": {
     "other": 1
-   }
+   },
+   "probable_labels": 111230,
+   "probable_wrong_frames": 82,
+   "probable_wrong_events": 10,
+   "probable_on_officials": 2,
+   "probable_error_rate": 0.00074,
+   "probable_coverage_gain": 0.064,
+   "coverage_with_probable": 0.3192
   },
   {
    "config": "full",
@@ -573,7 +613,14 @@
    "reconfirm_median_s": 3.28,
    "reconfirm_p90_s": 8.316,
    "min_player_coverage": 0.003,
-   "swap_context": {}
+   "swap_context": {},
+   "probable_labels": 520839,
+   "probable_wrong_frames": 957,
+   "probable_wrong_events": 42,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00184,
+   "probable_coverage_gain": 0.2994,
+   "coverage_with_probable": 0.4189
   },
   {
    "config": "full",
@@ -689,7 +736,14 @@
    "reconfirm_median_s": 4.08,
    "reconfirm_p90_s": 8.68,
    "min_player_coverage": 0.0,
-   "swap_context": {}
+   "swap_context": {},
+   "probable_labels": 349343,
+   "probable_wrong_frames": 205,
+   "probable_wrong_events": 18,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00059,
+   "probable_coverage_gain": 0.2016,
+   "coverage_with_probable": 0.2927
   },
   {
    "config": "full",
@@ -805,7 +859,14 @@
    "reconfirm_median_s": 5.56,
    "reconfirm_p90_s": 8.992,
    "min_player_coverage": 0.0,
-   "swap_context": {}
+   "swap_context": {},
+   "probable_labels": 202977,
+   "probable_wrong_frames": 118,
+   "probable_wrong_events": 15,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00058,
+   "probable_coverage_gain": 0.1167,
+   "coverage_with_probable": 0.1411
   },
   {
    "config": "full",
@@ -925,9 +986,16 @@
    "reconfirm_p90_s": 7.76,
    "min_player_coverage": 0.031,
    "swap_context": {
-    "after_cut": 2,
-    "other": 2
-   }
+    "other": 2,
+    "after_cut": 2
+   },
+   "probable_labels": 284367,
+   "probable_wrong_frames": 3949,
+   "probable_wrong_events": 148,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.01389,
+   "probable_coverage_gain": 0.1634,
+   "coverage_with_probable": 0.4966
   },
   {
    "config": "full",
@@ -1047,7 +1115,14 @@
    "min_player_coverage": 0.014,
    "swap_context": {
     "official": 1
-   }
+   },
+   "probable_labels": 227684,
+   "probable_wrong_frames": 2272,
+   "probable_wrong_events": 87,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00998,
+   "probable_coverage_gain": 0.131,
+   "coverage_with_probable": 0.3729
   },
   {
    "config": "full",
@@ -1165,7 +1240,14 @@
    "min_player_coverage": 0.01,
    "swap_context": {
     "after_cut": 1
-   }
+   },
+   "probable_labels": 154937,
+   "probable_wrong_frames": 1990,
+   "probable_wrong_events": 86,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.01284,
+   "probable_coverage_gain": 0.0892,
+   "coverage_with_probable": 0.181
   },
   {
    "config": "full_forced",
@@ -6840,440 +6922,6 @@
    "profile": "good",
    "sigma_p": 0.3,
    "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 1,
-   "idsw": 0,
-   "wrong_label_frames": 1,
-   "labels_on_officials": 1,
-   "idf1": 0.4148122459202744,
-   "idp": 0.9999945356982831,
-   "idr": 0.26168057253572985,
-   "hota": 0.2697185962877343,
-   "deta": 0.26168019835675044,
-   "assa": 0.27800392097015986,
-   "coverage": 0.3073823496807006,
-   "coverage_of_view": 0.26168057253572985,
-   "min_player_coverage": 0.13684593023255814,
-   "crossings": 1861,
-   "reconfirm_median_s": 2.92,
-   "reconfirm_p90_s": 7.5200000000000005,
-   "reconfirm_within_2s": 0.29634605051047824,
-   "reconfirm_censored": 507,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "official": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 28469,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 32314,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 118265,
-     "wrong": 1
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 50566,
-   "n_chains": 50537,
-   "end_reasons": {
-    "lost": 14590,
-    "ambiguous": 32352,
-    "fov_exit": 2352,
-    "cut": 1261,
-    "end": 11
-   },
-   "seconds": 33.7,
-   "frames": 79703,
-   "player_dets": 595366
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.5943195511277584,
-   "idp": 1.0,
-   "idr": 0.42279847571656337,
-   "hota": 0.4303821867041896,
-   "deta": 0.42279847571656337,
-   "assa": 0.43810192626251104,
-   "coverage": 0.4966390422026115,
-   "coverage_of_view": 0.42279847571656337,
-   "min_player_coverage": 0.2549218917183822,
-   "crossings": 1861,
-   "reconfirm_median_s": 1.96,
-   "reconfirm_p90_s": 6.868000000000011,
-   "reconfirm_within_2s": 0.46050510478237505,
-   "reconfirm_censored": 378,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 22135,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 32918,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 240629,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 50566,
-   "n_chains": 50537,
-   "end_reasons": {
-    "lost": 14590,
-    "ambiguous": 32352,
-    "fov_exit": 2352,
-    "cut": 1261,
-    "end": 11
-   },
-   "seconds": 34.3,
-   "frames": 79703,
-   "player_dets": 595366
-  },
-  {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.38849258459871583,
-   "idp": 1.0,
-   "idr": 0.2410740285063948,
-   "hota": 0.24936447337215065,
-   "deta": 0.2410740285063948,
-   "assa": 0.2579400235082584,
-   "coverage": 0.2850231531968355,
-   "coverage_of_view": 0.2410740285063948,
-   "min_player_coverage": 0.0981672303940848,
-   "crossings": 1467,
-   "reconfirm_median_s": 3.2,
-   "reconfirm_p90_s": 7.84,
-   "reconfirm_within_2s": 0.22903885480572597,
-   "reconfirm_censored": 638,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 27753,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 30455,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 96543,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46449,
-   "n_chains": 46417,
-   "end_reasons": {
-    "lost": 13927,
-    "ambiguous": 29301,
-    "fov_exit": 2085,
-    "cut": 1127,
-    "end": 9
-   },
-   "seconds": 31.2,
-   "frames": 74519,
-   "player_dets": 554783
-  },
-  {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.5756642342265068,
-   "idp": 1.0,
-   "idr": 0.40416329355732306,
-   "hota": 0.4132292694969648,
-   "deta": 0.40416329355732306,
-   "assa": 0.4224986085847409,
-   "coverage": 0.4778444905485568,
-   "coverage_of_view": 0.40416329355732306,
-   "min_player_coverage": 0.2020372846692362,
-   "crossings": 1467,
-   "reconfirm_median_s": 2.24,
-   "reconfirm_p90_s": 7.16,
-   "reconfirm_within_2s": 0.3960463531015678,
-   "reconfirm_censored": 453,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 23628,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 32546,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 208926,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 3,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46449,
-   "n_chains": 46417,
-   "end_reasons": {
-    "lost": 13927,
-    "ambiguous": 29301,
-    "fov_exit": 2085,
-    "cut": 1127,
-    "end": 9
-   },
-   "seconds": 31.8,
-   "frames": 74519,
-   "player_dets": 554783
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.3306872219665593,
-   "idp": 1.0,
-   "idr": 0.19809781984424177,
-   "hota": 0.2139196449026171,
-   "deta": 0.19809781984424177,
-   "assa": 0.2310051393359238,
-   "coverage": 0.235122897249617,
-   "coverage_of_view": 0.19809781984424177,
-   "min_player_coverage": 0.04402672310054359,
-   "crossings": 1788,
-   "reconfirm_median_s": 3.36,
-   "reconfirm_p90_s": 7.743999999999996,
-   "reconfirm_within_2s": 0.20134228187919462,
-   "reconfirm_censored": 1021,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 23995,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 28156,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 82867,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49342,
-   "n_chains": 49305,
-   "end_reasons": {
-    "lost": 14262,
-    "ambiguous": 31276,
-    "fov_exit": 2317,
-    "cut": 1477,
-    "end": 10
-   },
-   "seconds": 32.5,
-   "frames": 80788,
-   "player_dets": 586791
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.5183224799011171,
-   "idp": 1.0,
-   "idr": 0.34982138344551905,
-   "hota": 0.36871521619274356,
-   "deta": 0.34982138344551905,
-   "assa": 0.388629503757121,
-   "coverage": 0.4152040505052054,
-   "coverage_of_view": 0.34982138344551905,
-   "min_player_coverage": 0.10122826673305946,
-   "crossings": 1788,
-   "reconfirm_median_s": 2.2800000000000002,
-   "reconfirm_p90_s": 7.16,
-   "reconfirm_within_2s": 0.35626398210290827,
-   "reconfirm_censored": 800,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 21984,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 31899,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 189755,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 6,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49342,
-   "n_chains": 49305,
-   "end_reasons": {
-    "lost": 14262,
-    "ambiguous": 31276,
-    "fov_exit": 2317,
-    "cut": 1477,
-    "end": 10
-   },
-   "seconds": 33.0,
-   "frames": 80788,
-   "player_dets": 586791
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.3,
-   "seed": 1,
    "config": "full_no_jersey",
    "mode": "live",
    "swap_events": 1,
@@ -9051,586 +8699,6 @@
    "player_dets": 586791
   },
   {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 1,
-   "idsw": 0,
-   "wrong_label_frames": 2,
-   "labels_on_officials": 2,
-   "idf1": 0.21651765955563423,
-   "idp": 0.9999748418179303,
-   "idr": 0.12140199875383319,
-   "hota": 0.12839284474932597,
-   "deta": 0.12140162795314671,
-   "assa": 0.1357866682742226,
-   "coverage": 0.14359205009961762,
-   "coverage_of_view": 0.12140199875383319,
-   "min_player_coverage": 0.0279874213836478,
-   "crossings": 1467,
-   "reconfirm_median_s": 4.44,
-   "reconfirm_p90_s": 8.724000000000006,
-   "reconfirm_within_2s": 0.08248125426039536,
-   "reconfirm_censored": 1334,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "official": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 15230,
-     "wrong": 2
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 17127,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 45973,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54091,
-   "n_chains": 54078,
-   "end_reasons": {
-    "ambiguous": 39138,
-    "lost": 12359,
-    "fov_exit": 1459,
-    "cut": 1125,
-    "end": 10
-   },
-   "seconds": 28.4,
-   "frames": 74519,
-   "player_dets": 553617
-  },
-  {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 1,
-   "idsw": 2,
-   "wrong_label_frames": 1,
-   "labels_on_officials": 0,
-   "idf1": 0.3601692899089691,
-   "idp": 0.9999930469608266,
-   "idr": 0.2196384283637341,
-   "hota": 0.22943337307314243,
-   "deta": 0.21963995552894894,
-   "assa": 0.23966346447735354,
-   "coverage": 0.25978609760899685,
-   "coverage_of_view": 0.2196384283637341,
-   "min_player_coverage": 0.06442610062893082,
-   "crossings": 1467,
-   "reconfirm_median_s": 3.56,
-   "reconfirm_p90_s": 8.224000000000006,
-   "reconfirm_within_2s": 0.1796182685753238,
-   "reconfirm_censored": 1149,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "other": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 16230,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 21002,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 106590,
-     "wrong": 1
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 4,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54091,
-   "n_chains": 54078,
-   "end_reasons": {
-    "ambiguous": 39138,
-    "lost": 12359,
-    "fov_exit": 1459,
-    "cut": 1125,
-    "end": 10
-   },
-   "seconds": 28.8,
-   "frames": 74519,
-   "player_dets": 553617
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.20696695556712638,
-   "idp": 1.0,
-   "idr": 0.11542841121067508,
-   "hota": 0.12109185900910738,
-   "deta": 0.11542841121067508,
-   "assa": 0.12703318155803786,
-   "coverage": 0.13566292244398379,
-   "coverage_of_view": 0.11542841121067508,
-   "min_player_coverage": 0.0293169868921571,
-   "crossings": 1861,
-   "reconfirm_median_s": 4.64,
-   "reconfirm_p90_s": 8.6,
-   "reconfirm_within_2s": 0.08033315421816228,
-   "reconfirm_censored": 1614,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 16707,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 17888,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 44766,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 57200,
-   "n_chains": 57188,
-   "end_reasons": {
-    "ambiguous": 40775,
-    "lost": 13532,
-    "fov_exit": 1601,
-    "cut": 1281,
-    "end": 11
-   },
-   "seconds": 30.5,
-   "frames": 79703,
-   "player_dets": 594783
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.35525470626019073,
-   "idp": 1.0,
-   "idr": 0.21599375150204278,
-   "hota": 0.22568132313914532,
-   "deta": 0.21599375150204278,
-   "assa": 0.23580339366138395,
-   "coverage": 0.2538572891289764,
-   "coverage_of_view": 0.21599375150204278,
-   "min_player_coverage": 0.06360090131563008,
-   "crossings": 1861,
-   "reconfirm_median_s": 3.7600000000000002,
-   "reconfirm_p90_s": 8.44,
-   "reconfirm_within_2s": 0.17920472864051584,
-   "reconfirm_censored": 1407,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 19122,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 21963,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 109905,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 2,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 57200,
-   "n_chains": 57188,
-   "end_reasons": {
-    "ambiguous": 40775,
-    "lost": 13532,
-    "fov_exit": 1601,
-    "cut": 1281,
-    "end": 11
-   },
-   "seconds": 31.0,
-   "frames": 79703,
-   "player_dets": 594783
-  },
-  {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.4766962186054178,
-   "idp": 1.0,
-   "idr": 0.31293575479015956,
-   "hota": 0.32281792027818024,
-   "deta": 0.31293575479015956,
-   "assa": 0.3330121536371225,
-   "coverage": 0.3703646923021427,
-   "coverage_of_view": 0.31293575479015956,
-   "min_player_coverage": 0.18670486399901426,
-   "crossings": 1467,
-   "reconfirm_median_s": 2.32,
-   "reconfirm_p90_s": 6.84,
-   "reconfirm_within_2s": 0.37491479209270623,
-   "reconfirm_censored": 425,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 30445,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 36897,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 132550,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39500,
-   "n_chains": 39464,
-   "end_reasons": {
-    "ambiguous": 20077,
-    "lost": 15614,
-    "fov_exit": 2679,
-    "cut": 1118,
-    "end": 12
-   },
-   "seconds": 33.2,
-   "frames": 74519,
-   "player_dets": 554440
-  },
-  {
-   "game": "G2",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.6682260441063651,
-   "idp": 1.0,
-   "idr": 0.5017563537334518,
-   "hota": 0.5108311289399942,
-   "deta": 0.5017563537334518,
-   "assa": 0.5200700307080369,
-   "coverage": 0.5938370247456893,
-   "coverage_of_view": 0.5017563537334518,
-   "min_player_coverage": 0.32513938945876847,
-   "crossings": 1467,
-   "reconfirm_median_s": 1.2,
-   "reconfirm_p90_s": 5.64,
-   "reconfirm_within_2s": 0.5732788002726653,
-   "reconfirm_censored": 317,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 20105,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 32657,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 276485,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39500,
-   "n_chains": 39464,
-   "end_reasons": {
-    "ambiguous": 20077,
-    "lost": 15614,
-    "fov_exit": 2679,
-    "cut": 1118,
-    "end": 12
-   },
-   "seconds": 33.8,
-   "frames": 74519,
-   "player_dets": 554440
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.45197019898749274,
-   "idp": 1.0,
-   "idr": 0.29196479208079607,
-   "hota": 0.3093777994799267,
-   "deta": 0.29196479208079607,
-   "assa": 0.3278293321906925,
-   "coverage": 0.343154499899847,
-   "coverage_of_view": 0.29196479208079607,
-   "min_player_coverage": 0.05479766793991786,
-   "crossings": 1861,
-   "reconfirm_median_s": 2.32,
-   "reconfirm_p90_s": 6.583999999999997,
-   "reconfirm_within_2s": 0.3694250403009135,
-   "reconfirm_censored": 687,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 29776,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 37217,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 130924,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43602,
-   "n_chains": 43552,
-   "end_reasons": {
-    "ambiguous": 22848,
-    "lost": 16467,
-    "fov_exit": 3027,
-    "cut": 1247,
-    "end": 13
-   },
-   "seconds": 35.5,
-   "frames": 79703,
-   "player_dets": 594091
-  },
-  {
-   "game": "G1",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.6434161917260768,
-   "idp": 1.0,
-   "idr": 0.4742915165298488,
-   "hota": 0.49291276233201786,
-   "deta": 0.4742915165298488,
-   "assa": 0.5122651002645329,
-   "coverage": 0.5574482697095227,
-   "coverage_of_view": 0.4742915165298488,
-   "min_player_coverage": 0.12803354490364457,
-   "crossings": 1861,
-   "reconfirm_median_s": 1.2,
-   "reconfirm_p90_s": 5.64,
-   "reconfirm_within_2s": 0.5335840945728103,
-   "reconfirm_censored": 560,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 19762,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 34118,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 277295,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43602,
-   "n_chains": 43552,
-   "end_reasons": {
-    "ambiguous": 22848,
-    "lost": 16467,
-    "fov_exit": 3027,
-    "cut": 1247,
-    "end": 13
-   },
-   "seconds": 36.0,
-   "frames": 79703,
-   "player_dets": 594091
-  },
-  {
    "game": "G1",
    "profile": "good",
    "sigma_p": 0.15,
@@ -9933,294 +9001,6 @@
    "seconds": 24.1,
    "frames": 79703,
    "player_dets": 594783
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.20057795265432496,
-   "idp": 1.0,
-   "idr": 0.11146798659613914,
-   "hota": 0.11794874838596951,
-   "deta": 0.11146798659613914,
-   "assa": 0.12480630242493862,
-   "coverage": 0.13201520215194001,
-   "coverage_of_view": 0.11146798659613914,
-   "min_player_coverage": 0.02364066193853428,
-   "crossings": 1788,
-   "reconfirm_median_s": 4.72,
-   "reconfirm_p90_s": 8.6,
-   "reconfirm_within_2s": 0.07522371364653244,
-   "reconfirm_censored": 1656,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 17334,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 17733,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 41409,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 55115,
-   "n_chains": 55099,
-   "end_reasons": {
-    "ambiguous": 38909,
-    "lost": 13172,
-    "fov_exit": 1574,
-    "cut": 1449,
-    "end": 11
-   },
-   "seconds": 30.2,
-   "frames": 80788,
-   "player_dets": 588864
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.3511670380462087,
-   "idp": 1.0,
-   "idr": 0.21297914715999605,
-   "hota": 0.22336659048543808,
-   "deta": 0.21297914715999605,
-   "assa": 0.23426065138484484,
-   "coverage": 0.2522382078034996,
-   "coverage_of_view": 0.21297914715999605,
-   "min_player_coverage": 0.06218521944701408,
-   "crossings": 1788,
-   "reconfirm_median_s": 3.8000000000000003,
-   "reconfirm_p90_s": 8.28,
-   "reconfirm_within_2s": 0.17309843400447428,
-   "reconfirm_censored": 1402,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 19726,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 23834,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 104974,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 55115,
-   "n_chains": 55099,
-   "end_reasons": {
-    "ambiguous": 38909,
-    "lost": 13172,
-    "fov_exit": 1574,
-    "cut": 1449,
-    "end": 11
-   },
-   "seconds": 30.6,
-   "frames": 80788,
-   "player_dets": 588864
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.509269551813552,
-   "idp": 1.0,
-   "idr": 0.34162416983774985,
-   "hota": 0.34864832448521954,
-   "deta": 0.34162416983774985,
-   "assa": 0.35581690318949705,
-   "coverage": 0.40459701594222647,
-   "coverage_of_view": 0.34162416983774985,
-   "min_player_coverage": 0.07400501510962515,
-   "crossings": 1788,
-   "reconfirm_median_s": 2.0,
-   "reconfirm_p90_s": 6.16,
-   "reconfirm_within_2s": 0.46616331096196867,
-   "reconfirm_censored": 291,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 32879,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 40302,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 159061,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 41960,
-   "n_chains": 41912,
-   "end_reasons": {
-    "ambiguous": 21619,
-    "fov_exit": 2993,
-    "lost": 15880,
-    "cut": 1457,
-    "end": 11
-   },
-   "seconds": 34.5,
-   "frames": 80788,
-   "player_dets": 587120
-  },
-  {
-   "game": "G3",
-   "profile": "good",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.6922433135418058,
-   "idp": 1.0,
-   "idr": 0.5293364742157142,
-   "hota": 0.5369411581209137,
-   "deta": 0.5293364742157142,
-   "assa": 0.5446550943072519,
-   "coverage": 0.6269110233001771,
-   "coverage_of_view": 0.5293364742157142,
-   "min_player_coverage": 0.13855847746415484,
-   "crossings": 1788,
-   "reconfirm_median_s": 0.92,
-   "reconfirm_p90_s": 5.04,
-   "reconfirm_within_2s": 0.6445749440715883,
-   "reconfirm_censored": 197,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 21732,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 33644,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 312696,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 2,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 41960,
-   "n_chains": 41912,
-   "end_reasons": {
-    "ambiguous": 21619,
-    "fov_exit": 2993,
-    "lost": 15880,
-    "cut": 1457,
-    "end": 11
-   },
-   "seconds": 35.1,
-   "frames": 80788,
-   "player_dets": 587120
   },
   {
    "game": "G2",
@@ -13475,1304 +12255,6 @@
    "seconds": 33.3,
    "frames": 80788,
    "player_dets": 587120
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.010499755935464499,
-   "idp": 1.0,
-   "idr": 0.005277584643072759,
-   "hota": 0.0072641837544331,
-   "deta": 0.005277584643072759,
-   "assa": 0.009998582531012998,
-   "coverage": 0.006189908888031277,
-   "coverage_of_view": 0.005277584643072759,
-   "min_player_coverage": 0.0,
-   "crossings": 1861,
-   "reconfirm_median_s": 6.76,
-   "reconfirm_p90_s": 9.356,
-   "reconfirm_within_2s": 0.0013433637829124126,
-   "reconfirm_censored": 3594,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 1056,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 1304,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 1236,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54146,
-   "n_chains": 54131,
-   "end_reasons": {
-    "lost": 13247,
-    "ambiguous": 38227,
-    "fov_exit": 1382,
-    "cut": 1280,
-    "end": 10
-   },
-   "seconds": 30.1,
-   "frames": 79703,
-   "player_dets": 595970
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.03304180455190113,
-   "idp": 1.0,
-   "idr": 0.01679842745431291,
-   "hota": 0.022319540968955234,
-   "deta": 0.01679842745431291,
-   "assa": 0.02965527043645807,
-   "coverage": 0.01970233401010118,
-   "coverage_of_view": 0.01679842745431291,
-   "min_player_coverage": 0.0,
-   "crossings": 1861,
-   "reconfirm_median_s": 5.5600000000000005,
-   "reconfirm_p90_s": 9.272,
-   "reconfirm_within_2s": 0.008597528210639442,
-   "reconfirm_censored": 3549,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 2173,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 4089,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 5480,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54146,
-   "n_chains": 54131,
-   "end_reasons": {
-    "lost": 13247,
-    "ambiguous": 38227,
-    "fov_exit": 1382,
-    "cut": 1280,
-    "end": 10
-   },
-   "seconds": 30.2,
-   "frames": 79703,
-   "player_dets": 595970
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.09371658064816106,
-   "idp": 1.0,
-   "idr": 0.04916193452494379,
-   "hota": 0.06683326247514168,
-   "deta": 0.04916193452494379,
-   "assa": 0.09085657462899215,
-   "coverage": 0.05807198628558258,
-   "coverage_of_view": 0.04916193452494379,
-   "min_player_coverage": 0.002932551319648094,
-   "crossings": 1467,
-   "reconfirm_median_s": 4.96,
-   "reconfirm_p90_s": 8.724000000000002,
-   "reconfirm_within_2s": 0.026244035446489435,
-   "reconfirm_censored": 2364,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 7793,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 8285,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 14472,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39651,
-   "n_chains": 39604,
-   "end_reasons": {
-    "ambiguous": 20764,
-    "lost": 15276,
-    "fov_exit": 2485,
-    "cut": 1115,
-    "end": 11
-   },
-   "seconds": 33.1,
-   "frames": 74519,
-   "player_dets": 555328
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.20904711395781544,
-   "idp": 1.0,
-   "idr": 0.11672396051678799,
-   "hota": 0.1494456659437025,
-   "deta": 0.11672396051678799,
-   "assa": 0.19134038093356592,
-   "coverage": 0.1378788751872767,
-   "coverage_of_view": 0.11672396051678799,
-   "min_player_coverage": 0.021762617687914803,
-   "crossings": 1467,
-   "reconfirm_median_s": 3.2800000000000002,
-   "reconfirm_p90_s": 8.304000000000006,
-   "reconfirm_within_2s": 0.09986366734832992,
-   "reconfirm_censored": 2166,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 11408,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 16741,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 48419,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39651,
-   "n_chains": 39604,
-   "end_reasons": {
-    "ambiguous": 20764,
-    "lost": 15276,
-    "fov_exit": 2485,
-    "cut": 1115,
-    "end": 11
-   },
-   "seconds": 33.5,
-   "frames": 74519,
-   "player_dets": 555328
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.03955975861364805,
-   "idp": 1.0,
-   "idr": 0.02017901784431482,
-   "hota": 0.03552406689710482,
-   "deta": 0.02017901784431482,
-   "assa": 0.06253819381330888,
-   "coverage": 0.023688928693710334,
-   "coverage_of_view": 0.02017901784431482,
-   "min_player_coverage": 0.0013797601725954543,
-   "crossings": 1861,
-   "reconfirm_median_s": 5.82,
-   "reconfirm_p90_s": 9.02,
-   "reconfirm_within_2s": 0.006985491671144546,
-   "reconfirm_censored": 3396,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 3458,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 3998,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 5453,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49606,
-   "n_chains": 49576,
-   "end_reasons": {
-    "ambiguous": 31814,
-    "lost": 14353,
-    "fov_exit": 2185,
-    "cut": 1243,
-    "end": 11
-   },
-   "seconds": 33.4,
-   "frames": 79703,
-   "player_dets": 592893
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.0963477457001533,
-   "idp": 1.0,
-   "idr": 0.05061205137783397,
-   "hota": 0.08112925560097688,
-   "deta": 0.05061205137783397,
-   "assa": 0.1300472107963454,
-   "coverage": 0.05941544258407504,
-   "coverage_of_view": 0.05061205137783397,
-   "min_player_coverage": 0.004691184586824545,
-   "crossings": 1861,
-   "reconfirm_median_s": 4.24,
-   "reconfirm_p90_s": 8.76,
-   "reconfirm_within_2s": 0.03089736700698549,
-   "reconfirm_censored": 3283,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 5325,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 8369,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 21533,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49606,
-   "n_chains": 49576,
-   "end_reasons": {
-    "ambiguous": 31814,
-    "lost": 14353,
-    "fov_exit": 2185,
-    "cut": 1243,
-    "end": 11
-   },
-   "seconds": 33.6,
-   "frames": 79703,
-   "player_dets": 592893
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 1,
-   "idsw": 2,
-   "wrong_label_frames": 1,
-   "labels_on_officials": 0,
-   "idf1": 0.05698003327787022,
-   "idp": 0.9999513334631107,
-   "idr": 0.029325542494704933,
-   "hota": 0.03983230015083884,
-   "deta": 0.029326969736759474,
-   "assa": 0.05410078673480539,
-   "coverage": 0.03440083976354027,
-   "coverage_of_view": 0.029325542494704933,
-   "min_player_coverage": 0.0011186874067760494,
-   "crossings": 1861,
-   "reconfirm_median_s": 5.28,
-   "reconfirm_p90_s": 8.816000000000003,
-   "reconfirm_within_2s": 0.015583019881783988,
-   "reconfirm_censored": 3245,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "other": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 4332,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 5804,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 8945,
-     "wrong": 1
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43393,
-   "n_chains": 43352,
-   "end_reasons": {
-    "lost": 15740,
-    "ambiguous": 23451,
-    "fov_exit": 2913,
-    "cut": 1277,
-    "end": 12
-   },
-   "seconds": 35.5,
-   "frames": 79703,
-   "player_dets": 597311
-  },
-  {
-   "game": "G1",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.14457767514776604,
-   "idp": 1.0,
-   "idr": 0.07792170720985596,
-   "hota": 0.1014110917989406,
-   "deta": 0.07792170720985596,
-   "assa": 0.1319813169924023,
-   "coverage": 0.09140297098161594,
-   "coverage_of_view": 0.07792170720985596,
-   "min_player_coverage": 0.002770083102493075,
-   "crossings": 1861,
-   "reconfirm_median_s": 3.56,
-   "reconfirm_p90_s": 8.332000000000003,
-   "reconfirm_within_2s": 0.06528747984954325,
-   "reconfirm_censored": 3044,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 7852,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 11502,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 35242,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43393,
-   "n_chains": 43352,
-   "end_reasons": {
-    "lost": 15740,
-    "ambiguous": 23451,
-    "fov_exit": 2913,
-    "cut": 1277,
-    "end": 12
-   },
-   "seconds": 35.8,
-   "frames": 79703,
-   "player_dets": 597311
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.018444730658671436,
-   "idp": 1.0,
-   "idr": 0.009308209033605451,
-   "hota": 0.015832397267610838,
-   "deta": 0.009308209033605451,
-   "assa": 0.02692943425899389,
-   "coverage": 0.010988379092789359,
-   "coverage_of_view": 0.009308209033605451,
-   "min_player_coverage": 0.0,
-   "crossings": 1467,
-   "reconfirm_median_s": 6.6000000000000005,
-   "reconfirm_p90_s": 9.256,
-   "reconfirm_within_2s": 0.0010224948875255625,
-   "reconfirm_censored": 2795,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 1445,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 1956,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 2529,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 51536,
-   "n_chains": 51521,
-   "end_reasons": {
-    "ambiguous": 36591,
-    "lost": 12465,
-    "fov_exit": 1340,
-    "cut": 1130,
-    "end": 10
-   },
-   "seconds": 27.5,
-   "frames": 74519,
-   "player_dets": 556497
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.05009609319927281,
-   "idp": 1.0,
-   "idr": 0.025691570248437087,
-   "hota": 0.04319608415122231,
-   "deta": 0.025691570248437087,
-   "assa": 0.07262700052804243,
-   "coverage": 0.030329004469026786,
-   "coverage_of_view": 0.025691570248437087,
-   "min_player_coverage": 0.0,
-   "crossings": 1467,
-   "reconfirm_median_s": 5.699999999999999,
-   "reconfirm_p90_s": 8.908000000000001,
-   "reconfirm_within_2s": 0.011929107021131561,
-   "reconfirm_censored": 2720,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 2864,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 4238,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 9776,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 51536,
-   "n_chains": 51521,
-   "end_reasons": {
-    "ambiguous": 36591,
-    "lost": 12465,
-    "fov_exit": 1340,
-    "cut": 1130,
-    "end": 10
-   },
-   "seconds": 27.7,
-   "frames": 74519,
-   "player_dets": 556497
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.05369430411035777,
-   "idp": 1.0,
-   "idr": 0.02758780607987405,
-   "hota": 0.038745255992566646,
-   "deta": 0.02758780607987405,
-   "assa": 0.054415159276644275,
-   "coverage": 0.032660285353079285,
-   "coverage_of_view": 0.02758780607987405,
-   "min_player_coverage": 0.000630715862503942,
-   "crossings": 1467,
-   "reconfirm_median_s": 5.6000000000000005,
-   "reconfirm_p90_s": 9.004000000000001,
-   "reconfirm_within_2s": 0.010224948875255624,
-   "reconfirm_censored": 2554,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 4575,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 4727,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 7570,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46083,
-   "n_chains": 46062,
-   "end_reasons": {
-    "ambiguous": 29386,
-    "lost": 13542,
-    "fov_exit": 2020,
-    "cut": 1124,
-    "end": 11
-   },
-   "seconds": 30.4,
-   "frames": 74519,
-   "player_dets": 553700
-  },
-  {
-   "game": "G2",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.13244804813702643,
-   "idp": 1.0,
-   "idr": 0.07092067666706839,
-   "hota": 0.09332102617622542,
-   "deta": 0.07092067666706839,
-   "assa": 0.1227965430655238,
-   "coverage": 0.08396062849918728,
-   "coverage_of_view": 0.07092067666706839,
-   "min_player_coverage": 0.009263639230526647,
-   "crossings": 1467,
-   "reconfirm_median_s": 4.08,
-   "reconfirm_p90_s": 8.6,
-   "reconfirm_within_2s": 0.050443081117927745,
-   "reconfirm_censored": 2418,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 9173,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 10264,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 27052,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46083,
-   "n_chains": 46062,
-   "end_reasons": {
-    "ambiguous": 29386,
-    "lost": 13542,
-    "fov_exit": 2020,
-    "cut": 1124,
-    "end": 11
-   },
-   "seconds": 30.6,
-   "frames": 74519,
-   "player_dets": 553700
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.08170082015255638,
-   "idp": 1.0,
-   "idr": 0.04259023879635594,
-   "hota": 0.05261727563631834,
-   "deta": 0.04259023879635594,
-   "assa": 0.06500498174302752,
-   "coverage": 0.050546315209285736,
-   "coverage_of_view": 0.04259023879635594,
-   "min_player_coverage": 0.0,
-   "crossings": 1788,
-   "reconfirm_median_s": 5.5200000000000005,
-   "reconfirm_p90_s": 9.08,
-   "reconfirm_within_2s": 0.01901565995525727,
-   "reconfirm_censored": 2840,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 8802,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 7848,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 11238,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 48695,
-   "n_chains": 48656,
-   "end_reasons": {
-    "lost": 14082,
-    "ambiguous": 30951,
-    "fov_exit": 2167,
-    "cut": 1484,
-    "end": 11
-   },
-   "seconds": 31.8,
-   "frames": 80788,
-   "player_dets": 586017
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.19704756584259991,
-   "idp": 1.0,
-   "idr": 0.10929160531885525,
-   "hota": 0.13348099754295034,
-   "deta": 0.10929160531885525,
-   "assa": 0.16302420165830664,
-   "coverage": 0.12970784124010054,
-   "coverage_of_view": 0.10929160531885525,
-   "min_player_coverage": 0.0,
-   "crossings": 1788,
-   "reconfirm_median_s": 3.96,
-   "reconfirm_p90_s": 8.68,
-   "reconfirm_within_2s": 0.08696868008948545,
-   "reconfirm_censored": 2499,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 16876,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 19161,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 39974,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 48695,
-   "n_chains": 48656,
-   "end_reasons": {
-    "lost": 14082,
-    "ambiguous": 30951,
-    "fov_exit": 2167,
-    "cut": 1484,
-    "end": 11
-   },
-   "seconds": 32.1,
-   "frames": 80788,
-   "player_dets": 586017
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.08438509981070265,
-   "idp": 1.0,
-   "idr": 0.04405118158266773,
-   "hota": 0.06374194694692155,
-   "deta": 0.04405118158266773,
-   "assa": 0.09223443400625587,
-   "coverage": 0.052306695979685396,
-   "coverage_of_view": 0.04405118158266773,
-   "min_player_coverage": 0.00032530904359141186,
-   "crossings": 1788,
-   "reconfirm_median_s": 4.64,
-   "reconfirm_p90_s": 8.64,
-   "reconfirm_within_2s": 0.029921700223713647,
-   "reconfirm_censored": 2859,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 7733,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 7814,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 13395,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43099,
-   "n_chains": 43048,
-   "end_reasons": {
-    "ambiguous": 22757,
-    "lost": 15957,
-    "fov_exit": 2889,
-    "cut": 1485,
-    "end": 11
-   },
-   "seconds": 34.3,
-   "frames": 80788,
-   "player_dets": 586770
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.19818456883509833,
-   "idp": 1.0,
-   "idr": 0.10999160369437448,
-   "hota": 0.14861570256317402,
-   "deta": 0.10999160369437448,
-   "assa": 0.20080284591282335,
-   "coverage": 0.1306048366480904,
-   "coverage_of_view": 0.10999160369437448,
-   "min_player_coverage": 0.014047410008779631,
-   "crossings": 1788,
-   "reconfirm_median_s": 2.98,
-   "reconfirm_p90_s": 8.315999999999999,
-   "reconfirm_within_2s": 0.09955257270693513,
-   "reconfirm_censored": 2654,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 11707,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 17376,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 47552,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43099,
-   "n_chains": 43048,
-   "end_reasons": {
-    "ambiguous": 22757,
-    "lost": 15957,
-    "fov_exit": 2889,
-    "cut": 1485,
-    "end": 11
-   },
-   "seconds": 34.6,
-   "frames": 80788,
-   "player_dets": 586770
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.01371865608615316,
-   "idp": 1.0,
-   "idr": 0.0069067033873063425,
-   "hota": 0.00932403343035653,
-   "deta": 0.0069067033873063425,
-   "assa": 0.01258742333863455,
-   "coverage": 0.008179847582173385,
-   "coverage_of_view": 0.0069067033873063425,
-   "min_player_coverage": 0.0,
-   "crossings": 1788,
-   "reconfirm_median_s": 6.08,
-   "reconfirm_p90_s": 9.432,
-   "reconfirm_within_2s": 0.003635346756152125,
-   "reconfirm_censored": 3413,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 1427,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 1745,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 1533,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 52881,
-   "n_chains": 52861,
-   "end_reasons": {
-    "lost": 12844,
-    "ambiguous": 37058,
-    "fov_exit": 1501,
-    "cut": 1467,
-    "end": 11
-   },
-   "seconds": 28.7,
-   "frames": 80788,
-   "player_dets": 586808
-  },
-  {
-   "game": "G3",
-   "profile": "poor",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.03914780518359263,
-   "idp": 1.0,
-   "idr": 0.019964689478932398,
-   "hota": 0.027157001136187967,
-   "deta": 0.019964689478932398,
-   "assa": 0.0369403546941794,
-   "coverage": 0.023644871917219944,
-   "coverage_of_view": 0.019964689478932398,
-   "min_player_coverage": 0.0,
-   "crossings": 1788,
-   "reconfirm_median_s": 4.88,
-   "reconfirm_p90_s": 8.992,
-   "reconfirm_within_2s": 0.0145413870246085,
-   "reconfirm_censored": 3353,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 2713,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 4092,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 7070,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 52881,
-   "n_chains": 52861,
-   "end_reasons": {
-    "lost": 12844,
-    "ambiguous": 37058,
-    "fov_exit": 1501,
-    "cut": 1467,
-    "end": 11
-   },
-   "seconds": 28.8,
-   "frames": 80788,
-   "player_dets": 586808
   },
   {
    "game": "G1",
@@ -18739,1315 +16221,6 @@
   {
    "game": "G1",
    "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.06456277067089611,
-   "idp": 1.0,
-   "idr": 0.0333582353860559,
-   "hota": 0.04205234567335586,
-   "deta": 0.0333582353860559,
-   "assa": 0.053012389779185425,
-   "coverage": 0.03911815991296613,
-   "coverage_of_view": 0.0333582353860559,
-   "min_player_coverage": 0.0033827358789029227,
-   "crossings": 1861,
-   "reconfirm_median_s": 5.5600000000000005,
-   "reconfirm_p90_s": 9.16,
-   "reconfirm_within_2s": 0.00967221923696937,
-   "reconfirm_censored": 3033,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 7129,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 6387,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 8499,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 56629,
-   "n_chains": 56613,
-   "end_reasons": {
-    "lost": 13245,
-    "ambiguous": 40543,
-    "fov_exit": 1556,
-    "cut": 1274,
-    "end": 11
-   },
-   "seconds": 29.6,
-   "frames": 79703,
-   "player_dets": 594711
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.1547435251222742,
-   "idp": 1.0,
-   "idr": 0.08386017186718077,
-   "hota": 0.09989353726041808,
-   "deta": 0.08386017186718077,
-   "assa": 0.11899234838443938,
-   "coverage": 0.09834020221586619,
-   "coverage_of_view": 0.08386017186718077,
-   "min_player_coverage": 0.011535372709352412,
-   "crossings": 1861,
-   "reconfirm_median_s": 4.28,
-   "reconfirm_p90_s": 8.972000000000003,
-   "reconfirm_within_2s": 0.054809242342826435,
-   "reconfirm_censored": 2784,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 13665,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 14572,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 30247,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 56629,
-   "n_chains": 56613,
-   "end_reasons": {
-    "lost": 13245,
-    "ambiguous": 40543,
-    "fov_exit": 1556,
-    "cut": 1274,
-    "end": 11
-   },
-   "seconds": 29.9,
-   "frames": 79703,
-   "player_dets": 594711
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.24647900500650874,
-   "idp": 1.0,
-   "idr": 0.1405623347027126,
-   "hota": 0.1535761322133181,
-   "deta": 0.1405623347027126,
-   "assa": 0.1677947967745829,
-   "coverage": 0.16620703826271277,
-   "coverage_of_view": 0.1405623347027126,
-   "min_player_coverage": 0.029370069033530573,
-   "crossings": 1467,
-   "reconfirm_median_s": 4.28,
-   "reconfirm_p90_s": 8.44,
-   "reconfirm_within_2s": 0.08929788684389911,
-   "reconfirm_censored": 1361,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 22605,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 22154,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 40122,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39448,
-   "n_chains": 39407,
-   "end_reasons": {
-    "lost": 15446,
-    "ambiguous": 20275,
-    "fov_exit": 2579,
-    "cut": 1137,
-    "end": 11
-   },
-   "seconds": 32.9,
-   "frames": 74519,
-   "player_dets": 554796
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 2,
-   "idsw": 2,
-   "wrong_label_frames": 10,
-   "labels_on_officials": 0,
-   "idf1": 0.45156607737153914,
-   "idp": 0.9999477329151967,
-   "idr": 0.2916320510963926,
-   "hota": 0.31445469156130335,
-   "deta": 0.2916472946502748,
-   "assa": 0.33904567214822695,
-   "coverage": 0.34485648779010664,
-   "coverage_of_view": 0.2916320510963926,
-   "min_player_coverage": 0.07609097633136094,
-   "crossings": 1467,
-   "reconfirm_median_s": 2.56,
-   "reconfirm_p90_s": 7.76,
-   "reconfirm_within_2s": 0.28186775732788005,
-   "reconfirm_censored": 996,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "after_cut": 2
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 30797,
-     "wrong": 10
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 37483,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 123045,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 3,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 39448,
-   "n_chains": 39407,
-   "end_reasons": {
-    "lost": 15446,
-    "ambiguous": 20275,
-    "fov_exit": 2579,
-    "cut": 1137,
-    "end": 11
-   },
-   "seconds": 33.4,
-   "frames": 74519,
-   "player_dets": 554796
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.15715001765567077,
-   "idp": 1.0,
-   "idr": 0.08527553472136502,
-   "hota": 0.0923637692111098,
-   "deta": 0.08527553472136502,
-   "assa": 0.10004118872731936,
-   "coverage": 0.10008945432859556,
-   "coverage_of_view": 0.08527553472136502,
-   "min_player_coverage": 0.027973562910030975,
-   "crossings": 1861,
-   "reconfirm_median_s": 5.2,
-   "reconfirm_p90_s": 8.956000000000005,
-   "reconfirm_within_2s": 0.03815153143471252,
-   "reconfirm_censored": 2260,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 17529,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 15206,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 21159,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 50613,
-   "n_chains": 50578,
-   "end_reasons": {
-    "ambiguous": 32657,
-    "lost": 14493,
-    "fov_exit": 2205,
-    "cut": 1248,
-    "end": 10
-   },
-   "seconds": 33.0,
-   "frames": 79703,
-   "player_dets": 593599
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.3329612681321968,
-   "idp": 1.0,
-   "idr": 0.19973217284468034,
-   "hota": 0.2133740717776265,
-   "deta": 0.19973217284468034,
-   "assa": 0.22794772548921532,
-   "coverage": 0.2344293032838667,
-   "coverage_of_view": 0.19973217284468034,
-   "min_player_coverage": 0.060995536911933275,
-   "crossings": 1861,
-   "reconfirm_median_s": 3.8000000000000003,
-   "reconfirm_p90_s": 8.56,
-   "reconfirm_within_2s": 0.16953250940354647,
-   "reconfirm_censored": 1704,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 31502,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 32921,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 74734,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 2,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 50613,
-   "n_chains": 50578,
-   "end_reasons": {
-    "ambiguous": 32657,
-    "lost": 14493,
-    "fov_exit": 2205,
-    "cut": 1248,
-    "end": 10
-   },
-   "seconds": 33.4,
-   "frames": 79703,
-   "player_dets": 593599
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.2035661828901283,
-   "idp": 1.0,
-   "idr": 0.11331682856963161,
-   "hota": 0.12452720138399608,
-   "deta": 0.11331682856963161,
-   "assa": 0.13684661034262413,
-   "coverage": 0.13286406221194294,
-   "coverage_of_view": 0.11331682856963161,
-   "min_player_coverage": 0.011354888375673595,
-   "crossings": 1861,
-   "reconfirm_median_s": 4.6000000000000005,
-   "reconfirm_p90_s": 8.92,
-   "reconfirm_within_2s": 0.07200429876410532,
-   "reconfirm_censored": 1947,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 21604,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 19699,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 29820,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43975,
-   "n_chains": 43917,
-   "end_reasons": {
-    "lost": 16177,
-    "ambiguous": 23464,
-    "fov_exit": 3074,
-    "cut": 1249,
-    "end": 11
-   },
-   "seconds": 34.9,
-   "frames": 79703,
-   "player_dets": 596670
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 2,
-   "idsw": 2,
-   "wrong_label_frames": 63,
-   "labels_on_officials": 0,
-   "idf1": 0.4028329290911685,
-   "idp": 0.9996431181278996,
-   "idr": 0.2522398641501667,
-   "hota": 0.27165961408599976,
-   "deta": 0.2523299161230196,
-   "assa": 0.29247006086022226,
-   "coverage": 0.2958570063854392,
-   "coverage_of_view": 0.2522398641501667,
-   "min_player_coverage": 0.0313061329227611,
-   "crossings": 1861,
-   "reconfirm_median_s": 2.92,
-   "reconfirm_p90_s": 7.84,
-   "reconfirm_within_2s": 0.24691026329930146,
-   "reconfirm_censored": 1400,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "other": 2
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 33430,
-     "wrong": 63
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 39148,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 103951,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 3,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 43975,
-   "n_chains": 43917,
-   "end_reasons": {
-    "lost": 16177,
-    "ambiguous": 23464,
-    "fov_exit": 3074,
-    "cut": 1249,
-    "end": 11
-   },
-   "seconds": 35.5,
-   "frames": 79703,
-   "player_dets": 596670
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.17770418353651174,
-   "idp": 1.0,
-   "idr": 0.09751665011303187,
-   "hota": 0.11140290160981099,
-   "deta": 0.09751665011303187,
-   "assa": 0.12726653830602316,
-   "coverage": 0.11519559768007241,
-   "coverage_of_view": 0.09751665011303187,
-   "min_player_coverage": 0.0021641508413136395,
-   "crossings": 1467,
-   "reconfirm_median_s": 5.08,
-   "reconfirm_p90_s": 8.704000000000006,
-   "reconfirm_within_2s": 0.04430811179277437,
-   "reconfirm_censored": 1739,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 16345,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 16560,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 26765,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46563,
-   "n_chains": 46544,
-   "end_reasons": {
-    "ambiguous": 29797,
-    "lost": 13568,
-    "fov_exit": 2045,
-    "cut": 1143,
-    "end": 10
-   },
-   "seconds": 31.3,
-   "frames": 74519,
-   "player_dets": 555707
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.34542659105229995,
-   "idp": 1.0,
-   "idr": 0.20877078598282892,
-   "hota": 0.23203750799042877,
-   "deta": 0.20877078598282892,
-   "assa": 0.25789721900475415,
-   "coverage": 0.24661917161381808,
-   "coverage_of_view": 0.20877078598282892,
-   "min_player_coverage": 0.013958772926472976,
-   "crossings": 1467,
-   "reconfirm_median_s": 3.4,
-   "reconfirm_p90_s": 8.2,
-   "reconfirm_within_2s": 0.16768916155419222,
-   "reconfirm_censored": 1423,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 24127,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 27460,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 85461,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 2,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 46563,
-   "n_chains": 46544,
-   "end_reasons": {
-    "ambiguous": 29797,
-    "lost": 13568,
-    "fov_exit": 2045,
-    "cut": 1143,
-    "end": 10
-   },
-   "seconds": 31.7,
-   "frames": 74519,
-   "player_dets": 555707
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.058765976749770965,
-   "idp": 1.0,
-   "idr": 0.030272484433061016,
-   "hota": 0.03655612937417114,
-   "deta": 0.030272484433061016,
-   "assa": 0.044144067454261866,
-   "coverage": 0.035786375864372506,
-   "coverage_of_view": 0.030272484433061016,
-   "min_player_coverage": 0.0052297939778129954,
-   "crossings": 1467,
-   "reconfirm_median_s": 5.96,
-   "reconfirm_p90_s": 8.992,
-   "reconfirm_within_2s": 0.0054533060668029995,
-   "reconfirm_censored": 2481,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 6857,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 5057,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 6563,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54167,
-   "n_chains": 54154,
-   "end_reasons": {
-    "ambiguous": 39145,
-    "lost": 12524,
-    "fov_exit": 1388,
-    "cut": 1101,
-    "end": 9
-   },
-   "seconds": 28.4,
-   "frames": 74519,
-   "player_dets": 553870
-  },
-  {
-   "game": "G2",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 1,
-   "idsw": 2,
-   "wrong_label_frames": 13,
-   "labels_on_officials": 0,
-   "idf1": 0.1466823665275946,
-   "idp": 0.9997492042056525,
-   "idr": 0.07914740367741728,
-   "hota": 0.0915324969752553,
-   "deta": 0.07916725849289732,
-   "assa": 0.10582907835916525,
-   "coverage": 0.09358694278440789,
-   "coverage_of_view": 0.07914740367741728,
-   "min_player_coverage": 0.01608907914672567,
-   "crossings": 1467,
-   "reconfirm_median_s": 5.08,
-   "reconfirm_p90_s": 8.956,
-   "reconfirm_within_2s": 0.046012269938650305,
-   "reconfirm_censored": 2252,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "after_cut": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 13336,
-     "wrong": 13
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 14200,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 24299,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 3,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 54167,
-   "n_chains": 54154,
-   "end_reasons": {
-    "ambiguous": 39145,
-    "lost": 12524,
-    "fov_exit": 1388,
-    "cut": 1101,
-    "end": 9
-   },
-   "seconds": 28.7,
-   "frames": 74519,
-   "player_dets": 553870
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 1,
-   "idsw": 0,
-   "wrong_label_frames": 1,
-   "labels_on_officials": 1,
-   "idf1": 0.16348859965311022,
-   "idp": 0.999983889416958,
-   "idr": 0.08902140988572216,
-   "hota": 0.093594917201704,
-   "deta": 0.0890212822105159,
-   "assa": 0.09840353125085662,
-   "coverage": 0.10547243392042413,
-   "coverage_of_view": 0.08902140988572216,
-   "min_player_coverage": 0.047382622773880195,
-   "crossings": 1788,
-   "reconfirm_median_s": 5.12,
-   "reconfirm_p90_s": 8.92,
-   "reconfirm_within_2s": 0.051733780760626395,
-   "reconfirm_censored": 1951,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "official": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 18187,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 16203,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 23360,
-     "wrong": 1
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49544,
-   "n_chains": 49513,
-   "end_reasons": {
-    "lost": 14207,
-    "ambiguous": 31569,
-    "fov_exit": 2278,
-    "cut": 1479,
-    "end": 11
-   },
-   "seconds": 32.8,
-   "frames": 80788,
-   "player_dets": 588495
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.3,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 1,
-   "idsw": 0,
-   "wrong_label_frames": 1,
-   "labels_on_officials": 1,
-   "idf1": 0.3425214866337746,
-   "idp": 0.9999930598449569,
-   "idr": 0.20665243930423607,
-   "hota": 0.2147418878080647,
-   "deta": 0.2066521429216822,
-   "assa": 0.22314831933220225,
-   "coverage": 0.24484150247665656,
-   "coverage_of_view": 0.20665243930423607,
-   "min_player_coverage": 0.10385273972602739,
-   "crossings": 1788,
-   "reconfirm_median_s": 3.68,
-   "reconfirm_p90_s": 8.28,
-   "reconfirm_within_2s": 0.18008948545861297,
-   "reconfirm_censored": 1533,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "official": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 29060,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 33241,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 81788,
-     "wrong": 1
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 49544,
-   "n_chains": 49513,
-   "end_reasons": {
-    "lost": 14207,
-    "ambiguous": 31569,
-    "fov_exit": 2278,
-    "cut": 1479,
-    "end": 11
-   },
-   "seconds": 33.3,
-   "frames": 80788,
-   "player_dets": 588495
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 2,
-   "idsw": 4,
-   "wrong_label_frames": 67,
-   "labels_on_officials": 0,
-   "idf1": 0.24847124584980634,
-   "idp": 0.9993227329242775,
-   "idr": 0.14187328416705056,
-   "hota": 0.14721605369966584,
-   "deta": 0.14196943539140006,
-   "assa": 0.15265656588091028,
-   "coverage": 0.16812996689304482,
-   "coverage_of_view": 0.14187328416705056,
-   "min_player_coverage": 0.05842479018721756,
-   "crossings": 1788,
-   "reconfirm_median_s": 4.44,
-   "reconfirm_p90_s": 8.6,
-   "reconfirm_within_2s": 0.11325503355704698,
-   "reconfirm_censored": 1439,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {
-    "after_crossing": 1,
-    "other": 1
-   },
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 26292,
-     "wrong": 11
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 24144,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 40510,
-     "wrong": 0
-    }
-   ],
-   "alarms": 5,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 42340,
-   "n_chains": 42280,
-   "end_reasons": {
-    "ambiguous": 22140,
-    "fov_exit": 2897,
-    "lost": 15813,
-    "cut": 1480,
-    "end": 10
-   },
-   "seconds": 34.9,
-   "frames": 80788,
-   "player_dets": 588396
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.15,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.4663134089370904,
-   "idp": 1.0,
-   "idr": 0.304047392507954,
-   "hota": 0.31322323205220143,
-   "deta": 0.304047392507954,
-   "assa": 0.3226759890554255,
-   "coverage": 0.3600738278302368,
-   "coverage_of_view": 0.304047392507954,
-   "min_player_coverage": 0.11706477297180977,
-   "crossings": 1788,
-   "reconfirm_median_s": 2.64,
-   "reconfirm_p90_s": 7.68,
-   "reconfirm_within_2s": 0.31152125279642057,
-   "reconfirm_censored": 950,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 37782,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 44467,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 129617,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 1,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 42340,
-   "n_chains": 42280,
-   "end_reasons": {
-    "ambiguous": 22140,
-    "fov_exit": 2897,
-    "lost": 15813,
-    "cut": 1480,
-    "end": 10
-   },
-   "seconds": 35.4,
-   "frames": 80788,
-   "player_dets": 588396
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "live",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.05410948583291942,
-   "idp": 1.0,
-   "idr": 0.027807055658565897,
-   "hota": 0.03315241595802643,
-   "deta": 0.027807055658565897,
-   "assa": 0.03952531678827476,
-   "coverage": 0.03300938480420946,
-   "coverage_of_view": 0.027807055658565897,
-   "min_player_coverage": 0.0027675112039566483,
-   "crossings": 1788,
-   "reconfirm_median_s": 5.92,
-   "reconfirm_p90_s": 9.120000000000001,
-   "reconfirm_within_2s": 0.006431767337807606,
-   "reconfirm_censored": 3028,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 6114,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 5284,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 6823,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 55477,
-   "n_chains": 55462,
-   "end_reasons": {
-    "ambiguous": 39381,
-    "lost": 13042,
-    "fov_exit": 1572,
-    "cut": 1472,
-    "end": 10
-   },
-   "seconds": 30.3,
-   "frames": 80788,
-   "player_dets": 587439
-  },
-  {
-   "game": "G3",
-   "profile": "poor_uncalibrated",
-   "sigma_p": 0.5,
-   "seed": 1,
-   "config": "full",
-   "mode": "offline",
-   "swap_events": 0,
-   "idsw": 0,
-   "wrong_label_frames": 0,
-   "labels_on_officials": 0,
-   "idf1": 0.13103932546627464,
-   "idp": 1.0,
-   "idr": 0.0701134738958415,
-   "hota": 0.08182054323349285,
-   "deta": 0.0701134738958415,
-   "assa": 0.0954823791068914,
-   "coverage": 0.08323076949266221,
-   "coverage_of_view": 0.0701134738958415,
-   "min_player_coverage": 0.009677361758351634,
-   "crossings": 1788,
-   "reconfirm_median_s": 4.76,
-   "reconfirm_p90_s": 8.848000000000003,
-   "reconfirm_within_2s": 0.040268456375838924,
-   "reconfirm_censored": 2807,
-   "inv1_duplicates": 0,
-   "inv3_outside_lineup": 0,
-   "inv2_over_five": 0,
-   "swap_context": {},
-   "calibration": [
-    {
-     "bin": [
-      0.995,
-      0.999
-     ],
-     "labels": 12242,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.999,
-      0.9999
-     ],
-     "labels": 12458,
-     "wrong": 0
-    },
-    {
-     "bin": [
-      0.9999,
-      1.0
-     ],
-     "labels": 24193,
-     "wrong": 0
-    }
-   ],
-   "alarms": 0,
-   "offline_splits": 0,
-   "dup_guard": 0,
-   "enum_fallback_frames": 0,
-   "n_tracklets": 55477,
-   "n_chains": 55462,
-   "end_reasons": {
-    "ambiguous": 39381,
-    "lost": 13042,
-    "fov_exit": 1572,
-    "cut": 1472,
-    "end": 10
-   },
-   "seconds": 30.5,
-   "frames": 80788,
-   "player_dets": 587439
-  },
-  {
-   "game": "G1",
-   "profile": "poor_uncalibrated",
    "sigma_p": 0.15,
    "seed": 1,
    "config": "plus_appearance",
@@ -21356,6 +17529,4104 @@
    "seconds": 31.2,
    "frames": 80788,
    "player_dets": 588495
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.20696695556712638,
+   "idp": 1.0,
+   "idr": 0.11542841121067508,
+   "hota": 0.12109185900910738,
+   "deta": 0.11542841121067508,
+   "assa": 0.12703318155803786,
+   "coverage": 0.13566292244398379,
+   "coverage_of_view": 0.11542841121067508,
+   "min_player_coverage": 0.0293169868921571,
+   "crossings": 1861,
+   "reconfirm_median_s": 4.64,
+   "reconfirm_p90_s": 8.6,
+   "reconfirm_within_2s": 0.08033315421816228,
+   "reconfirm_censored": 1614,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 16707,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 17888,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 44766,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 57200,
+   "n_chains": 57188,
+   "end_reasons": {
+    "ambiguous": 40775,
+    "lost": 13532,
+    "fov_exit": 1601,
+    "cut": 1281,
+    "end": 11
+   },
+   "seconds": 32.6,
+   "frames": 79703,
+   "player_dets": 594783
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.35525470626019073,
+   "idp": 1.0,
+   "idr": 0.21599375150204278,
+   "hota": 0.22568132313914532,
+   "deta": 0.21599375150204278,
+   "assa": 0.23580339366138395,
+   "coverage": 0.2538572891289764,
+   "coverage_of_view": 0.21599375150204278,
+   "min_player_coverage": 0.06360090131563008,
+   "crossings": 1861,
+   "reconfirm_median_s": 3.7600000000000002,
+   "reconfirm_p90_s": 8.44,
+   "reconfirm_within_2s": 0.17920472864051584,
+   "reconfirm_censored": 1407,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 19122,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 21963,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 109905,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 2,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 57200,
+   "n_chains": 57188,
+   "end_reasons": {
+    "ambiguous": 40775,
+    "lost": 13532,
+    "fov_exit": 1601,
+    "cut": 1281,
+    "end": 11
+   },
+   "seconds": 33.3,
+   "frames": 79703,
+   "player_dets": 594783,
+   "probable_labels": 36835,
+   "probable_wrong_frames": 15,
+   "probable_wrong_events": 2,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.000407221392697163,
+   "probable_coverage_gain": 0.06193014931496025,
+   "coverage_with_probable": 0.3157874384439367
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 1,
+   "idsw": 0,
+   "wrong_label_frames": 1,
+   "labels_on_officials": 1,
+   "idf1": 0.4148122459202744,
+   "idp": 0.9999945356982831,
+   "idr": 0.26168057253572985,
+   "hota": 0.2697185962877343,
+   "deta": 0.26168019835675044,
+   "assa": 0.27800392097015986,
+   "coverage": 0.3073823496807006,
+   "coverage_of_view": 0.26168057253572985,
+   "min_player_coverage": 0.13684593023255814,
+   "crossings": 1861,
+   "reconfirm_median_s": 2.92,
+   "reconfirm_p90_s": 7.5200000000000005,
+   "reconfirm_within_2s": 0.29634605051047824,
+   "reconfirm_censored": 507,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "official": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 28469,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 32314,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 118265,
+     "wrong": 1
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 50566,
+   "n_chains": 50537,
+   "end_reasons": {
+    "lost": 14590,
+    "ambiguous": 32352,
+    "fov_exit": 2352,
+    "cut": 1261,
+    "end": 11
+   },
+   "seconds": 36.2,
+   "frames": 79703,
+   "player_dets": 595366
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.5943195511277584,
+   "idp": 1.0,
+   "idr": 0.42279847571656337,
+   "hota": 0.4303821867041896,
+   "deta": 0.42279847571656337,
+   "assa": 0.43810192626251104,
+   "coverage": 0.4966390422026115,
+   "coverage_of_view": 0.42279847571656337,
+   "min_player_coverage": 0.2549218917183822,
+   "crossings": 1861,
+   "reconfirm_median_s": 1.96,
+   "reconfirm_p90_s": 6.868000000000011,
+   "reconfirm_within_2s": 0.46050510478237505,
+   "reconfirm_censored": 378,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 22135,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 32918,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 240629,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 50566,
+   "n_chains": 50537,
+   "end_reasons": {
+    "lost": 14590,
+    "ambiguous": 32352,
+    "fov_exit": 2352,
+    "cut": 1261,
+    "end": 11
+   },
+   "seconds": 36.8,
+   "frames": 79703,
+   "player_dets": 595366,
+   "probable_labels": 39981,
+   "probable_wrong_frames": 21,
+   "probable_wrong_events": 3,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.000525249493509417,
+   "probable_coverage_gain": 0.06715365002368291,
+   "coverage_with_probable": 0.5637926922262945
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 1,
+   "idsw": 2,
+   "wrong_label_frames": 1,
+   "labels_on_officials": 0,
+   "idf1": 0.05698003327787022,
+   "idp": 0.9999513334631107,
+   "idr": 0.029325542494704933,
+   "hota": 0.03983230015083884,
+   "deta": 0.029326969736759474,
+   "assa": 0.05410078673480539,
+   "coverage": 0.03440083976354027,
+   "coverage_of_view": 0.029325542494704933,
+   "min_player_coverage": 0.0011186874067760494,
+   "crossings": 1861,
+   "reconfirm_median_s": 5.28,
+   "reconfirm_p90_s": 8.816000000000003,
+   "reconfirm_within_2s": 0.015583019881783988,
+   "reconfirm_censored": 3245,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "other": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 4332,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 5804,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 8945,
+     "wrong": 1
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43393,
+   "n_chains": 43352,
+   "end_reasons": {
+    "lost": 15740,
+    "ambiguous": 23451,
+    "fov_exit": 2913,
+    "cut": 1277,
+    "end": 12
+   },
+   "seconds": 37.8,
+   "frames": 79703,
+   "player_dets": 597311
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.14457767514776604,
+   "idp": 1.0,
+   "idr": 0.07792170720985596,
+   "hota": 0.1014110917989406,
+   "deta": 0.07792170720985596,
+   "assa": 0.1319813169924023,
+   "coverage": 0.09140297098161594,
+   "coverage_of_view": 0.07792170720985596,
+   "min_player_coverage": 0.002770083102493075,
+   "crossings": 1861,
+   "reconfirm_median_s": 3.56,
+   "reconfirm_p90_s": 8.332000000000003,
+   "reconfirm_within_2s": 0.06528747984954325,
+   "reconfirm_censored": 3044,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 7852,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 11502,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 35242,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43393,
+   "n_chains": 43352,
+   "end_reasons": {
+    "lost": 15740,
+    "ambiguous": 23451,
+    "fov_exit": 2913,
+    "cut": 1277,
+    "end": 12
+   },
+   "seconds": 38.2,
+   "frames": 79703,
+   "player_dets": 597311,
+   "probable_labels": 187673,
+   "probable_wrong_frames": 655,
+   "probable_wrong_events": 23,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.003490113122292498,
+   "probable_coverage_gain": 0.3141964571220018,
+   "coverage_with_probable": 0.4055994281036177
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.45197019898749274,
+   "idp": 1.0,
+   "idr": 0.29196479208079607,
+   "hota": 0.3093777994799267,
+   "deta": 0.29196479208079607,
+   "assa": 0.3278293321906925,
+   "coverage": 0.343154499899847,
+   "coverage_of_view": 0.29196479208079607,
+   "min_player_coverage": 0.05479766793991786,
+   "crossings": 1861,
+   "reconfirm_median_s": 2.32,
+   "reconfirm_p90_s": 6.583999999999997,
+   "reconfirm_within_2s": 0.3694250403009135,
+   "reconfirm_censored": 687,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 29776,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 37217,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 130924,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43602,
+   "n_chains": 43552,
+   "end_reasons": {
+    "ambiguous": 22848,
+    "lost": 16467,
+    "fov_exit": 3027,
+    "cut": 1247,
+    "end": 13
+   },
+   "seconds": 38.7,
+   "frames": 79703,
+   "player_dets": 594091
+  },
+  {
+   "game": "G1",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.6434161917260768,
+   "idp": 1.0,
+   "idr": 0.4742915165298488,
+   "hota": 0.49291276233201786,
+   "deta": 0.4742915165298488,
+   "assa": 0.5122651002645329,
+   "coverage": 0.5574482697095227,
+   "coverage_of_view": 0.4742915165298488,
+   "min_player_coverage": 0.12803354490364457,
+   "crossings": 1861,
+   "reconfirm_median_s": 1.2,
+   "reconfirm_p90_s": 5.64,
+   "reconfirm_within_2s": 0.5335840945728103,
+   "reconfirm_censored": 560,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 19762,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 34118,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 277295,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43602,
+   "n_chains": 43552,
+   "end_reasons": {
+    "ambiguous": 22848,
+    "lost": 16467,
+    "fov_exit": 3027,
+    "cut": 1247,
+    "end": 13
+   },
+   "seconds": 39.2,
+   "frames": 79703,
+   "player_dets": 594091,
+   "probable_labels": 72102,
+   "probable_wrong_frames": 55,
+   "probable_wrong_events": 5,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0007628082438767301,
+   "probable_coverage_gain": 0.12136524539169925,
+   "coverage_with_probable": 0.6788135151012219
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.010499755935464499,
+   "idp": 1.0,
+   "idr": 0.005277584643072759,
+   "hota": 0.0072641837544331,
+   "deta": 0.005277584643072759,
+   "assa": 0.009998582531012998,
+   "coverage": 0.006189908888031277,
+   "coverage_of_view": 0.005277584643072759,
+   "min_player_coverage": 0.0,
+   "crossings": 1861,
+   "reconfirm_median_s": 6.76,
+   "reconfirm_p90_s": 9.356,
+   "reconfirm_within_2s": 0.0013433637829124126,
+   "reconfirm_censored": 3594,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 1056,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 1304,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 1236,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54146,
+   "n_chains": 54131,
+   "end_reasons": {
+    "lost": 13247,
+    "ambiguous": 38227,
+    "fov_exit": 1382,
+    "cut": 1280,
+    "end": 10
+   },
+   "seconds": 30.3,
+   "frames": 79703,
+   "player_dets": 595970
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.03304180455190113,
+   "idp": 1.0,
+   "idr": 0.01679842745431291,
+   "hota": 0.022319540968955234,
+   "deta": 0.01679842745431291,
+   "assa": 0.02965527043645807,
+   "coverage": 0.01970233401010118,
+   "coverage_of_view": 0.01679842745431291,
+   "min_player_coverage": 0.0,
+   "crossings": 1861,
+   "reconfirm_median_s": 5.5600000000000005,
+   "reconfirm_p90_s": 9.272,
+   "reconfirm_within_2s": 0.008597528210639442,
+   "reconfirm_censored": 3549,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 2173,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 4089,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 5480,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54146,
+   "n_chains": 54131,
+   "end_reasons": {
+    "lost": 13247,
+    "ambiguous": 38227,
+    "fov_exit": 1382,
+    "cut": 1280,
+    "end": 10
+   },
+   "seconds": 30.4,
+   "frames": 79703,
+   "player_dets": 595970,
+   "probable_labels": 69721,
+   "probable_wrong_frames": 61,
+   "probable_wrong_events": 5,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0008749157355746475,
+   "probable_coverage_gain": 0.11698743225330134,
+   "coverage_with_probable": 0.1366897662634025
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.03955975861364805,
+   "idp": 1.0,
+   "idr": 0.02017901784431482,
+   "hota": 0.03552406689710482,
+   "deta": 0.02017901784431482,
+   "assa": 0.06253819381330888,
+   "coverage": 0.023688928693710334,
+   "coverage_of_view": 0.02017901784431482,
+   "min_player_coverage": 0.0013797601725954543,
+   "crossings": 1861,
+   "reconfirm_median_s": 5.82,
+   "reconfirm_p90_s": 9.02,
+   "reconfirm_within_2s": 0.006985491671144546,
+   "reconfirm_censored": 3396,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 3458,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 3998,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 5453,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49606,
+   "n_chains": 49576,
+   "end_reasons": {
+    "ambiguous": 31814,
+    "lost": 14353,
+    "fov_exit": 2185,
+    "cut": 1243,
+    "end": 11
+   },
+   "seconds": 33.9,
+   "frames": 79703,
+   "player_dets": 592893
+  },
+  {
+   "game": "G1",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.0963477457001533,
+   "idp": 1.0,
+   "idr": 0.05061205137783397,
+   "hota": 0.08112925560097688,
+   "deta": 0.05061205137783397,
+   "assa": 0.1300472107963454,
+   "coverage": 0.05941544258407504,
+   "coverage_of_view": 0.05061205137783397,
+   "min_player_coverage": 0.004691184586824545,
+   "crossings": 1861,
+   "reconfirm_median_s": 4.24,
+   "reconfirm_p90_s": 8.76,
+   "reconfirm_within_2s": 0.03089736700698549,
+   "reconfirm_censored": 3283,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 5325,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 8369,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 21533,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49606,
+   "n_chains": 49576,
+   "end_reasons": {
+    "ambiguous": 31814,
+    "lost": 14353,
+    "fov_exit": 2185,
+    "cut": 1243,
+    "end": 11
+   },
+   "seconds": 34.2,
+   "frames": 79703,
+   "player_dets": 592893,
+   "probable_labels": 123291,
+   "probable_wrong_frames": 54,
+   "probable_wrong_events": 4,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00043798817431929337,
+   "probable_coverage_gain": 0.20794814578684517,
+   "coverage_with_probable": 0.2673635883709202
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.15715001765567077,
+   "idp": 1.0,
+   "idr": 0.08527553472136502,
+   "hota": 0.0923637692111098,
+   "deta": 0.08527553472136502,
+   "assa": 0.10004118872731936,
+   "coverage": 0.10008945432859556,
+   "coverage_of_view": 0.08527553472136502,
+   "min_player_coverage": 0.027973562910030975,
+   "crossings": 1861,
+   "reconfirm_median_s": 5.2,
+   "reconfirm_p90_s": 8.956000000000005,
+   "reconfirm_within_2s": 0.03815153143471252,
+   "reconfirm_censored": 2260,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 17529,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 15206,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 21159,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 50613,
+   "n_chains": 50578,
+   "end_reasons": {
+    "ambiguous": 32657,
+    "lost": 14493,
+    "fov_exit": 2205,
+    "cut": 1248,
+    "end": 10
+   },
+   "seconds": 34.7,
+   "frames": 79703,
+   "player_dets": 593599
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.3329612681321968,
+   "idp": 1.0,
+   "idr": 0.19973217284468034,
+   "hota": 0.2133740717776265,
+   "deta": 0.19973217284468034,
+   "assa": 0.22794772548921532,
+   "coverage": 0.2344293032838667,
+   "coverage_of_view": 0.19973217284468034,
+   "min_player_coverage": 0.060995536911933275,
+   "crossings": 1861,
+   "reconfirm_median_s": 3.8000000000000003,
+   "reconfirm_p90_s": 8.56,
+   "reconfirm_within_2s": 0.16953250940354647,
+   "reconfirm_censored": 1704,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 31502,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 32921,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 74734,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 2,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 50613,
+   "n_chains": 50578,
+   "end_reasons": {
+    "ambiguous": 32657,
+    "lost": 14493,
+    "fov_exit": 2205,
+    "cut": 1248,
+    "end": 10
+   },
+   "seconds": 35.2,
+   "frames": 79703,
+   "player_dets": 593599,
+   "probable_labels": 75623,
+   "probable_wrong_frames": 860,
+   "probable_wrong_events": 36,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.01137220157888473,
+   "probable_coverage_gain": 0.12739745181511425,
+   "coverage_with_probable": 0.361826755098981
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.2035661828901283,
+   "idp": 1.0,
+   "idr": 0.11331682856963161,
+   "hota": 0.12452720138399608,
+   "deta": 0.11331682856963161,
+   "assa": 0.13684661034262413,
+   "coverage": 0.13286406221194294,
+   "coverage_of_view": 0.11331682856963161,
+   "min_player_coverage": 0.011354888375673595,
+   "crossings": 1861,
+   "reconfirm_median_s": 4.6000000000000005,
+   "reconfirm_p90_s": 8.92,
+   "reconfirm_within_2s": 0.07200429876410532,
+   "reconfirm_censored": 1947,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 21604,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 19699,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 29820,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43975,
+   "n_chains": 43917,
+   "end_reasons": {
+    "lost": 16177,
+    "ambiguous": 23464,
+    "fov_exit": 3074,
+    "cut": 1249,
+    "end": 11
+   },
+   "seconds": 37.3,
+   "frames": 79703,
+   "player_dets": 596670
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 2,
+   "idsw": 2,
+   "wrong_label_frames": 63,
+   "labels_on_officials": 0,
+   "idf1": 0.4028329290911685,
+   "idp": 0.9996431181278996,
+   "idr": 0.2522398641501667,
+   "hota": 0.27165961408599976,
+   "deta": 0.2523299161230196,
+   "assa": 0.29247006086022226,
+   "coverage": 0.2958570063854392,
+   "coverage_of_view": 0.2522398641501667,
+   "min_player_coverage": 0.0313061329227611,
+   "crossings": 1861,
+   "reconfirm_median_s": 2.92,
+   "reconfirm_p90_s": 7.84,
+   "reconfirm_within_2s": 0.24691026329930146,
+   "reconfirm_censored": 1400,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "other": 2
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 33430,
+     "wrong": 63
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 39148,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 103951,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 3,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43975,
+   "n_chains": 43917,
+   "end_reasons": {
+    "lost": 16177,
+    "ambiguous": 23464,
+    "fov_exit": 3074,
+    "cut": 1249,
+    "end": 11
+   },
+   "seconds": 37.8,
+   "frames": 79703,
+   "player_dets": 596670,
+   "probable_labels": 112057,
+   "probable_wrong_frames": 643,
+   "probable_wrong_events": 34,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00573815111951953,
+   "probable_coverage_gain": 0.18780397874872207,
+   "coverage_with_probable": 0.4836609851341613
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.06456277067089611,
+   "idp": 1.0,
+   "idr": 0.0333582353860559,
+   "hota": 0.04205234567335586,
+   "deta": 0.0333582353860559,
+   "assa": 0.053012389779185425,
+   "coverage": 0.03911815991296613,
+   "coverage_of_view": 0.0333582353860559,
+   "min_player_coverage": 0.0033827358789029227,
+   "crossings": 1861,
+   "reconfirm_median_s": 5.5600000000000005,
+   "reconfirm_p90_s": 9.16,
+   "reconfirm_within_2s": 0.00967221923696937,
+   "reconfirm_censored": 3033,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 7129,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 6387,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 8499,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 56629,
+   "n_chains": 56613,
+   "end_reasons": {
+    "lost": 13245,
+    "ambiguous": 40543,
+    "fov_exit": 1556,
+    "cut": 1274,
+    "end": 11
+   },
+   "seconds": 30.9,
+   "frames": 79703,
+   "player_dets": 594711
+  },
+  {
+   "game": "G1",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.1547435251222742,
+   "idp": 1.0,
+   "idr": 0.08386017186718077,
+   "hota": 0.09989353726041808,
+   "deta": 0.08386017186718077,
+   "assa": 0.11899234838443938,
+   "coverage": 0.09834020221586619,
+   "coverage_of_view": 0.08386017186718077,
+   "min_player_coverage": 0.011535372709352412,
+   "crossings": 1861,
+   "reconfirm_median_s": 4.28,
+   "reconfirm_p90_s": 8.972000000000003,
+   "reconfirm_within_2s": 0.054809242342826435,
+   "reconfirm_censored": 2784,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 13665,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 14572,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 30247,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 56629,
+   "n_chains": 56613,
+   "end_reasons": {
+    "lost": 13245,
+    "ambiguous": 40543,
+    "fov_exit": 1556,
+    "cut": 1274,
+    "end": 11
+   },
+   "seconds": 31.2,
+   "frames": 79703,
+   "player_dets": 594711,
+   "probable_labels": 51313,
+   "probable_wrong_frames": 486,
+   "probable_wrong_events": 26,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.009471284080057684,
+   "probable_coverage_gain": 0.08628224465328538,
+   "coverage_with_probable": 0.18462244686915158
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.4766962186054178,
+   "idp": 1.0,
+   "idr": 0.31293575479015956,
+   "hota": 0.32281792027818024,
+   "deta": 0.31293575479015956,
+   "assa": 0.3330121536371225,
+   "coverage": 0.3703646923021427,
+   "coverage_of_view": 0.31293575479015956,
+   "min_player_coverage": 0.18670486399901426,
+   "crossings": 1467,
+   "reconfirm_median_s": 2.32,
+   "reconfirm_p90_s": 6.84,
+   "reconfirm_within_2s": 0.37491479209270623,
+   "reconfirm_censored": 425,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 30445,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 36897,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 132550,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39500,
+   "n_chains": 39464,
+   "end_reasons": {
+    "ambiguous": 20077,
+    "lost": 15614,
+    "fov_exit": 2679,
+    "cut": 1118,
+    "end": 12
+   },
+   "seconds": 34.3,
+   "frames": 74519,
+   "player_dets": 554440
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.6682260441063651,
+   "idp": 1.0,
+   "idr": 0.5017563537334518,
+   "hota": 0.5108311289399942,
+   "deta": 0.5017563537334518,
+   "assa": 0.5200700307080369,
+   "coverage": 0.5938370247456893,
+   "coverage_of_view": 0.5017563537334518,
+   "min_player_coverage": 0.32513938945876847,
+   "crossings": 1467,
+   "reconfirm_median_s": 1.2,
+   "reconfirm_p90_s": 5.64,
+   "reconfirm_within_2s": 0.5732788002726653,
+   "reconfirm_censored": 317,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 20105,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 32657,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 276485,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39500,
+   "n_chains": 39464,
+   "end_reasons": {
+    "ambiguous": 20077,
+    "lost": 15614,
+    "fov_exit": 2679,
+    "cut": 1118,
+    "end": 12
+   },
+   "seconds": 34.9,
+   "frames": 74519,
+   "player_dets": 554440,
+   "probable_labels": 58896,
+   "probable_wrong_frames": 102,
+   "probable_wrong_events": 7,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0017318663406682966,
+   "probable_coverage_gain": 0.10622610201284179,
+   "coverage_with_probable": 0.7000631267585311
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 1,
+   "idsw": 0,
+   "wrong_label_frames": 2,
+   "labels_on_officials": 2,
+   "idf1": 0.21651765955563423,
+   "idp": 0.9999748418179303,
+   "idr": 0.12140199875383319,
+   "hota": 0.12839284474932597,
+   "deta": 0.12140162795314671,
+   "assa": 0.1357866682742226,
+   "coverage": 0.14359205009961762,
+   "coverage_of_view": 0.12140199875383319,
+   "min_player_coverage": 0.0279874213836478,
+   "crossings": 1467,
+   "reconfirm_median_s": 4.44,
+   "reconfirm_p90_s": 8.724000000000006,
+   "reconfirm_within_2s": 0.08248125426039536,
+   "reconfirm_censored": 1334,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "official": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 15230,
+     "wrong": 2
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 17127,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 45973,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54091,
+   "n_chains": 54078,
+   "end_reasons": {
+    "ambiguous": 39138,
+    "lost": 12359,
+    "fov_exit": 1459,
+    "cut": 1125,
+    "end": 10
+   },
+   "seconds": 28.3,
+   "frames": 74519,
+   "player_dets": 553617
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 1,
+   "idsw": 2,
+   "wrong_label_frames": 1,
+   "labels_on_officials": 0,
+   "idf1": 0.3601692899089691,
+   "idp": 0.9999930469608266,
+   "idr": 0.2196384283637341,
+   "hota": 0.22943337307314243,
+   "deta": 0.21963995552894894,
+   "assa": 0.23966346447735354,
+   "coverage": 0.25978609760899685,
+   "coverage_of_view": 0.2196384283637341,
+   "min_player_coverage": 0.06442610062893082,
+   "crossings": 1467,
+   "reconfirm_median_s": 3.56,
+   "reconfirm_p90_s": 8.224000000000006,
+   "reconfirm_within_2s": 0.1796182685753238,
+   "reconfirm_censored": 1149,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "other": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 16230,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 21002,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 106590,
+     "wrong": 1
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 4,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54091,
+   "n_chains": 54078,
+   "end_reasons": {
+    "ambiguous": 39138,
+    "lost": 12359,
+    "fov_exit": 1459,
+    "cut": 1125,
+    "end": 10
+   },
+   "seconds": 28.7,
+   "frames": 74519,
+   "player_dets": 553617,
+   "probable_labels": 36753,
+   "probable_wrong_frames": 43,
+   "probable_wrong_events": 5,
+   "probable_on_officials": 2,
+   "probable_error_rate": 0.0011699725192501292,
+   "probable_coverage_gain": 0.06638343836984775,
+   "coverage_with_probable": 0.32616953597884457
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.38849258459871583,
+   "idp": 1.0,
+   "idr": 0.2410740285063948,
+   "hota": 0.24936447337215065,
+   "deta": 0.2410740285063948,
+   "assa": 0.2579400235082584,
+   "coverage": 0.2850231531968355,
+   "coverage_of_view": 0.2410740285063948,
+   "min_player_coverage": 0.0981672303940848,
+   "crossings": 1467,
+   "reconfirm_median_s": 3.2,
+   "reconfirm_p90_s": 7.84,
+   "reconfirm_within_2s": 0.22903885480572597,
+   "reconfirm_censored": 638,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 27753,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 30455,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 96543,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46449,
+   "n_chains": 46417,
+   "end_reasons": {
+    "lost": 13927,
+    "ambiguous": 29301,
+    "fov_exit": 2085,
+    "cut": 1127,
+    "end": 9
+   },
+   "seconds": 30.9,
+   "frames": 74519,
+   "player_dets": 554783
+  },
+  {
+   "game": "G2",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.5756642342265068,
+   "idp": 1.0,
+   "idr": 0.40416329355732306,
+   "hota": 0.4132292694969648,
+   "deta": 0.40416329355732306,
+   "assa": 0.4224986085847409,
+   "coverage": 0.4778444905485568,
+   "coverage_of_view": 0.40416329355732306,
+   "min_player_coverage": 0.2020372846692362,
+   "crossings": 1467,
+   "reconfirm_median_s": 2.24,
+   "reconfirm_p90_s": 7.16,
+   "reconfirm_within_2s": 0.3960463531015678,
+   "reconfirm_censored": 453,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 23628,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 32546,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 208926,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 3,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46449,
+   "n_chains": 46417,
+   "end_reasons": {
+    "lost": 13927,
+    "ambiguous": 29301,
+    "fov_exit": 2085,
+    "cut": 1127,
+    "end": 9
+   },
+   "seconds": 31.4,
+   "frames": 74519,
+   "player_dets": 554783,
+   "probable_labels": 41556,
+   "probable_wrong_frames": 20,
+   "probable_wrong_events": 2,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.000481278275098662,
+   "probable_coverage_gain": 0.07490496284132715,
+   "coverage_with_probable": 0.552749453389884
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.018444730658671436,
+   "idp": 1.0,
+   "idr": 0.009308209033605451,
+   "hota": 0.015832397267610838,
+   "deta": 0.009308209033605451,
+   "assa": 0.02692943425899389,
+   "coverage": 0.010988379092789359,
+   "coverage_of_view": 0.009308209033605451,
+   "min_player_coverage": 0.0,
+   "crossings": 1467,
+   "reconfirm_median_s": 6.6000000000000005,
+   "reconfirm_p90_s": 9.256,
+   "reconfirm_within_2s": 0.0010224948875255625,
+   "reconfirm_censored": 2795,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 1445,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 1956,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 2529,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 51536,
+   "n_chains": 51521,
+   "end_reasons": {
+    "ambiguous": 36591,
+    "lost": 12465,
+    "fov_exit": 1340,
+    "cut": 1130,
+    "end": 10
+   },
+   "seconds": 26.3,
+   "frames": 74519,
+   "player_dets": 556497
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.05009609319927281,
+   "idp": 1.0,
+   "idr": 0.025691570248437087,
+   "hota": 0.04319608415122231,
+   "deta": 0.025691570248437087,
+   "assa": 0.07262700052804243,
+   "coverage": 0.030329004469026786,
+   "coverage_of_view": 0.025691570248437087,
+   "min_player_coverage": 0.0,
+   "crossings": 1467,
+   "reconfirm_median_s": 5.699999999999999,
+   "reconfirm_p90_s": 8.908000000000001,
+   "reconfirm_within_2s": 0.011929107021131561,
+   "reconfirm_censored": 2720,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 2864,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 4238,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 9776,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 51536,
+   "n_chains": 51521,
+   "end_reasons": {
+    "ambiguous": 36591,
+    "lost": 12465,
+    "fov_exit": 1340,
+    "cut": 1130,
+    "end": 10
+   },
+   "seconds": 26.4,
+   "frames": 74519,
+   "player_dets": 556497,
+   "probable_labels": 69547,
+   "probable_wrong_frames": 30,
+   "probable_wrong_events": 7,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0004313629631759817,
+   "probable_coverage_gain": 0.12497282105743607,
+   "coverage_with_probable": 0.15530182552646285
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.09371658064816106,
+   "idp": 1.0,
+   "idr": 0.04916193452494379,
+   "hota": 0.06683326247514168,
+   "deta": 0.04916193452494379,
+   "assa": 0.09085657462899215,
+   "coverage": 0.05807198628558258,
+   "coverage_of_view": 0.04916193452494379,
+   "min_player_coverage": 0.002932551319648094,
+   "crossings": 1467,
+   "reconfirm_median_s": 4.96,
+   "reconfirm_p90_s": 8.724000000000002,
+   "reconfirm_within_2s": 0.026244035446489435,
+   "reconfirm_censored": 2364,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 7793,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 8285,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 14472,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39651,
+   "n_chains": 39604,
+   "end_reasons": {
+    "ambiguous": 20764,
+    "lost": 15276,
+    "fov_exit": 2485,
+    "cut": 1115,
+    "end": 11
+   },
+   "seconds": 31.2,
+   "frames": 74519,
+   "player_dets": 555328
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.20904711395781544,
+   "idp": 1.0,
+   "idr": 0.11672396051678799,
+   "hota": 0.1494456659437025,
+   "deta": 0.11672396051678799,
+   "assa": 0.19134038093356592,
+   "coverage": 0.1378788751872767,
+   "coverage_of_view": 0.11672396051678799,
+   "min_player_coverage": 0.021762617687914803,
+   "crossings": 1467,
+   "reconfirm_median_s": 3.2800000000000002,
+   "reconfirm_p90_s": 8.304000000000006,
+   "reconfirm_within_2s": 0.09986366734832992,
+   "reconfirm_censored": 2166,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 11408,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 16741,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 48419,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39651,
+   "n_chains": 39604,
+   "end_reasons": {
+    "ambiguous": 20764,
+    "lost": 15276,
+    "fov_exit": 2485,
+    "cut": 1115,
+    "end": 11
+   },
+   "seconds": 31.5,
+   "frames": 74519,
+   "player_dets": 555328,
+   "probable_labels": 160959,
+   "probable_wrong_frames": 162,
+   "probable_wrong_events": 11,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.001006467485508732,
+   "probable_coverage_gain": 0.2898449204794284,
+   "coverage_with_probable": 0.4277237956667051
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.05369430411035777,
+   "idp": 1.0,
+   "idr": 0.02758780607987405,
+   "hota": 0.038745255992566646,
+   "deta": 0.02758780607987405,
+   "assa": 0.054415159276644275,
+   "coverage": 0.032660285353079285,
+   "coverage_of_view": 0.02758780607987405,
+   "min_player_coverage": 0.000630715862503942,
+   "crossings": 1467,
+   "reconfirm_median_s": 5.6000000000000005,
+   "reconfirm_p90_s": 9.004000000000001,
+   "reconfirm_within_2s": 0.010224948875255624,
+   "reconfirm_censored": 2554,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 4575,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 4727,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 7570,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46083,
+   "n_chains": 46062,
+   "end_reasons": {
+    "ambiguous": 29386,
+    "lost": 13542,
+    "fov_exit": 2020,
+    "cut": 1124,
+    "end": 11
+   },
+   "seconds": 29.3,
+   "frames": 74519,
+   "player_dets": 553700
+  },
+  {
+   "game": "G2",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.13244804813702643,
+   "idp": 1.0,
+   "idr": 0.07092067666706839,
+   "hota": 0.09332102617622542,
+   "deta": 0.07092067666706839,
+   "assa": 0.1227965430655238,
+   "coverage": 0.08396062849918728,
+   "coverage_of_view": 0.07092067666706839,
+   "min_player_coverage": 0.009263639230526647,
+   "crossings": 1467,
+   "reconfirm_median_s": 4.08,
+   "reconfirm_p90_s": 8.6,
+   "reconfirm_within_2s": 0.050443081117927745,
+   "reconfirm_censored": 2418,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 9173,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 10264,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 27052,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46083,
+   "n_chains": 46062,
+   "end_reasons": {
+    "ambiguous": 29386,
+    "lost": 13542,
+    "fov_exit": 2020,
+    "cut": 1124,
+    "end": 11
+   },
+   "seconds": 29.5,
+   "frames": 74519,
+   "player_dets": 553700,
+   "probable_labels": 118731,
+   "probable_wrong_frames": 41,
+   "probable_wrong_events": 5,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00034531840884015124,
+   "probable_coverage_gain": 0.21443200288965145,
+   "coverage_with_probable": 0.29839263138883876
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.24647900500650874,
+   "idp": 1.0,
+   "idr": 0.1405623347027126,
+   "hota": 0.1535761322133181,
+   "deta": 0.1405623347027126,
+   "assa": 0.1677947967745829,
+   "coverage": 0.16620703826271277,
+   "coverage_of_view": 0.1405623347027126,
+   "min_player_coverage": 0.029370069033530573,
+   "crossings": 1467,
+   "reconfirm_median_s": 4.28,
+   "reconfirm_p90_s": 8.44,
+   "reconfirm_within_2s": 0.08929788684389911,
+   "reconfirm_censored": 1361,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 22605,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 22154,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 40122,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39448,
+   "n_chains": 39407,
+   "end_reasons": {
+    "lost": 15446,
+    "ambiguous": 20275,
+    "fov_exit": 2579,
+    "cut": 1137,
+    "end": 11
+   },
+   "seconds": 31.2,
+   "frames": 74519,
+   "player_dets": 554796
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 2,
+   "idsw": 2,
+   "wrong_label_frames": 10,
+   "labels_on_officials": 0,
+   "idf1": 0.45156607737153914,
+   "idp": 0.9999477329151967,
+   "idr": 0.2916320510963926,
+   "hota": 0.31445469156130335,
+   "deta": 0.2916472946502748,
+   "assa": 0.33904567214822695,
+   "coverage": 0.34485648779010664,
+   "coverage_of_view": 0.2916320510963926,
+   "min_player_coverage": 0.07609097633136094,
+   "crossings": 1467,
+   "reconfirm_median_s": 2.56,
+   "reconfirm_p90_s": 7.76,
+   "reconfirm_within_2s": 0.28186775732788005,
+   "reconfirm_censored": 996,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "after_cut": 2
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 30797,
+     "wrong": 10
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 37483,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 123045,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 3,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 39448,
+   "n_chains": 39407,
+   "end_reasons": {
+    "lost": 15446,
+    "ambiguous": 20275,
+    "fov_exit": 2579,
+    "cut": 1137,
+    "end": 11
+   },
+   "seconds": 31.6,
+   "frames": 74519,
+   "player_dets": 554796,
+   "probable_labels": 83571,
+   "probable_wrong_frames": 1800,
+   "probable_wrong_events": 67,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.021538571992676885,
+   "probable_coverage_gain": 0.15063374645815758,
+   "coverage_with_probable": 0.4954902342482642
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.058765976749770965,
+   "idp": 1.0,
+   "idr": 0.030272484433061016,
+   "hota": 0.03655612937417114,
+   "deta": 0.030272484433061016,
+   "assa": 0.044144067454261866,
+   "coverage": 0.035786375864372506,
+   "coverage_of_view": 0.030272484433061016,
+   "min_player_coverage": 0.0052297939778129954,
+   "crossings": 1467,
+   "reconfirm_median_s": 5.96,
+   "reconfirm_p90_s": 8.992,
+   "reconfirm_within_2s": 0.0054533060668029995,
+   "reconfirm_censored": 2481,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 6857,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 5057,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 6563,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54167,
+   "n_chains": 54154,
+   "end_reasons": {
+    "ambiguous": 39145,
+    "lost": 12524,
+    "fov_exit": 1388,
+    "cut": 1101,
+    "end": 9
+   },
+   "seconds": 26.7,
+   "frames": 74519,
+   "player_dets": 553870
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 1,
+   "idsw": 2,
+   "wrong_label_frames": 13,
+   "labels_on_officials": 0,
+   "idf1": 0.1466823665275946,
+   "idp": 0.9997492042056525,
+   "idr": 0.07914740367741728,
+   "hota": 0.0915324969752553,
+   "deta": 0.07916725849289732,
+   "assa": 0.10582907835916525,
+   "coverage": 0.09358694278440789,
+   "coverage_of_view": 0.07914740367741728,
+   "min_player_coverage": 0.01608907914672567,
+   "crossings": 1467,
+   "reconfirm_median_s": 5.08,
+   "reconfirm_p90_s": 8.956,
+   "reconfirm_within_2s": 0.046012269938650305,
+   "reconfirm_censored": 2252,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "after_cut": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 13336,
+     "wrong": 13
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 14200,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 24299,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 3,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 54167,
+   "n_chains": 54154,
+   "end_reasons": {
+    "ambiguous": 39145,
+    "lost": 12524,
+    "fov_exit": 1388,
+    "cut": 1101,
+    "end": 9
+   },
+   "seconds": 26.9,
+   "frames": 74519,
+   "player_dets": 553870,
+   "probable_labels": 46533,
+   "probable_wrong_frames": 842,
+   "probable_wrong_events": 24,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.01809468549201642,
+   "probable_coverage_gain": 0.08401429938433207,
+   "coverage_with_probable": 0.17760124216873996
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.17770418353651174,
+   "idp": 1.0,
+   "idr": 0.09751665011303187,
+   "hota": 0.11140290160981099,
+   "deta": 0.09751665011303187,
+   "assa": 0.12726653830602316,
+   "coverage": 0.11519559768007241,
+   "coverage_of_view": 0.09751665011303187,
+   "min_player_coverage": 0.0021641508413136395,
+   "crossings": 1467,
+   "reconfirm_median_s": 5.08,
+   "reconfirm_p90_s": 8.704000000000006,
+   "reconfirm_within_2s": 0.04430811179277437,
+   "reconfirm_censored": 1739,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 16345,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 16560,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 26765,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46563,
+   "n_chains": 46544,
+   "end_reasons": {
+    "ambiguous": 29797,
+    "lost": 13568,
+    "fov_exit": 2045,
+    "cut": 1143,
+    "end": 10
+   },
+   "seconds": 29.6,
+   "frames": 74519,
+   "player_dets": 555707
+  },
+  {
+   "game": "G2",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.34542659105229995,
+   "idp": 1.0,
+   "idr": 0.20877078598282892,
+   "hota": 0.23203750799042877,
+   "deta": 0.20877078598282892,
+   "assa": 0.25789721900475415,
+   "coverage": 0.24661917161381808,
+   "coverage_of_view": 0.20877078598282892,
+   "min_player_coverage": 0.013958772926472976,
+   "crossings": 1467,
+   "reconfirm_median_s": 3.4,
+   "reconfirm_p90_s": 8.2,
+   "reconfirm_within_2s": 0.16768916155419222,
+   "reconfirm_censored": 1423,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 24127,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 27460,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 85461,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 2,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 46563,
+   "n_chains": 46544,
+   "end_reasons": {
+    "ambiguous": 29797,
+    "lost": 13568,
+    "fov_exit": 2045,
+    "cut": 1143,
+    "end": 10
+   },
+   "seconds": 30.0,
+   "frames": 74519,
+   "player_dets": 555707,
+   "probable_labels": 74306,
+   "probable_wrong_frames": 932,
+   "probable_wrong_events": 28,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.012542728716388986,
+   "probable_coverage_gain": 0.13371434946833494,
+   "coverage_with_probable": 0.380333521082153
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.509269551813552,
+   "idp": 1.0,
+   "idr": 0.34162416983774985,
+   "hota": 0.34864832448521954,
+   "deta": 0.34162416983774985,
+   "assa": 0.35581690318949705,
+   "coverage": 0.40459701594222647,
+   "coverage_of_view": 0.34162416983774985,
+   "min_player_coverage": 0.07400501510962515,
+   "crossings": 1788,
+   "reconfirm_median_s": 2.0,
+   "reconfirm_p90_s": 6.16,
+   "reconfirm_within_2s": 0.46616331096196867,
+   "reconfirm_censored": 291,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 32879,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 40302,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 159061,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 41960,
+   "n_chains": 41912,
+   "end_reasons": {
+    "ambiguous": 21619,
+    "fov_exit": 2993,
+    "lost": 15880,
+    "cut": 1457,
+    "end": 11
+   },
+   "seconds": 33.7,
+   "frames": 80788,
+   "player_dets": 587120
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.6922433135418058,
+   "idp": 1.0,
+   "idr": 0.5293364742157142,
+   "hota": 0.5369411581209137,
+   "deta": 0.5293364742157142,
+   "assa": 0.5446550943072519,
+   "coverage": 0.6269110233001771,
+   "coverage_of_view": 0.5293364742157142,
+   "min_player_coverage": 0.13855847746415484,
+   "crossings": 1788,
+   "reconfirm_median_s": 0.92,
+   "reconfirm_p90_s": 5.04,
+   "reconfirm_within_2s": 0.6445749440715883,
+   "reconfirm_censored": 197,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 21732,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 33644,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 312696,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 2,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 41960,
+   "n_chains": 41912,
+   "end_reasons": {
+    "ambiguous": 21619,
+    "fov_exit": 2993,
+    "lost": 15880,
+    "cut": 1457,
+    "end": 11
+   },
+   "seconds": 34.2,
+   "frames": 80788,
+   "player_dets": 587120,
+   "probable_labels": 45226,
+   "probable_wrong_frames": 4,
+   "probable_wrong_events": 1,
+   "probable_on_officials": 0,
+   "probable_error_rate": 8.844469995135542e-05,
+   "probable_coverage_gain": 0.07703024935277286,
+   "coverage_with_probable": 0.7039412726529499
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.3306872219665593,
+   "idp": 1.0,
+   "idr": 0.19809781984424177,
+   "hota": 0.2139196449026171,
+   "deta": 0.19809781984424177,
+   "assa": 0.2310051393359238,
+   "coverage": 0.235122897249617,
+   "coverage_of_view": 0.19809781984424177,
+   "min_player_coverage": 0.04402672310054359,
+   "crossings": 1788,
+   "reconfirm_median_s": 3.36,
+   "reconfirm_p90_s": 7.743999999999996,
+   "reconfirm_within_2s": 0.20134228187919462,
+   "reconfirm_censored": 1021,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 23995,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 28156,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 82867,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49342,
+   "n_chains": 49305,
+   "end_reasons": {
+    "lost": 14262,
+    "ambiguous": 31276,
+    "fov_exit": 2317,
+    "cut": 1477,
+    "end": 10
+   },
+   "seconds": 31.8,
+   "frames": 80788,
+   "player_dets": 586791
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.5183224799011171,
+   "idp": 1.0,
+   "idr": 0.34982138344551905,
+   "hota": 0.36871521619274356,
+   "deta": 0.34982138344551905,
+   "assa": 0.388629503757121,
+   "coverage": 0.4152040505052054,
+   "coverage_of_view": 0.34982138344551905,
+   "min_player_coverage": 0.10122826673305946,
+   "crossings": 1788,
+   "reconfirm_median_s": 2.2800000000000002,
+   "reconfirm_p90_s": 7.16,
+   "reconfirm_within_2s": 0.35626398210290827,
+   "reconfirm_censored": 800,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 21984,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 31899,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 189755,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 6,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49342,
+   "n_chains": 49305,
+   "end_reasons": {
+    "lost": 14262,
+    "ambiguous": 31276,
+    "fov_exit": 2317,
+    "cut": 1477,
+    "end": 10
+   },
+   "seconds": 32.3,
+   "frames": 80788,
+   "player_dets": 586791,
+   "probable_labels": 63758,
+   "probable_wrong_frames": 141,
+   "probable_wrong_events": 9,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0022114871859217665,
+   "probable_coverage_gain": 0.10865538155834019,
+   "coverage_with_probable": 0.5238594320635456
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.20057795265432496,
+   "idp": 1.0,
+   "idr": 0.11146798659613914,
+   "hota": 0.11794874838596951,
+   "deta": 0.11146798659613914,
+   "assa": 0.12480630242493862,
+   "coverage": 0.13201520215194001,
+   "coverage_of_view": 0.11146798659613914,
+   "min_player_coverage": 0.02364066193853428,
+   "crossings": 1788,
+   "reconfirm_median_s": 4.72,
+   "reconfirm_p90_s": 8.6,
+   "reconfirm_within_2s": 0.07522371364653244,
+   "reconfirm_censored": 1656,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 17334,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 17733,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 41409,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 55115,
+   "n_chains": 55099,
+   "end_reasons": {
+    "ambiguous": 38909,
+    "lost": 13172,
+    "fov_exit": 1574,
+    "cut": 1449,
+    "end": 11
+   },
+   "seconds": 29.5,
+   "frames": 80788,
+   "player_dets": 588864
+  },
+  {
+   "game": "G3",
+   "profile": "good",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.3511670380462087,
+   "idp": 1.0,
+   "idr": 0.21297914715999605,
+   "hota": 0.22336659048543808,
+   "deta": 0.21297914715999605,
+   "assa": 0.23426065138484484,
+   "coverage": 0.2522382078034996,
+   "coverage_of_view": 0.21297914715999605,
+   "min_player_coverage": 0.06218521944701408,
+   "crossings": 1788,
+   "reconfirm_median_s": 3.8000000000000003,
+   "reconfirm_p90_s": 8.28,
+   "reconfirm_within_2s": 0.17309843400447428,
+   "reconfirm_censored": 1402,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 19726,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 23834,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 104974,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 55115,
+   "n_chains": 55099,
+   "end_reasons": {
+    "ambiguous": 38909,
+    "lost": 13172,
+    "fov_exit": 1574,
+    "cut": 1449,
+    "end": 11
+   },
+   "seconds": 30.2,
+   "frames": 80788,
+   "player_dets": 588864,
+   "probable_labels": 37642,
+   "probable_wrong_frames": 24,
+   "probable_wrong_events": 3,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0006375856755751554,
+   "probable_coverage_gain": 0.06392307901315074,
+   "coverage_with_probable": 0.31616128681665034
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.08438509981070265,
+   "idp": 1.0,
+   "idr": 0.04405118158266773,
+   "hota": 0.06374194694692155,
+   "deta": 0.04405118158266773,
+   "assa": 0.09223443400625587,
+   "coverage": 0.052306695979685396,
+   "coverage_of_view": 0.04405118158266773,
+   "min_player_coverage": 0.00032530904359141186,
+   "crossings": 1788,
+   "reconfirm_median_s": 4.64,
+   "reconfirm_p90_s": 8.64,
+   "reconfirm_within_2s": 0.029921700223713647,
+   "reconfirm_censored": 2859,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 7733,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 7814,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 13395,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43099,
+   "n_chains": 43048,
+   "end_reasons": {
+    "ambiguous": 22757,
+    "lost": 15957,
+    "fov_exit": 2889,
+    "cut": 1485,
+    "end": 11
+   },
+   "seconds": 33.8,
+   "frames": 80788,
+   "player_dets": 586770
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.19818456883509833,
+   "idp": 1.0,
+   "idr": 0.10999160369437448,
+   "hota": 0.14861570256317402,
+   "deta": 0.10999160369437448,
+   "assa": 0.20080284591282335,
+   "coverage": 0.1306048366480904,
+   "coverage_of_view": 0.10999160369437448,
+   "min_player_coverage": 0.014047410008779631,
+   "crossings": 1788,
+   "reconfirm_median_s": 2.98,
+   "reconfirm_p90_s": 8.315999999999999,
+   "reconfirm_within_2s": 0.09955257270693513,
+   "reconfirm_censored": 2654,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 11707,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 17376,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 47552,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 43099,
+   "n_chains": 43048,
+   "end_reasons": {
+    "ambiguous": 22757,
+    "lost": 15957,
+    "fov_exit": 2889,
+    "cut": 1485,
+    "end": 11
+   },
+   "seconds": 34.2,
+   "frames": 80788,
+   "player_dets": 586770,
+   "probable_labels": 172207,
+   "probable_wrong_frames": 140,
+   "probable_wrong_events": 8,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0008129750823137271,
+   "probable_coverage_gain": 0.29348296606847657,
+   "coverage_with_probable": 0.424087802716567
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.01371865608615316,
+   "idp": 1.0,
+   "idr": 0.0069067033873063425,
+   "hota": 0.00932403343035653,
+   "deta": 0.0069067033873063425,
+   "assa": 0.01258742333863455,
+   "coverage": 0.008179847582173385,
+   "coverage_of_view": 0.0069067033873063425,
+   "min_player_coverage": 0.0,
+   "crossings": 1788,
+   "reconfirm_median_s": 6.08,
+   "reconfirm_p90_s": 9.432,
+   "reconfirm_within_2s": 0.003635346756152125,
+   "reconfirm_censored": 3413,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 1427,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 1745,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 1533,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 52881,
+   "n_chains": 52861,
+   "end_reasons": {
+    "lost": 12844,
+    "ambiguous": 37058,
+    "fov_exit": 1501,
+    "cut": 1467,
+    "end": 11
+   },
+   "seconds": 28.7,
+   "frames": 80788,
+   "player_dets": 586808
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.03914780518359263,
+   "idp": 1.0,
+   "idr": 0.019964689478932398,
+   "hota": 0.027157001136187967,
+   "deta": 0.019964689478932398,
+   "assa": 0.0369403546941794,
+   "coverage": 0.023644871917219944,
+   "coverage_of_view": 0.019964689478932398,
+   "min_player_coverage": 0.0,
+   "crossings": 1788,
+   "reconfirm_median_s": 4.88,
+   "reconfirm_p90_s": 8.992,
+   "reconfirm_within_2s": 0.0145413870246085,
+   "reconfirm_censored": 3353,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 2713,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 4092,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 7070,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 52881,
+   "n_chains": 52861,
+   "end_reasons": {
+    "lost": 12844,
+    "ambiguous": 37058,
+    "fov_exit": 1501,
+    "cut": 1467,
+    "end": 11
+   },
+   "seconds": 28.9,
+   "frames": 80788,
+   "player_dets": 586808,
+   "probable_labels": 63709,
+   "probable_wrong_frames": 27,
+   "probable_wrong_events": 3,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00042380197460327424,
+   "probable_coverage_gain": 0.10856873116930921,
+   "coverage_with_probable": 0.13221360308652916
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.08170082015255638,
+   "idp": 1.0,
+   "idr": 0.04259023879635594,
+   "hota": 0.05261727563631834,
+   "deta": 0.04259023879635594,
+   "assa": 0.06500498174302752,
+   "coverage": 0.050546315209285736,
+   "coverage_of_view": 0.04259023879635594,
+   "min_player_coverage": 0.0,
+   "crossings": 1788,
+   "reconfirm_median_s": 5.5200000000000005,
+   "reconfirm_p90_s": 9.08,
+   "reconfirm_within_2s": 0.01901565995525727,
+   "reconfirm_censored": 2840,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 8802,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 7848,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 11238,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 48695,
+   "n_chains": 48656,
+   "end_reasons": {
+    "lost": 14082,
+    "ambiguous": 30951,
+    "fov_exit": 2167,
+    "cut": 1484,
+    "end": 11
+   },
+   "seconds": 32.1,
+   "frames": 80788,
+   "player_dets": 586017
+  },
+  {
+   "game": "G3",
+   "profile": "poor",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.19704756584259991,
+   "idp": 1.0,
+   "idr": 0.10929160531885525,
+   "hota": 0.13348099754295034,
+   "deta": 0.10929160531885525,
+   "assa": 0.16302420165830664,
+   "coverage": 0.12970784124010054,
+   "coverage_of_view": 0.10929160531885525,
+   "min_player_coverage": 0.0,
+   "crossings": 1788,
+   "reconfirm_median_s": 3.96,
+   "reconfirm_p90_s": 8.68,
+   "reconfirm_within_2s": 0.08696868008948545,
+   "reconfirm_censored": 2499,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 16876,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 19161,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 39974,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 48695,
+   "n_chains": 48656,
+   "end_reasons": {
+    "lost": 14082,
+    "ambiguous": 30951,
+    "fov_exit": 2167,
+    "cut": 1484,
+    "end": 11
+   },
+   "seconds": 32.4,
+   "frames": 80788,
+   "player_dets": 586017,
+   "probable_labels": 107321,
+   "probable_wrong_frames": 110,
+   "probable_wrong_events": 9,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.0010249624956904986,
+   "probable_coverage_gain": 0.18313632539670352,
+   "coverage_with_probable": 0.31284416663680403
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 2,
+   "idsw": 4,
+   "wrong_label_frames": 67,
+   "labels_on_officials": 0,
+   "idf1": 0.24847124584980634,
+   "idp": 0.9993227329242775,
+   "idr": 0.14187328416705056,
+   "hota": 0.14721605369966584,
+   "deta": 0.14196943539140006,
+   "assa": 0.15265656588091028,
+   "coverage": 0.16812996689304482,
+   "coverage_of_view": 0.14187328416705056,
+   "min_player_coverage": 0.05842479018721756,
+   "crossings": 1788,
+   "reconfirm_median_s": 4.44,
+   "reconfirm_p90_s": 8.6,
+   "reconfirm_within_2s": 0.11325503355704698,
+   "reconfirm_censored": 1439,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "after_crossing": 1,
+    "other": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 26292,
+     "wrong": 11
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 24144,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 40510,
+     "wrong": 0
+    }
+   ],
+   "alarms": 5,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 42340,
+   "n_chains": 42280,
+   "end_reasons": {
+    "ambiguous": 22140,
+    "fov_exit": 2897,
+    "lost": 15813,
+    "cut": 1480,
+    "end": 10
+   },
+   "seconds": 34.0,
+   "frames": 80788,
+   "player_dets": 588396
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.15,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.4663134089370904,
+   "idp": 1.0,
+   "idr": 0.304047392507954,
+   "hota": 0.31322323205220143,
+   "deta": 0.304047392507954,
+   "assa": 0.3226759890554255,
+   "coverage": 0.3600738278302368,
+   "coverage_of_view": 0.304047392507954,
+   "min_player_coverage": 0.11706477297180977,
+   "crossings": 1788,
+   "reconfirm_median_s": 2.64,
+   "reconfirm_p90_s": 7.68,
+   "reconfirm_within_2s": 0.31152125279642057,
+   "reconfirm_censored": 950,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 37782,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 44467,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 129617,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 1,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 42340,
+   "n_chains": 42280,
+   "end_reasons": {
+    "ambiguous": 22140,
+    "fov_exit": 2897,
+    "lost": 15813,
+    "cut": 1480,
+    "end": 10
+   },
+   "seconds": 34.5,
+   "frames": 80788,
+   "player_dets": 588396,
+   "probable_labels": 88739,
+   "probable_wrong_frames": 1506,
+   "probable_wrong_events": 47,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.01697111754696357,
+   "probable_coverage_gain": 0.15081509731541343,
+   "coverage_with_probable": 0.5108889251456502
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 1,
+   "idsw": 0,
+   "wrong_label_frames": 1,
+   "labels_on_officials": 1,
+   "idf1": 0.16348859965311022,
+   "idp": 0.999983889416958,
+   "idr": 0.08902140988572216,
+   "hota": 0.093594917201704,
+   "deta": 0.0890212822105159,
+   "assa": 0.09840353125085662,
+   "coverage": 0.10547243392042413,
+   "coverage_of_view": 0.08902140988572216,
+   "min_player_coverage": 0.047382622773880195,
+   "crossings": 1788,
+   "reconfirm_median_s": 5.12,
+   "reconfirm_p90_s": 8.92,
+   "reconfirm_within_2s": 0.051733780760626395,
+   "reconfirm_censored": 1951,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "official": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 18187,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 16203,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 23360,
+     "wrong": 1
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49544,
+   "n_chains": 49513,
+   "end_reasons": {
+    "lost": 14207,
+    "ambiguous": 31569,
+    "fov_exit": 2278,
+    "cut": 1479,
+    "end": 11
+   },
+   "seconds": 32.0,
+   "frames": 80788,
+   "player_dets": 588495
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.3,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 1,
+   "idsw": 0,
+   "wrong_label_frames": 1,
+   "labels_on_officials": 1,
+   "idf1": 0.3425214866337746,
+   "idp": 0.9999930598449569,
+   "idr": 0.20665243930423607,
+   "hota": 0.2147418878080647,
+   "deta": 0.2066521429216822,
+   "assa": 0.22314831933220225,
+   "coverage": 0.24484150247665656,
+   "coverage_of_view": 0.20665243930423607,
+   "min_player_coverage": 0.10385273972602739,
+   "crossings": 1788,
+   "reconfirm_median_s": 3.68,
+   "reconfirm_p90_s": 8.28,
+   "reconfirm_within_2s": 0.18008948545861297,
+   "reconfirm_censored": 1533,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {
+    "official": 1
+   },
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 29060,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 33241,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 81788,
+     "wrong": 1
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 49544,
+   "n_chains": 49513,
+   "end_reasons": {
+    "lost": 14207,
+    "ambiguous": 31569,
+    "fov_exit": 2278,
+    "cut": 1479,
+    "end": 11
+   },
+   "seconds": 32.5,
+   "frames": 80788,
+   "player_dets": 588495,
+   "probable_labels": 77755,
+   "probable_wrong_frames": 480,
+   "probable_wrong_events": 23,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.00617323644781686,
+   "probable_coverage_gain": 0.13212516673888478,
+   "coverage_with_probable": 0.37696666921554134
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "live",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.05410948583291942,
+   "idp": 1.0,
+   "idr": 0.027807055658565897,
+   "hota": 0.03315241595802643,
+   "deta": 0.027807055658565897,
+   "assa": 0.03952531678827476,
+   "coverage": 0.03300938480420946,
+   "coverage_of_view": 0.027807055658565897,
+   "min_player_coverage": 0.0027675112039566483,
+   "crossings": 1788,
+   "reconfirm_median_s": 5.92,
+   "reconfirm_p90_s": 9.120000000000001,
+   "reconfirm_within_2s": 0.006431767337807606,
+   "reconfirm_censored": 3028,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 6114,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 5284,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 6823,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 55477,
+   "n_chains": 55462,
+   "end_reasons": {
+    "ambiguous": 39381,
+    "lost": 13042,
+    "fov_exit": 1572,
+    "cut": 1472,
+    "end": 10
+   },
+   "seconds": 28.3,
+   "frames": 80788,
+   "player_dets": 587439
+  },
+  {
+   "game": "G3",
+   "profile": "poor_uncalibrated",
+   "sigma_p": 0.5,
+   "seed": 1,
+   "config": "full",
+   "mode": "offline",
+   "swap_events": 0,
+   "idsw": 0,
+   "wrong_label_frames": 0,
+   "labels_on_officials": 0,
+   "idf1": 0.13103932546627464,
+   "idp": 1.0,
+   "idr": 0.0701134738958415,
+   "hota": 0.08182054323349285,
+   "deta": 0.0701134738958415,
+   "assa": 0.0954823791068914,
+   "coverage": 0.08323076949266221,
+   "coverage_of_view": 0.0701134738958415,
+   "min_player_coverage": 0.009677361758351634,
+   "crossings": 1788,
+   "reconfirm_median_s": 4.76,
+   "reconfirm_p90_s": 8.848000000000003,
+   "reconfirm_within_2s": 0.040268456375838924,
+   "reconfirm_censored": 2807,
+   "inv1_duplicates": 0,
+   "inv3_outside_lineup": 0,
+   "inv2_over_five": 0,
+   "swap_context": {},
+   "calibration": [
+    {
+     "bin": [
+      0.995,
+      0.999
+     ],
+     "labels": 12242,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.999,
+      0.9999
+     ],
+     "labels": 12458,
+     "wrong": 0
+    },
+    {
+     "bin": [
+      0.9999,
+      1.0
+     ],
+     "labels": 24193,
+     "wrong": 0
+    }
+   ],
+   "alarms": 0,
+   "offline_splits": 0,
+   "dup_guard": 0,
+   "enum_fallback_frames": 0,
+   "n_tracklets": 55477,
+   "n_chains": 55462,
+   "end_reasons": {
+    "ambiguous": 39381,
+    "lost": 13042,
+    "fov_exit": 1572,
+    "cut": 1472,
+    "end": 10
+   },
+   "seconds": 28.5,
+   "frames": 80788,
+   "player_dets": 587439,
+   "probable_labels": 57091,
+   "probable_wrong_frames": 662,
+   "probable_wrong_events": 36,
+   "probable_on_officials": 0,
+   "probable_error_rate": 0.011595522937065388,
+   "probable_coverage_gain": 0.09718626104157198,
+   "coverage_with_probable": 0.1804170305342342
   }
  ]
 }

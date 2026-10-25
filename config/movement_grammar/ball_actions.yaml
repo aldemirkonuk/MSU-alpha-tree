@@ -1,6 +1,6 @@
 family: ball_actions
 research_family: BALL ACTIONS
-version: 0.1.6
+version: 0.1.7
 date: '2026-10-25'
 owner: Mac session (msu-colab) for Aldemir
 status: proposal under the build freeze
@@ -1647,6 +1647,10 @@ items:
     and he intercepted (A.R.5(b)); loose ball -> the gaining-team player within knock_reach_m of the ball within
     knock_window_s of the loss (knocked loose, 6(c)/(d)), else no steal (unforced fumble, A.R.7). Deflector and
     recoverer are always recorded separately (attrs.deflector, attrs.recoverer).
+    Owner decision 25 Oct (OD-3, changes_decisions_oct25): a steal is credited by default. The two no-steal calls
+    (errant_pass_no_steal, unforced_no_steal) stand only when no gaining-team player comes within no_steal_clear_m of
+    the ball over no_steal_clear_s before the refined release (nobody near the loss); otherwise the interceptor
+    (steal_basis interception_by_default) or the recoverer (recoverer_by_default) gets the steal.
     TO-K1 charged player (SM 4 Art.1, A.R.4(d)): the last controller; a receiver who loses a teammate's pass loose
     within muff_max_s of the catch (refined catch to refined release) muffed it: charged to him, the passer in
     attrs.alt_charged. A pass barely touched (no control segment) stays the passer's.
@@ -1655,7 +1659,7 @@ items:
     TO-M1 duplicates: two counted changes in the same direction within dedupe_window_s are one turnover (the change
     back between them was not counted); attrs.merged_t0.
   params:
-    rim_visit_r_m: {value: 0.75, unit: m, note: 'changes_loop5 TO-D1 / TO-C1: ball XY this close to a basket centre is a rim visit (a try or a pass off the rim; = shot_release.rim_reach_m and touch.rim_finish_reach_m). Real SportVU trade 0.6 / 0.75 / 0.9 in changes_loop5 TO-D1'}
+    rim_visit_r_m: {value: 0.75, unit: m, note: 'changes_loop5 TO-D1 / TO-C1: ball XY this close to a basket centre is a rim visit (a try or a pass off the rim; = shot_release.rim_reach_m and touch.rim_finish_reach_m). Real SportVU trade 0.6 / 0.75 / 0.9 in changes_loop5 TO-D1. Owner decision 25 Oct (OD-2): kept at 0.75 until MSU ball-height data exists'}
     rim_visit_pad_s: {value: 0.33, unit: s, note: 'TO-D1: the rim-visit window extends this far before the loss and after the gain (a finisher keeps the ball inside his radius at the rim; a made shot drops into the gainer''s radius)'}
     gain_secure_min_s: {value: 0.5, unit: s, note: 'TO-C2: a securing control shorter than this that ends the clip or runs into a gap is not shown to be secured'}
     deflect_touch_max_s: {value: 0.6, unit: s, note: 'TO-S1: a first gaining-team touch shorter than this (= touch.team_change_confirm_s) followed by a teammate''s control is a deflection, not the securing control'}
@@ -1665,17 +1669,22 @@ items:
     intercept_move_window_s: {value: 0.5, unit: s, note: 'TO-S1: the interceptor''s displacement is measured from this long before the release to his catch'}
     knock_reach_m: {value: 1.0, unit: m, note: 'TO-S1: a gaining-team player this close to the ball at the loss knocked it loose (= touch.enter_radius_m)'}
     knock_window_s: {value: 0.2, unit: s, note: 'TO-S1: frames around the end of the loser''s control searched for the knock'}
+    no_steal_clear_m: {value: 2.5, unit: m, note: 'OD-3 (owner decision 25 Oct, steal by default): errant_pass_no_steal / unforced_no_steal only when no gaining-team player comes within this of the ball over no_steal_clear_s before the refined release (nobody near the loss: beyond one step plus a reach); otherwise the interceptor (interception_by_default) or the recoverer (recoverer_by_default) gets the steal. Real SportVU no-steal events 7 -> 2 of 53 (3.0 m: 1 of 53, but the clear-fumble scene l5_fumble_unforced, defender 3.2 m away, falls 9 / 9 / 9 -> 9 / 7 / 5)'}
+    no_steal_clear_s: {value: 0.5, unit: s, note: 'OD-3: window before the refined release searched for a gaining-team player near the ball'}
     muff_max_s: {value: 1.0, unit: s, note: 'TO-K1: a receiver who loses a teammate''s pass loose within this of the catch (refined catch to refined release) muffed it: charged to him, passer in alt_charged. Synthetic muff (0.35 s in the hands, slow roll) is found 10 / 8 / 6 of 10 at sigma 0.2 / 0.3 / 0.5 with 1.0 s, 7 / 6 / 5 with 0.8 s (the refined release lags the true one on a slow roll)'}
     period_end_eps_s: {value: 0.1, unit: s, note: 'TO-E1: game clock at or below this at the gain = the period has expired'}
     dedupe_window_s: {value: 2.0, unit: s, note: 'TO-M1: two counted same-direction changes this close are one turnover (= ba_pbp_anchor turnover_window_s)'}
     held_prior_max_gap_s: {value: 0.5, unit: s, note: 'TO-H1 (turnover_abstention): the tied-up player''s control must reach to within this of the tie-up start ...'}
     held_prior_min_s: {value: 0.5, unit: s, note: 'TO-H1: ... and have begun at least this long before it (a control that starts with the tie-up is the tie-up, e.g. two players reaching a rebound together)'}
   min_duration_s: null
-  outputs: label {strip, interception, deflection, loose_recovery}, deflector, recoverer, steal_to, steal_basis, charged_to, charged_basis, alt_charged, throw_in, live, secured_t, merged_t0, period_end_check, pbp_check
+  outputs: label {strip, interception, deflection, loose_recovery}, deflector, recoverer, steal_to, steal_basis {take_away, interception, interception_by_default, errant_pass_no_steal, deflector, recoverer_after_slight_tip, knocked_loose, recoverer_by_default, unforced_no_steal}, charged_to, charged_basis, alt_charged, throw_in, live, secured_t, merged_t0, period_end_check, pbp_check
   confidence: min(both touch confs) x c_edge x c_gap (ball)
   noise: A false defender touch (contact) creates a false strip; the takeover margin and frames limit it. Real SportVU (changes_loop5) false events cluster at the rim (tries the shot proxy missed, made shots picked out of the net).
   conflicts_resolved:
     - NCAA vs NBA / FIBA steal credit (SM 6 A.R.4(b), A.R.5, A.R.7 vs NBA 'otherwise obtains possession' and FIBA 'first deflector'): NCAA kept; NBA PBP steal credit differs by design (see changes_loop5).
+    - 'Steal credit in doubt (owner decision 25 Oct, OD-3): credited by default; no steal only for a clearly errant pass to a stationary defender or a clearly unforced fumble with nobody near the loss (MSU gold turnover set: about 1 live turnover in 97 without a steal).'
+    - 'Rebound-scramble touch < 1.5 s after a rim visit is no control (owner decision 25 Oct, OD-1): a decided deviation from SM B.I.4 doubt = control, justified by real SportVU 19 false vs 1 real.'
+    - 'Muffed pass (owner decision 25 Oct, OD-4): charged to the receiver, the passer kept as attrs.alt_charged.'
   sources:
     - {url: 'https://squared2020.com/2017/05/07/identifying-player-possession-in-spatio-temporal-data', supports: defender proximity without a touch is a known failure mode}
     - {url: 'http://fs.ncaa.org/Docs/stats/Stats_Manuals/Basketball.pdf', supports: 'NCAA Statisticians'' Manual 2025-26: turnover (4 Art.1, A.R.10, A.R.17-21), steal (6, A.R.4-9), control in doubt (B.I.4)'}
@@ -1735,12 +1744,15 @@ items:
     TO-S1 steal: take-away -> taker; clean deflection -> deflector; slight tip then interception -> recoverer;
       doubt -> deflector; interception -> interceptor; errant pass or unforced fumble picked up -> no steal
       (A.R.4(b), A.R.7); deflector and recoverer recorded separately (Aldemir R3). Live-ball turnovers without a
-      steal exist (Aldemir R9 answered: yes, SM 6 A.R.4(b), A.R.7, A.R.8).
+      steal exist (Aldemir R9 answered: yes, SM 6 A.R.4(b), A.R.7, A.R.8). Owner decision 25 Oct (OD-3): credited by
+      default; no steal only when it is clearly an errant pass to a stationary defender or an unforced fumble with
+      nobody near the loss (live_ball_turnover.no_steal_clear_m / no_steal_clear_s).
     TO-K1 charged player: the player primarily responsible (the last controller; a muffed catchable pass ->
       receiver, A.R.4(d)); team when nobody is.
     TO-T1 throw-in interception = turnover on the inbounder + steal to the interceptor (A.R.17(a)).
     TO-F1 offensive foul = turnover charged to the fouler, also off the ball (A.R.19(e)/(f)); a pass that forces
-      the receiver into a charge -> passer (A.R.21); no steal (6 A.R.9). Needs the whistle: PBP only.
+      the receiver into a charge -> passer (A.R.21) only when PBP or a labeller flags it (owner decision 25 Oct, OD-5);
+      no steal (6 A.R.9). Needs the whistle: PBP only.
     TO-H1 held ball with player control, arrow to the defence = turnover + steal to the tying defender; arrow to the
       controlling team = nothing (A.R.10); no prior control (rebound) = no turnover (3 Art.2 A.R.1).
     TO-R1 follow the final ruling after a replay review (RB 11-1.1; derived): an overturned call is not counted.
@@ -2469,6 +2481,76 @@ changes_loop6:
       50 (0.14; sweep 0.16-0.20 at the other thresholds). Real rates unchanged (no code or parameter change).
 open_after_loop6:
   - 'pull_up false dribble inference: 7-10 of 50 XY pull-ups show no bounce in ball z (catch-and-shoot or held jumpers whose holder travel read as a dribble). With floor-only production ball this is a resolution limit unless the CV ball track gives a bounce signal; tests would need z-labelled clips.'
+changes_decisions_oct25:
+  # Owner decisions of 25 Oct 2026 (Aldemir accepted the ten proposals of the 25 Oct review; items 1-5 are this family's,
+  # ids OD-1 .. OD-5). Real data: SportVU, 3 NBA 2015-16 games (G1-G3), 194 clock-running chunks, 6855 s, team_ends,
+  # sigma told 0.15, realdata.py --families ball_actions, before / after event dumps compared (private scratch,
+  # aggregates only); PBP matching as changes_loop5 (detection clock shifted 2.5 s, tolerance 2.5 s, greedy, same period).
+  - id: OD-1 rebound-scramble touch after a rim visit is no control (recorded)
+    what: >-
+      No change. TO-C1 keeps: a loser's touch shorter than rebound_control.secure_min_s (1.5 s) starting within
+      rebound_control.scramble_window_s of an XY rim visit is not team control (turnover_abstention rim_visit_scramble);
+      after a proxy-detected shot it is a rebound battle (no event).
+    why: >-
+      Owner decision 25 Oct 2026: keep it, recorded as a decided deviation from the SM B.I.4 default 'doubt = control',
+      justified by real data: on 0.1.4 real events such touches were 19 unmatched against 1 PBP-matched turnover.
+    evidence: >-
+      changes_loop5 TO-C1 (19 false vs 1 real; 24 events moved to abstentions, 1 within 2.5 s of a PBP turnover); listed
+      in live_ball_turnover.conflicts_resolved. Tests test_loop5_turnover_rules[l5_rim_*], test_od_decisions_recorded.
+  - id: OD-2 rim-visit radius stays 0.75 m (recorded)
+    what: >-
+      No change: live_ball_turnover.rim_visit_r_m 0.75 m (= shot_release.rim_reach_m and touch.rim_finish_reach_m) until
+      MSU ball-height data exists (floor-only ball, movement decision 23 Oct); param note updated.
+    why: >-
+      Owner decision 25 Oct 2026. The real sweep traded matched turnovers for events in both directions (0.6: 61 events /
+      21 matched live; 0.75: 53 / 20; 0.9: 45 / 18); ball height, not a wider XY radius, separates a try from a pass.
+    evidence: changes_loop5 TO-D1 sweep; open_after_loop5 item 1. Test test_od_decisions_recorded.
+  - id: OD-3 steal credited by default
+    what: >-
+      live_ball_turnover.no_steal_clear_m (2.5 m) and no_steal_clear_s (0.5 s), new: the no-steal calls
+      errant_pass_no_steal (interceptor moved < intercept_move_min_m) and unforced_no_steal (nobody within knock_reach_m
+      of the ball around the release) now also need nobody near the loss: no gaining-team player within no_steal_clear_m
+      of the ball over no_steal_clear_s before the refined release (_near_loss). Otherwise the steal goes to the
+      interceptor (steal_basis interception_by_default) or the recoverer (recoverer_by_default). Rule text of
+      live_ball_turnover and ba_turnover_rules TO-S1 updated.
+    why: >-
+      Owner decision 25 Oct 2026: loosen the no-steal thresholds so a steal is credited by default; call no steal only for
+      a clearly errant pass straight to a stationary defender with nobody near the loss, or an unforced fumble; aim the
+      share of live turnovers without a steal toward the NCAA gold rate (MSU hand-reviewed set, private: about 1 in 97).
+      Before, 7 of 53 real events (13 %) carried no steal; 5 of them had a defender 0.6-2.2 m from the ball just
+      before the release (pressure the 0.5 m move test and the 1.0 m / 0.2 s knock test missed).
+    evidence: >-
+      Real SportVU (clean): live_ball_turnover events 53 -> 53 and every ball_actions event identical (13,563 dumped events,
+      same keys); only steal_to / steal_basis change on 5 live_ball_turnover events (and 4 turnover_abstention
+      records that carry the same attrs). No-steal events 7 -> 2 of 53 (13.2 % -> 3.8 %; errant_pass_no_steal 3 -> 0,
+      unforced_no_steal 4 -> 2; the two left have the nearest defender 2.7 and 3.7 m from the ball); new bases
+      interception_by_default 3, recoverer_by_default 2. Matched PBP turnovers unchanged (20 live + 2 dead, precision
+      0.42, live recall 0.61); steal_to equals the NBA PBP stealer on 14 -> 15 of 20 matched steals (the one PBP steal
+      that was unforced_no_steal is now credited to the recoverer, the PBP stealer); 0 matched steals lost credit.
+      3.0 m was tried: 1 of 53 without a steal, but the clear-fumble scene l5_fumble_unforced (defender 3.2 m away)
+      fell 9 / 9 / 9 -> 9 / 7 / 5 of 10 at sigma_p 0.2 / 0.3 / 0.5. Synthetic (seeds 1-10, sigma_p 0.2 / 0.3 / 0.5):
+      l5_errant_pass 10 / 10 / 7 and l5_fumble_unforced 9 / 9 / 9 unchanged (still no steal); every other L5 scene
+      unchanged; new od3_errant_pressured (the errant pass with a second defender 1.4 m behind the passer) steal to
+      the interceptor 10 / 10 / 10, od3_fumble_pressured (the fumble with the defender 1.9 m from the ball, beyond the
+      knock reach) steal to the recoverer 10 / 10 / 10. Tests test_od3_steal_by_default[*],
+      test_loop5_turnover_rules[l5_errant_pass*, l5_fumble_unforced*].
+  - id: OD-4 muffed pass charged to the receiver (recorded)
+    what: >-
+      No change: TO-K1 charges a receiver who loses a teammate's pass loose within muff_max_s (1.0 s) of the catch
+      (charged_basis receiver_muff) and keeps the passer in attrs.alt_charged.
+    why: Owner decision 25 Oct 2026 (SM 6 A.R.4(d) / (e)).
+    evidence: changes_loop5 TO-K1 (l5_muff 10 / 8 / 6; real 3 receiver_muff). Test test_od_decisions_recorded.
+  - id: OD-5 pass-forced charge needs a PBP or labeller flag (recorded)
+    what: >-
+      No change: reconcile_turnovers (TO-F1) charges an offensive-foul turnover to the passer only when the PBP row or a
+      labeller flags forced_by_pass; a tracking catch within pass_forced_charge_s of the whistle without the flag is
+      reported as needs_review and stays on the fouler. Rule text of ba_turnover_rules TO-F1 says so.
+    why: Owner decision 25 Oct 2026 ('forced' is a judgment; SM 4 A.R.21).
+    evidence: Test test_loop5_reconcile_pass_forced_charge, test_od_decisions_recorded.
+  - id: version
+    what: version 0.1.6 -> 0.1.7, date 2026-10-25.
+    why: New params live_ball_turnover.no_steal_clear_m / no_steal_clear_s and steal_basis values (OD-3); OD-1, OD-2, OD-4, OD-5 recorded.
+    evidence: test_od_decisions_recorded.
 v0_sweep:
   description: >-
     Every positive / negative case of tests/movement/test_ball_actions.py re-run on 30 seeds (sigma_p

@@ -2644,9 +2644,15 @@ def detect_double_ball_screen(scene, **params) -> list:
             sub = None
             oa, ob = max(r1.stop.a, r2.stop.a), min(r1.stop.b, r2.stop.b)
             overlap = (ob - oa) * DT
-            if ob > oa:  # both standing: mean gap over the shared stand (noise)
+            k1, k2 = scene.k(r1.s), scene.k(r2.s)
+            dy = abs(float(k1.y[r1.ts] - k2.y[r1.ts]))  # court-length (vertical) offset of the two screeners
+            if ob > oa:  # both standing: mean gap / offset over the shared stand (noise)
                 gap = float(np.nanmean(_dist(scene, r1.s, r2.s)[oa:ob + 1]))
-            if gap <= P["detroit_gap_m"] and (dt <= P["detroit_dt_s"] or overlap >= P["detroit_overlap_s"]):
+                dy = abs(float(np.nanmean(k1.y[oa:ob + 1] - k2.y[oa:ob + 1])))
+            # OD-7 (owner decision 25 Oct): screeners staggered along the court length by >= stagger_min_dy_m are a
+            # double drag / stagger, not side by side
+            if gap <= P["detroit_gap_m"] and (dt <= P["detroit_dt_s"] or overlap >= P["detroit_overlap_s"]) \
+                    and dy < P["stagger_min_dy_m"]:
                 sub = "detroit"
             elif r1.is_screen and r2.is_screen and P["dh_dt_lo_s"] <= dt <= P["dh_dt_hi_s"]:
                 t0 = _win(scene, r1.ts, -1.0, 0)[0]
@@ -2668,7 +2674,7 @@ def detect_double_ball_screen(scene, **params) -> list:
             e = _event(scene, "double_ball_screen", {"screener_1": r1.s, "screener_2": r2.s, "handler": r1.u},
                        r1.ts, min(r1.stop.a, r1.ts), max(r2.stop.b, r2.ts),
                        (r1.p if r1.is_screen else r1.p_set) * (r2.p if r2.is_screen else r2.p_set),
-                       dict(sub_label=sub, dt_s=dt, gap_m=gap, used_by=[r.s for r in (r1, r2) if r.is_screen]))
+                       dict(sub_label=sub, dt_s=dt, gap_m=gap, dy_m=dy, used_by=[r.s for r in (r1, r2) if r.is_screen]))
             if e:
                 out.append(e)
     return out

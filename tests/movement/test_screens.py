@@ -2318,4 +2318,37 @@ def test_changes_decisions_oct25_recorded():
     ch = S.DOC["changes_decisions_oct25"]
     assert {"D3-SCREENS-ENUM", "D4-BLIND-HINT-RELABEL", "D5-RESCREEN-WINDOW", "version"} <= {c["id"] for c in ch}
     assert all(c["what"] and c["why"] and c["evidence"] for c in ch)
-    assert S.DOC["version"] == "0.6.2"
+    assert S.DOC["version"] in ("0.6.2", "0.6.3")  # 0.6.3: OD-7 (second 25 Oct set)
+
+
+# --------------------------------------------------------------------------------------
+# Owner decision OD-7 (25 Oct 2026, changes_decisions_oct25 OD-7-DETROIT-STAGGER): staggered drag screeners close
+# together are a double drag, not Detroit
+# --------------------------------------------------------------------------------------
+def _detroit(name, sd, sg, **ov):
+    _, sc = build(name, sd, sg)
+    return [e for e in S.detect_double_ball_screen(sc, **ov) if e.attrs["sub_label"] == "detroit"]
+
+
+@pytest.mark.parametrize("sigma", [0.2, 0.3, 0.5])
+def test_od7_double_drag_is_not_detroit(sigma):
+    # before OD-7: 2 / 2 / 3 of seeds 1-10 read Detroit at sigma_p 0.2 / 0.3 / 0.5; after: 0 / 0 / 0
+    assert sum(bool(_detroit("double_drag", sd, sigma)) for sd in range(1, 11)) == 0
+    assert sum(bool(_detroit("double_drag", sd, sigma, stagger_min_dy_m=99.0)) for sd in range(1, 11)) >= 2
+    assert _rate("double_drag", "double_drag", seeds=range(1, 11), sigma=sigma, screener_1="s", screener_2="s2",
+                 handler="h") >= 9
+
+
+@pytest.mark.parametrize("sigma,floor", [(0.2, 10), (0.3, 7), (0.5, 4)])
+def test_od7_detroit_still_found(sigma, floor):
+    # true side-by-side screeners (|dy| 0.02-0.41 m measured): 10 / 7 / 4 of seeds 1-10 (10 / 8 / 4 before OD-7)
+    hits = [_detroit("detroit", sd, sigma) for sd in range(1, 11)]
+    assert sum(bool(h) for h in hits) >= floor
+    assert all(e.attrs["dy_m"] < S.prm("double_ball_screen")["stagger_min_dy_m"] for h in hits for e in h)
+
+
+def test_od7_stagger_param():
+    assert S.prm("double_ball_screen")["stagger_min_dy_m"] == 0.4
+    ch = {c["id"]: c for c in S.DOC["changes_decisions_oct25"]}
+    assert {"OD-7-DETROIT-STAGGER", "version-0.6.3"} <= set(ch) and "25 Oct" in ch["OD-7-DETROIT-STAGGER"]["why"]
+    assert S.DOC["version"] == "0.6.3"

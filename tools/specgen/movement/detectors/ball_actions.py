@@ -2229,6 +2229,22 @@ def _knocked_loose(scene, L, f, team_off, P):
     return best if bd <= P.knock_reach_m else None
 
 
+def _near_loss(scene, L, f, team_off, P):
+    """Owner decision 25 Oct (OD-3, steal by default): (pid, distance) of the gaining-team player nearest to the ball over
+    the no_steal_clear_s before the refined release (the ball still in the loser's hands). A no-steal call needs this
+    distance > no_steal_clear_m (nobody near the loss)."""
+    ball = scene.ball
+    t_rel = f.t_release if f.t_release is not None else L.b
+    best, bd = None, float("inf")
+    for t in range(max(0, t_rel - _frames(P.no_steal_clear_s)), min(scene.n - 1, t_rel) + 1):
+        if not np.isfinite(ball.x[t]):
+            continue
+        o, d = _nearest(scene, scene.offense if team_off else scene.defense, t, *_xy(ball, t))
+        if o is not None and d < bd:
+            best, bd = o, d
+    return best, bd
+
+
 def _merge_duplicates(recs, window_s):
     """TO-M1 (Aldemir R7): two counted records (turnover or abstention) in the same direction within window_s are
     one loss seen twice (the change back between them was not counted): keep one, preferring a decided turnover
@@ -2328,15 +2344,20 @@ def _turnovers(scene, **ov):
                 to.deflector = defl
                 if defl == S.pid or _initiated(scene, S.pid, f.t_release or L.b, S.t_catch or S.a, P):
                     to.steal_to, to.steal_basis = S.pid, "interception"
-                else:
+                elif _near_loss(scene, L, f, G.off, P)[1] > P.no_steal_clear_m:
+                    # OD-3: clearly an errant pass straight to a stationary defender, nobody near the loss (A.R.4(b))
                     to.steal_basis = "errant_pass_no_steal"
+                else:  # OD-3 steal by default: a defender near the passer may have forced it
+                    to.steal_to, to.steal_basis = S.pid, "interception_by_default"
             else:  # loose ball: knocked loose by a defender, or an unforced fumble
                 k = defl or _knocked_loose(scene, L, f, G.off, P)
                 to.deflector = k
                 if k is not None:
                     to.steal_to, to.steal_basis = k, "knocked_loose"
-                else:
-                    to.steal_basis = "unforced_no_steal"
+                elif _near_loss(scene, L, f, G.off, P)[1] > P.no_steal_clear_m:
+                    to.steal_basis = "unforced_no_steal"  # OD-3: clearly unforced, nobody near the loss (A.R.7)
+                else:  # OD-3 steal by default: a defender near the loss, the recoverer is credited
+                    to.steal_to, to.steal_basis = S.pid, "recoverer_by_default"
             # charged player (SM 4 Art.1, A.R.4(d)/(e)): the last controller; a receiver who loses a teammate's pass
             # loose within muff_max_s of the catch (refined catch to refined release: the ball in his hands; the
             # segment also holds the roll out of his 1.5 m radius) muffed it: charged to him, passer as the alternative

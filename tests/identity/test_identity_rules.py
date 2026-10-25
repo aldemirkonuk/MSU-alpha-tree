@@ -328,3 +328,53 @@ def test_cue_ablation_switches_cues_off():
     assert np.all(idlib.own_evidence(d, g, set()) == 0)
     assert np.any(idlib.own_evidence(d, g, {"appearance"}) != 0)
     assert np.all(idlib.class_evidence(d, set()) == 0)
+
+
+# --------------------------------------------------------------------------------------
+# Owner decisions of 25 Oct 2026: OD-8 probable tier (offline, flagged, never in `label`), OD-10 live panel HOLD
+# --------------------------------------------------------------------------------------
+def test_od8_single_sighting_gives_a_probable_label_not_a_lock():
+    """One jersey sighting (capped at sighting_cap_nats) is not enough to lock (posterior about 0.93 < p_lock) but passes the
+    probable bar: the locked label stays HOLD, the offline probable label is the right player, and nothing is wrong."""
+    tr = make_truth(6, {0: [(0, 8, Y0), (6, 8, Y0)]})
+    d, g, info, res = run_scene(tr, cues=["team", "jersey"], opts={"jersey_schedule": {0: [(1.0, 1.3, "0")]}})
+    assert_no_swaps(d, g, res)
+    off = res["offline"]
+    m0 = d.src == 0
+    assert np.all(off.label[m0] == idlib.HOLD)
+    assert np.mean(off.probable[m0] == 0) > 0.9 and not np.any((off.probable >= 0) & (off.probable != d.src))
+    pm = metrics.probable_metrics(d, off.label, off.probable, d.dt)
+    assert pm["probable_wrong_frames"] == 0 and pm["probable_coverage_gain"] > 0
+    # OD-10: the live result carries no probable or provisional label
+    live = res["live"]
+    assert live.probable is None or np.all(live.probable == idlib.HOLD)
+    assert np.all(live.label[m0] == idlib.HOLD)
+
+
+def test_od8_elimination_never_gives_a_probable_label():
+    """The probable bar still needs the chain's own cue: the fifth player of sm2_elimination stays HOLD in both tiers."""
+    tr = make_truth(6)
+    sched = {p: reads(1.0, 1.3, JERSEY[p]) for p in (0, 1, 2, 3)}
+    d, g, info, res = run_scene(tr, cues=["team", "jersey"], opts={"jersey_schedule": sched})
+    m4 = d.src == 4
+    assert np.all(res["offline"].probable[m4] == idlib.HOLD) and np.all(res["offline"].label[m4] == idlib.HOLD)
+
+
+def test_od8_probable_tier_never_changes_locked_labels():
+    """The probable tier is a separate output: switching it off (p_probable > 1) leaves every locked label identical, and
+    a probable label never repeats a locked or another probable label in a frame."""
+    tr = make_truth(8, CROSS)
+    sched = {0: [(1.0, 1.3, "0")], 1: reads(0.5, 0.8, "1") + [(7.0, 7.3, "1")]}
+    o = dict(QUIET, jersey_schedule=sched)
+    d, g, info = observe(tr, quiet_profile(), SIGMA, np.random.default_rng(3), o)
+    cfg = {"tracklets": "pure", "cues": ["team", "jersey"], "lineup": True, "abstain": True, "alarms": True, "splits": True}
+    on = idlib.run(d, g, cfg, SIGMA)
+    off = idlib.run(d, g, cfg, SIGMA, dict(idlib.P, p_probable=1.1))
+    for mode in ("live", "offline"):
+        assert np.array_equal(on[mode].label, off[mode].label)
+    assert np.all(off["offline"].probable == idlib.HOLD)
+    lab, pb = on["offline"].label, on["offline"].probable
+    for f in np.unique(d.frame[pb >= 0]):
+        lo, hi = d.fstart[f], d.fstart[f + 1]
+        both = np.concatenate([lab[lo:hi][lab[lo:hi] >= 0], pb[lo:hi][pb[lo:hi] >= 0]])
+        assert len(both) == len(np.unique(both))

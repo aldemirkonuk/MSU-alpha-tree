@@ -146,6 +146,26 @@ def results_section(res):
                  f"makes {fu[0]['swap_events']} / {fu[1]['swap_events']} / {fu[2]['swap_events']} swap events (coverage {fmt(fu[0]['coverage'])} / "
                  f"{fmt(fu[1]['coverage'])} / {fmt(fu[2]['coverage'])}): overconfident appearance evidence locks wrong labels. Cue "
                  "parameters must be refitted per recording quality on labelled crops before any label is trusted.")
+    prow = []
+    for prof in SPEC["harness"]["cue_profiles"]:
+        for sg in (0.15, 0.3, 0.5):
+            x = by.get(("full", prof, sg, "offline"))
+            if x is not None and x.get("probable_labels") is not None:
+                prow.append([f"`{prof}`", f"{sg:.2f}", x["swap_events"], fmt(x["coverage"]), fmt(x["probable_coverage_gain"]),
+                             fmt(x["coverage_with_probable"]), x["probable_labels"], x["probable_wrong_frames"],
+                             fmt(x["probable_error_rate"], 4), x["probable_wrong_events"]])
+    if prow:
+        tables.append("**Probable tier** (owner decision OD-8: offline only, flagged, shown to viewers, never feeds stats; config `full`). "
+                      "Locked swaps and coverage are the locked tier's own numbers and do not change; probable errors are logged "
+                      "here and are not locked swaps.\n\n"
+                      + table(["Cue profile", "sigma_p (m)", "Locked swaps", "Locked coverage", "Probable gain", "Coverage with probable",
+                               "Probable labels", "Probable wrong", "Probable error rate", "Probable wrong runs"], prow))
+        g3 = by.get(("full", "good", 0.3, "offline"))
+        if g3 and g3.get("probable_labels") is not None:
+            f.append(f"- **Probable tier** (OD-8, offline, flagged, never in stats): at sigma_p 0.30 m on good video it adds "
+                     f"{fmt(g3['probable_coverage_gain'])} of player boxes ({fmt(g3['coverage'])} -> {fmt(g3['coverage_with_probable'])}) "
+                     f"with {g3['probable_wrong_frames']} wrong of {g3['probable_labels']} probable labels "
+                     f"(error rate {fmt(g3['probable_error_rate'], 4)}, {g3['probable_wrong_events']} wrong runs); locked swaps unchanged.")
     fg = by.get(("full", "good", 0.3, "offline"))
     if fg and fg.get("calibration"):
         f.append("- **Posterior calibration** (`full`, good, sigma_p 0.30 m, offline): " + "; ".join(
@@ -167,8 +187,12 @@ def build():
         "DATE": SPEC["date"], "VERSION": SPEC["version"], "STATUS": SPEC["status"], "RESULTS_FILE": SPEC["harness"]["results_file"],
         "P_LOCK": idlib.P["p_lock"], "HEADLINE": head, "RESULTS_TABLE": rtable, "FINDINGS": findings,
     }
+    rq = SPEC["requirement"]
+    rs = rq.get("recording_standard")
     rep["CONSTRAINTS"] = "\n".join(f"- {c}" for c in SPEC["standing_constraints"]) + \
-        "\n\nForbidden as cues: " + ", ".join(f"`{c}`" for c in SPEC["forbidden_cues"]) + "."
+        "\n\nForbidden as cues: " + ", ".join(f"`{c}`" for c in SPEC["forbidden_cues"]) + "." + \
+        (f"\n\n**Zero swaps.** {rq['zero_swaps']}" if rq.get("zero_swaps") else "") + \
+        (f"\n\n**Recording standard ({rs['acceptance']}).** {rs['rule']} Why: {rs['why']}." if rs else "")
     r = SPEC["research"]
     rep["RESEARCH"] = r["summary"].strip() + "\n\n" + table(["Source", "What it supports"], [[f"[{s['ref']}]({s['url']})", s["supports"]] for s in r["sources"]]) \
         + "\n\n" + r["provider_note"].strip()
@@ -240,10 +264,19 @@ def build():
         + "\n\n**Configs** (ablations of the spec):\n\n" + table(["Config", "Tracklets", "Cues", "Lineup", "Abstain", "Alarms", "Splits", "Note"], cfg_rows) \
         + ("\n\nProduction-only parameters (act on pixels, OCR scores, crop banks or the gold sample; the harness has none): "
            + ", ".join(f"`{p}`" for p in SPEC["production_only_params"]) + ".")
-    rep["QUESTIONS"] = "\n".join(f"- **{q['id']}**: {q['question']}" for q in SPEC["open_questions"])
+    rep["QUESTIONS"] = "\n".join(f"- **{q['id']}**: {q['question']}" + (f" **{q['decision']}**" if q.get("decision") else "")
+                                  for q in SPEC["open_questions"])
+    if SPEC.get("open_items"):
+        rep["QUESTIONS"] += "\n\n**Action items**\n\n" + table(["Id", "Action", "Owner", "Status"], [
+            [x["id"], x["action"], x["owner"], x["status"]] for x in SPEC["open_items"]])
+    if SPEC.get("planned_work"):
+        rep["QUESTIONS"] += "\n\n**Planned work (coverage levers)**\n\n" + table(["Id", "Lever", "Why", "How it is measured"], [
+            [x["id"], x["lever"], x["why"], x["measure"]] for x in SPEC["planned_work"]])
     jr = []
     for j in SPEC["journal"]:
-        jr.append(f"**{j['version']} ({j['date']})**\n\n" + "\n".join(f"- {c}" for c in j["changes"]))
+        jr.append(f"**{j['version']} ({j['date']})**\n\n" + "\n".join(f"- {c}" for c in j["changes"])
+                  + ("\n\n" + table(["Id", "What", "Why", "Evidence"], [[x["id"], x["what"], x["why"], x["evidence"]]
+                                                                        for x in j["decisions"]]) if j.get("decisions") else ""))
     if SPEC.get("review_round_1"):
         rr = SPEC["review_round_1"]
         jr.append("**Review round 1 (self-review against the requirements and hard cases)**\n\n"

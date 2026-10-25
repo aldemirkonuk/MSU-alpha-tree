@@ -77,3 +77,25 @@ def test_generated_doc_is_current():
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "specgen" / "identity" / "gen_doc.py"), "--check"],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_owner_decisions_25_oct_recorded():
+    """OD-8 .. OD-10 (owner decisions 25 Oct 2026): journal entry with what / why / evidence; zero swaps absolute,
+    probable tier offline-only and outside every locked metric; recording standard and the ShotTracker action item in
+    requirement / acceptance / open items; live panel HOLD with candidates, no provisional labels."""
+    j = next(x for x in SPEC["journal"] if x["version"] == SPEC["version"])
+    assert SPEC["version"] == "0.1.1"
+    dec = {x["id"]: x for x in j["decisions"]}
+    assert set(dec) == {"OD-8", "OD-9", "OD-10"}
+    assert all(x[k] and "owner decision 25 Oct 2026" in x["why"] for x in dec.values() for k in ("what", "why", "evidence"))
+    assert "absolute" in SPEC["requirement"]["zero_swaps"]
+    rs = SPEC["requirement"]["recording_standard"]
+    assert rs["min_resolution"] == "1080p" and rs["min_fps"] >= 59.94 and rs["acceptance"] == "ACC-R1"
+    acc = {a["id"]: a for a in SPEC["acceptance"]}
+    assert "ACC-R1" in acc and "ACC-P1" in acc and "team-level" in acc["ACC-R1"]["on_fail"]
+    assert any(x["id"] == "AI-1" and "ShotTracker" in x["action"] for x in SPEC["open_items"])
+    assert {"PW-1", "PW-2"} <= {x["id"] for x in SPEC["planned_work"]}
+    assert "never shows a provisional" in SPEC["outputs"]["live_panel"]["rule"]
+    assert any("tier" in f for f in SPEC["outputs"]["per_frame"]["fields"])
+    assert "offline only" in SPEC["assignment"]["rule"] and SPEC["assignment"]["params"]["p_probable"]["value"] < idlib.P["p_lock"]
+    assert all(q.get("decision") for q in SPEC["open_questions"] if q["id"] in ("OQ-2", "OQ-4", "OQ-5", "OQ-6"))

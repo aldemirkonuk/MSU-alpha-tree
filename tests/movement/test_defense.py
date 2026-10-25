@@ -2429,4 +2429,18 @@ def test_changes_loop5_recorded():
     """L5-DEF-T22: shared BLAS setup (tests/movement/conftest.py) and the batched RTS inverse are journalled."""
     ch = DF.SPEC["changes_loop5"]
     assert [c["id"].split()[0] for c in ch] == ["L5-DEF-T22"] and all(ch[0][k] for k in ("what", "why", "evidence"))
-    assert str(DF.SPEC["version"]) == "0.3.1"
+    assert str(DF.SPEC["version"]) in ("0.3.1", "0.3.2")  # 0.3.2: changes_decisions_oct25 (OD-6)
+
+
+def test_od6_switch_definition_pending_recorded():
+    """OD-6 (owner decision 25 Oct 2026): hard vs soft switch is pending agreement with MSU staff (open item owned by
+    the owner); no behaviour change - the switch intensity params are the 0.3.1 values."""
+    ch = {c["id"].split()[0]: c for c in DF.SPEC["changes_decisions_oct25"]}
+    assert set(ch) == {"OD-6", "version"} and all(ch["OD-6"][k] for k in ("what", "why", "evidence"))
+    assert "25 Oct" in ch["OD-6"]["why"] and str(DF.SPEC["version"]) == "0.3.2"
+    sw = next(it for it in DF.SPEC["items"] if it["id"] == "switch")
+    assert {k: sw["params"][k]["value"] for k in ("hard_window_s", "hard_from_min", "hard_to_max", "soft_hold_s",
+                                                  "soft_cushion_min", "soft_lambda_min")} == \
+        {"hard_window_s": 0.8, "hard_from_min": 1.5, "hard_to_max": 0.8, "soft_hold_s": 1.0, "soft_cushion_min": 1.2,
+         "soft_lambda_min": 0.5}
+    assert any("OD-6" in c for c in sw["conflicts_resolved"]) and any("OD-6" in q for q in DF.SPEC["open_questions"])

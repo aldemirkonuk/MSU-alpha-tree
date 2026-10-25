@@ -34,9 +34,25 @@ from obsmodel import observe, profile  # noqa: E402
 
 REPO = HERE.parents[2]
 MAX_WORKERS = 4
+PROBABLE_KEYS = ["probable_labels", "probable_wrong_frames", "probable_wrong_events", "probable_on_officials",
+                 "probable_error_rate", "probable_coverage_gain", "coverage_with_probable"]
 SUMMARY_KEYS = ["swap_events", "idsw", "wrong_label_frames", "labels_on_officials", "idf1", "idp", "idr", "hota", "deta",
                 "assa", "coverage", "coverage_of_view", "min_player_coverage", "crossings", "reconfirm_median_s",
                 "reconfirm_p90_s", "reconfirm_within_2s", "reconfirm_censored"]
+
+
+def game_code(gid):
+    """Repo outputs carry G1 / G2 / G3, never a real game id: the private game_codes.json mapping when present, else
+    the position of the game in the sorted private truth cache."""
+    if str(gid).startswith("G"):
+        return str(gid)
+    f = sportvu_truth.PRIVATE / "work" / "identity_harness_2026-10-25" / "game_codes.json"
+    if f.exists():
+        inv = {v: k for k, v in json.loads(f.read_text()).items()}
+        if gid in inv:
+            return inv[gid]
+    cached = sorted(p.stem for p in sportvu_truth.CACHE.glob("*.npz"))
+    return f"G{cached.index(gid) + 1}" if gid in cached else "G?"
 
 
 def swap_contexts(d, label, crossings, dt, near_s=3.0):
@@ -89,7 +105,7 @@ def job(args):
             r = res[mode]
             m = metrics.identity_metrics(d, r.label, info["in_fov"], d.dt, crossings)
             inv = metrics.invariant_breaks(d, r.label, g.cand, g.team)
-            row = {"game": gid, "profile": prof_name, "sigma_p": sigma, "seed": seed, "config": name, "mode": mode}
+            row = {"game": game_code(gid), "profile": prof_name, "sigma_p": sigma, "seed": seed, "config": name, "mode": mode}
             row.update({k: m.get(k) for k in SUMMARY_KEYS})
             row.update(inv)
             row["swap_context"] = swap_contexts(d, r.label, crossings, d.dt)
@@ -103,9 +119,15 @@ def job(args):
             row["seconds"] = round(time.time() - t1, 1)
             row["frames"] = int(d.n_frames)
             row["player_dets"] = m["player_dets"]
+            pc = []
+            if mode == "offline" and r.probable is not None:  # OD-8 probable tier: reported apart, never in the locked metrics
+                pm = metrics.probable_metrics(d, r.label, r.probable, d.dt)
+                pc = pm.pop("probable_confusion_pairs")
+                row.update(pm)
             rows.append(row)
-            private.append({**{k: row[k] for k in ("game", "profile", "sigma_p", "seed", "config", "mode")},
-                            "per_player": m["per_player"], "confusion_pairs": m["confusion_pairs"], "log": r.log[:500]})
+            private.append({**{k: row[k] for k in ("game", "profile", "sigma_p", "seed", "config", "mode")}, "game_id": gid,
+                            "per_player": m["per_player"], "confusion_pairs": m["confusion_pairs"],
+                            "probable_confusion_pairs": pc, "log": r.log[:500]})
     return rows, private, round(t_sim, 1)
 
 
@@ -141,6 +163,13 @@ def aggregate(rows):
             for k, v in r["swap_context"].items():
                 ctx[k] += v
         a["swap_context"] = dict(ctx)
+        if any(r.get("probable_labels") is not None for r in rs):  # OD-8 probable tier (offline)
+            for k in ("probable_labels", "probable_wrong_frames", "probable_wrong_events", "probable_on_officials"):
+                a[k] = int(sum(r.get(k) or 0 for r in rs))
+            a["probable_error_rate"] = round(a["probable_wrong_frames"] / a["probable_labels"], 5) if a["probable_labels"] else None
+            for k in ("probable_coverage_gain", "coverage_with_probable"):
+                v = np.array([r.get(k) if r.get(k) is not None else np.nan for r in rs], dtype=float)
+                a[k] = round(float(np.nansum(v * w) / w[~np.isnan(v)].sum()), 4) if (~np.isnan(v)).any() else None
         out.append(a)
     return out
 

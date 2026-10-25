@@ -183,3 +183,28 @@ def invariant_breaks(d, label, cand, team=None):
     if team is not None:
         out["inv2_over_five"] = int(over5)
     return out
+
+
+def probable_metrics(d, label, probable, dt):
+    """OD-8 probable tier (offline, flagged, viewer-only): coverage it adds on top of the locked labels and how often it
+    is wrong. Wrong probable labels are logged here and are never counted as locked swaps (swap_events reads `label`)."""
+    src, fr = d.src, d.frame
+    is_pl = src >= 0
+    pm = (probable >= 0) & (label < 0)  # probable only where the locked tier abstains
+    wrong = pm & ~(is_pl & (probable == src))
+    merge = int(round(1.0 / dt))
+    events, pairs = 0, {}
+    for p in np.unique(src[wrong]):
+        m = wrong & (src == p)
+        events += _runs(np.sort(fr[m]), merge)
+        if p >= 0:
+            for q in np.unique(probable[m]):
+                pairs[(int(p), int(q))] = int(np.sum(probable[m] == q))
+    n_pl = max(1, int(is_pl.sum()))
+    locked_cov = float(((label >= 0) & is_pl).sum() / n_pl)
+    gain = float((pm & is_pl).sum() / n_pl)
+    return {"probable_labels": int(pm.sum()), "probable_wrong_frames": int(wrong.sum()), "probable_wrong_events": events,
+            "probable_on_officials": int((pm & ~is_pl).sum()),
+            "probable_error_rate": float(wrong.sum() / pm.sum()) if pm.any() else None,
+            "probable_coverage_gain": gain, "coverage_with_probable": locked_cov + gain,
+            "probable_confusion_pairs": sorted(pairs.items(), key=lambda kv: -kv[1])[:20]}
