@@ -161,3 +161,8 @@ keep the work done until then, create a prmopt for another chat tro do the requi
 
 ## 30 · 2026-10-17 21:54
 create one document and put all of my prompts/inouts in there and only output to me the path of file
+
+## 31 · 2026-11-11
+(attached image: an "AI tennis coach" example: a player measured against pros such as Djokovic and Alcaraz, then filmed themselves; pose skeletons and a feature-by-feature heatmap against the pros found the weak side and the real problem with their forehand)
+
+Add this as an addition goal, this is how I want to decipher certain movements and acts on players and so on.
