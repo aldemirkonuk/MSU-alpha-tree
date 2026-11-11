@@ -1,5 +1,5 @@
-version: 0.3.2
-date: '2026-10-20'
+version: 0.3.3
+date: '2026-11-11'
 status: proposal under the build freeze; canonical source for every spot, zone and position label
 owner: Mac session (msu-colab) for Aldemir
 how_built: 9 research families + skeptic each (18 agents) -> 9 synthesis + self-test (18) -> merge with canonical court_region -> 4 scenario testers + 4 reviewers (8) -> fixes applied
@@ -14459,8 +14459,9 @@ entries:
     x: 0
     y: 5
     z: 0
-  expr: r <= 5.2 and y > END_Y and ax < SIDE_X
-  bounds_text: 'r <= 5.2. Repo variants: 4.9-5.2, and r <= 5.3 in the F1.1 signature.'
+  expr: r <= 5.1816 and y > END_Y and ax < SIDE_X
+  bounds_text: 'r <= 5.1816 (17 ft): inside the pack line (16 ft) or on its 16-17 ft band, the union of pack_line_inside and pack_line_band. Decision 5 (Aldemir, 23 Oct 2026): 16 ft
+    with the 16-17 ft band; the repo variants r <= 5.2 and r <= 5.3 (F1.1 signature) are retired.'
   edge_basis: distance band
   reference_point: feet_midpoint
   priority: 50
@@ -14472,18 +14473,22 @@ entries:
   sources:
   - url: repo:docs/taxonomy/defense_full.md:37,124
     supports: pack line
+  supersedes:
+  - 'config/named_spots.yaml 0.3.2 pack_line r <= 5.2 -> 5.1816 (decision 5, 23 Oct 2026)'
+  - docs/taxonomy/defense_full.md:36 section 0.2 pack line r about 4.9-5.2
+  - docs/taxonomy/defense_full.md:124 F1.1 compliance test r_d <= 5.3 -> 5.1816
   probes_inside:
   - - 0
-    - 5.2
-  - - 3.67
-    - 3.67
+    - 5.18
+  - - 3.66
+    - 3.66
   - - 0
     - 1
   probes_outside:
   - - 0
-    - 5.21
-  - - 3.69
-    - 3.69
+    - 5.19
+  - - 3.67
+    - 3.67
   - - 5.3
     - 0
 - id: diamond_bottom
@@ -17856,6 +17861,9 @@ entries:
     title: NCAA Men's Basketball Rules 2026-27, R9-10, R9-12.3, R2-7.9
     supports: 10-second count start and resets; ball status by contact, last-contact status in the air, dribble crossing needs both feet and the ball in the frontcourt; officials use
       the shot clock to administer the 10-second count
+  - url: file://docs/rules/PRMBB_CaseBook.pdf
+    title: NCAA Men's Basketball Case Book 2026-27, A.R. 9-34 and A.R. 9-35
+    supports: with a shot clock started at 30, a 10-second backcourt violation has occurred when the shot clock displays 19; officials err if they let it run past 19
   probes_inside:
   - - 0
     - 12.69
@@ -17872,8 +17880,9 @@ entries:
     - 20
   - - 7.62
     - 5
-  notes: offense_full.md R7 says that from 2026-27 the violation is called at shot clock 19 instead of 20. Neither the rules book nor the 2026-27 change documents in docs/rules say so,
-    so it is kept as an open question, not a rule.
+  notes: 'Shot-clock display (settled 2026-11-11, decision 4): with a count that starts at 30, the violation has occurred when the display shows 19 (Case Book A.R. 9-34 and A.R. 9-35).
+    The rule stays count start minus 10.0 s on the clock map; when only the display is known, the count has run out once the display has dropped by 11 from its value at the count
+    start (30 to 19), never at 20. This equals 10.0 s only if the display truncates (shows 29 as soon as it starts); that display convention is checked on film (section 12).'
   review_fixes_2026_10_20:
   - 'loop2 EDGE-CASE ADVERSARY: Same edge error for the ball''s backcourt status (R9-12.3): a bounce on the frontcourt edge counts as backcourt.'
 - id: rule_frontcourt_backcourt_player

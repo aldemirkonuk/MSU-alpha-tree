@@ -549,7 +549,8 @@ def decision13(E):
         if al:
             hits.append(f"`{e['id']}` ({esc(', '.join(al))})")
     owner = [e["id"] for e in E if re.search(r"elbow[ -]extended", str(e.get("speech_alias") or ""), re.I)]
-    s = f"open. The speech alias \"elbow extended\" sits on {', '.join('`' + o + '`' for o in owner) or 'no entry'}."
+    s = (f"decided (23 Oct 2026); footage check open. The speech alias \"elbow extended\" sits on "
+         f"{', '.join('`' + o + '`' for o in owner) or 'no entry'}.")
     if hits:
         s += (" The YAML still lists it (or a close form) as an ordinary alias on " + ", ".join(hits) +
               "; removing those aliases is a YAML edit waiting for this decision.")
