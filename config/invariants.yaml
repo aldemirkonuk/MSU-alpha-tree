@@ -89,12 +89,20 @@ constants:
       per_extra_period: {to75: 1}
   timeout_length_s: {to30: 30, to60: 60, to75: 75, excessive_media: 30, excessive_no_media: 75}  # Rule 5-14.4, 5-17.2
   challenges: {per_game: 1, extra_if_overturned: 1}   # Rule 11-4.1.d
-  scoreboard_lag_window_initial_s: 15          # R-SB-03 (reset from the measured lag)
+  scoreboard_lag_window_initial_s: 4.0         # R-SB-03, decision K02 (18 Oct 2026): start 4.0 s, then per field p99 + 1.0 s, kept inside 3-15 s.
+                                               # Measured make -> bug: 1.50-2.60 s (n = 10, results/w3_intake/made_basket_lag.md). This is the
+                                               # window after a made basket SEEN ON VIDEO; a play-by-play second -> bug window is wider
+                                               # (p99 11 s, config/live_state/core.yaml pbp_to_bug_window_s).
+  scoreboard_lag_window_bounds_s: [3, 15]      # K02: the per-field window (p99 + 1.0 s) is clamped to this range
   physics:                                     # R-IV-13 (proposal)
     max_player_speed_mps: 10
     max_player_accel_mps2: 12
     ball_handler_max_dist_m: 1.5
-  foul_trouble: {period_1: 2, period_2_and_ot: 4}     # R-SR-11 (proposal)
+  foul_trouble:                                # R-SR-20, decision K10 as modified by Aldemir (18 Oct 2026)
+    half_1: {fouls: 2, while_elapsed_s_at_most: 900}        # 2 fouls in the first 15 min of the first half
+    half_2_early: {fouls: 3, while_remaining_s_above: 600}  # 3 fouls with more than 10 min left in the second half
+    half_2_late_and_ot: {fouls: 4, while_remaining_s_at_most: 600}  # 4 fouls in the last 10 min of the second half and in overtime
+    view_2_4: {period_1: 2, period_2_and_ot: 4}             # the plain 2 / 4 rule, kept as a named view only
   two_for_one_window_s: [33, 45]               # R-SR-11 (proposal)
   foul_to_extend_clock_s: 60                   # R-SR-11 (proposal)
   foul_to_extend_margin: [1, 9]                # R-SR-11 (proposal)
