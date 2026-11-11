@@ -166,3 +166,6 @@ create one document and put all of my prompts/inouts in there and only output to
 (attached image: an "AI tennis coach" example: a player measured against pros such as Djokovic and Alcaraz, then filmed themselves; pose skeletons and a feature-by-feature heatmap against the pros found the weak side and the real problem with their forehand)
 
 Add this as an addition goal, this is how I want to decipher certain movements and acts on players and so on.
+
+## 32 · 2026-11-11
+this is as end goal set - and all in one shooting, movement, passing.... But still we're at building stage so freeze holds this is for future reference so i and you don't forget

@@ -1,6 +1,15 @@
 # Player movement fingerprint (goal 9, added 11 Nov 2026)
 
-Status: goal and design note, v0.1. Spec only; the build freeze stays. Owner request (Aldemir, 11 Nov 2026): "Add this as an additional goal, this is how I want to decipher certain movements and acts on players and so on."
+Status: **END GOAL, parked for future reference** (see the update below). Design note v0.1. Spec only; the build freeze stays and no work on this is scheduled. Owner request (Aldemir, 11 Nov 2026): "Add this as an additional goal, this is how I want to decipher certain movements and acts on players and so on."
+
+## Update, 11 Nov 2026 (later): this is an end goal, not a next step
+
+Aldemir clarified: this is the **end goal**, one all-in-one system covering **shooting, movement, passing and the rest** of a player's game. We are still in the building stage and the **freeze holds**. The note exists so neither Aldemir nor Claude forgets where the build is heading. Consequences:
+
+- No pilot, harness or pose code is started now. The "pilot" in section 9 is only a proposal for when the freeze lifts.
+- The baselines in progress (identity, movement grammar, gold labels, data platform) are the foundation this stands on; they take priority.
+- The target is one **player profile** that joins two layers: the tactical layer (what the movement grammar detects: screens, cuts, ball actions, defense, transition) and the technique layer (how the body does it, from pose). Passing joins shooting and movement as an action type (section 3).
+- When the freeze lifts, the first step is to re-read this note, refresh the feature catalogue and decide the pilot with Aldemir.
 
 ## 1. The reference Aldemir pointed to
 
@@ -24,6 +33,7 @@ The movement grammar already says **when and what** (screen, cut, closeout, shot
 | Defensive stance and closeout | Stance width, hip height, torso lean, hands up (contest), last-step length, torso facing relative to ball and to man |
 | Screen setting | Base width, still frames before contact, contact angle, first step after the screen (roll or pop direction) |
 | Cuts and footwork | Plant-foot angle, cut angle, deceleration profile, jump-stop width, first-step timing |
+| Passing | Release point and arm extension, shoulder and hip alignment to the target, footwork before the pass (step, jump or stationary), pass-fake mechanics, time from catch to release |
 | Ball handling | Dribble height, crossover width, torso posture relative to the defender |
 | Rebounding and box-out | Box-out base and contact posture, jump timing |
 
@@ -63,14 +73,14 @@ Features that need 3D or very fine joint angles are included only if their test-
 
 The tennis example used controlled clips filmed for the purpose. Game footage is uncontrolled, so expect only large, repeatable differences to be detectable. The first pilot must prove reliability before any more actions are built.
 
-## 9. Phasing
+## 9. Phasing (proposal for when the freeze lifts; nothing is scheduled now)
 
 1. Feature catalogue with exact definitions and units (this note, refined).
 2. Pilot on **catch-and-shoot** (the most repeatable action with the best camera view) for a small set of players.
 3. Reliability and known-difference checks; keep or drop features.
 4. Only then add the next action type.
 
-## 10. Decisions needed from Aldemir
+## 10. Decisions needed from Aldemir (parked until the freeze lifts)
 
 1. Pilot action: catch-and-shoot first (recommended), or another action?
 2. Which question matters most to MSU staff (shooting form, closeouts, screen setting)? That sets the first heatmap.
