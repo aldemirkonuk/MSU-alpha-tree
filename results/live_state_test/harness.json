@@ -1,0 +1,7474 @@
+{
+ "what": "Real-data replay of the reference fuser (tools/specgen/live_state/harness.py).",
+ "date": "2026-11-20",
+ "pack_version": "0.1.0",
+ "games": 33,
+ "seeds": 3,
+ "resolution_s": 1,
+ "extra_hidden_share": 0.15,
+ "hidden_lengths": {
+  "n": 3189,
+  "mean": 10.14,
+  "p50": 6,
+  "p90": 19,
+  "p95": 29,
+  "p99": 110,
+  "max": 247
+ },
+ "configs": [
+  {
+   "name": "cues_0.0_0.0_0.0",
+   "mode": "bug",
+   "stop": 0.0,
+   "start": 0.0,
+   "reset": 0.0,
+   "feed": null
+  },
+  {
+   "name": "cues_0.8_0.0_0.0",
+   "mode": "bug",
+   "stop": 0.8,
+   "start": 0.0,
+   "reset": 0.0,
+   "feed": null
+  },
+  {
+   "name": "cues_0.8_0.8_0.8",
+   "mode": "bug",
+   "stop": 0.8,
+   "start": 0.8,
+   "reset": 0.8,
+   "feed": null
+  },
+  {
+   "name": "cues_1.0_1.0_1.0",
+   "mode": "bug",
+   "stop": 1.0,
+   "start": 1.0,
+   "reset": 1.0,
+   "feed": null
+  },
+  {
+   "name": "feed_0s",
+   "mode": "bug",
+   "stop": 0,
+   "start": 0,
+   "reset": 0,
+   "feed": 0
+  },
+  {
+   "name": "feed_15s",
+   "mode": "bug",
+   "stop": 0,
+   "start": 0,
+   "reset": 0,
+   "feed": 15
+  },
+  {
+   "name": "feed_45s",
+   "mode": "bug",
+   "stop": 0,
+   "start": 0,
+   "reset": 0,
+   "feed": 45
+  },
+  {
+   "name": "slot_0.0",
+   "mode": "slot",
+   "stop": 0,
+   "start": 0,
+   "reset": 0.0,
+   "feed": null
+  },
+  {
+   "name": "slot_0.8",
+   "mode": "slot",
+   "stop": 0,
+   "start": 0,
+   "reset": 0.8,
+   "feed": null
+  },
+  {
+   "name": "slot_1.0",
+   "mode": "slot",
+   "stop": 0,
+   "start": 0,
+   "reset": 1.0,
+   "feed": null
+  }
+ ],
+ "limits_used": {
+  "clock_inferred_max_s": 3.0,
+  "clock_carried_max_s": 30.0,
+  "clock_tolerance_s": 1.0,
+  "clock_inferred_promise": 0.9,
+  "scorebug_down_after_s": 1.0,
+  "scorebug_up_after_reads": 2,
+  "shot_clock_carried_max_s": 10.0,
+  "shot_clock_inferred_max_s": 1.0,
+  "counter_stale_after_s": 20.0,
+  "pbp_to_bug_window_s": 12.0
+ },
+ "verdicts": {
+  "ACC-LS-H1": {
+   "promise": 0.9,
+   "min_n_per_age": 200,
+   "game_clock_inferred": {
+    "cues_0.0_0.0_0.0": {
+     "n": 12728,
+     "pooled": 0.9714,
+     "ages_below_promise": {}
+    },
+    "cues_0.8_0.0_0.0": {
+     "n": 12729,
+     "pooled": 0.9746,
+     "ages_below_promise": {}
+    },
+    "cues_0.8_0.8_0.8": {
+     "n": 12735,
+     "pooled": 0.9784,
+     "ages_below_promise": {}
+    },
+    "cues_1.0_1.0_1.0": {
+     "n": 12738,
+     "pooled": 0.9797,
+     "ages_below_promise": {}
+    },
+    "feed_0s": {
+     "n": 12728,
+     "pooled": 0.9714,
+     "ages_below_promise": {}
+    },
+    "feed_15s": {
+     "n": 12728,
+     "pooled": 0.9714,
+     "ages_below_promise": {}
+    },
+    "feed_45s": {
+     "n": 12728,
+     "pooled": 0.9714,
+     "ages_below_promise": {}
+    }
+   },
+   "pass": true
+  },
+  "ACC-LS-H2": {
+   "violations": {
+    "cues_0.0_0.0_0.0": {},
+    "cues_0.8_0.0_0.0": {},
+    "cues_0.8_0.8_0.8": {},
+    "cues_1.0_1.0_1.0": {},
+    "feed_0s": {},
+    "feed_15s": {},
+    "feed_45s": {},
+    "slot_0.0": {},
+    "slot_0.8": {},
+    "slot_1.0": {}
+   },
+   "pass": true
+  },
+  "ACC-LS-H3": {
+   "returns": {
+    "cues_0.0_0.0_0.0": {
+     "miss_beyond_tolerance": 2617,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "cues_0.8_0.0_0.0": {
+     "miss_beyond_tolerance": 2356,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "cues_0.8_0.8_0.8": {
+     "miss_beyond_tolerance": 1970,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "cues_1.0_1.0_1.0": {
+     "miss_beyond_tolerance": 1771,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "feed_0s": {
+     "miss_beyond_tolerance": 2617,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "feed_15s": {
+     "miss_beyond_tolerance": 2617,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    },
+    "feed_45s": {
+     "miss_beyond_tolerance": 2617,
+     "miss_log_mismatch": 0,
+     "n": 13795,
+     "second_reading": 12224,
+     "second_reading_observed_and_equal": 12224
+    }
+   },
+   "pass": true
+  },
+  "ACC-LS-H4": {
+   "compared_with": "plain last-status on the readings the fuser accepted",
+   "ages_where_spec_is_below_last_status": {},
+   "pass": true
+  },
+  "shot_clock_inferred": {
+   "promise": 0.9,
+   "min_n_per_age": 200,
+   "by_config": {
+    "cues_0.0_0.0_0.0": {
+     "n": 4251,
+     "pooled": 0.9605,
+     "ages_below_promise": {}
+    },
+    "cues_0.8_0.0_0.0": {
+     "n": 4251,
+     "pooled": 0.9605,
+     "ages_below_promise": {}
+    },
+    "cues_0.8_0.8_0.8": {
+     "n": 4251,
+     "pooled": 0.9882,
+     "ages_below_promise": {}
+    },
+    "cues_1.0_1.0_1.0": {
+     "n": 4251,
+     "pooled": 0.9939,
+     "ages_below_promise": {}
+    },
+    "feed_0s": {
+     "n": 4251,
+     "pooled": 0.9605,
+     "ages_below_promise": {}
+    },
+    "feed_15s": {
+     "n": 4251,
+     "pooled": 0.9605,
+     "ages_below_promise": {}
+    },
+    "feed_45s": {
+     "n": 4251,
+     "pooled": 0.9605,
+     "ages_below_promise": {}
+    },
+    "slot_0.0": {
+     "n": 4251,
+     "pooled": 0.9595,
+     "ages_below_promise": {}
+    },
+    "slot_0.8": {
+     "n": 4251,
+     "pooled": 0.9866,
+     "ages_below_promise": {}
+    },
+    "slot_1.0": {
+     "n": 4251,
+     "pooled": 0.9927,
+     "ages_below_promise": {}
+    }
+   },
+   "pass": true
+  }
+ },
+ "summary": {
+  "cues_0.0_0.0_0.0": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 31683,
+     "within_tolerance": 0.7656
+    },
+    "inferred": {
+     "n": 12728,
+     "within_tolerance": 0.9714
+    },
+    "unknown": {
+     "n": 11878,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 167,
+      "inferred": 5291,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.7003,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9906,
+      "unknown": 21
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9532,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 121,
+      "inferred": 3935,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.5642,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3754,
+      "unknown": 5
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9274,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 103,
+      "inferred": 3502,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.1698,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "unknown": 11836
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.9059,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.8807,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3034,
+      "unknown": 1
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.8167,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11307,
+      "unknown": 9
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 12423,
+    "share": 0.916
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47942,
+      "equal": 0.6784
+     },
+     "unknown": {
+      "n": 44,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.6531
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 37073,
+      "equal": 0.9222
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 40669,
+      "equal": 0.8995
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 33609,
+      "equal": 0.9888
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 33525,
+      "equal": 0.9822
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5291,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3935,
+      "within_tolerance": 0.9652
+     },
+     "3": {
+      "n": 3502,
+      "within_tolerance": 0.9392
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9605
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 44,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4334,
+      "equal": 0.9827
+     },
+     "11-20": {
+      "n": 8642,
+      "equal": 0.698
+     },
+     "2": {
+      "n": 3381,
+      "equal": 0.9358
+     },
+     "21-30": {
+      "n": 3295,
+      "equal": 0.5256
+     },
+     "3": {
+      "n": 2997,
+      "equal": 0.9116
+     },
+     "31+": {
+      "n": 10408,
+      "equal": 0.1866
+     },
+     "4": {
+      "n": 2735,
+      "equal": 0.8907
+     },
+     "5": {
+      "n": 2539,
+      "equal": 0.8779
+     },
+     "6-10": {
+      "n": 9611,
+      "equal": 0.8321
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8151
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.7665
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.7137
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.6648
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.538
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47942,
+    "share": 0.6806
+   },
+   "score_catch_up_s": {
+    "n": 887,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 2617,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 2617
+     },
+     "score_total": {
+      "changed_while_hidden": 3459
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 129
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 124
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9391,
+    "median": 0.9718,
+    "games_below_promise": 0
+   }
+  },
+  "cues_0.8_0.0_0.0": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 32527,
+     "within_tolerance": 0.8056
+    },
+    "inferred": {
+     "n": 12729,
+     "within_tolerance": 0.9745
+    },
+    "unknown": {
+     "n": 11033,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 166,
+      "inferred": 5292,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.7695,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9922,
+      "unknown": 5
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9542,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 121,
+      "inferred": 3935,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.6398,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3759
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9373,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 103,
+      "inferred": 3502,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.243,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "carried": 815,
+      "unknown": 11021
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.925,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.911,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3035
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.8616,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11315,
+      "unknown": 1
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 15154,
+    "share": 0.9171
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47942,
+      "equal": 0.6784
+     },
+     "unknown": {
+      "n": 44,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.6718
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 8280,
+      "equal": 0.7737
+     },
+     "inferred": {
+      "n": 28793,
+      "equal": 0.9649
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 9109,
+      "equal": 0.6722
+     },
+     "inferred": {
+      "n": 31560,
+      "equal": 0.9651
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 7586,
+      "equal": 0.9668
+     },
+     "inferred": {
+      "n": 26023,
+      "equal": 0.9952
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 7616,
+      "equal": 0.9522
+     },
+     "inferred": {
+      "n": 25909,
+      "equal": 0.991
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5292,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3935,
+      "within_tolerance": 0.9662
+     },
+     "3": {
+      "n": 3502,
+      "within_tolerance": 0.9495
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9605
+     }
+    },
+    "team_fouls_away": {
+     "1": {
+      "n": 3583,
+      "within_tolerance": 0.9916
+     },
+     "11-20": {
+      "n": 5493,
+      "within_tolerance": 0.9518
+     },
+     "2": {
+      "n": 2668,
+      "within_tolerance": 0.9771
+     },
+     "21-30": {
+      "n": 1843,
+      "within_tolerance": 0.9262
+     },
+     "3": {
+      "n": 2331,
+      "within_tolerance": 0.9773
+     },
+     "31+": {
+      "n": 2280,
+      "within_tolerance": 0.9333
+     },
+     "4": {
+      "n": 2072,
+      "within_tolerance": 0.9739
+     },
+     "5": {
+      "n": 1876,
+      "within_tolerance": 0.976
+     },
+     "6-10": {
+      "n": 6647,
+      "within_tolerance": 0.9677
+     }
+    },
+    "team_fouls_home": {
+     "1": {
+      "n": 3937,
+      "within_tolerance": 0.9906
+     },
+     "11-20": {
+      "n": 5957,
+      "within_tolerance": 0.9654
+     },
+     "2": {
+      "n": 2914,
+      "within_tolerance": 0.9808
+     },
+     "21-30": {
+      "n": 2008,
+      "within_tolerance": 0.9552
+     },
+     "3": {
+      "n": 2537,
+      "within_tolerance": 0.9795
+     },
+     "31+": {
+      "n": 2578,
+      "within_tolerance": 0.8518
+     },
+     "4": {
+      "n": 2271,
+      "within_tolerance": 0.9771
+     },
+     "5": {
+      "n": 2047,
+      "within_tolerance": 0.979
+     },
+     "6-10": {
+      "n": 7311,
+      "within_tolerance": 0.9747
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3215,
+      "within_tolerance": 0.9997
+     },
+     "11-20": {
+      "n": 4906,
+      "within_tolerance": 0.9904
+     },
+     "2": {
+      "n": 2375,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 1676,
+      "within_tolerance": 0.9893
+     },
+     "3": {
+      "n": 2077,
+      "within_tolerance": 0.9986
+     },
+     "31+": {
+      "n": 2174,
+      "within_tolerance": 0.9922
+     },
+     "4": {
+      "n": 1873,
+      "within_tolerance": 0.9973
+     },
+     "5": {
+      "n": 1689,
+      "within_tolerance": 0.9964
+     },
+     "6-10": {
+      "n": 6038,
+      "within_tolerance": 0.9952
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3188,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 4854,
+      "within_tolerance": 0.9922
+     },
+     "2": {
+      "n": 2358,
+      "within_tolerance": 0.9983
+     },
+     "21-30": {
+      "n": 1664,
+      "within_tolerance": 0.9778
+     },
+     "3": {
+      "n": 2077,
+      "within_tolerance": 0.9961
+     },
+     "31+": {
+      "n": 2200,
+      "within_tolerance": 0.95
+     },
+     "4": {
+      "n": 1862,
+      "within_tolerance": 0.9968
+     },
+     "5": {
+      "n": 1685,
+      "within_tolerance": 0.997
+     },
+     "6-10": {
+      "n": 6021,
+      "within_tolerance": 0.9957
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 44,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4334,
+      "equal": 0.9827
+     },
+     "11-20": {
+      "n": 8642,
+      "equal": 0.698
+     },
+     "2": {
+      "n": 3381,
+      "equal": 0.9358
+     },
+     "21-30": {
+      "n": 3295,
+      "equal": 0.5256
+     },
+     "3": {
+      "n": 2997,
+      "equal": 0.9116
+     },
+     "31+": {
+      "n": 10408,
+      "equal": 0.1866
+     },
+     "4": {
+      "n": 2735,
+      "equal": 0.8907
+     },
+     "5": {
+      "n": 2539,
+      "equal": 0.8779
+     },
+     "6-10": {
+      "n": 9611,
+      "equal": 0.8321
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8176
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.7743
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.73
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.6885
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.5653
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47942,
+    "share": 0.6806
+   },
+   "score_catch_up_s": {
+    "n": 887,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 2356,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 2356
+     },
+     "score_total": {
+      "changed_while_hidden": 3459
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 129
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 124
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9489,
+    "median": 0.9748,
+    "games_below_promise": 0
+   }
+  },
+  "cues_0.8_0.8_0.8": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 33148,
+     "within_tolerance": 0.8963
+    },
+    "inferred": {
+     "n": 12735,
+     "within_tolerance": 0.9784
+    },
+    "unknown": {
+     "n": 10406,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 164,
+      "inferred": 5294,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.8821,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9922,
+      "unknown": 5
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9551,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 119,
+      "inferred": 3937,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.8391,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3759
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9507,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 101,
+      "inferred": 3504,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.5034,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "carried": 1442,
+      "unknown": 10394
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.9469,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.9407,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3035
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.9229,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11315,
+      "unknown": 1
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 16730,
+    "share": 0.96
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47942,
+      "equal": 0.6784
+     },
+     "unknown": {
+      "n": 44,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 21570,
+      "equal": 0.773
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9882
+     },
+     "unknown": {
+      "n": 19080,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 8361,
+      "equal": 0.7749
+     },
+     "inferred": {
+      "n": 28712,
+      "equal": 0.9651
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 8692,
+      "equal": 0.6695
+     },
+     "inferred": {
+      "n": 31977,
+      "equal": 0.962
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 7548,
+      "equal": 0.965
+     },
+     "inferred": {
+      "n": 26061,
+      "equal": 0.9956
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 7547,
+      "equal": 0.9469
+     },
+     "inferred": {
+      "n": 25978,
+      "equal": 0.9924
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5294,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3937,
+      "within_tolerance": 0.967
+     },
+     "3": {
+      "n": 3504,
+      "within_tolerance": 0.9626
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9882
+     }
+    },
+    "team_fouls_away": {
+     "1": {
+      "n": 3581,
+      "within_tolerance": 0.9913
+     },
+     "11-20": {
+      "n": 5482,
+      "within_tolerance": 0.9518
+     },
+     "2": {
+      "n": 2659,
+      "within_tolerance": 0.9771
+     },
+     "21-30": {
+      "n": 1838,
+      "within_tolerance": 0.9304
+     },
+     "3": {
+      "n": 2323,
+      "within_tolerance": 0.9768
+     },
+     "31+": {
+      "n": 2251,
+      "within_tolerance": 0.9334
+     },
+     "4": {
+      "n": 2068,
+      "within_tolerance": 0.9744
+     },
+     "5": {
+      "n": 1869,
+      "within_tolerance": 0.9754
+     },
+     "6-10": {
+      "n": 6641,
+      "within_tolerance": 0.9675
+     }
+    },
+    "team_fouls_home": {
+     "1": {
+      "n": 3933,
+      "within_tolerance": 0.9906
+     },
+     "11-20": {
+      "n": 6070,
+      "within_tolerance": 0.9598
+     },
+     "2": {
+      "n": 2906,
+      "within_tolerance": 0.9807
+     },
+     "21-30": {
+      "n": 2062,
+      "within_tolerance": 0.934
+     },
+     "3": {
+      "n": 2531,
+      "within_tolerance": 0.9795
+     },
+     "31+": {
+      "n": 2815,
+      "within_tolerance": 0.8519
+     },
+     "4": {
+      "n": 2272,
+      "within_tolerance": 0.9771
+     },
+     "5": {
+      "n": 2045,
+      "within_tolerance": 0.979
+     },
+     "6-10": {
+      "n": 7343,
+      "within_tolerance": 0.9756
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3211,
+      "within_tolerance": 0.9997
+     },
+     "11-20": {
+      "n": 4969,
+      "within_tolerance": 0.9905
+     },
+     "2": {
+      "n": 2366,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 1684,
+      "within_tolerance": 0.9917
+     },
+     "3": {
+      "n": 2071,
+      "within_tolerance": 0.9986
+     },
+     "31+": {
+      "n": 2164,
+      "within_tolerance": 0.9958
+     },
+     "4": {
+      "n": 1870,
+      "within_tolerance": 0.9973
+     },
+     "5": {
+      "n": 1682,
+      "within_tolerance": 0.9964
+     },
+     "6-10": {
+      "n": 6044,
+      "within_tolerance": 0.9952
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3183,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 4926,
+      "within_tolerance": 0.9923
+     },
+     "2": {
+      "n": 2350,
+      "within_tolerance": 0.9983
+     },
+     "21-30": {
+      "n": 1680,
+      "within_tolerance": 0.978
+     },
+     "3": {
+      "n": 2071,
+      "within_tolerance": 0.9961
+     },
+     "31+": {
+      "n": 2210,
+      "within_tolerance": 0.967
+     },
+     "4": {
+      "n": 1858,
+      "within_tolerance": 0.9968
+     },
+     "5": {
+      "n": 1679,
+      "within_tolerance": 0.997
+     },
+     "6-10": {
+      "n": 6021,
+      "within_tolerance": 0.9957
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 44,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4334,
+      "equal": 0.9827
+     },
+     "11-20": {
+      "n": 8642,
+      "equal": 0.698
+     },
+     "2": {
+      "n": 3381,
+      "equal": 0.9358
+     },
+     "21-30": {
+      "n": 3295,
+      "equal": 0.5256
+     },
+     "3": {
+      "n": 2997,
+      "equal": 0.9116
+     },
+     "31+": {
+      "n": 10408,
+      "equal": 0.1866
+     },
+     "4": {
+      "n": 2735,
+      "equal": 0.8907
+     },
+     "5": {
+      "n": 2539,
+      "equal": 0.8779
+     },
+     "6-10": {
+      "n": 9611,
+      "equal": 0.8321
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9882
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.1296
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8735
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0169
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.8478
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0001
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.8209
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.7939
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.7318
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47942,
+    "share": 0.6806
+   },
+   "score_catch_up_s": {
+    "n": 887,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 1970,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 1970
+     },
+     "score_total": {
+      "changed_while_hidden": 3459
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 129
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 124
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9584,
+    "median": 0.9791,
+    "games_below_promise": 0
+   }
+  },
+  "cues_1.0_1.0_1.0": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 33606,
+     "within_tolerance": 0.9372
+    },
+    "inferred": {
+     "n": 12738,
+     "within_tolerance": 0.9797
+    },
+    "unknown": {
+     "n": 9945,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 163,
+      "inferred": 5295,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.9425,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9922,
+      "unknown": 5
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9556,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 118,
+      "inferred": 3938,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.9199,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3759
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9548,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 100,
+      "inferred": 3505,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.7023,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "carried": 1903,
+      "unknown": 9933
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.956,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.9568,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3035
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.9532,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11315,
+      "unknown": 1
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 17671,
+    "share": 0.9757
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47942,
+      "equal": 0.6784
+     },
+     "unknown": {
+      "n": 44,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 22072,
+      "equal": 0.8054
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9939
+     },
+     "unknown": {
+      "n": 18578,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 9641,
+      "equal": 0.794
+     },
+     "inferred": {
+      "n": 27432,
+      "equal": 0.9672
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 10387,
+      "equal": 0.6864
+     },
+     "inferred": {
+      "n": 30282,
+      "equal": 0.9725
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 8901,
+      "equal": 0.969
+     },
+     "inferred": {
+      "n": 24708,
+      "equal": 0.9959
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 8910,
+      "equal": 0.9549
+     },
+     "inferred": {
+      "n": 24615,
+      "equal": 0.992
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5295,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3938,
+      "within_tolerance": 0.9675
+     },
+     "3": {
+      "n": 3505,
+      "within_tolerance": 0.9666
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9939
+     }
+    },
+    "team_fouls_away": {
+     "1": {
+      "n": 3570,
+      "within_tolerance": 0.9916
+     },
+     "11-20": {
+      "n": 5226,
+      "within_tolerance": 0.9531
+     },
+     "2": {
+      "n": 2643,
+      "within_tolerance": 0.9773
+     },
+     "21-30": {
+      "n": 1708,
+      "within_tolerance": 0.9327
+     },
+     "3": {
+      "n": 2304,
+      "within_tolerance": 0.977
+     },
+     "31+": {
+      "n": 1650,
+      "within_tolerance": 0.9473
+     },
+     "4": {
+      "n": 2038,
+      "within_tolerance": 0.974
+     },
+     "5": {
+      "n": 1835,
+      "within_tolerance": 0.9755
+     },
+     "6-10": {
+      "n": 6458,
+      "within_tolerance": 0.9673
+     }
+    },
+    "team_fouls_home": {
+     "1": {
+      "n": 3919,
+      "within_tolerance": 0.9906
+     },
+     "11-20": {
+      "n": 5693,
+      "within_tolerance": 0.9666
+     },
+     "2": {
+      "n": 2883,
+      "within_tolerance": 0.9806
+     },
+     "21-30": {
+      "n": 1870,
+      "within_tolerance": 0.9567
+     },
+     "3": {
+      "n": 2504,
+      "within_tolerance": 0.9792
+     },
+     "31+": {
+      "n": 2084,
+      "within_tolerance": 0.9271
+     },
+     "4": {
+      "n": 2232,
+      "within_tolerance": 0.9772
+     },
+     "5": {
+      "n": 2000,
+      "within_tolerance": 0.9785
+     },
+     "6-10": {
+      "n": 7097,
+      "within_tolerance": 0.976
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3200,
+      "within_tolerance": 0.9997
+     },
+     "11-20": {
+      "n": 4683,
+      "within_tolerance": 0.9902
+     },
+     "2": {
+      "n": 2351,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 1530,
+      "within_tolerance": 0.9915
+     },
+     "3": {
+      "n": 2055,
+      "within_tolerance": 0.9985
+     },
+     "31+": {
+      "n": 1528,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 1841,
+      "within_tolerance": 0.9973
+     },
+     "5": {
+      "n": 1650,
+      "within_tolerance": 0.9964
+     },
+     "6-10": {
+      "n": 5870,
+      "within_tolerance": 0.9952
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3172,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 4643,
+      "within_tolerance": 0.992
+     },
+     "2": {
+      "n": 2334,
+      "within_tolerance": 0.9983
+     },
+     "21-30": {
+      "n": 1526,
+      "within_tolerance": 0.9758
+     },
+     "3": {
+      "n": 2054,
+      "within_tolerance": 0.9961
+     },
+     "31+": {
+      "n": 1555,
+      "within_tolerance": 0.9531
+     },
+     "4": {
+      "n": 1829,
+      "within_tolerance": 0.9967
+     },
+     "5": {
+      "n": 1648,
+      "within_tolerance": 0.997
+     },
+     "6-10": {
+      "n": 5854,
+      "within_tolerance": 0.9956
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 44,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4334,
+      "equal": 0.9827
+     },
+     "11-20": {
+      "n": 8642,
+      "equal": 0.698
+     },
+     "2": {
+      "n": 3381,
+      "equal": 0.9358
+     },
+     "21-30": {
+      "n": 3295,
+      "equal": 0.5256
+     },
+     "3": {
+      "n": 2997,
+      "equal": 0.9116
+     },
+     "31+": {
+      "n": 10408,
+      "equal": 0.1866
+     },
+     "4": {
+      "n": 2735,
+      "equal": 0.8907
+     },
+     "5": {
+      "n": 2539,
+      "equal": 0.8779
+     },
+     "6-10": {
+      "n": 9611,
+      "equal": 0.8321
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9939
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.17
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8873
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0325
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.8666
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0007
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.8504
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.8324
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.7848
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47942,
+    "share": 0.6806
+   },
+   "score_catch_up_s": {
+    "n": 887,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 1771,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 1771
+     },
+     "score_total": {
+      "changed_while_hidden": 3459
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 129
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 124
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9584,
+    "median": 0.9792,
+    "games_below_promise": 0
+   }
+  },
+  "feed_0s": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 31683,
+     "within_tolerance": 0.7656
+    },
+    "inferred": {
+     "n": 12728,
+     "within_tolerance": 0.9714
+    },
+    "unknown": {
+     "n": 11878,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 167,
+      "inferred": 5291,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.7003,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9906,
+      "unknown": 21
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9532,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 121,
+      "inferred": 3935,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.5642,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3754,
+      "unknown": 5
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9274,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 103,
+      "inferred": 3502,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.1698,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "unknown": 11836
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.9059,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.8807,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3034,
+      "unknown": 1
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.8167,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11307,
+      "unknown": 9
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 12423,
+    "share": 0.916
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47970,
+      "equal": 0.8513
+     },
+     "unknown": {
+      "n": 16,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.6531
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 37073,
+      "equal": 0.9222
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 40669,
+      "equal": 0.8995
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 33609,
+      "equal": 0.9888
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 33525,
+      "equal": 0.9822
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5291,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3935,
+      "within_tolerance": 0.9652
+     },
+     "3": {
+      "n": 3502,
+      "within_tolerance": 0.9392
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9605
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 613,
+      "equal": 0.0506
+     },
+     "1": {
+      "n": 4803,
+      "equal": 0.8897
+     },
+     "11-20": {
+      "n": 8928,
+      "equal": 0.8912
+     },
+     "2": {
+      "n": 3748,
+      "equal": 0.8839
+     },
+     "21-30": {
+      "n": 3240,
+      "equal": 0.8383
+     },
+     "3": {
+      "n": 3318,
+      "equal": 0.9132
+     },
+     "31+": {
+      "n": 7090,
+      "equal": 0.5994
+     },
+     "4": {
+      "n": 3045,
+      "equal": 0.9363
+     },
+     "5": {
+      "n": 2830,
+      "equal": 0.9452
+     },
+     "6-10": {
+      "n": 10371,
+      "equal": 0.9394
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8151
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.7665
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.7137
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.6648
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.538
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47970,
+    "share": 0.8914
+   },
+   "score_catch_up_s": {
+    "n": 421,
+    "p50": 1,
+    "p90": 4,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 2617,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 2617
+     },
+     "score_total": {
+      "changed_while_hidden": 1203,
+      "confirmed_by_bug": 3946,
+      "confirmed_by_feed": 65
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "bug_differs_from_scorebook": 20,
+      "implausible_step": 127
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 73,
+      "correction_seen_on_return": 144
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9391,
+    "median": 0.9718,
+    "games_below_promise": 0
+   }
+  },
+  "feed_15s": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 31683,
+     "within_tolerance": 0.7656
+    },
+    "inferred": {
+     "n": 12728,
+     "within_tolerance": 0.9714
+    },
+    "unknown": {
+     "n": 11878,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 167,
+      "inferred": 5291,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.7003,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9906,
+      "unknown": 21
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9532,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 121,
+      "inferred": 3935,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.5642,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3754,
+      "unknown": 5
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9274,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 103,
+      "inferred": 3502,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.1698,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "unknown": 11836
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.9059,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.8807,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3034,
+      "unknown": 1
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.8167,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11307,
+      "unknown": 9
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 12423,
+    "share": 0.916
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47969,
+      "equal": 0.7825
+     },
+     "unknown": {
+      "n": 17,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.6531
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 37073,
+      "equal": 0.9222
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 40669,
+      "equal": 0.8995
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 33609,
+      "equal": 0.9888
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 33525,
+      "equal": 0.9822
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5291,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3935,
+      "within_tolerance": 0.9652
+     },
+     "3": {
+      "n": 3502,
+      "within_tolerance": 0.9392
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9605
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 303,
+      "equal": 0.8383
+     },
+     "1": {
+      "n": 4594,
+      "equal": 0.9771
+     },
+     "11-20": {
+      "n": 9288,
+      "equal": 0.7421
+     },
+     "2": {
+      "n": 3631,
+      "equal": 0.9328
+     },
+     "21-30": {
+      "n": 3377,
+      "equal": 0.6663
+     },
+     "3": {
+      "n": 3229,
+      "equal": 0.9102
+     },
+     "31+": {
+      "n": 7414,
+      "equal": 0.4841
+     },
+     "4": {
+      "n": 2945,
+      "equal": 0.8903
+     },
+     "5": {
+      "n": 2754,
+      "equal": 0.8751
+     },
+     "6-10": {
+      "n": 10451,
+      "equal": 0.8328
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8151
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.7665
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.7137
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.6648
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.538
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47969,
+    "share": 0.7858
+   },
+   "score_catch_up_s": {
+    "n": 743,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 2617,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 2617
+     },
+     "score_total": {
+      "changed_while_hidden": 3079,
+      "confirmed_by_bug": 146,
+      "confirmed_by_feed": 3796
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "bug_differs_from_scorebook": 22,
+      "implausible_step": 122
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 125
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9391,
+    "median": 0.9718,
+    "games_below_promise": 0
+   }
+  },
+  "feed_45s": {
+   "clock_by_grade": {
+    "carried": {
+     "n": 31683,
+     "within_tolerance": 0.7656
+    },
+    "inferred": {
+     "n": 12728,
+     "within_tolerance": 0.9714
+    },
+    "unknown": {
+     "n": 11878,
+     "within_tolerance": 0.0
+    }
+   },
+   "clock_by_age": {
+    "1": {
+     "n": 5459,
+     "spec": 0.9971,
+     "last_status_accepted": 0.9971,
+     "last_status": 0.9974,
+     "hold": 0.9958,
+     "run": 1.0,
+     "grades": {
+      "carried": 167,
+      "inferred": 5291,
+      "unknown": 1
+     }
+    },
+    "11-20": {
+     "n": 9927,
+     "spec": 0.7003,
+     "last_status_accepted": 0.7003,
+     "last_status": 0.7015,
+     "hold": 0.2382,
+     "run": 0.5131,
+     "grades": {
+      "carried": 9906,
+      "unknown": 21
+     }
+    },
+    "2": {
+     "n": 4057,
+     "spec": 0.9532,
+     "last_status_accepted": 0.9532,
+     "last_status": 0.9537,
+     "hold": 0.4163,
+     "run": 0.6211,
+     "grades": {
+      "carried": 121,
+      "inferred": 3935,
+      "unknown": 1
+     }
+    },
+    "21-30": {
+     "n": 3759,
+     "spec": 0.5642,
+     "last_status_accepted": 0.5642,
+     "last_status": 0.5648,
+     "hold": 0.1737,
+     "run": 0.4408,
+     "grades": {
+      "carried": 3754,
+      "unknown": 5
+     }
+    },
+    "3": {
+     "n": 3607,
+     "spec": 0.9274,
+     "last_status_accepted": 0.9274,
+     "last_status": 0.9279,
+     "hold": 0.3856,
+     "run": 0.6191,
+     "grades": {
+      "carried": 103,
+      "inferred": 3502,
+      "unknown": 2
+     }
+    },
+    "31+": {
+     "n": 11836,
+     "spec": 0.1698,
+     "last_status_accepted": 0.1698,
+     "last_status": 0.1698,
+     "hold": 0.0339,
+     "run": 0.1448,
+     "grades": {
+      "unknown": 11836
+     }
+    },
+    "4": {
+     "n": 3293,
+     "spec": 0.9059,
+     "last_status_accepted": 0.9059,
+     "last_status": 0.9065,
+     "hold": 0.3684,
+     "run": 0.6119,
+     "grades": {
+      "carried": 3291,
+      "unknown": 2
+     }
+    },
+    "5": {
+     "n": 3035,
+     "spec": 0.8807,
+     "last_status_accepted": 0.8807,
+     "last_status": 0.8814,
+     "hold": 0.3479,
+     "run": 0.6049,
+     "grades": {
+      "carried": 3034,
+      "unknown": 1
+     }
+    },
+    "6-10": {
+     "n": 11316,
+     "spec": 0.8167,
+     "last_status_accepted": 0.8167,
+     "last_status": 0.8176,
+     "hold": 0.3075,
+     "run": 0.5745,
+     "grades": {
+      "carried": 11307,
+      "unknown": 9
+     }
+    }
+   },
+   "clock_interval_holds_truth": 0.9995,
+   "running_flag_inferred_right": {
+    "n": 12423,
+    "share": 0.916
+   },
+   "by_grade": {
+    "period": {
+     "carried": {
+      "n": 2303,
+      "equal": 0.8489
+     },
+     "inferred": {
+      "n": 54322,
+      "equal": 1.0
+     }
+    },
+    "score_total": {
+     "carried": {
+      "n": 47963,
+      "equal": 0.7137
+     },
+     "unknown": {
+      "n": 23,
+      "equal": 0.0
+     }
+    },
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.6531
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_away": {
+     "carried": {
+      "n": 37073,
+      "equal": 0.9222
+     },
+     "unknown": {
+      "n": 139,
+      "equal": 0.0
+     }
+    },
+    "team_fouls_home": {
+     "carried": {
+      "n": 40669,
+      "equal": 0.8995
+     },
+     "unknown": {
+      "n": 279,
+      "equal": 0.0
+     }
+    },
+    "timeouts_left_away": {
+     "carried": {
+      "n": 33609,
+      "equal": 0.9888
+     }
+    },
+    "timeouts_left_home": {
+     "carried": {
+      "n": 33525,
+      "equal": 0.9822
+     }
+    }
+   },
+   "inferred_by_age": {
+    "game_clock_s": {
+     "1": {
+      "n": 5291,
+      "within_tolerance": 0.9974
+     },
+     "2": {
+      "n": 3935,
+      "within_tolerance": 0.9652
+     },
+     "3": {
+      "n": 3502,
+      "within_tolerance": 0.9392
+     }
+    },
+    "period": {
+     "1": {
+      "n": 5424,
+      "within_tolerance": 1.0
+     },
+     "11-20": {
+      "n": 9718,
+      "within_tolerance": 1.0
+     },
+     "2": {
+      "n": 4023,
+      "within_tolerance": 1.0
+     },
+     "21-30": {
+      "n": 3658,
+      "within_tolerance": 1.0
+     },
+     "3": {
+      "n": 3571,
+      "within_tolerance": 1.0
+     },
+     "31+": {
+      "n": 10530,
+      "within_tolerance": 1.0
+     },
+     "4": {
+      "n": 3254,
+      "within_tolerance": 1.0
+     },
+     "5": {
+      "n": 2998,
+      "within_tolerance": 1.0
+     },
+     "6-10": {
+      "n": 11146,
+      "within_tolerance": 1.0
+     }
+    },
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9605
+     }
+    }
+   },
+   "by_age": {
+    "score_total": {
+     "0": {
+      "n": 124,
+      "equal": 0.3548
+     },
+     "1": {
+      "n": 4423,
+      "equal": 0.9726
+     },
+     "11-20": {
+      "n": 9342,
+      "equal": 0.6825
+     },
+     "2": {
+      "n": 3472,
+      "equal": 0.9225
+     },
+     "21-30": {
+      "n": 3806,
+      "equal": 0.5192
+     },
+     "3": {
+      "n": 3083,
+      "equal": 0.8978
+     },
+     "31+": {
+      "n": 8283,
+      "equal": 0.3168
+     },
+     "4": {
+      "n": 2822,
+      "equal": 0.8767
+     },
+     "5": {
+      "n": 2626,
+      "equal": 0.8633
+     },
+     "6-10": {
+      "n": 10005,
+      "equal": 0.8192
+     }
+    },
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9605
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8151
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.7665
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.7137
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.6648
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.538
+     }
+    },
+    "team_fouls_away": {
+     "0": {
+      "n": 139,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 3643,
+      "equal": 0.9915
+     },
+     "11-20": {
+      "n": 6628,
+      "equal": 0.9451
+     },
+     "2": {
+      "n": 2749,
+      "equal": 0.9767
+     },
+     "21-30": {
+      "n": 2445,
+      "equal": 0.9088
+     },
+     "3": {
+      "n": 2440,
+      "equal": 0.9766
+     },
+     "31+": {
+      "n": 7422,
+      "equal": 0.7596
+     },
+     "4": {
+      "n": 2214,
+      "equal": 0.9747
+     },
+     "5": {
+      "n": 2035,
+      "equal": 0.9744
+     },
+     "6-10": {
+      "n": 7497,
+      "equal": 0.9661
+     }
+    },
+    "team_fouls_home": {
+     "0": {
+      "n": 279,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4003,
+      "equal": 0.9908
+     },
+     "11-20": {
+      "n": 7337,
+      "equal": 0.9553
+     },
+     "2": {
+      "n": 3002,
+      "equal": 0.9807
+     },
+     "21-30": {
+      "n": 2725,
+      "equal": 0.9233
+     },
+     "3": {
+      "n": 2656,
+      "equal": 0.9785
+     },
+     "31+": {
+      "n": 8011,
+      "equal": 0.6177
+     },
+     "4": {
+      "n": 2428,
+      "equal": 0.9765
+     },
+     "5": {
+      "n": 2228,
+      "equal": 0.978
+     },
+     "6-10": {
+      "n": 8279,
+      "equal": 0.9721
+     }
+    },
+    "timeouts_left_away": {
+     "1": {
+      "n": 3264,
+      "equal": 0.9997
+     },
+     "11-20": {
+      "n": 5980,
+      "equal": 0.989
+     },
+     "2": {
+      "n": 2443,
+      "equal": 1.0
+     },
+     "21-30": {
+      "n": 2303,
+      "equal": 0.9904
+     },
+     "3": {
+      "n": 2175,
+      "equal": 0.9986
+     },
+     "31+": {
+      "n": 6818,
+      "equal": 0.9649
+     },
+     "4": {
+      "n": 1998,
+      "equal": 0.9975
+     },
+     "5": {
+      "n": 1836,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6792,
+      "equal": 0.9947
+     }
+    },
+    "timeouts_left_home": {
+     "1": {
+      "n": 3238,
+      "equal": 1.0
+     },
+     "11-20": {
+      "n": 5922,
+      "equal": 0.9936
+     },
+     "2": {
+      "n": 2428,
+      "equal": 0.9984
+     },
+     "21-30": {
+      "n": 2291,
+      "equal": 0.9817
+     },
+     "3": {
+      "n": 2177,
+      "equal": 0.9963
+     },
+     "31+": {
+      "n": 6877,
+      "equal": 0.9322
+     },
+     "4": {
+      "n": 1990,
+      "equal": 0.997
+     },
+     "5": {
+      "n": 1831,
+      "equal": 0.9967
+     },
+     "6-10": {
+      "n": 6771,
+      "equal": 0.9959
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 47963,
+    "share": 0.7165
+   },
+   "score_catch_up_s": {
+    "n": 879,
+    "p50": 1,
+    "p90": 2,
+    "max": 30,
+    "cap_s": 30
+   },
+   "returns": {
+    "miss_beyond_tolerance": 2617,
+    "miss_log_mismatch": 0,
+    "n": 13795,
+    "second_reading": 12224,
+    "second_reading_observed_and_equal": 12224
+   },
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 46,
+      "snap_miss": 2617
+     },
+     "score_total": {
+      "changed_while_hidden": 3413,
+      "confirmed_by_bug": 16,
+      "confirmed_by_feed": 2651
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 522
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 661
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 95
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 89
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "bug_differs_from_scorebook": 8,
+      "implausible_step": 128
+     },
+     "team_fouls_away": {
+      "implausible_step": 375
+     },
+     "team_fouls_home": {
+      "implausible_step": 283
+     },
+     "timeouts_left_away": {
+      "implausible_step": 7
+     },
+     "timeouts_left_home": {
+      "implausible_step": 6
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 67,
+      "correction_seen_on_return": 127
+     },
+     "team_fouls_away": {
+      "correction_candidate": 194,
+      "correction_seen_on_return": 41
+     },
+     "team_fouls_home": {
+      "correction_candidate": 166,
+      "correction_seen_on_return": 47
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 4,
+      "correction_seen_on_return": 8
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 3,
+      "correction_seen_on_return": 8
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 152,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 33,
+    "min": 0.9391,
+    "median": 0.9718,
+    "games_below_promise": 0
+   }
+  },
+  "slot_0.0": {
+   "clock_by_grade": {},
+   "clock_by_age": {},
+   "clock_interval_holds_truth": null,
+   "running_flag_inferred_right": {
+    "n": 0,
+    "share": null
+   },
+   "by_grade": {
+    "shot_clock_s": {
+     "carried": {
+      "n": 19750,
+      "equal": 0.7281
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9595
+     },
+     "unknown": {
+      "n": 20900,
+      "equal": 0.0
+     }
+    }
+   },
+   "inferred_by_age": {
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9595
+     }
+    }
+   },
+   "by_age": {
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9595
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.0
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.8485
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.8144
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.7809
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.7435
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.6377
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 0,
+    "share": null
+   },
+   "score_catch_up_s": {
+    "n": 0,
+    "p50": null,
+    "p90": null,
+    "max": null,
+    "cap_s": 30
+   },
+   "returns": {},
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 48,
+      "snap_miss": 1509
+     },
+     "score_total": {
+      "changed_while_hidden": 3069
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 390
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 534
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 75
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 72
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 153
+     },
+     "team_fouls_away": {
+      "implausible_step": 444
+     },
+     "team_fouls_home": {
+      "implausible_step": 363
+     },
+     "timeouts_left_away": {
+      "implausible_step": 9
+     },
+     "timeouts_left_home": {
+      "implausible_step": 9
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 81,
+      "correction_seen_on_return": 141
+     },
+     "team_fouls_away": {
+      "correction_candidate": 225,
+      "correction_seen_on_return": 42
+     },
+     "team_fouls_home": {
+      "correction_candidate": 213,
+      "correction_seen_on_return": 48
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 153,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 0,
+    "min": null,
+    "median": null,
+    "games_below_promise": 0
+   }
+  },
+  "slot_0.8": {
+   "clock_by_grade": {},
+   "clock_by_age": {},
+   "clock_interval_holds_truth": null,
+   "running_flag_inferred_right": {
+    "n": 0,
+    "share": null
+   },
+   "by_grade": {
+    "shot_clock_s": {
+     "carried": {
+      "n": 21663,
+      "equal": 0.8109
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9866
+     },
+     "unknown": {
+      "n": 18987,
+      "equal": 0.0
+     }
+    }
+   },
+   "inferred_by_age": {
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9866
+     }
+    }
+   },
+   "by_age": {
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9866
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.1362
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.9034
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.028
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.8811
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0007
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.8594
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.8375
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.7783
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 0,
+    "share": null
+   },
+   "score_catch_up_s": {
+    "n": 0,
+    "p50": null,
+    "p90": null,
+    "max": null,
+    "cap_s": 30
+   },
+   "returns": {},
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 48,
+      "snap_miss": 1509
+     },
+     "score_total": {
+      "changed_while_hidden": 3069
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 390
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 534
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 75
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 72
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 153
+     },
+     "team_fouls_away": {
+      "implausible_step": 444
+     },
+     "team_fouls_home": {
+      "implausible_step": 363
+     },
+     "timeouts_left_away": {
+      "implausible_step": 9
+     },
+     "timeouts_left_home": {
+      "implausible_step": 9
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 81,
+      "correction_seen_on_return": 141
+     },
+     "team_fouls_away": {
+      "correction_candidate": 225,
+      "correction_seen_on_return": 42
+     },
+     "team_fouls_home": {
+      "correction_candidate": 213,
+      "correction_seen_on_return": 48
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 153,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 0,
+    "min": null,
+    "median": null,
+    "games_below_promise": 0
+   }
+  },
+  "slot_1.0": {
+   "clock_by_grade": {},
+   "clock_by_age": {},
+   "clock_interval_holds_truth": null,
+   "running_flag_inferred_right": {
+    "n": 0,
+    "share": null
+   },
+   "by_grade": {
+    "shot_clock_s": {
+     "carried": {
+      "n": 22072,
+      "equal": 0.8277
+     },
+     "inferred": {
+      "n": 4251,
+      "equal": 0.9927
+     },
+     "unknown": {
+      "n": 18578,
+      "equal": 0.0
+     }
+    }
+   },
+   "inferred_by_age": {
+    "shot_clock_s": {
+     "1": {
+      "n": 4251,
+      "within_tolerance": 0.9927
+     }
+    }
+   },
+   "by_age": {
+    "shot_clock_s": {
+     "0": {
+      "n": 13,
+      "equal": 0.0
+     },
+     "1": {
+      "n": 4251,
+      "equal": 0.9927
+     },
+     "11-20": {
+      "n": 7834,
+      "equal": 0.1695
+     },
+     "2": {
+      "n": 3169,
+      "equal": 0.9145
+     },
+     "21-30": {
+      "n": 3074,
+      "equal": 0.0322
+     },
+     "3": {
+      "n": 2818,
+      "equal": 0.8953
+     },
+     "31+": {
+      "n": 9979,
+      "equal": 0.0007
+     },
+     "4": {
+      "n": 2574,
+      "equal": 0.8788
+     },
+     "5": {
+      "n": 2363,
+      "equal": 0.8591
+     },
+     "6-10": {
+      "n": 8826,
+      "equal": 0.8069
+     }
+    }
+   },
+   "score_equal_to_bug_now_or_within_window": {
+    "n": 0,
+    "share": null
+   },
+   "score_catch_up_s": {
+    "n": 0,
+    "p50": null,
+    "p90": null,
+    "max": null,
+    "cap_s": 30
+   },
+   "returns": {},
+   "violations": {},
+   "log_rows": {
+    "latency_report": {
+     "game_clock_s": {
+      "clock_fell_faster_than_time": 48,
+      "snap_miss": 1509
+     },
+     "score_total": {
+      "changed_while_hidden": 3069
+     },
+     "team_fouls_away": {
+      "changed_while_hidden": 390
+     },
+     "team_fouls_home": {
+      "changed_while_hidden": 534
+     },
+     "timeouts_left_away": {
+      "changed_while_hidden": 75
+     },
+     "timeouts_left_home": {
+      "changed_while_hidden": 72
+     }
+    },
+    "scoreboard_flags": {
+     "score_total": {
+      "implausible_step": 153
+     },
+     "team_fouls_away": {
+      "implausible_step": 444
+     },
+     "team_fouls_home": {
+      "implausible_step": 363
+     },
+     "timeouts_left_away": {
+      "implausible_step": 9
+     },
+     "timeouts_left_home": {
+      "implausible_step": 9
+     }
+    },
+    "state_corrections": {
+     "score_total": {
+      "correction_candidate": 81,
+      "correction_seen_on_return": 141
+     },
+     "team_fouls_away": {
+      "correction_candidate": 225,
+      "correction_seen_on_return": 42
+     },
+     "team_fouls_home": {
+      "correction_candidate": 213,
+      "correction_seen_on_return": 48
+     },
+     "timeouts_left_away": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     },
+     "timeouts_left_home": {
+      "correction_candidate": 6,
+      "correction_seen_on_return": 6
+     }
+    }
+   },
+   "counts": {
+    "hidden_s": 56625,
+    "rejected_reads": 153,
+    "runs": 99,
+    "versions_opened": 0
+   },
+   "inferred_clock_per_game": {
+    "games": 0,
+    "min": null,
+    "median": null,
+    "games_below_promise": 0
+   }
+  }
+ },
+ "per_game": [
+  {
+   "game": "B01",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9862
+  },
+  {
+   "game": "B02",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9745
+  },
+  {
+   "game": "B03",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9756
+  },
+  {
+   "game": "B04",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B05",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9735
+  },
+  {
+   "game": "B06",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9749
+  },
+  {
+   "game": "B07",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B08",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.97
+  },
+  {
+   "game": "B09",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9582
+  },
+  {
+   "game": "B10",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9489
+  },
+  {
+   "game": "B11",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B12",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B13",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9715
+  },
+  {
+   "game": "B14",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9707
+  },
+  {
+   "game": "B15",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B16",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9686
+  },
+  {
+   "game": "B17",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 394,
+   "inferred_within_tolerance": 0.9645
+  },
+  {
+   "game": "B18",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9773
+  },
+  {
+   "game": "B20",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B21",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9391
+  },
+  {
+   "game": "B23",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9858
+  },
+  {
+   "game": "B24",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9888
+  },
+  {
+   "game": "B25",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.965
+  },
+  {
+   "game": "B26",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9761
+  },
+  {
+   "game": "B28",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9718
+  },
+  {
+   "game": "B29",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9775
+  },
+  {
+   "game": "B30",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9602
+  },
+  {
+   "game": "B31",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9689
+  },
+  {
+   "game": "B32",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9687
+  },
+  {
+   "game": "B33",
+   "config": "cues_0.0_0.0_0.0",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9648
+  },
+  {
+   "game": "B01",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9885
+  },
+  {
+   "game": "B02",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9745
+  },
+  {
+   "game": "B03",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9823
+  },
+  {
+   "game": "B04",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B05",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9788
+  },
+  {
+   "game": "B06",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9799
+  },
+  {
+   "game": "B07",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B08",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.9746
+  },
+  {
+   "game": "B09",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9642
+  },
+  {
+   "game": "B10",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9489
+  },
+  {
+   "game": "B11",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9594
+  },
+  {
+   "game": "B12",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.9752
+  },
+  {
+   "game": "B13",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9772
+  },
+  {
+   "game": "B14",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.978
+  },
+  {
+   "game": "B15",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9817
+  },
+  {
+   "game": "B16",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9717
+  },
+  {
+   "game": "B17",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 394,
+   "inferred_within_tolerance": 0.967
+  },
+  {
+   "game": "B18",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9841
+  },
+  {
+   "game": "B20",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9748
+  },
+  {
+   "game": "B21",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9529
+  },
+  {
+   "game": "B23",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9919
+  },
+  {
+   "game": "B24",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9916
+  },
+  {
+   "game": "B25",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.965
+  },
+  {
+   "game": "B26",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9607
+  },
+  {
+   "game": "B27",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 378,
+   "inferred_within_tolerance": 0.9788
+  },
+  {
+   "game": "B28",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9744
+  },
+  {
+   "game": "B29",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9816
+  },
+  {
+   "game": "B30",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9602
+  },
+  {
+   "game": "B31",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9746
+  },
+  {
+   "game": "B32",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9749
+  },
+  {
+   "game": "B33",
+   "config": "cues_0.8_0.0_0.0",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9648
+  },
+  {
+   "game": "B01",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9908
+  },
+  {
+   "game": "B02",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9796
+  },
+  {
+   "game": "B03",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9867
+  },
+  {
+   "game": "B04",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9801
+  },
+  {
+   "game": "B05",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9814
+  },
+  {
+   "game": "B06",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9824
+  },
+  {
+   "game": "B07",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B08",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.9792
+  },
+  {
+   "game": "B09",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9672
+  },
+  {
+   "game": "B10",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9617
+  },
+  {
+   "game": "B11",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9719
+  },
+  {
+   "game": "B12",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.978
+  },
+  {
+   "game": "B13",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9886
+  },
+  {
+   "game": "B14",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9829
+  },
+  {
+   "game": "B15",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9817
+  },
+  {
+   "game": "B16",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9748
+  },
+  {
+   "game": "B17",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 397,
+   "inferred_within_tolerance": 0.9698
+  },
+  {
+   "game": "B18",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9864
+  },
+  {
+   "game": "B20",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B21",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9584
+  },
+  {
+   "game": "B23",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9939
+  },
+  {
+   "game": "B24",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9916
+  },
+  {
+   "game": "B25",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.975
+  },
+  {
+   "game": "B26",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 378,
+   "inferred_within_tolerance": 0.9788
+  },
+  {
+   "game": "B28",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9744
+  },
+  {
+   "game": "B29",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9877
+  },
+  {
+   "game": "B30",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 380,
+   "inferred_within_tolerance": 0.9684
+  },
+  {
+   "game": "B31",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9746
+  },
+  {
+   "game": "B32",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9791
+  },
+  {
+   "game": "B33",
+   "config": "cues_0.8_0.8_0.8",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9667
+  },
+  {
+   "game": "B01",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9908
+  },
+  {
+   "game": "B02",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9796
+  },
+  {
+   "game": "B03",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9889
+  },
+  {
+   "game": "B04",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9851
+  },
+  {
+   "game": "B05",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9814
+  },
+  {
+   "game": "B06",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9849
+  },
+  {
+   "game": "B07",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 439,
+   "inferred_within_tolerance": 0.9795
+  },
+  {
+   "game": "B08",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.9792
+  },
+  {
+   "game": "B09",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B10",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9617
+  },
+  {
+   "game": "B11",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9719
+  },
+  {
+   "game": "B12",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.978
+  },
+  {
+   "game": "B13",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9886
+  },
+  {
+   "game": "B14",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9829
+  },
+  {
+   "game": "B15",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9817
+  },
+  {
+   "game": "B16",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.978
+  },
+  {
+   "game": "B17",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 397,
+   "inferred_within_tolerance": 0.9773
+  },
+  {
+   "game": "B18",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9864
+  },
+  {
+   "game": "B20",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B21",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9584
+  },
+  {
+   "game": "B23",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9959
+  },
+  {
+   "game": "B24",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9916
+  },
+  {
+   "game": "B25",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.9775
+  },
+  {
+   "game": "B26",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 378,
+   "inferred_within_tolerance": 0.9788
+  },
+  {
+   "game": "B28",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9769
+  },
+  {
+   "game": "B29",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9877
+  },
+  {
+   "game": "B30",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 380,
+   "inferred_within_tolerance": 0.9737
+  },
+  {
+   "game": "B31",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9774
+  },
+  {
+   "game": "B32",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9812
+  },
+  {
+   "game": "B33",
+   "config": "cues_1.0_1.0_1.0",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9687
+  },
+  {
+   "game": "B01",
+   "config": "feed_0s",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9862
+  },
+  {
+   "game": "B02",
+   "config": "feed_0s",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9745
+  },
+  {
+   "game": "B03",
+   "config": "feed_0s",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9756
+  },
+  {
+   "game": "B04",
+   "config": "feed_0s",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B05",
+   "config": "feed_0s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9735
+  },
+  {
+   "game": "B06",
+   "config": "feed_0s",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9749
+  },
+  {
+   "game": "B07",
+   "config": "feed_0s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B08",
+   "config": "feed_0s",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.97
+  },
+  {
+   "game": "B09",
+   "config": "feed_0s",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9582
+  },
+  {
+   "game": "B10",
+   "config": "feed_0s",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9489
+  },
+  {
+   "game": "B11",
+   "config": "feed_0s",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B12",
+   "config": "feed_0s",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B13",
+   "config": "feed_0s",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9715
+  },
+  {
+   "game": "B14",
+   "config": "feed_0s",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9707
+  },
+  {
+   "game": "B15",
+   "config": "feed_0s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B16",
+   "config": "feed_0s",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9686
+  },
+  {
+   "game": "B17",
+   "config": "feed_0s",
+   "inferred_clock_s": 394,
+   "inferred_within_tolerance": 0.9645
+  },
+  {
+   "game": "B18",
+   "config": "feed_0s",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "feed_0s",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9773
+  },
+  {
+   "game": "B20",
+   "config": "feed_0s",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B21",
+   "config": "feed_0s",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "feed_0s",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9391
+  },
+  {
+   "game": "B23",
+   "config": "feed_0s",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9858
+  },
+  {
+   "game": "B24",
+   "config": "feed_0s",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9888
+  },
+  {
+   "game": "B25",
+   "config": "feed_0s",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.965
+  },
+  {
+   "game": "B26",
+   "config": "feed_0s",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "feed_0s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9761
+  },
+  {
+   "game": "B28",
+   "config": "feed_0s",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9718
+  },
+  {
+   "game": "B29",
+   "config": "feed_0s",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9775
+  },
+  {
+   "game": "B30",
+   "config": "feed_0s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9602
+  },
+  {
+   "game": "B31",
+   "config": "feed_0s",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9689
+  },
+  {
+   "game": "B32",
+   "config": "feed_0s",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9687
+  },
+  {
+   "game": "B33",
+   "config": "feed_0s",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9648
+  },
+  {
+   "game": "B01",
+   "config": "feed_15s",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9862
+  },
+  {
+   "game": "B02",
+   "config": "feed_15s",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9745
+  },
+  {
+   "game": "B03",
+   "config": "feed_15s",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9756
+  },
+  {
+   "game": "B04",
+   "config": "feed_15s",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B05",
+   "config": "feed_15s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9735
+  },
+  {
+   "game": "B06",
+   "config": "feed_15s",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9749
+  },
+  {
+   "game": "B07",
+   "config": "feed_15s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B08",
+   "config": "feed_15s",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.97
+  },
+  {
+   "game": "B09",
+   "config": "feed_15s",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9582
+  },
+  {
+   "game": "B10",
+   "config": "feed_15s",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9489
+  },
+  {
+   "game": "B11",
+   "config": "feed_15s",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B12",
+   "config": "feed_15s",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B13",
+   "config": "feed_15s",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9715
+  },
+  {
+   "game": "B14",
+   "config": "feed_15s",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9707
+  },
+  {
+   "game": "B15",
+   "config": "feed_15s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B16",
+   "config": "feed_15s",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9686
+  },
+  {
+   "game": "B17",
+   "config": "feed_15s",
+   "inferred_clock_s": 394,
+   "inferred_within_tolerance": 0.9645
+  },
+  {
+   "game": "B18",
+   "config": "feed_15s",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "feed_15s",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9773
+  },
+  {
+   "game": "B20",
+   "config": "feed_15s",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B21",
+   "config": "feed_15s",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "feed_15s",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9391
+  },
+  {
+   "game": "B23",
+   "config": "feed_15s",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9858
+  },
+  {
+   "game": "B24",
+   "config": "feed_15s",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9888
+  },
+  {
+   "game": "B25",
+   "config": "feed_15s",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.965
+  },
+  {
+   "game": "B26",
+   "config": "feed_15s",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "feed_15s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9761
+  },
+  {
+   "game": "B28",
+   "config": "feed_15s",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9718
+  },
+  {
+   "game": "B29",
+   "config": "feed_15s",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9775
+  },
+  {
+   "game": "B30",
+   "config": "feed_15s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9602
+  },
+  {
+   "game": "B31",
+   "config": "feed_15s",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9689
+  },
+  {
+   "game": "B32",
+   "config": "feed_15s",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9687
+  },
+  {
+   "game": "B33",
+   "config": "feed_15s",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9648
+  },
+  {
+   "game": "B01",
+   "config": "feed_45s",
+   "inferred_clock_s": 434,
+   "inferred_within_tolerance": 0.9862
+  },
+  {
+   "game": "B02",
+   "config": "feed_45s",
+   "inferred_clock_s": 392,
+   "inferred_within_tolerance": 0.9745
+  },
+  {
+   "game": "B03",
+   "config": "feed_45s",
+   "inferred_clock_s": 451,
+   "inferred_within_tolerance": 0.9756
+  },
+  {
+   "game": "B04",
+   "config": "feed_45s",
+   "inferred_clock_s": 201,
+   "inferred_within_tolerance": 0.9701
+  },
+  {
+   "game": "B05",
+   "config": "feed_45s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9735
+  },
+  {
+   "game": "B06",
+   "config": "feed_45s",
+   "inferred_clock_s": 398,
+   "inferred_within_tolerance": 0.9749
+  },
+  {
+   "game": "B07",
+   "config": "feed_45s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9771
+  },
+  {
+   "game": "B08",
+   "config": "feed_45s",
+   "inferred_clock_s": 433,
+   "inferred_within_tolerance": 0.97
+  },
+  {
+   "game": "B09",
+   "config": "feed_45s",
+   "inferred_clock_s": 335,
+   "inferred_within_tolerance": 0.9582
+  },
+  {
+   "game": "B10",
+   "config": "feed_45s",
+   "inferred_clock_s": 313,
+   "inferred_within_tolerance": 0.9489
+  },
+  {
+   "game": "B11",
+   "config": "feed_45s",
+   "inferred_clock_s": 320,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B12",
+   "config": "feed_45s",
+   "inferred_clock_s": 363,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B13",
+   "config": "feed_45s",
+   "inferred_clock_s": 351,
+   "inferred_within_tolerance": 0.9715
+  },
+  {
+   "game": "B14",
+   "config": "feed_45s",
+   "inferred_clock_s": 410,
+   "inferred_within_tolerance": 0.9707
+  },
+  {
+   "game": "B15",
+   "config": "feed_45s",
+   "inferred_clock_s": 436,
+   "inferred_within_tolerance": 0.9794
+  },
+  {
+   "game": "B16",
+   "config": "feed_45s",
+   "inferred_clock_s": 318,
+   "inferred_within_tolerance": 0.9686
+  },
+  {
+   "game": "B17",
+   "config": "feed_45s",
+   "inferred_clock_s": 394,
+   "inferred_within_tolerance": 0.9645
+  },
+  {
+   "game": "B18",
+   "config": "feed_45s",
+   "inferred_clock_s": 150,
+   "inferred_within_tolerance": 1.0
+  },
+  {
+   "game": "B19",
+   "config": "feed_45s",
+   "inferred_clock_s": 441,
+   "inferred_within_tolerance": 0.9773
+  },
+  {
+   "game": "B20",
+   "config": "feed_45s",
+   "inferred_clock_s": 437,
+   "inferred_within_tolerance": 0.9725
+  },
+  {
+   "game": "B21",
+   "config": "feed_45s",
+   "inferred_clock_s": 345,
+   "inferred_within_tolerance": 0.9739
+  },
+  {
+   "game": "B22",
+   "config": "feed_45s",
+   "inferred_clock_s": 361,
+   "inferred_within_tolerance": 0.9391
+  },
+  {
+   "game": "B23",
+   "config": "feed_45s",
+   "inferred_clock_s": 493,
+   "inferred_within_tolerance": 0.9858
+  },
+  {
+   "game": "B24",
+   "config": "feed_45s",
+   "inferred_clock_s": 356,
+   "inferred_within_tolerance": 0.9888
+  },
+  {
+   "game": "B25",
+   "config": "feed_45s",
+   "inferred_clock_s": 400,
+   "inferred_within_tolerance": 0.965
+  },
+  {
+   "game": "B26",
+   "config": "feed_45s",
+   "inferred_clock_s": 407,
+   "inferred_within_tolerance": 0.9656
+  },
+  {
+   "game": "B27",
+   "config": "feed_45s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9761
+  },
+  {
+   "game": "B28",
+   "config": "feed_45s",
+   "inferred_clock_s": 390,
+   "inferred_within_tolerance": 0.9718
+  },
+  {
+   "game": "B29",
+   "config": "feed_45s",
+   "inferred_clock_s": 488,
+   "inferred_within_tolerance": 0.9775
+  },
+  {
+   "game": "B30",
+   "config": "feed_45s",
+   "inferred_clock_s": 377,
+   "inferred_within_tolerance": 0.9602
+  },
+  {
+   "game": "B31",
+   "config": "feed_45s",
+   "inferred_clock_s": 354,
+   "inferred_within_tolerance": 0.9689
+  },
+  {
+   "game": "B32",
+   "config": "feed_45s",
+   "inferred_clock_s": 479,
+   "inferred_within_tolerance": 0.9687
+  },
+  {
+   "game": "B33",
+   "config": "feed_45s",
+   "inferred_clock_s": 511,
+   "inferred_within_tolerance": 0.9648
+  },
+  {
+   "game": "B01",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B02",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B03",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B04",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B05",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B06",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B07",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B08",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B09",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B10",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B11",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B12",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B13",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B14",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B15",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B16",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B17",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B18",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B19",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B20",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B21",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B22",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B23",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B24",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B25",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B26",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B27",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B28",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B29",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B30",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B31",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B32",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B33",
+   "config": "slot_0.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B01",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B02",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B03",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B04",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B05",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B06",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B07",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B08",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B09",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B10",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B11",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B12",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B13",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B14",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B15",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B16",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B17",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B18",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B19",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B20",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B21",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B22",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B23",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B24",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B25",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B26",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B27",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B28",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B29",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B30",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B31",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B32",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B33",
+   "config": "slot_0.8",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B01",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B02",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B03",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B04",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B05",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B06",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B07",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B08",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B09",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B10",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B11",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B12",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B13",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B14",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B15",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B16",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B17",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B18",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B19",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B20",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B21",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B22",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B23",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B24",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B25",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B26",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B27",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B28",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B29",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B30",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B31",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B32",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  },
+  {
+   "game": "B33",
+   "config": "slot_1.0",
+   "inferred_clock_s": 0,
+   "inferred_within_tolerance": null
+  }
+ ],
+ "run_seconds": 73.8
+}

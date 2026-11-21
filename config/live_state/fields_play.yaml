@@ -145,7 +145,7 @@ fields:
       confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
       evidence: 'assumed: provisional as possession_team. Confirmed = the next bug reading after the shot-clock reset (1 s steps plus frame_to_state_s), the value fields_scoreboard uses for a bug-confirmed status. measured: the arena shot clock resets at ring contact, not at the make (results/w3_intake/made_basket_lag.md). Replaced by the reset-to-bug lag at frame precision'
     dropout:
-      - {when: ring contact not seen (rim hidden or ball lost), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {make_confirm_window_s: 4}, on_return: SNAP_AND_LOG,
+      - {when: ring contact not seen (rim hidden or ball lost), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {make_confirm_window_s: 4}, step_at: [0], on_return: SNAP_AND_LOG,
          evidence: 'requirement: R-MB-07 - ring contact not visible is unknown, then inferred from the shot-clock reset (20 = ring contact and a new chance, no reset = airball, same chance). The window is the bug confirm window; measured for the score only (K02)'}
       - {when: not main camera but the shot clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
          evidence: 'measured: shot clock readable in 79 % of clock-readable seconds (measured_sensors.json). Every new chance resets the shot clock (Rule 2-11.6), so a clock that only counts down means no new chance'}
@@ -290,7 +290,7 @@ fields:
     dropout:
       - {when: ball not visible during a try, rule: CARRY, grade_path: [observed, inferred, carried], limits: {ball_lost_after_s: 1}, on_return: SNAP_AND_LOG,
          evidence: 'assumed: a ball in free flight follows its path for about 1 s (a try from the three-point line); after that the value is carried, not claimed. Replaced by the share of ball-lost stretches that hide the end of a try on MSU film'}
-      - {when: not main camera (cut to the shooter or the bench during the flight), rule: CARRY, grade_path: [observed, carried], limits: {max_dwell.try_in_flight: 4}, on_return: REACQUIRE,
+      - {when: not main camera (cut to the shooter or the bench during the flight), rule: CARRY, grade_path: [observed, carried], limits: {max_dwell.try_in_flight: 4}, step_at: [0], on_return: REACQUIRE,
          evidence: 'assumed: the result is then read from the bug (score change inside make_confirm_window_s = made; shot clock reset = ring contact). Replaced by the share of tries whose end is not on the main camera on MSU film'}
       - {when: carried in_flight or ring_contact older than the max dwell, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.try_in_flight: 4}, on_return: REACQUIRE, next_value: 'none (inferred)',
          evidence: 'assumed: no try stays in the air longer (core.yaml max_dwell.try_in_flight, physics). The value none is then certain; what ended the try (make, rebound, out of bounds) is a different field and stays unknown until seen'}
@@ -340,7 +340,7 @@ fields:
       confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
       evidence: 'assumed: the profile values (a few frames to tell a change from noise; cv_event_delay_p95_s). A state opened by a whistle is known at the audio delay. The S4c boundary is known defense_set_dwell_s after it is true. Feed delay is a planning value (OQ-LS-1). Replaced by the transition emit delays on gold-v1'
     dropout_extra:
-      - {when: off-screen defenders make the S4a / S4b / S4c split unsure, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, next_value: 'S4 (frontcourt control, split unknown)',
+      - {when: off-screen defenders make the S4a / S4b / S4c split unsure, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG, next_value: 'S4 (frontcourt control, split unknown)',
          evidence: 'decision: K15 - off-screen players are estimates with a 95 % region. requirement: R-TR-03 - a weak estimate makes the label uncertain. The coarse state S4 stays observed; only the letter is withheld'}
       - {when: carried state older than its max dwell, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
          evidence: 'rule: the bound of each state is in max_dwell_by_value (throw-in 7-6.6, free throw 8-5.1.a, backcourt 9-10, shot clock 2-11.1, timeouts 5-14.4); 30 s is the longest bound of a live state'}
@@ -448,7 +448,7 @@ fields:
          evidence: 'assumed: a broadcast leaves for a break only in a timeout or an intermission; the feed row gives team or media and the length. Replaced by the share of breaks in the 33 broadcasts that sit on a play-by-play timeout row'}
       - {when: charged timeout older than its length, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.timeout_75: 75}, on_return: REACQUIRE,
          evidence: 'rule: 5-14.4 - 30, 60 or 75 s; 5-14.6 - play resumes at the second horn. A broadcast that returns late only delays the observation. A media timeout has no bound in the book (5-14.10) and ends only on an observed restart'}
-      - {when: feed stale, rule: CARRY, grade_path: [observed, inferred], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION, evidence: 'definition: the kind stays an inference from video and audio; it is never confirmed without the row'}
+      - {when: feed stale, rule: CARRY, grade_path: [observed, inferred], limits: {feed_stale_after_s: 90}, step_at: [0], on_return: LATE_CORRECTION, evidence: 'definition: the kind stays an inference from video and audio; it is never confirmed without the row'}
     max_dwell_by_value: {timeout_team: timeout_75, intermission: halftime, injury: replace_player}
     conflict:
       - {between: [cv_events, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: audio, log_to: state_corrections,
@@ -490,7 +490,7 @@ fields:
       confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
       evidence: 'assumed: the arrow is computed by rule from two CV events (tip control, end of the throw-in), each at the CV event delay. Feed delay is a planning value (OQ-LS-1). Whether the B1G+ bug shows the arrow at all is not measured; replaced by a count on the 33 broadcasts'
     dropout:
-      - {when: held ball or its throw-in not seen (tight shot, replay, cut), rule: CARRY, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60}, on_return: LATE_CORRECTION,
+      - {when: 'held ball or its throw-in not seen (tight shot, replay, cut)', rule: CARRY, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60}, step_at: [0], on_return: LATE_CORRECTION,
          evidence: 'definition: the arrow changes only at the end of an alternating-possession throw-in, a few times per game, and each one has a held-ball row in the play-by-play. A healthy feed that shows no such row for feed_delay_p95_s after an unseen dead ball returns the value to observed'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7'}
       - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 6-3.2 - the arrow reverses only when a throw-in ends, which cannot happen in a break'}
@@ -532,7 +532,7 @@ fields:
       confirmed: {by: cv_tracking, p50_s: 0.5, p95_s: 1.0}
       evidence: 'definition: the registry value is known before tip and the half-time change follows by rule. assumed: tracking confirms it in the first frames of each half (each jumper stands in the half farther from his own basket, Rule 6-2; the second half starts with a throw-in toward the attacked basket). Replaced by the time to confirm on MSU film'
     dropout:
-      - {when: not main camera, replay or break inside a half, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 1-1.3 - baskets change at half time only, so the value cannot change while play is out of view'}
+      - {when: 'not main camera, replay or break inside a half', rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 1-1.3 - baskets change at half time only, so the value cannot change while play is out of view'}
       - {when: half time (the intermission is cut or shortened), rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, inferred], limits: {}, on_return: SNAP_AND_LOG, next_value: 'the other side (inferred at T21)',
          evidence: 'rule: 1-1.3. measured: one tournament replay kept 3.2 of 21.4 min of half time (config/state_machine.yaml T21), so the change is applied by rule and confirmed by the first play of the half'}
       - {when: registry row lacks the first-half basket, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: R-FD-14 - filled for every game before tracking; until then the value is unknown and is set by the first confirmed observation'}
@@ -573,7 +573,7 @@ fields:
     dropout:
       - {when: ball hidden in the hands of a tracked holder, rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {ball_lost_after_s: 1, status_carried_max_s: 5}, on_return: SNAP_AND_LOG,
          evidence: 'requirement: R-BL-01 - a hidden ball takes the position of the holder''s hands (ball_inferred). assumed: inferred for ball_lost_after_s, carried on the holder up to status_carried_max_s, then unknown. Replaced by the position error against age on gold-v1 ball labels'}
-      - {when: ball not visible and no holder (pass, try, loose ball), rule: CARRY, grade_path: [observed, inferred, unknown], limits: {ball_lost_after_s: 1}, on_return: SNAP_AND_LOG,
+      - {when: 'ball not visible and no holder (pass, try, loose ball)', rule: CARRY, grade_path: [observed, inferred, unknown], limits: {ball_lost_after_s: 1}, on_return: SNAP_AND_LOG,
          evidence: 'assumed: a free ball follows its path for about 1 s; after that nothing holds it in place and the position is unknown. Replaced by the same measurement'}
       - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {ball_lost_after_s: 1}, on_return: REACQUIRE,
          evidence: 'assumed: there is no off-screen model for the ball (K15 covers players); a carried ball position is wrong within a pass. Replaced by the ball displacement over tight shots on MSU film'}
@@ -702,9 +702,9 @@ fields:
     dropout:
       - {when: not main camera (close-up of the shooter), rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {make_confirm_window_s: 4, max_dwell.free_throw_attempt: 10}, on_return: REACQUIRE,
          evidence: 'rule: 8-5.1.a - an attempt lasts at most 10 s from the disposal. A made attempt is then inferred from +1 on the bug inside the confirm window; a miss is not visible on the bug and is known from the next state or the feed row. The make-to-bug lag is measured for field goals only (1.93 s median, n = 10); replaced by the same lag for free throws'}
-      - {when: award not confirmed (feed late), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {feed_delay_p95_s: 60}, on_return: LATE_CORRECTION,
+      - {when: award not confirmed (feed late), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {feed_delay_p95_s: 60}, step_at: [0], on_return: LATE_CORRECTION,
          evidence: 'assumed: n and the award type stay inferred from the rule table until the foul row arrives; a second attempt that does or does not follow settles a one-and-one earlier. Feed delay is a planning value (OQ-LS-1)'}
-      - {when: team fouls not up to date at the whistle, rule: VALID_IF, grade_path: [observed, inferred], limits: {foul_to_bug_window_s: 42}, on_return: LATE_CORRECTION,
+      - {when: team fouls not up to date at the whistle, rule: VALID_IF, grade_path: [observed, inferred], limits: {foul_to_bug_window_s: 42}, step_at: [0], on_return: LATE_CORRECTION,
          evidence: 'measured: the bug foul count follows the play-by-play foul second by 7 s at the median and 31 s at p95 (measured_sensors.json bug_fields). The bonus used for the prediction is therefore counted from our own whistles and feed rows, and the prediction is graded inferred while a foul of the last 42 s is unconfirmed'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7. Replays of the foul run between attempts; an attempt can be missed behind one and is then read from the bug or the feed'}
       - {when: break (timeout between attempts), rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 8-5 and 5-11 - k of n cannot change while the ball is dead in a timeout; the sub-state returns to ft_pending'}
@@ -798,7 +798,7 @@ fields:
       confirmed: {by: inputs, p50_s: 0.5, p95_s: 1.2}
       evidence: 'assumed: team_control (the frame is chosen by it) plus one 10 Hz sample and derived_compute_s. No second sensor exists; confirmed equals provisional. Replaced by the R-TR-03 test on gold-v1'
     dropout_extra:
-      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'decision: K15 and R-DT-07 - off-screen players count through their estimate and never as observed; in transition the trailing players are the ones off screen'}
       - {when: not main camera, rule: VALID_IF, grade_path: [observed, unknown], limits: {tracking_up_after_s: 0.5}, on_return: REACQUIRE, evidence: 'assumed: a transition lasts a few seconds and the numbers change every step; a carried label would be wrong. After the cut back the value returns once the mapping has been stable for tracking_up_after_s'}
     conflict: []
@@ -876,9 +876,9 @@ fields:
       confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
       evidence: 'assumed: time for identity to lock the entering player; p95 = sub_window_s. Confirmed = feed delay (planning values, OQ-LS-1). Replaced by the time to lock measured by the identity harness on MSU film and by the live capture'
     dropout_extra: &lineup_dropout_extra
-      - {when: break (timeout, media timeout, intermission), rule: FREEZE_ON_BREAK, grade_path: [confirmed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, on_return: REACQUIRE,
+      - {when: 'break (timeout, media timeout, intermission)', rule: FREEZE_ON_BREAK, grade_path: [confirmed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, step_at: [0], on_return: REACQUIRE,
          evidence: 'requirement: R-IV-03 - a break is a dead ball, so the five may change. The lineup is carried and marked unverified from the start of the break. It is verified again when (a) all five are identity-locked after the return, or (b) a healthy feed has shown the rows of that dead ball, or none, for feed_delay_p95_s plus sub_window_s after the restart. The two limits are planning values (OQ-LS-1)'}
-      - {when: a listed player is disqualified or must leave (fifth foul, injury, blood), rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.replace_player: 20}, on_return: REACQUIRE, next_value: 'his slot becomes unknown (four known ids and one unknown)',
+      - {when: 'a listed player is disqualified or must leave (fifth foul, injury, blood)', rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.replace_player: 20}, on_return: REACQUIRE, next_value: 'his slot becomes unknown (four known ids and one unknown)',
          evidence: 'rule: 4-12.5 and 3-6.3.a - he must be replaced within 20 s; a lineup that still lists him after the next restart cannot be true'}
       - {when: lineup unverified and identity must lock, rule: LOCK_OR_HOLD, grade_path: [carried, unknown], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'config: config/identity_pack.yaml - identity is chosen among the five the play-by-play puts on the floor (R-ID-03). While the lineup is unverified that set is widened to the dressed roster without the disqualified players, so the lineup is a prior, not a constraint, and an old lineup cannot force a wrong lock'}
@@ -953,11 +953,11 @@ fields:
       confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
       evidence: 'assumed: time from a chain entering the frame to its lock (the value the roster profile uses; p95 = sub_window_s). Confirmed = the lineup of the feed agrees (planning values, OQ-LS-1). Replaced by the time to lock from the identity harness on MSU film'
     dropout:
-      - {when: identity on HOLD (CONFIRMING, RECONFIRM, ALARM), rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {identity_hold_review_s: 10}, on_return: SNAP_AND_LOG,
+      - {when: 'identity on HOLD (CONFIRMING, RECONFIRM, ALARM)', rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {identity_hold_review_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - HOLD with candidates, never a provisional or probable label. A player in view without a label for identity_hold_review_s goes to the review queue. The position of the track stays observed'}
       - {when: chain ends in a crossing or pile-up (HELD), rule: CARRY, grade_path: [observed, carried, unknown], limits: {identity_link_window_s: 1.5}, on_return: SNAP_AND_LOG,
          evidence: 'config: config/identity_pack.yaml chains.params.link_window_s - the identity is reserved for the group for this long, then released; the child chain is HOLD until it is confirmed again'}
-      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'decision: K15 - the off-screen estimate belongs to the lineup member who is not in view; that is known by elimination only while the lineup is verified and the visible teammates are locked. On re-entry the chain starts at ENTER and must lock again'}
       - {when: not main camera, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'config: config/identity_pack.yaml state RELEASED - a camera cut frees every identity; no label is carried across a cut (zero-swap design)'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - labels read in a replay are stored raw and marked replay; they do not feed the live state'}
@@ -1008,7 +1008,7 @@ fields:
       confirmed: {by: inputs, p50_s: 20.1, p95_s: 60.1}
       evidence: 'assumed: the lineup timing plus derived_compute_s. Between substitutions the value moves with the game clock (0.2 s). Replaced with the lineup timing'
     dropout_extra:
-      - {when: lineup unverified, rule: VALID_IF, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, on_return: LATE_CORRECTION,
+      - {when: lineup unverified, rule: VALID_IF, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, step_at: [0], on_return: LATE_CORRECTION,
          evidence: 'definition: a stint is only as good as the lineup. When the rows arrive the stints of that dead ball are rewritten as a new state_version; as_of_known keeps what was shown'}
       - {when: game clock dead-reckoned, rule: VALID_IF, grade_path: [observed, inferred, carried], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
          evidence: 'measured: clock dead-reckoning limits (measured_sensors.json clock_carry_on_withheld_readings); beyond 30 s the value keeps the guaranteed interval of the clock and stays carried - a stint of minutes is not unknown because of a 30 s gap'}
@@ -1045,9 +1045,9 @@ fields:
       confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
       evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s; measured per run (K23)'
     dropout:
-      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'decision: K15 and R-DT-07 - a 10 Hz estimate with a 95 % region and an is_imputed flag. The point estimate is kept for offscreen_imputed_max_s (assumed; replaced by the age at which the region stops covering 95 % on MSU film). After offscreen_weak_after_s only the region is kept, marked weak, and the point is unknown'}
-      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE, evidence: 'assumed: all ten are then off screen; same limit as one player. Replaced by the error of the estimate against age over tight shots on MSU film'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: REACQUIRE, evidence: 'assumed: all ten are then off screen; same limit as one player. Replaced by the error of the estimate against age over tight shots on MSU film'}
       - {when: court mapping below its gate, rule: CARRY, grade_path: [observed, unknown], limits: {mapping_min_conf: 0.8, tracking_up_after_s: 0.5}, on_return: REACQUIRE, evidence: 'requirement: R-CG-03 - with fewer than four keypoints the mapping is interpolated and flagged; below mapping_min_conf court positions are not written'}
       - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG, evidence: 'config: config/identity_pack.yaml (OD-10) - the position of the track is observed and counts for its team; it is attached to no player id until the lock'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - positions in a replay are past positions'}
@@ -1091,10 +1091,10 @@ fields:
       confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
       evidence: 'assumed: frame_to_state_s for a sampled frame; between samples the age is at most one sampling step (1 s, or 0.1 s near a whistle). Measured per run (K23)'
     dropout:
-      - {when: official off screen, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: official off screen, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'requirement: R-IV-02 - an official not seen is carried as not_seen and still counted. assumed: no motion model exists for officials, so the last position is carried, not estimated; same limit as a player. Replaced by the displacement of officials against time off screen on MSU film'}
       - {when: whistle not heard (audio masked or away), rule: CARRY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'decision: K24 - without the whistle cue the fast window does not open; positions stay at the base rate. assumed: whistle recall not measured (OQ-LS-3)'}
-      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE, evidence: 'assumed: as for an official off screen. A close-up of an official giving a signal is read for the signal pose only, not for a court position'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: REACQUIRE, evidence: 'assumed: as for an official off screen. A close-up of an official giving a signal is read for the signal pose only, not for a court position'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7'}
       - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: nothing of the court is seen in a break'}
     conflict: []
@@ -1143,7 +1143,7 @@ fields:
       - {when: not main camera, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
          evidence: 'assumed: the candidates are carried for status_carried_max_s; actions missed behind a tight shot break the sequence, so on return the match restarts from the compositional name. Replaced by the share of sets with a cut inside them on MSU film'}
       - {when: chance over or carried set older than one shot-clock period, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE, next_value: none, evidence: 'rule: 2-11.1 - a chance cannot outlast the shot clock, so no set can'}
-      - {when: attackers off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 - an estimate may fill one spacer; a screener or cutter that is off screen makes the match unknown'}
+      - {when: attackers off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 - an estimate may fill one spacer; a screener or cutter that is off screen makes the match unknown'}
     max_dwell: shot_clock_period
     conflict: []
     invariants: []
@@ -1268,7 +1268,7 @@ fields:
       evidence: 'assumed: one full second of positions plus derived_compute_s. No second sensor exists; confirmed equals provisional. Replaced by the R-DF-01 test on labelled seconds'
     dropout_extra:
       - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG, evidence: 'config: config/identity_pack.yaml (OD-10) - the pairing of tracks is observed; who the players are waits for the lock'}
-      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 and R-DT-07 - pairs with an estimated player carry the imputed mark and never feed a stat'}
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 and R-DT-07 - pairs with an estimated player carry the imputed mark and never feed a stat'}
       - {when: not main camera, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE, evidence: 'assumed: in a man defense the pairs outlast a short cut; carried for status_carried_max_s, then unknown. Replaced by the rate of switches per second on MSU film'}
     conflict: []
     invariants: [R-IV-01]

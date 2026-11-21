@@ -57,10 +57,13 @@ fields:
     requirements: [R-SR-13, R-SR-15, R-MD-35, R-SY-20]
     profile: fixed
     sources:
-      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run. The run record names the pass; registry stands in for it because core.yaml has no pipeline sensor'}
+      - {sensor: pipeline, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run. The run record names the pass'}
     update:
       changed_by: [T00]
       event_instant: 'Fixed when the run starts and writes its T00. A run never changes its pass.'
+    timing:
+      provisional: {by: pipeline, p50_s: 0, p95_s: 0}
+      confirmed: {by: pipeline, p50_s: 0, p95_s: 0}
     dropout_extra:
       - {when: final play-by-play file absent after the game, rule: CARRY, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'measured: every one of the 33 recorded broadcasts had a play-by-play file, but right after a game it can be missing for a while (core.yaml sensors.pbp_final). The blind pass stands alone until the file is pulled; the anchored pass is then written as its own run'}
@@ -91,10 +94,13 @@ fields:
     requirements: [R-MD-21, R-MD-24, R-SY-15, R-SY-20]
     profile: fixed
     sources:
-      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run and per correction. Written by the run itself; registry stands in because core.yaml has no pipeline sensor'}
+      - {sensor: pipeline, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run and per correction. Written by the run itself'}
     update:
       changed_by: [T00]
       event_instant: 'A version is born with its T00 (exactly one per game, pass and version). It is sealed at the final horn of a live run, at the end of a post run, and at the instant a correction supersedes a transition. A version is never edited.'
+    timing:
+      provisional: {by: pipeline, p50_s: 0, p95_s: 0}
+      confirmed: {by: pipeline, p50_s: 0, p95_s: 0}
     dropout_extra:
       - {when: late or corrected source row, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'requirement: R-SY-15 and R-SY-20 - a correction writes new transitions with supersedes_id under a new version; only segments inside the changed window are rebuilt; the old version stays readable (TRN-05)'}
@@ -123,13 +129,13 @@ fields:
     requirements: [R-MD-01, R-VI-01, R-VI-02, R-VI-17, R-VI-18]
     profile: observation
     sources:
-      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame (33.37 ms at 29.97 fps). The index comes from the decoder; cv_tracking is named because it carries every frame'}
+      - {sensor: stream, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame (33.37 ms at 29.97 fps). The index comes from the decoder'}
     update:
       changed_by: per_frame
       event_instant: 'The frame as decoded. frame_index counts decoded frames of the file, repeated frames included.'
     timing:
-      provisional: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
-      confirmed: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      provisional: {by: stream, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: stream, p50_s: 0.0, p95_s: 0.0}
       evidence: 'definition: the key is part of the frame; it is known when the frame is'
     dropout:
       - &d_stream {when: stream lost or decoder gap, rule: CARRY, grade_path: [observed, unknown], limits: {stream_lost_after_s: 2.0}, on_return: REACQUIRE, evidence: 'assumed: without frames nothing on screen can be told; level D5_no_video after stream_lost_after_s. Replaced by the frame-arrival gaps logged at the live capture (OQ-LS-2)'}
@@ -686,7 +692,7 @@ fields:
       evidence: 'assumed: shot_clock_status (0.2 s by a start or stop cue, 1.1 s on the bug) plus derived_compute_s. Measured per run (K23)'
     dropout:
       - *d_inputs
-      - {when: shot slot unreadable while the game clock is read, rule: VALID_IF, grade_path: [observed, inferred], limits: {max_dwell.shot_clock_period: 30}, on_return: SNAP_AND_LOG,
+      - {when: shot slot unreadable while the game clock is read, rule: VALID_IF, grade_path: [observed, inferred], limits: {max_dwell.shot_clock_period: 30}, step_at: [0], on_return: SNAP_AND_LOG,
          evidence: 'rule: 2-11.2 and 2-11.8 as mirrored in config/invariants.yaml shot_clock_reset_table (game clock below a shot-clock period: off; put back on at 20 s after a 2-11.6.d reset). The game clock and a seen change of control decide the flag without the slot'}
       - {when: scorebug hidden, rule: VALID_IF, grade_path: [observed, inferred, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
          evidence: 'measured: dead reckoning of the game clock holds for about 3 s (93.8 % within 1 s); past clock_carried_max_s only the guaranteed interval is left, and the flag is unknown unless that interval lies wholly on one side of 30 s'}
@@ -739,7 +745,7 @@ fields:
       - *d_inputs
       - {when: not main camera, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {status_carried_max_s: 5, max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
          evidence: 'assumed: off the main camera the video level stops at once; the state level goes on from clock and score for as long as the possession is carried (status_carried_max_s), and never beyond a shot-clock period (Rule 2-11.1). Replaced by the calibration of the state-level value on unseen stretches'}
-      - {when: players off screen, rule: VALID_IF, grade_path: [observed, inferred], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, inferred], limits: {offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'decision: K15 - an off-screen estimate enters a model only through its is_imputed flag; the video level uses it for offscreen_imputed_max_s, then drops to the state level'}
       - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - player effects are used only for locked identities; a held player counts as the lineup average'}
@@ -972,9 +978,9 @@ fields:
       confirmed: {by: cv_tracking, p50_s: 1.0, p95_s: 1.3}
       evidence: 'assumed: the per-frame parts are known with the frame (frame_to_state_s); the per-second value is closed at the end of its second, plus frame_to_state_p95_s. Measured per run (K23)'
     dropout:
-      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {track_gap_review_s: 1.0, offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {track_gap_review_s: 1.0, offscreen_imputed_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'requirement: R-DT-11 - a gap over 1 s gets an imputation row and a review-queue entry; K15 keeps the off-screen estimate at 10 Hz with its region for offscreen_imputed_max_s'}
-      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE,
+      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 10}, on_return: REACQUIRE,
          evidence: 'assumed: all ten are off screen at once; same limit as one player. Replaced by the measured error of the K15 estimate against age on MSU film'}
       - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - the track is followed but carries no name; quality of position is unchanged, identity state is HOLD'}
@@ -1088,7 +1094,7 @@ fields:
     profile: meta
     sources:
       - {sensor: registry, role: value, modes: [live, post_blind, post_anchored], resolution: 'per video source and session: the delay measured at an anchor'}
-      - {sensor: cv_tracking, role: timing, modes: [live], resolution: 'per frame: our receive time and the frame time stamp; cv_tracking stands in for the decoder'}
+      - {sensor: stream, role: timing, modes: [live], resolution: 'per frame: our receive time and the frame time stamp'}
     update:
       changed_by: continuous
       event_instant: 'At an anchor a (an instant whose arena UTC is known, such as the horn of the opening tip): delay(a) = receive UTC of its frame - arena UTC. At any later frame t: delay(t) = delay(a) + [receive UTC(t) - receive UTC(a)] - [video time(t) - video time(a)]. Buffering after the anchor is thus counted from our own two clocks.'
@@ -1097,7 +1103,7 @@ fields:
       confirmed: {by: registry, p50_s: 0.0, p95_s: 0.0}
       evidence: 'definition: after the anchor the value follows from two clocks we hold, with no latency. Before the first anchor of a session it is the modelled value of the source'
     dropout:
-      - {when: stream delay not measured, rule: CARRY, grade_path: [inferred, unknown], limits: {stream_delay_planning_s: 30, stream_delay_planning_lo_s: 10, stream_delay_planning_hi_s: 60}, on_return: SNAP_AND_LOG,
+      - {when: stream delay not measured, rule: CARRY, grade_path: [inferred, unknown], limits: {stream_delay_planning_s: 30, stream_delay_planning_lo_s: 10, stream_delay_planning_hi_s: 60}, step_at: [0], on_return: SNAP_AND_LOG,
          evidence: 'assumed: no measurement of B1G+ exists (OQ-LS-2, allowed by Aldemir on 11 Nov 2026, same live game as OQ-LS-1). Planning value 30 s inside 10-60 s for a segmented internet stream; it is used for sizing only. With it the UTC of every live value is unknown for market purposes and no "could we have acted" claim is made'}
       - {when: no anchor yet in this session, rule: CARRY, grade_path: [inferred], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'definition: once a source has been measured, a new session starts from its measured median, graded inferred with the measured spread as error, until its own anchor'}
@@ -1137,6 +1143,8 @@ fields:
       - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: camera_shot_type, replay_flag, court_mapping_conf'}
       - {sensor: scorebug_ocr, role: value, modes: [live, post_blind, post_anchored], resolution: 'per reading: scorebug_visible'}
       - {sensor: pbp_feed, role: value, modes: [live], resolution: 'feed_heartbeat, for the feed_stale flag only'}
+      - {sensor: stream, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the frame heartbeat (level D5_no_video)'}
+    computed_from: [camera_shot_type, replay_flag, scorebug_visible, court_mapping_conf, feed_heartbeat, video_frame]
     update:
       changed_by: [T25]
       event_instant: 'The frame at which the meta field that decides the level changed. First match wins: (1) no frame for stream_lost_after_s -> D5; (2) camera_shot_type commercial or studio, or a graphic that hides the whole court -> D4; (3) replay_flag yes, at any grade -> D3; (4) close_up, crowd, bench, reverse angle, shot type unknown, or main_wide with the court mapping below its gate for longer than tracking_up_after_s -> D2; (5) main_wide with scorebug_visible no -> D1; (6) otherwise D0. feed_stale is yes while feed_heartbeat is stale.'
@@ -1154,16 +1162,14 @@ fields:
     conflict: []
     invariants: [TRN-04]
     consumers: [every_dropout_rule, live_panel, studio, latency_report, review_queue]
-    params:
-      stream_lost_after_s: {value: 2.0, unit: s, why: 'no decoded frame for this long means the stream is lost (level D5_no_video)', evidence: 'assumed: longer than a stall inside normal play-out, short against every carry limit of this pack. Replaced by the frame-arrival gaps logged at the live capture (OQ-LS-2)'}
     notes: >-
       Added by this pack: the one value every dropout rule reads. It is computed from the other meta fields but
-      carries the meta profile (the index), so it has no derived_from list; its inputs are camera_shot_type,
-      replay_flag, scorebug_visible, court_mapping_conf, feed_heartbeat and the frame heartbeat. The level follows
+      carries the meta profile (the index), so its inputs are listed under computed_from (camera_shot_type,
+      replay_flag, scorebug_visible, court_mapping_conf, feed_heartbeat and the frame heartbeat of video_frame). The level follows
       what is on screen, not the period phase: an intermission is D4 because the broadcast shows a studio, not
-      because the half ended. Two gaps against the core (see the report): T25, the only transition allowed to
-      change the level, lists camera cuts, replays, graphics and the bug, but neither a lost stream nor a stale
-      feed; and no sensor of core.yaml stands for the decoder. Where the time went in the two sampled tournament
+      because the half ended. T25 of the state machine lists camera cuts, replays, graphics and the bug only; a lost stream (D5) and the
+      feed_stale flag are set by the stream and feed heartbeats outside the transitions (core.yaml
+      degradation_levels.rule). Where the time went in the two sampled tournament
       broadcasts: main wide with the bug 93 of 177 frames (53 %), main wide without 2, off main 58, replay 17,
       graphic or ad 7 (measured: results/w3_intake/scorebug_summary.md).
 
@@ -1361,7 +1367,7 @@ fields:
       event_instant: 'Computed from the schedule as of the day before the game and frozen into the pre-game card.'
     dropout_extra:
       - *d_late
-      - {when: travel mode not published, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
+      - {when: travel mode not published, rule: RULE_DEFAULT, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'requirement: R-CX-05 - an unknown mode is set by distance (bus under 400 km, flight above; proposal) and flagged; it stays inferred until a source states it'}
       - {when: schedule changed after the card was frozen, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'definition: a postponed or moved game changes rest and travel; the frozen card keeps what was known, a new card is made for the new date'}
@@ -1498,7 +1504,7 @@ fields:
       changed_by: [T00]
       event_instant: 'Set before tip; T00 issues the timeout counts of the format. Confirmed at the first media timeout (first dead ball at or under the 16:00 mark of the first half).'
     dropout_extra:
-      - {when: format not in the registry, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
+      - {when: format not in the registry, rule: RULE_DEFAULT, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'assumed: a televised or streamed D-I game is taken as at_least_3_media (Rule 5-14.10) at grade inferred until the first media timeout or the opening bug count confirms it. Replaced by the count of formats over the recorded MSU games'}
       - {when: first media mark passes with no media stop, rule: QUARANTINE, grade_path: [inferred, unknown], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'rule: 5-14.10 as mirrored in config/invariants.yaml media_marks_s (960, 720, 480, 240 s) and media_pre_mark_window_s (30 s) - a media-format game stops at the first dead ball after each mark, unless a team timeout in the 30 s before the mark took its place. Neither of the two after a dead ball under the first mark contradicts the format: the counts issued by T00 are quarantined until the feed or the bug settles it (R-SR-04: the format is read from the play-by-play)'}

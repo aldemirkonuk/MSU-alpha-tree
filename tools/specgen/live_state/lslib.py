@@ -20,6 +20,8 @@ What the lint checks (validate):
           for; default: all of them); the R-SR rows of the inventory are cited.
   whole   (require_all) every index entry has a record, every Shall row R-SR-01..20 is cited, and - once the reference
           code exists - every param is read by it or listed under production_only_params.
+  rules   a dropout rule has only known keys and its steps can be timed (conventions.grade_path_timing, step_at);
+          max_dwell_by_value and computed_from name existing things.
 """
 from __future__ import annotations
 
@@ -56,6 +58,8 @@ SHALL_SR = [f"R-SR-{n:02d}" for n in range(1, 21) if n not in SHOULD_SR]
 GROUP_CODE = {"keys": "KEY", "time": "TIME", "score": "SCORE", "counts": "COUNT", "possession_ball": "POSS",
               "personnel": "PERS", "tactics": "TAC", "situation": "SIT", "observability": "OBS", "fixed": "FIX"}
 PARAM_KEYS = ("value", "unit", "why", "evidence")
+DROPOUT_KEYS = {"when", "rule", "grade_path", "limits", "on_return", "evidence", "next_value", "step_at", "note"}
+ON_RETURN = "on_return"  # a step that happens when the condition of the rule ends
 LIVE_DOC_INVARIANTS = {f"R-IV-{n:02d}" for n in range(17, 50)}  # in the live requirements; config/invariants.yaml names them new-IV-NN
 
 
@@ -251,12 +255,15 @@ def evidence_ok(text, core):
 
 
 def unread_params(core, fields=None, code_files=None):
-    """Params that no reference-code file reads as P["name"], prm["name"] or P("name"). None while fuse.py is absent."""
+    """Params that no reference-code file reads as P["name"], prm["name"] or P("name"), and that the generic machine
+    of fuse.py does not read from a record either (machine_params). None while fuse.py is absent."""
     files = [CODE_DIR / f for f in (code_files or REFERENCE_CODE)]
     if code_files is None and not (CODE_DIR / "fuse.py").exists():
         return None
     code = "\n".join(p.read_text() for p in files if p.exists())
     used = set(re.findall(r"""(?:prm|P)[\[(]\s*["']([A-Za-z0-9_.]+)["']""", code))
+    if "lslib.step_ages(" in code and "def dwell(" in code:   # the generic machine reads rule limits and dwell bounds by name
+        used |= machine_params(core, fields)
     return sorted(set(params(core, fields)) - used)
 
 
@@ -264,7 +271,74 @@ def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
+def path_steps(grade_path):
+    """(start grades, later grades). confirmed, observed at the head of a path is one start, not a step."""
+    gp = list(grade_path or [])
+    n = 2 if gp[:2] == ["confirmed", "observed"] else 1
+    return gp[:n], gp[n:]
+
+
+def step_ages(d, allp):
+    """Ages (s since the condition started) at which a dropout rule moves one grade down; ON_RETURN for a step taken
+    when the condition ends. core.yaml conventions.grade_path_timing. Raises ValueError when the rule cannot be read."""
+    _, later = path_steps(d.get("grade_path"))
+    limits = d.get("limits") or {}
+    if "step_at" in d:
+        out = []
+        for s in d["step_at"]:
+            if s == ON_RETURN or s == 0:
+                out.append(s)
+            elif s in limits and s in allp and allp[s].get("unit") == "s":
+                out.append(float(allp[s]["value"]))
+            else:
+                raise ValueError(f"step_at entry {s!r} must be 0, {ON_RETURN} or a limit of the rule whose unit is s")
+        if len(out) != len(later):
+            raise ValueError(f"step_at has {len(out)} entries for {len(later)} steps")
+    else:
+        times = [float(allp[k]["value"]) for k in limits if k in allp and allp[k].get("unit") == "s"]
+        if not later:
+            return []
+        if len(times) > len(later):
+            raise ValueError(f"{len(times)} time limits for {len(later)} steps: write step_at")
+        out = [0] * (len(later) - len(times)) + times
+    nums = [x for x in out if x != ON_RETURN]
+    if nums != sorted(nums):
+        raise ValueError(f"step ages {out} are not in rising order")
+    return out
+
+
+def step_params(d, allp):
+    """Names of the limits of a dropout rule that are step ages (what fuse.GradeTrack reads through step_ages)."""
+    limits = d.get("limits") or {}
+    if "step_at" in d:
+        return [s for s in d["step_at"] if s in limits]
+    _, later = path_steps(d.get("grade_path"))
+    return [k for k in limits if k in allp and allp[k].get("unit") == "s"] if later else []
+
+
+def machine_params(core, fields):
+    """Params the generic machine of fuse.py reads by name from the records, not by a literal in the code: the step
+    ages of every dropout rule (GradeTrack) and the max-dwell bounds a field names (Spec.dwell)."""
+    allp, out = params(core, fields), set()
+    for rec in resolve(core, fields or {}).values():
+        for d in rec.get("dropout") or []:
+            out.update(step_params(d, allp))
+        for entry in [rec.get("max_dwell")] + list((rec.get("max_dwell_by_value") or {}).values()):
+            if isinstance(entry, str):
+                out.add(f"max_dwell.{entry}")
+    for prof in core["profiles"].values():
+        for d in prof.get("dropout") or []:
+            out.update(step_params(d, allp))
+    return out & set(allp)
+
+
 def _check_dropout(where, d, core, allp, rank, problems):
+    for k in set(d) - DROPOUT_KEYS:
+        problems.append(f"{where}: unknown key {k!r} (a `when` text with a comma must be quoted)")
+    try:
+        step_ages(d, allp)
+    except ValueError as e:
+        problems.append(f"{where}: {e}")
     ladder, rules = core["grades"]["ladder"], set(core["rules"])
     for k in ("when", "rule", "grade_path", "on_return", "evidence"):
         if d.get(k) in (None, "", []):
@@ -364,6 +438,8 @@ def _validate_core(core, allp, problems):
     for k, e in core["max_dwell"].items():
         if is_param(e) and not e.get("rule"):
             problems.append(f"max_dwell {k}: missing rule (a rule number or 'physics')")
+        if is_param(e) and e.get("counts_in") not in ("real", "game_clock"):
+            problems.append(f"max_dwell {k}: counts_in must be real or game_clock (the time the bound runs in)")
 
     # sensors: delay model and health fields
     for sname, s in core["sensors"].items():
@@ -422,9 +498,6 @@ def _validate_core(core, allp, problems):
     for s in core["reconciliation"]["value_authority"] + core["reconciliation"]["timing_authority"]:
         if s not in sensors and s != "arena_scoreboard":
             problems.append(f"reconciliation: authority names unknown sensor {s!r}")
-    for name in core.get("production_only_params") or []:
-        if name not in allp:
-            problems.append(f"production_only_params: {name!r} is not a param of the pack")
 
     # index
     seen_ids, dim_owner = {}, {}
@@ -655,6 +728,14 @@ def validate(core=None, fields=None, require_all=True):
                 problems.append(f"{key}: inline max_dwell needs value, unit, rule, why, evidence")
             elif not evidence_ok(md["evidence"], core):
                 problems.append(f"{key}: max_dwell evidence must start with a tag of conventions.evidence_tags")
+        for val, entry in (rec.get("max_dwell_by_value") or {}).items():
+            if entry not in core["max_dwell"]:
+                problems.append(f"{key}: max_dwell_by_value {val} -> {entry!r} is not in core.yaml max_dwell")
+        for inp in rec.get("computed_from") or []:
+            if inp not in index:
+                problems.append(f"{key}: computed_from {inp!r} is not a field")
+        if rec.get("computed_from") and rec.get("profile") != "meta":
+            problems.append(f"{key}: computed_from is for meta fields (a derived field lists derived_from)")
         # derived
         if rec.get("profile") == "derived":
             for k in ("derived_from", "recompute_on", "valid_if"):
@@ -707,6 +788,9 @@ def validate(core=None, fields=None, require_all=True):
         for rid in SHALL_SR:
             if rid not in cited:
                 problems.append(f"requirement {rid} (Shall) is cited by no field")
+        for name in core.get("production_only_params") or []:   # needs every fields file: field params are listed too
+            if name not in allp:
+                problems.append(f"production_only_params: {name!r} is not a param of the pack")
         unread = unread_params(core, fields)
         if unread is not None:
             listed = set(core.get("production_only_params") or [])

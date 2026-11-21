@@ -91,7 +91,7 @@ fields:
       - {when: scorebug hidden, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'rule: 5-7 - a period cannot end while time is left. While the lower bound of the game-clock interval is above 0 the phase period is held as inferred at any age; the horn is a second change detector while audio is present. Once the bound reaches 0 with no horn heard the value is carried until the bug returns.'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7 - a buzzer-beater replay shows the horn again; the phase changes once, at the live horn'}
-      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried, unknown], limits: {max_dwell.pre_overtime: 60, max_dwell.halftime: 900}, on_return: REACQUIRE,
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried, unknown], limits: {max_dwell.pre_overtime: 60, max_dwell.halftime: 900}, step_at: [0, max_dwell.halftime], on_return: REACQUIRE,
          evidence: 'rule: 5-6.1 - the break after a period end is the intermission itself: 60 s before an extra period, 900 s at half time (1,200 s in the NCAA tournament, max_dwell.halftime_tournament). Carried up to that bound in real time; past it the next period may have started unseen and the value is unknown until the bug or play is seen. A recording with shortened breaks has no real time across the cut: the bound is not applied and the return is a full re-acquire.'}
       - {when: feed stale, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: LATE_CORRECTION, evidence: 'definition: the clock, the horn and the labels carry the phase without the feed; only the scorebook confirmation of final arrives late'}
     max_dwell: halftime
@@ -140,7 +140,7 @@ fields:
       - {when: scorebug hidden, rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
          evidence: 'measured: on withheld readings of 33 broadcasts the last-status estimate is within 1 s in 96.6 % after 2 s, 93.8 % after 3 s, 88.2 % after 5 s, 76.4 % after 10 s, 59.2 % after 20 s, 44.8 % after 30 s. In real hidden stretches the clock was stopped in 72-80 % of those lasting 6-20 s, so the same rule is within 1 s in 86-87 % of them.'}
       - {when: scorebug hidden and a stop or start cue arrives, rule: CUE_RECKON, grade_path: [inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
-         evidence: 'assumed: an unseen stop or start is the main error of blind reckoning (after 2 s without a reading the estimate is off by more than 1 s in 2.6 % of cases when the clock was running and in 4.6 % when it was stopped: measured_sensors.json clock_carry_on_withheld_readings). The gain of cues is swept in the replay harness (ACC-LS-H4) and measured once audio is (OQ-LS-3)'}
+         evidence: 'assumed: an unseen stop or start is the main error of blind reckoning (after 2 s without a reading the estimate is off by more than 1 s in 2.6 % of cases when the clock was running and in 4.6 % when it was stopped: measured_sensors.json clock_carry_on_withheld_readings). The gain of cues is swept in the replay harness (ACC-LS-H4): with stand-in stop, start and reset cues at recall 0.8 the estimate is within 1 s in 94.7 % at 4 s, 92.3 % at 6-10 s and 88.2 % at 11-20 s after the last reading, against 90.6 %, 81.7 % and 70.0 % with no cue (results/live_state_test/harness.json). A cue re-anchors the estimate and restarts the carried limit; the inferred limit stays tied to the last reading (a claim restarted at the cue fell below the promise in the replay). Measured once audio is (OQ-LS-3)'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7 - a clock visible inside a replay is a past clock: stored raw, never used. The live clock is stopped during most replays (dead ball); when a replay runs over live play the held value keeps its interval'}
       - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 5-11.3 - the clock is stopped when a timeout is granted (media or charged); the pre-break value is exact until play resumes'}
       - {when: period end reached while hidden, rule: MAX_DWELL, grade_path: [inferred, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'definition: a dead-reckoned clock is floored at 0; at 0 without an observed horn (T20) the value is unknown, never a negative or a new period'}
@@ -193,7 +193,7 @@ fields:
       - {when: scorebug hidden, rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
          evidence: 'measured: keeping the last status is what the dead-reckoned clock does, and on withheld readings it is within 1 s in 96.6 % after 2 s, 93.8 % after 3 s and 88.2 % after 5 s (measured_sensors.json clock_carry_on_withheld_readings). In real hidden stretches the clock was stopped in 27 % of those lasting 1-2 s, 46 % of 3-5 s, 72 % of 6-10 s and 80 % of 11-20 s: a hidden bug is itself a sign of a dead ball, but not one strong enough to flip the flag without a cue.'}
       - {when: scorebug hidden and a stop or start cue arrives, rule: CUE_RECKON, grade_path: [inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
-         evidence: 'assumed: a whistle sets stopped and a seen touch or tap sets running at the cue frame; the inferred limit restarts there. Whistle recall is a planning value (whistle_recall). Replaced by the measured recall and timing of OQ-LS-3 and by the cue sweep of the replay harness (ACC-LS-H4).'}
+         evidence: 'assumed: a whistle sets stopped and a seen touch or tap sets running at the cue frame; for this flag the inferred limit restarts there (the cue observes the flag; with stand-in cues the inferred flag was right in 91.6 % with no cue and 96.0 % with cues at recall 0.8 of hidden seconds in the replay harness). Whistle recall is a planning value (whistle_recall). Replaced by the measured recall and timing of OQ-LS-3 and by the cue sweep of the replay harness (ACC-LS-H4).'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7 - a clock ticking inside a replay is a past clock. Most replays run during a dead ball, so the held value is usually stopped.'}
       - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 5-11.3 - the clock is stopped when a timeout is granted and stays stopped until the next legal start; on return the flag is re-read from two readings'}
       - {when: 'running held until the clock interval reaches 0', rule: MAX_DWELL, grade_path: [inferred, carried, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 5-7.3 - the clock cannot run past 0.0. When the lower bound of the game-clock interval reaches 0 a held running flag ends: the value is unknown until the horn or the bug is seen.'}
@@ -244,14 +244,14 @@ fields:
       confirmed: {by: scorebug_ocr, p50_s: 0.1, p95_s: 0.3}
       evidence: 'assumed: one read of the frame (frame_to_state_s, frame_to_state_p95_s). How late the bug shows a reset is not measured on the broadcasts and is counted as 0; R-SY-14 asks it per game and field. The arena shot clock, where the camera shows it, reset between 0.97 s before and 0.47 s after the ball was through the net on 9 makes, at ring contact (measured: results/w3_intake/made_basket_lag.md). Measured per run (K23).'
     dropout:
-      - {when: 'scorebug hidden, CV watching the ball', rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
+      - {when: 'scorebug hidden, CV watching the ball', rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {shot_clock_inferred_max_s: 1, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'measured: side run of 11 Nov 2026 on withheld shot-clock readings of the same 33 broadcasts (numbers in the notes below; not yet in measured_sensors.json). With no reset inside the window the last-status estimate is within 1 s in 94.9 % after 2 s, 91.2 % after 3 s and 85.0 % after 5 s, so 3 s meets clock_inferred_promise only while a reset would be seen. That CV sees every reset is itself assumed until R-IV-07 is checked on gold-v1.'}
-      - {when: scorebug hidden and a reset cause or a stop or start cue is seen, rule: CUE_RECKON, grade_path: [inferred, carried, unknown], limits: {clock_inferred_max_s: 3, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
+      - {when: scorebug hidden and a reset cause or a stop or start cue is seen, rule: CUE_RECKON, grade_path: [inferred, carried, unknown], limits: {shot_clock_inferred_max_s: 1, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'assumed: a seen cause sets the value the reset table gives (Rule 2-11.6) at the cause frame and restarts the inferred limit; a whistle stops it. CV event timing is not measured on MSU film. Replaced by the reset-time error against the bug on gold-v1 (R-IV-07) and the cue sweep of the replay harness (ACC-LS-H4).'}
-      - {when: 'scorebug hidden, nothing watching for a reset (tight shot, bench, ball lost)', rule: CARRY, grade_path: [observed, carried, unknown], limits: {shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
-         evidence: 'measured: same side run - blind, the estimate is within 1 s in 88.1 % after 2 s, 81.5 % after 3 s, 70.2 % after 5 s and 49.3 % after 10 s; a reset fell inside the window in 7.3 %, 10.8 %, 17.7 % and 30.8 %. The promise of 90 % is not met even at 2 s, so a blind shot clock is never graded inferred.'}
-      - {when: shot slot unreadable while the game clock is read, rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {shot_slot_follow_max_s: 5, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
-         evidence: 'measured: same side run - taking off what the game clock took off, with no reset inside the window, is within 1 s in 92.8 % after 2 s, 92.0 % after 3 s, 90.4 % after 5 s and 83.3 % after 10 s. Without a watch for resets it is 86.1 %, 82.2 % and 74.7 %: then the rule above (carried at once) applies.'}
+      - {when: 'scorebug hidden, nothing watching for a reset (tight shot, bench, ball lost)', rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {shot_clock_inferred_max_s: 1, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: replay harness (run cues_0.0_0.0_0.0) - with the whole bug hidden and no cue the reckoned shot clock is within 1 s in 96.0 % after 1 s, 81.5 % after 2 s and 76.6 % after 3 s. One second is a claim even with nothing watching for a reset; from the second second on the value is carried. The side run of 11 Nov gave 88.1 % after 2 s and 49.3 % after 10 s.'}
+      - {when: shot slot unreadable while the game clock is read, rule: FOLLOW_FIELD, grade_path: [observed, inferred, carried, unknown], limits: {shot_clock_inferred_max_s: 1, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: replay harness, 33 broadcasts (results/live_state_test/harness.json, runs slot_*) - following the game clock is within 1 s in 96.0 % of hidden slot seconds after 1 s with no reset cue at all, and in 84.9 % after 2 s and 81.4 % after 3 s; with every reset the bug shows delivered as a cue 99.3 %, 91.5 % and 89.5 %. The side run of 11 Nov gave 92.8 % after 2 s and 90.4 % after 5 s for windows with no reset inside; the replay counts every window. Beyond 1 s it reaches the promise only at 2 s and only if every reset the bug shows is delivered as a cue (an assumption), so one limit of 1 s is kept for the slot and for the whole bug.'}
       - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7 - a shot clock inside a replay is a past clock'}
       - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 2-11.6.a.3 - a charged or media timeout does not reset the shot clock; the value before the break is exact until play resumes'}
       - {when: held value older than a full shot-clock period, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: SNAP_AND_LOG, evidence: 'rule: 2-11.1 and 9-11.1 - no value can stand for more than 30 s of running clock without a reset, a horn or a whistle; a chain of cue-based estimates that reaches this age has missed one of them'}
@@ -265,7 +265,8 @@ fields:
     freshness_needed_s: {live_panel: 0.5, expected_points: 1.0}
     params:
       shot_clock_carried_max_s: {value: 10.0, unit: s, why: 'a held or reckoned shot clock is dropped to unknown this long after the last reading or cue: by then a blind estimate is right less than half the time', evidence: 'measured: side run of 11 Nov 2026 on the 33 broadcasts - within 1 s in 49.3 % after 10 s and 27.9 % after 20 s (withheld shot-clock readings; not yet in measured_sensors.json)'}
-      shot_slot_follow_max_s: {value: 5.0, unit: s, why: 'while only the shot-clock slot is unreadable, the value follows the game clock and is graded inferred this long, provided a reset would be seen', evidence: 'measured: side run of 11 Nov 2026 on the 33 broadcasts - within 1 s in 90.4 % after 5 s and 83.3 % after 10 s with no reset in the window (not yet in measured_sensors.json)'}
+      shot_clock_inferred_max_s: {value: 1.0, unit: s, why: 'a shot clock that follows the game clock (slot unreadable) or is dead-reckoned (bug away) is graded inferred only this long after its last READING, whether or not CV watches for a reset cause; a reset cue re-anchors the estimate but does not restart this limit. Was 5 s (slot) and 3 s (bug away) until the replay of 20 Nov', evidence: 'measured: replay harness on the 33 broadcasts (results/live_state_test/harness.json) - within 1 s after 1 s in 96.0 % (bug hidden, no cue) and 96.0 % (slot hidden, no cue); after 2 s in 81.5 % and 84.9 %, and with every visible reset delivered as a cue still only 88.7 % and 91.5 %; after 3 s 86.7 % and 89.5 %. The promise is clock_inferred_promise (0.90) at every age'}
+      shot_slot_follow_max_s: {value: 5.0, unit: s, why: 'while only the shot-clock slot is unreadable, the STATUS of the shot clock (running, stopped) follows the game-clock digits and is graded inferred this long. The shot-clock VALUE has its own, shorter limit (shot_clock_inferred_max_s)', evidence: 'measured: side run of 11 Nov 2026 on the 33 broadcasts - slot gaps are short (82 % last 3 s or less). The status claim itself is not scored by the replay harness yet (the bug gives no direct reading of it)'}
       shot_clock_tenths_below_s: {value: 5, unit: s, why: 'below this the shot clock shows tenths and a reading is good to 0.1 s; above it to 1 s', evidence: 'rule: 5-10.3.d - tenths are displayed with less than five seconds on the shot clock; seen on the bug (results/w3_intake/scorebug_summary.md)', mirrors: 'config/invariants.yaml:constants.shot_clock_tenths_below_s'}
     notes: >-
       The shot clock is much harder to reckon than the game clock, because a reset comes about every half minute of
@@ -302,7 +303,7 @@ fields:
       confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
       evidence: 'assumed: as for game_clock_running - the whistle first, then the digits (one display step of 1 s, or 0.1 s below 5 s, plus frame_to_state_s). off is known at once by rule when the game clock is read. Replaced by the reset and start delays measured per game (R-SY-14) and the whistle timing of OQ-LS-3.'
     dropout:
-      - {when: shot slot unreadable while the game clock is read, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {shot_slot_follow_max_s: 5}, on_return: SNAP_AND_LOG,
+      - {when: shot slot unreadable while the game clock is read, rule: FOLLOW_FIELD, grade_path: [observed, inferred, carried], limits: {shot_slot_follow_max_s: 5}, on_return: SNAP_AND_LOG,
          evidence: 'rule: 5-10 and 5-11 - both clocks stop on the same whistles and start on the same touch, so the game-clock digits are a change detector for this status. The two differ after a made field goal (the game clock runs on, the shot clock waits for the throw-in) and when the shot clock is off; both follow from seen events. Slot gaps are short: 82 % last 3 s or less (side run of 11 Nov 2026).'}
       - {when: scorebug hidden, rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, shot_clock_carried_max_s: 10}, on_return: SNAP_AND_LOG,
          evidence: 'measured: the game-clock status held blind is right within 1 s in 93.8 % after 3 s (measured_sensors.json clock_carry_on_withheld_readings); the shot clock adds its resets, and after 10 s a blind estimate is right less than half the time (side run of 11 Nov 2026)'}
@@ -336,13 +337,13 @@ fields:
     requirements: [R-MD-23, R-SY-11]
     profile: observation
     sources:
-      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame (33.37 ms at 29.97 fps). The time stamp comes from the decoder, not from a model; cv_tracking is named because it is the sensor that carries every frame'}
+      - {sensor: stream, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame (33.37 ms at 29.97 fps). The time stamp comes from the decoder, not from a model'}
     update:
       changed_by: per_frame
       event_instant: 'The presentation time stamp of the frame as the container gives it; the raw value is kept in frames.pts_raw.'
     timing:
-      provisional: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
-      confirmed: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      provisional: {by: stream, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: stream, p50_s: 0.0, p95_s: 0.0}
       evidence: 'definition: the time stamp is part of the frame; it is known when the frame is. capture_to_frame_s sits outside this block (latency_budget.composition).'
     dropout:
       - {when: stream lost or decoder gap, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: without a frame there is no video time; level D5_no_video. A frame time is never invented.'}
@@ -354,8 +355,8 @@ fields:
       Video time is file time. A recording with shortened breaks removes real time at its cuts, so a difference of
       video_ts_ms across a cut is not a duration (half time kept 3.2 of 21.4 minutes in one tournament replay); the
       33 MSU recordings are of this kind. Real-time bounds (max dwell of a timeout or an intermission) are applied
-      only inside a stretch without a cut. pbp_only has no video and holds none. Core gap: no sensor stands for the
-      decoder or the stream itself; its health signal would be the frame heartbeat (level D5_no_video). The blind
+      only inside a stretch without a cut. pbp_only has no video and holds none. The sensor is the stream
+      itself (core.yaml sensors.stream); its health signal is the frame heartbeat (level D5_no_video). The blind
       and the anchored pass hold the same value.
   est_utc:
     id: LS-TIME-08
@@ -522,7 +523,7 @@ fields:
     dropout: &score_dropout
       - {when: 'scorebug hidden, CV watching the ball and the rim', rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'measured: the score changed during 4-7 % of real hidden stretches up to 20 s (measured_sensors.json score.changed_during_real_hidden_run); these are the changes CV has to catch. No make seen = no change, and the value keeps its grade; a make seen adds its points at grade inferred until the bug returns. How often CV is right here is the R-MB-03 target (recall at least 97 % at precision at least 98 % with the rim in view), not yet measured on MSU film.'}
-      - {when: 'scorebug hidden, nothing watching the rim (tight shot, bench, ball lost)', rule: CARRY, grade_path: [confirmed, observed, carried], limits: {scorebug_down_after_s: 1, counter_stale_after_s: 20}, on_return: SNAP_AND_LOG,
+      - {when: 'scorebug hidden, nothing watching the rim (tight shot, bench, ball lost)', rule: CARRY, grade_path: [confirmed, observed, carried], limits: {scorebug_down_after_s: 1, counter_stale_after_s: 20}, step_at: [scorebug_down_after_s], on_return: SNAP_AND_LOG,
          evidence: 'measured: with the bug withheld at random moments the score changed within 2 s in 4 % of cases, 5 s in 10 %, 10 s in 19 % and 20 s in 36 % (measured_sensors.json score.changed_within_withheld_window). With no change detector the value is carried from the first missed second and marked stale after 20 s; it is never guessed.'}
       - {when: 'not main camera, scorebug visible', rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'measured: the bug is the change detector; the make instant is then inferred as the digit change minus make_to_bug_p50_s (1.93 s, range 1.50-2.60 s, results/w3_intake/made_basket_lag.md), good to about 0.5 s. A change with the camera on the court and no make seen is flag type (a) of R-SB-01.'}
@@ -721,7 +722,7 @@ fields:
     stored: derived
     dimension: null
     lands_in: [team_box.largest_lead]
-    lands_in_proposed: [state_second.largest_lead_msu, state_second.largest_lead_opp]
+    lands_in_proposed: [state_second.largest_lead_home, state_second.largest_lead_away]
     requirements: [R-MD-17, R-MD-25]
     profile: derived
     derived_from: [margin]
@@ -809,7 +810,7 @@ fields:
     dropout: &tf_dropout
       - {when: bug count not shown or unreadable while the feed is healthy, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: SNAP_AND_LOG,
          evidence: 'measured: the count is on the bug as text in 28 of 33 broadcasts and readable in 54 % of the seconds that have a clock (measured_sensors.json bug_fields). The feed is the change detector; the value is observed from the feed alone and confirmed again when the bug shows the same number.'}
-      - {when: feed stale or absent and a whistle of unknown cause, rule: CONFIRM_WINDOW, grade_path: [observed, carried], limits: {foul_to_bug_window_s: 42}, on_return: LATE_CORRECTION,
+      - {when: feed stale or absent and a whistle of unknown cause, rule: CONFIRM_WINDOW, grade_path: [observed, carried], limits: {foul_to_bug_window_s: 42}, step_at: [0], on_return: LATE_CORRECTION,
          evidence: 'measured: the bug count follows a foul by a median of 7 s, p95 31 s, p99 41 s. After a whistle the cause of which is not known the count is carried (it may be one low) until the bug shows a number: the same number after 42 s means no foul was added. In 9 % of fouls the bug did not show the new count within 45 s, so a blind count can stay carried through a whole stoppage.'}
       - {when: feed stale or absent and no whistle heard, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {}, on_return: LATE_CORRECTION,
          evidence: 'assumed: a foul needs a whistle (Rule 5-11.1.a), so with audio present and no whistle the count is inferred unchanged; with audio away it is carried. Whistle recall is a planning value (whistle_recall 0.8). Replaced by the measured recall of OQ-LS-3.'}
@@ -1053,7 +1054,7 @@ fields:
       evidence: 'measured: the team-foul counts plus derived_compute_s (bug count a median of 7 s and a p95 of 31 s after the foul, measured_sensors.json bug_fields.team_foul_lag_vs_pbp_clock_s); the confirmed value rests on the planning feed delay (assumed, OQ-LS-1).'
     dropout:
       - {when: any input below its needed grade, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'definition: rule WORST_INPUT'}
-      - {when: team-foul count carried after a whistle of unknown cause, rule: VALID_IF, grade_path: [observed, carried], limits: {foul_to_bug_window_s: 42}, on_return: SNAP_AND_LOG,
+      - {when: team-foul count carried after a whistle of unknown cause, rule: VALID_IF, grade_path: [observed, carried], limits: {foul_to_bug_window_s: 42}, step_at: [0], on_return: SNAP_AND_LOG,
          evidence: 'measured: the bug needs up to 42 s (p99 41 s plus 1 s) to show a foul. In the last minute of a half that is too slow for the foul-to-give decision, so late in a half this value is trusted only from the feed or from a count the bug has confirmed after the last whistle.'}
     conflict: []
     invariants: [R-IV-09, new-IV-07]
