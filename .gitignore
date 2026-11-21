@@ -25,3 +25,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Copyrighted rule documents stay local
+docs/rules/*.pdf
