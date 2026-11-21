@@ -39,3 +39,9 @@ If direct messaging works, use it only to say "new commit, check the repo". The 
 
 ## Build freeze (from 2026-10-18 01:38 UTC)
 Aldemir has paused all building until the requirements are finished. The runner runs **no** tasks, including `paused` ones, until a task with `status: queued` appears after this notice and this section is removed. Planning and research continue in the planner session only.
+
+## Exception to the build freeze (Aldemir, 18 Oct 2026, 22:39 ET, given in the requirements chat and recorded by the requirements session)
+Market snapshot collection (P0m) may start: job B of `coord/prompts/002-claude-code-taxonomy-and-markets.md`, read-only endpoints only, free sources first; buying an Odds API plan waits for Aldemir's choice. Everything else stays frozen.
+
+## Exception to the build freeze (Aldemir, 18 Oct 2026, 09:52 ET, given in the requirements chat and recorded by the requirements session)
+Prompt `coord/prompts/003-data-dictionary-and-first-games.md` may run: W1 and W2 (research, data dictionaries, a few budgeted verification calls) and W3 (download the latest two full MSU game replays at the best quality, intake check, registry update). Everything else stays frozen.

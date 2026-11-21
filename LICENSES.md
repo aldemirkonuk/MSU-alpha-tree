@@ -14,6 +14,7 @@ Policy (decided 17 Oct 2026): any dataset or open-source component we can lawful
 | NBA SportVU 2015-16 mirrors | Imputation and EPV pre-training | Unclear | Unclear | Research setup |
 | Ultralytics YOLO | Detection (alternative) | AGPL-3.0 | Copyleft | Not planned |
 | sn-gamestate | Game-state reference | GPL-3.0 | Copyleft | Reference only |
+| JEV (TypeSafe API, pinned version) or JEV-27B-VL (AutoTrust AI) | External consultant only; broadcast frames sent to a third party for private research; not used for training or features | TypeSafe API terms; JEV-27B-VL Apache-2.0 | API: check terms; JEV-27B-VL: yes | Planned (inbox 001, 18 Oct) |
 | pyarrow | Parquet snapshot tables for the market collector (optional extra `markets`) | Apache-2.0 (PyPI, checked 18 Oct 2026) | Yes | Adopted (B2 foundation) |
 | Broadcast footage (YouTube, B1G+ recordings) | Model input | Copyrighted | No | Private research use only, never redistributed |
 
