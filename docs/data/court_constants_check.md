@@ -32,7 +32,9 @@ a. **Restricted area boundary.** Rule 1-8 measures the 4-ft radius to the *inner
 
    `geometry.spot()` uses 1.22 m, which is fine as a spot label. Block/charge logic (new-RF-1) must use 1.27 m. This is proposed as **new-CG-2**: "The restricted-area membership test uses the outer edge of the arc, r <= 1.270 m, with straight segments to y = -0.381 m. Acceptance: a unit test with feet at r = 1.25 m returns inside."
 
-b. **Division line.** The frontcourt runs to the nearer edge of the division line, and the line itself is backcourt (9-12.1-2, pdf 99). The frontcourt test is therefore y < 12.700 m in the attacked-rim frame, not 12.73 m.
+b. **Division line.** The frontcourt runs to the nearer edge of the division line, and the line itself is backcourt (9-12.1-2, pdf 99). The frontcourt test is therefore y <= 12.700 m in the attacked-rim frame, not 12.73 m.
+
+   Corrected 11 Nov 2026: this note said y < 12.700. Rule 9-12.2 puts the division line in the backcourt "excluding the mathematical edge nearest the team's basket", so a point exactly on the near edge (y = 12.700) is frontcourt. `config/named_spots.yaml` (edge rule 2) has used y <= 12.700 since version 0.2.0.
 
 c. **Three-point geometry.** Both distances are to the outside edge, so a foot *on* the line (inside the outside edge) is a two-point location. The corner straight segment is 9 ft 10.375 in (3.0067 m) on the diagram. The geometry gives 3.0117 m from the end line for the point where the arc meets the straight segment, a 5 mm gap. `corner_theta_deg` is 12.07 degrees, which matches `geometry.py`.
 
@@ -45,11 +47,11 @@ All are now in `court_constants_proposed.yaml`, each with rule and page.
 - Line width 0.0508 m (2 in).
 - Centre circle radius 1.8288 m to the outside edge, plus a 0.9144 m non-jumper space.
 - FT semicircle radius 1.8288 m to the outside edge.
-- Lane space marks 0.0508 x 0.2032 m and blocks 0.3048 x 0.2032 m. Lane spaces are 0.9144 m deep. The layout along the lane line (block 2.134-2.438 m from the end line, then spaces of 0.914 m separated by 2-in marks) was read from the diagram and needs a full-resolution check.
+- Lane space marks 0.0508 x 0.2032 m and blocks 0.3048 x 0.2032 m. Lane spaces are 0.9144 m deep. The layout along the lane line (block 2.134-2.438 m from the end line, then spaces of 0.914 m separated by 2-in marks) was read from the diagram. (Checked at full resolution and locked on 11 Nov 2026: decision 2 in `docs/data/named_spots.md` section 11.)
 - Backboard 1.8288 m wide and 1.0668 or 1.2192 m tall. Its face is 1.2192 m from the end line (y = -0.381) and its top edge is 3.9624 m high. The target rectangle is 0.6096 x 0.4572 m.
 - Ring inner diameter 0.4572 m, inner edge 0.1524 m from the board, rod at most 0.0159 m.
 - Coaching box to the 38-ft line (11.5824 m from the end line). Its boundary mark is at least 0.6096 m long.
-- 28-ft marks at 8.5344 m from the end line (y = 6.934). The bench-side line is about 0.914 m into the court per the diagram. The edge the 28 ft is measured to is not stated.
+- 28-ft marks at 8.5344 m from the end line (y = 6.934). The bench-side line is about 0.914 m into the court per the diagram. The edge the 28 ft is measured to is not stated in the book. (Decided 23 Oct 2026, decision 1: distances run from the boundary's inside edge and the spot is centred on its mark.)
 - End-line throw-in spots 3 ft outside the lane lines, at x = +-2.7432 m.
 - Restricted-area arc: inner edge 1.2192 m, outer edge 1.2700 m.
 - Three-point corner from sideline 1.0192 m, with a corner straight segment of 3.0067 m.
@@ -65,8 +67,10 @@ All are now in `court_constants_proposed.yaml`, each with rule and page.
 - `schema/tables/restarts.yaml` and the other location columns have a y range of [-2.60, 28.05]. The restraining-line area (y down to -3.43) and the far end (27.05 + 1 m) fit only partly. Widen the lower bound to -3.5 m if out-of-bounds officials and players behind the end line must be stored.
 - Inbox 007 open question on 7-3.2.b: the 2026-27 text (pdf 84) is garbled. The diagram on pdf 85 (printed 82) shows the FT line extended to both sidelines, which agrees with 2025-26 change proposal 6. The elbow-to-corner reading is obsolete.
 
-## 5. Open questions
+## 5. Open questions (all three closed)
 
-- Which edge of the 2-in 28-ft mark is the 28 ft measured to?
-- Should geometry use the exact values (6.7501, 1.6002, 3.048) or the rounded ones in the existing config?
-- Should the lane-space layout be confirmed on a full-resolution diagram or a measured court before P3?
+These three questions were closed by Aldemir's decisions of 23 Oct 2026, recorded in `docs/data/named_spots.md` section 11. They are kept here with their answers.
+
+- Which edge of the 2-in 28-ft mark is the 28 ft measured to? **Closed (decision 1):** distances run from the boundary's inside edge and a spot is centred on its mark. Still to do: one tape measure of the Breslin floor.
+- Should geometry use the exact values (6.7501, 1.6002, 3.048) or the rounded ones in the existing config? **Closed (decision 10):** the exact values; the repo follows the dictionary as one change set when the freeze lifts.
+- Should the lane-space layout be confirmed on a full-resolution diagram or a measured court before P3? **Closed (decision 2, checked 11 Nov 2026):** the 2026-27 court diagram was read at full resolution and the values are locked (block 0.5334-0.8382; spaces 0.8382-1.7526, 1.8034-2.7178, 2.7686-3.6830).

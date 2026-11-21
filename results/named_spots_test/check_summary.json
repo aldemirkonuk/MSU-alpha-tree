@@ -1,6 +1,33 @@
 {
+ "version": "0.3.4",
+ "rules_sha256": "6fb93e7f8e6dfc748c22ab8af0b12e305477c43ebe3871b0cb2259fabc8e07c4",
+ "step_m": 0.05,
  "entries": 602,
  "with_expr": 518,
+ "probes": {
+  "entries_with_expr": 518,
+  "static_entries": 372,
+  "context_entries": 146,
+  "entries_with_zero_probes": 0,
+  "probes_executed": 3385,
+  "probes_executed_static": 2550,
+  "probes_executed_context": 784,
+  "value_probes_executed": 51
+ },
+ "label_counts": {
+  "side_qualified": 691,
+  "static_no_context_no_z": 502
+ },
+ "in_bounds_points": 175070,
+ "thin_regions": {
+  "thin": 33,
+  "thin_not_on_list": 0,
+  "probability_only_list": 35,
+  "listed_for_another_reason": [
+   "block_zone",
+   "rim"
+  ]
+ },
  "entry_failures": {},
  "partitions": {
   "zone_scheme:court_region": {

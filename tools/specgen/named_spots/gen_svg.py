@@ -7,7 +7,8 @@ main coaching-spot anchors are drawn as labelled dots on the right half (the lef
 mirror image). Before writing, random points inside every shaded cell are checked against the
 reference evaluator (spotlib), so the picture cannot drift from the rules.
 
-Usage: python tools/specgen/named_spots/gen_svg.py [--out docs/data/named_spots_court.svg]
+Usage: python tools/specgen/named_spots/gen_svg.py [--out docs/data/named_spots_court.svg] [--check]
+--check regenerates in memory and exits non-zero if the file on disk differs (used by the tests).
 """
 import argparse
 import math
@@ -345,10 +346,17 @@ def build(doc, spots):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--check", action="store_true", help="do not write; fail if the file on disk differs")
     args = ap.parse_args()
     doc, spots = load()
     svg = build(doc, spots)
     ET.fromstring(svg)  # must parse
+    if args.check:
+        out = Path(args.out)
+        if not out.exists() or out.read_text() != svg:
+            raise SystemExit(f"{out} is out of date: run python tools/specgen/named_spots/gen_svg.py")
+        print(f"{out} is up to date")
+        return
     Path(args.out).write_text(svg)
     print(f"wrote {args.out} ({len(svg)} bytes)")
 

@@ -26,7 +26,7 @@ The picture is drawn from the YAML by `tools/specgen/named_spots/gen_svg.py`. Sh
 - **rank**: which spot wins when two overlap; the smaller number wins.
 - **confidence**: high = rule book; medium = common staff usage; low = our proposal, to be checked on film.
 - **reference point**: which body point is measured. Normally the midpoint of the feet; for a shot, the last floor contact; for the ball, the ball centre.
-- **Exact rule (expr)**: the formula the computer checks, in code font. You do not need to read it; the "Meaning" column says the same thing in words. Names in it: `ax` = |x|; `t` = the full angle (0 to 180 across the court); `m` = angle m; `is_three(x, y)` = true when the point is past the three-point line; `bx, by` = ball; `hx, hy` = ball handler; `ax_, ay_` = the attacker this defender guards.
+- **Exact rule (expr)**: the formula the computer checks, in code font. You do not need to read it; the "Meaning" column says the same thing in words. Names in it: `ax` = |x|; `t` = the full angle (0 to 180 across the court); `m` = angle m; `is_three(x, y)` = true when the point is past the three-point line; `bx, by` = ball; `hx, hy` = ball handler; `ax_, ay_` = the attacker this defender guards; `mx, my` = the player's matchup. Every such name is defined in section 2 (context names).
 - **Anchor**: the typical point of a label, as (x, y) in metres and as distance r and full angle θ from the rim (θ = 0 to the right along the end line, 90 straight up the middle, 180 to the left).
 
 Distances in prose are written as metres (feet), for example 4.2672 m (14 ft). 1 ft = 0.3048 m exactly.
@@ -66,7 +66,7 @@ Distances in prose are written as metres (feet), for example 4.2672 m (14 ft). 1
 - **r**: hypot(x, y), in metres.
 - **t (full angle θ)**: atan2(y, x) in degrees, in (-180, 180]. A y of -0.0 is set to +0.0 first, so the left end of y = 0 is 180, never -180. At r = 0, t is defined as 90. 0 = right end line, 90 = top of the key, 180 = left end line.
 - **angle m**: m = degrees(atan2(y, |x|)), and 90 at the origin. It equals the folded full angle (t on the right, 180 - t on the left) but gives exactly the same number for x and -x.
-- **left and right**: a side label is written once for the right side (x >= 0) and copied to the left by flipping x; the ball, handler and assigned-attacker x are flipped too. A point exactly on the middle line x = 0 belongs to the right label, except for centre labels (restricted_area, paint_non_ra, long_mid_top, top_three, backcourt, out_of_bounds), which have no side.
+- **left and right**: a side label is written once for the right side (x >= 0) and copied to the left by flipping x; the ball, handler, assigned-attacker and matchup x are flipped too. A point exactly on the middle line x = 0 belongs to the right label, except for centre labels (restricted_area, paint_non_ra, long_mid_top, top_three, backcourt, out_of_bounds), which have no side.
 - **units**: metres, degrees, seconds. 1 ft = 0.3048 m exactly. Stored to 0.01 m and 0.1 degree.
 - **full court**: far end line y = 27.051 m, far rim y = 25.4508 m. Backcourt points stay in the same frame.
 
@@ -80,13 +80,17 @@ Distances in prose are written as metres (feet), for example 4.2672 m (14 ft). 1
 
 **When two labels overlap** (precedence, from the YAML): {{PRECEDENCE}}
 
+**Context names** (what a rule may use besides the player's own position). Each is defined once, in the YAML block `context_names`; the evaluator accepts exactly these names. When a name is empty in a frame, a label that uses it is left empty with reason `no_context`, and a value that uses it is null.
+
+{{CONTEXT_NAMES}}
+
 **Layers** (how the {{N_ENTRIES}} entries are grouped):
 
 {{LAYER_COUNTS}}
 
 ## 3. Court regions (every object, every frame)
 
-`court_region` is the main label. Every floor point gets exactly one of 18 labels: 6 side cells x 2 sides + 6 centre cells. When x or y is missing the label is `unknown`. This was checked on a 0.05 m grid of 231,401 points over and beyond the court: 100% covered, 0 overlaps. The table runs from the rim outward.
+`court_region` is the main label. Every floor point gets exactly one of 18 labels: 6 side cells x 2 sides + 6 centre cells. When x or y is missing the label is `unknown`. {{GRID_COURT_REGION}} The table runs from the rim outward.
 
 {{COURT_REGION}}
 
@@ -94,7 +98,7 @@ Distances in prose are written as metres (feet), for example 4.2672 m (14 ft). 1
 
 {{THREE_DEPTH}}
 
-Why 27 ft and 30 ft: MSU 2025-26 above-the-break attempts in CBBD sit a median 0.78 m (2.6 ft) behind the arc, and 90% are within 1.40 m (4.6 ft), that is r < 8.15 m. 27 ft (8.2296 m) puts the "deep" label on the last ~10%.
+{{DEPTH_WHY}}
 
 ## 4. Coaching spots (one winner per player)
 
@@ -112,7 +116,13 @@ A player can carry many landmark tags at once. They never replace the court regi
 
 These labels depend on where the ball, the ball handler or the assigned attacker is, not only on the player's own spot. If that information is missing in a frame, the label is left empty with reason `no_context`. It is never "false" and never "out of bounds". Entries with no exact rule (team-level or timing rules such as low man or the I-stack) are labelled by the event layer from the words in their "Meaning".
 
-Scenario tests after the 0.1.0 fixes: man-to-man 47/47 entries (322 cases), zones 53/53 (925 scenarios), presses and full court 38/39 (the one failure is the tester's old half-court edge expectation; the dictionary follows rule 9-12.2), restarts 61/61.
+{{RELATIVE_TESTS}}
+
+### 6.0 Continuous values for every object (and the per-player relative layer)
+
+Besides its labels, every object stores these numbers in every frame, at 0.01 m and 0.1 degree (`rule_continuous_coordinates`). The first group measures the player against the painted lines. The second group is the per-player relative layer of decision 12: the distance and the bearing from each player to the rim, to the ball and to his matchup. A **bearing** is the direction from the player to the target in the court's own axes: 0 = toward the attacker's right, 90 = away from the end line toward half court, -90 = toward the end line, 180 = toward the attacker's left. It does not use which way the player faces. The angle at the player between two targets (for example ball-you-man) is the difference of the two bearings, folded to 0-180. The matchup is the attacker a defender guards, or the defender guarding an attacker. A value is empty (null) when the ball or the matchup is missing; it is never 0 by default. The attacked-rim frame of section 2 is unchanged.
+
+{{RELATIVE_VALUES}}
 
 {{RELATIVE}}
 
@@ -192,6 +202,7 @@ Loader contract (for the programmer):
 10. Question: May the repo follow the dictionary as one batch (is_three strict, restricted area 1.22 -> 1.27, corner_deep rename, post_zone switch, A0 lane-stack spots, storage y range -3.6 to 29.0)? **Decided:** yes, as one change set when the freeze lifts; every edit is listed under supersedes on its entry (section 13).
 11. Question: Pay for or log into KenPom, ShotQuality, CBB Analytics, ShotTracker or Torvik to read their zone definitions? **Decided:** yes, more data is better: Aldemir logs into any paid source himself when given the link (never stored credentials; licensed data stays private). Not needed for the canonical zones, which rest on CBBD and the rules book.
 12. Question: Frame conventions: defenders labelled only in the offence's frame, relative entries unmirrored, transition safety in his own rim's frame, "passes away" from a learned model later? **Decided:** keep the attacked-rim base frame; add a per-player relative layer (distance and angle to the rim, the ball and the matchup); "passes away" from a learned passing-lane model later.
+    Status in {{VERSION}}: {{DECISION12}}
 13. Question: What does MSU staff mean by 'elbow extended': the slot above the elbow out at the arc (slot_lane_line), the wing at FT-line height (ft_line_extended / wing_mid), or the strip just outside the elbow inside the arc (pinch_post)? **Decided:** slot_lane_line. Still to do: verify on footage (MSU staff also use "chin" for a similar but different action).
    Status in {{VERSION}}: {{DECISION13}}
 
@@ -242,6 +253,10 @@ The loop-2 clarity review asked for these changes in other files. They are liste
 37. M-REB-055: inside position = box_out_position (within 1.0 m of the man, within 0.5 m of the man-to-rim segment, closer to the rim), or change box_out_position to rule R-EV-20 (closer by at least 0.30 m along the segment).
 38. M-FOUL-134: officials' primary coverage areas (lead, trail, centre) exist only as unverified free text in config/vocab/officials_mechanics.yaml lines 34-44. Add them as entries after the CCA manual check that file asks for.
 
+**In the movement grammar (`config/movement_grammar/kinematics.yaml`, when the freeze lifts):**
+
+39. The `ball_distance` output: point it to `ball_dist` of `rule_continuous_coordinates` (section 6.0), so the distance from a player to the ball has one definition. The same for any distance or angle to the matchup: `matchup_dist`, `matchup_bearing`.
+
 ## Appendix A. How it was built (version 0.1.0)
 
 - Research: 9 families of sources (painted and rule landmarks, perimeter, interior, defensive and ball-relative, shot-zone crosswalks, restarts and full court, measurement rules, empirical calibration, repo reconciliation). Each family was followed by a "skeptic": a second agent that recomputed every anchor and opened every cited source (18 agents).
@@ -287,10 +302,14 @@ Result: 599 entries, 515 with an exact rule.
 
 Result of 0.3.1: 602 entries, 518 with an exact rule.
 
-**0.3.2 (2026-10-20, loop 5, final convergence).** Regression check of the loop-4 changes and seeded property tests: mirror symmetry on 30,000 random points, partitions on 40,000, 4,000 rays for the three-point line, boundary lines, context and height gating, corner vs above-break on 60,000 points. One real defect: in-court labels (the court thirds and dozens of others) could be true on or beyond a boundary line. Fixed once for all entries with an in-bounds gate: only entries marked oob_ok (63: out-of-bounds zones, throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose) can be true off the court. The only remaining property-test hits are by design (pbpstats corner three uses the literal NBA 8.7 ft cut). Converged: no high or medium defect left that code can show.
+**0.3.2 (2026-10-20, loop 5, final convergence).** Regression check of the loop-4 changes and seeded property tests: mirror symmetry on 30,000 random points, partitions on 40,000, 4,000 rays for the three-point line, boundary lines, context and height gating, corner vs above-break on 60,000 points. One real defect: in-court labels (the court thirds and dozens of others) could be true on or beyond a boundary line. Fixed once for all entries with an in-bounds gate: only entries marked oob_ok (63: out-of-bounds zones, throw-in and inbounder spots, bench, table, coaching box, officials, and rules that count a line in on purpose) can be true off the court. The only remaining property-test hits are by design (pbpstats corner three uses the literal NBA 8.7 ft cut). Converged: no high or medium defect left that code can show. (Corrected in 0.3.4: the stored 0.3.2 run listed 24 kinds of hit, not only the pbpstats one; 22 were false alarms made by the test itself. See NS-06 below.)
 
 Result of 0.3.2: 602 entries, 518 with an exact rule.
 
 **0.3.3 (2026-11-11, decisions recorded).** One geometry change: `pack_line` moves from r <= 5.2 to r <= 5.1816 (decision 5); nothing else in geometry or rule logic changed. Section 11 now records Aldemir's 13 decisions of 23 Oct 2026. Three were checked against the rule documents: the lane-space and block limits were read off the 2026-27 court diagram at full resolution and locked (decision 2); the post-clinic interpretations were read and hold nothing on the open rule gaps, and Case Book A.R. 4-2 confirms that behind the backboard is outside the restricted area (decision 3); Case Book A.R. 9-34 and 9-35 give the source for the 10-second count running out at shot clock 19, now recorded on `rule_ball_court_status` (decision 4).
+
+Result of 0.3.3: 602 entries, 518 with an exact rule.
+
+{{JOURNAL}}
 
 Result: {{N_ENTRIES}} entries, {{N_EXPR}} with an exact rule.

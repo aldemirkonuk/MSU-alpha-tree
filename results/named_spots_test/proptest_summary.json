@@ -1,0 +1,38 @@
+{
+ "version": "0.3.4",
+ "rules_sha256": "6fb93e7f8e6dfc748c22ab8af0b12e305477c43ebe3871b0cb2259fabc8e07c4",
+ "seed": 20261020,
+ "scale": 1.0,
+ "seconds": 320,
+ "counts": {
+  "mirror": {
+   "points": 30000,
+   "entries": 356
+  },
+  "partitions": {
+   "points": 40000,
+   "schemes": 19
+  },
+  "rays": {
+   "rays": 4000,
+   "points": 4909959
+  },
+  "lines": {
+   "points": 9000,
+   "entries": 294
+  },
+  "gating": {
+   "context_entries": 146,
+   "height_entries": 20,
+   "cases": 1205
+  },
+  "corner_above": {
+   "points": 60000,
+   "threes": 9145
+  },
+  "values": {
+   "points": 5000
+  }
+ },
+ "failed_properties": {}
+}

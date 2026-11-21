@@ -1,8 +1,20 @@
 {
+ "version": "0.3.4",
  "files": 34,
  "located_field_goal_attempts": 3675,
  "label_count_problems": {},
+ "above_break_three": {
+  "n": 1218,
+  "median_behind_arc_m": 0.77,
+  "p90_behind_arc_m": 1.41,
+  "deep_or_logo": 94
+ },
  "two_vs_three_agreement": "3672/3675",
+ "two_vs_three_disagreements": {
+  "n": 3,
+  "max_from_line_m": 0.26,
+  "within_0p05_m": 2
+ },
  "cbbd_range_x_court_region": {
   "jumper -> long_mid_baseline": 69,
   "jumper -> long_mid_top": 153,

@@ -1,0 +1,12 @@
+{
+ "version": "0.3.4",
+ "date": "2026-11-20",
+ "frames": 300,
+ "objects": 11,
+ "exprs": 518,
+ "evaluations_per_frame": 7601,
+ "ms_per_frame_median": 1.18,
+ "ms_per_frame_p95": 2.66,
+ "budget_ms": 33.37,
+ "note": "pure Python, one process; other jobs were running on the machine"
+}

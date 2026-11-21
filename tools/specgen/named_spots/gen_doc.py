@@ -8,10 +8,17 @@ Rules the page follows:
 - Every anchor is shown as (x, y) in metres and as r (m, ft) and full angle theta (deg).
 
 After writing, the script checks that every entry id appears, that every shown text appears in
-full, that every table row has the same column count as its header, and that no {{PLACEHOLDER}}
-is left. It exits non-zero if any check fails.
+full, that every table row has the same column count as its header, that every frame count in
+brackets follows rule_frame_timing, and that no {{PLACEHOLDER}} is left. It exits non-zero if any
+check fails.
 
-Usage: python tools/specgen/named_spots/gen_doc.py [--out docs/data/named_spots.md]
+Every test number on the page is read from results/named_spots_test/ (check_summary.json from
+check.py --write-summary, proptest_summary.json from proptest.py --write-summary, speed.json from
+bench.py --write-summary, cbbd_summary.json from cbbd_check.py). The first two must have been made
+from the rules now in the YAML (spotlib.rules_sha), or the page is not written.
+
+Usage: python tools/specgen/named_spots/gen_doc.py [--out docs/data/named_spots.md] [--check]
+--check regenerates in memory and exits non-zero if the file on disk differs (used by the tests).
 """
 import argparse
 import json
@@ -22,13 +29,18 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from spotlib import CTX_NAMES, load  # noqa: E402
+from spotlib import CTX_NAMES, Values, load, rules_sha  # noqa: E402
+from check import frame_counts_in  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 TEMPLATE = HERE / "doc_template.md"
 OUT = ROOT / "docs" / "data" / "named_spots.md"
-CBBD = ROOT / "results" / "named_spots_test" / "cbbd_summary.json"
+RESULTS = ROOT / "results" / "named_spots_test"
+CBBD = RESULTS / "cbbd_summary.json"
+CHECK_SUMMARY = RESULTS / "check_summary.json"
+PROPTEST_SUMMARY = RESULTS / "proptest_summary.json"
+SPEED = RESULTS / "speed.json"
 FT = 0.3048
 
 CONST_MEANING = OrderedDict([
@@ -474,37 +486,218 @@ def rules(E):
     return "\n".join(out).rstrip()
 
 
+def summary(path, doc, cmd):
+    """A stored test summary that was made from the rules now in the YAML."""
+    if not path.exists():
+        raise SystemExit(f"gen_doc: {path.relative_to(ROOT)} is missing; run {cmd}")
+    d = json.loads(path.read_text())
+    if d.get("rules_sha256") != rules_sha(doc):
+        raise SystemExit(f"gen_doc: {path.relative_to(ROOT)} was made from other rules than the YAML now holds; run {cmd}")
+    return d
+
+
+def check_summary(doc):
+    d = summary(CHECK_SUMMARY, doc, "python tools/specgen/named_spots/check.py --write-summary")
+    if d["entry_failures"]:
+        raise SystemExit("gen_doc: check_summary.json records failures")
+    return d
+
+
+def scheme(k):
+    return k.split(":", 1)[1]
+
+
 def tests_section(doc, E):
     n_expr = sum(1 for e in E if e.get("expr"))
+    c = check_summary(doc)
+    pr, part, th = c["probes"], c["partitions"], c["thin_regions"]
+    if th["thin_not_on_list"]:
+        raise SystemExit("gen_doc: check_summary.json records thin regions that are not on the probability_only list")
+    if c["with_expr"] != n_expr or pr["entries_with_zero_probes"] != 0:
+        raise SystemExit("gen_doc: check_summary.json does not cover every exact rule")
+    pts = part["zone_scheme:court_region"]["points"]
+    inb = c["in_bounds_points"]
+    every = sorted(scheme(k) for k, v in part.items() if v["covered"] == v["points"])
+    floor = sorted(scheme(k) for k, v in part.items() if v["covered"] == inb)
+    over = sum(v["overlaps"] for v in part.values())
     lines = [
-        "- Static: every exact rule passes the whitelist of allowed operations; every anchor and test point lands "
-        "where it should, on both sides (`tools/specgen/named_spots/check.py`; 0 failures in 0.2.0).",
-        "- Partitions (0.05 m grid, 231,401 points): 20 partition schemes checked, 0 overlaps in every one. "
-        "court_region, nba_basic, nba_range, nba_area, ctg, pbpstats and br_distance cover 100% of the points. "
-        "The others cover only their own part of the floor (for example three_depth covers the three-point area and "
-        "the backcourt; shot_entry_angle covers no floor points because it labels the ball's flight).",
+        f"- Probes (`tools/specgen/named_spots/check.py`): every exact rule passes the whitelist of allowed operations, and "
+        f"every one of the {pr['entries_with_expr']} entries with an exact rule has at least one executed test point "
+        f"({pr['entries_with_zero_probes']} entries without). {pr['probes_executed']:,} test points ran, 0 failures: "
+        f"{pr['probes_executed_static']:,} on the {pr['static_entries']} entries that need only the player's own position (anchor, "
+        f"inside and outside points, mirror image), {pr['probes_executed_context']:,} on the {pr['context_entries']} entries that need "
+        f"context (run with the ball, handler and assigned attacker stored in the entry as `probe_ctx`), and "
+        f"{pr['value_probes_executed']} on the continuous values of section 6.0.",
+        "- Lints (same command, 0 findings): no text field holds an edit instruction instead of its text; every frame count in "
+        "brackets equals the count computed from its time; every entry has rank = family rank x 1000 + priority; the lists in the "
+        "YAML header name real entries and the context names are all defined; the words and the exact rule of an entry give a "
+        "line to the same side; inside a partition scheme a shared line belongs to the zone nearer the rim (edge rule 6, with "
+        "its stated exceptions); a zone slot's ball test is a union of whole ball zones.",
+        f"- Thin regions (same command): {th['thin']} regions are thinner than the boundary buffer of their class (0.15 m on painted "
+        f"lines, 0.25 m on convention lines) and {th['thin'] - th['thin_not_on_list']} of them are on the probability-only list, so they are "
+        f"stored as a probability and never as a yes/no. The list holds {th['probability_only_list']} ids: these and "
+        f"{', '.join(th['listed_for_another_reason']) or 'no others'}, which are not thin by this measure"
+        + (" (block_zone is listed for its measured recall, as the list's rule says)." if "block_zone" in th["listed_for_another_reason"] else "."),
+        f"- Partitions ({c['step_m']} m grid, {pts:,} points over and beyond the court): {len(part)} partition schemes checked, "
+        f"{over} overlaps in total. {', '.join(every)} cover{'s' if len(every) == 1 else ''} all {pts:,} points. "
+        f"{', '.join(floor)} cover exactly the in-bounds floor ({inb:,} points). The others cover only their own part of the "
+        "floor (for example three_depth covers the three-point area and the backcourt; shot_entry_angle covers no floor "
+        "points because it labels the ball's flight).",
     ]
+    p = summary(PROPTEST_SUMMARY, doc, "python tools/specgen/named_spots/proptest.py --write-summary")
+    if p["failed_properties"] or p.get("scale") != 1.0:
+        raise SystemExit("gen_doc: proptest_summary.json is not a clean full run")
+    k = p["counts"]
+    lines.append(
+        f"- Property tests (`tools/specgen/named_spots/proptest.py`, seed {p['seed']}, {p['seconds']} s): 0 failed properties. "
+        f"Mirror symmetry on {k['mirror']['points']:,} random points for {k['mirror']['entries']} entries; no overlap in "
+        f"{k['partitions']['schemes']} partition schemes on {k['partitions']['points']:,} points; {k['rays']['rays']:,} rays "
+        f"({k['rays']['points']:,} points) on which three-point status never turns back to two; {k['lines']['points']:,} points on the "
+        f"boundary lines that no in-court entry may own ({k['lines']['entries']} entries); {k['gating']['cases']:,} cases where one "
+        f"needed context value or the height is missing, NaN or infinite and the label must be empty ({k['gating']['context_entries']} "
+        f"context entries, {k['gating']['height_entries']} height entries); corner against above-the-break on "
+        f"{k['corner_above']['threes']:,} three-point positions (pbpstats at its own 8.7 ft cut); {k['values']['points']:,} points for "
+        "the continuous values (null without their context, bearings inside (-180, 180]). The script exits non-zero on any "
+        "failure and a reduced copy runs in `tests/test_named_spots.py`.")
     if CBBD.exists():
-        c = json.loads(CBBD.read_text())
-        x = c.get("cbbd_range_x_court_region", {})
+        c2 = json.loads(CBBD.read_text())
+        x = c2.get("cbbd_range_x_court_region", {})
+        dis = c2["two_vs_three_disagreements"]  # written by cbbd_check.py; no figure of this bullet is typed here
+        if dis["n"] == 0:
+            dis_txt = "no disagreement"
+        else:
+            dis_txt = (f"{dis['n']} disagreement{'s' if dis['n'] != 1 else ''}: {dis['within_0p05_m']} within 0.05 m of the "
+                       f"three-point line, the farthest {dis['max_from_line_m']:.2f} m from it")
         lines.append(
-            f"- Real data: {c['located_field_goal_attempts']} located MSU 2025-26 field-goal attempts in CBBD "
-            f"({c['files']} games). Every shot gets exactly one label in each scheme. Two-vs-three agreement with "
-            f"CBBD: {c['two_vs_three_agreement']} (the disagreements are within 4 cm of the line). CBBD 'rim' shots: "
+            f"- Real data (`tools/specgen/named_spots/cbbd_check.py`, run on version {c2.get('version', 'unknown')}): "
+            f"{c2['located_field_goal_attempts']:,} located MSU 2025-26 field-goal attempts in CBBD "
+            f"({c2['files']} games). Every shot gets exactly one label in each scheme. Two-vs-three agreement with "
+            f"CBBD: {c2['two_vs_three_agreement']} ({dis_txt}). CBBD 'rim' shots: "
             f"{x.get('rim -> restricted_area', 0)} restricted area, {x.get('rim -> paint_non_ra', 0)} paint. "
             "Transform: CBBD x 0..940, y 0..500 tenths of a foot, rim 5.25 ft from each end line, nearer basket "
             "attacked. CBBD's left/right orientation was checked on four UConn made baskets against video "
-            "(2026-10-20): CBBD's y axis points to the attacker's left, and the transform negates it. Source: "
-            "`results/named_spots_test/cbbd_summary.json`.")
-    lines.append(
-        f"- Speed: all {n_expr} exact rules for 10 players and the ball cost about 1.9 ms per frame with one "
-        "right-side and one mirrored environment per object-frame (measured 2026-10-20 on the Mac; budget 33.37 ms "
-        "at 29.97 fps).")
+            "(2026-10-20): CBBD's y axis points to the attacker's left, and the transform negates it. The raw files are "
+            "licensed and stay private; the repo holds `results/named_spots_test/cbbd_summary.json`.")
+    if SPEED.exists():
+        sp = json.loads(SPEED.read_text())
+        lines.append(
+            f"- Speed (`tools/specgen/named_spots/bench.py`, version {sp['version']}, {sp['date']}): all {sp['exprs']} exact rules for 10 "
+            f"players and the ball cost {sp['ms_per_frame_median']} ms per frame (median of {sp['frames']} frames, 95th percentile "
+            f"{sp['ms_per_frame_p95']} ms; {sp['evaluations_per_frame']:,} evaluations with one right-side and one mirrored "
+            f"environment per object; {sp['note']}). Budget {sp['budget_ms']} ms at 29.97 fps.")
     lines.append("- Picture: `gen_svg.py` samples 300 random points inside every shaded cell of the court picture, "
-                 "on both sides, and stops if any point gets a different court_region label from the evaluator.")
+                 "on both sides, and stops if any point gets a different court_region label from the evaluator. "
+                 "`gen_svg.py --check` fails when the stored picture differs from a fresh one.")
     lines.append("- This page: `gen_doc.py` stops if any entry is missing, any text is shortened, any table row has "
-                 "the wrong number of columns, or a template placeholder is left unfilled.")
+                 "the wrong number of columns, a frame count in brackets disagrees with its time, or a template placeholder is "
+                 "left unfilled. `gen_doc.py --check` fails when the stored page differs from a fresh one; the tests call both checks.")
     return "\n".join(lines)
+
+
+def grid_sentence(doc):
+    c = check_summary(doc)
+    v = c["partitions"]["zone_scheme:court_region"]
+    return (f"This was checked on a {c['step_m']} m grid of {v['points']:,} points over and beyond the court: "
+            f"{v['covered']:,} covered, {v['overlaps']} overlaps.")
+
+
+def depth_why(doc):
+    if not CBBD.exists():
+        return ""
+    a = json.loads(CBBD.read_text()).get("above_break_three")
+    if not a:
+        return ""
+    arc = doc["constants"]["ARC_R"]
+    return (f"Why 27 ft and 30 ft: of {a['n']:,} MSU 2025-26 above-the-break attempts in CBBD, the median is "
+            f"{a['median_behind_arc_m']:.2f} m ({ft(a['median_behind_arc_m']):.1f} ft) behind the arc and 90% are within "
+            f"{a['p90_behind_arc_m']:.2f} m ({ft(a['p90_behind_arc_m']):.1f} ft), that is r < {arc + a['p90_behind_arc_m']:.2f} m. "
+            f"27 ft (8.2296 m) puts the deep and logo labels on {a['deep_or_logo']} of them "
+            f"({100 * a['deep_or_logo'] / a['n']:.1f}%). Source: `results/named_spots_test/cbbd_summary.json`.")
+
+
+def relative_tests(doc):
+    pr = check_summary(doc)["probes"]
+    return (f"Every label here that has an exact rule is tested by its own points: the anchor and the inside and outside points "
+            f"are run with the context stored in the entry (`probe_ctx`: where the ball, the handler and the assigned attacker "
+            f"are for that test). Across the dictionary {pr['context_entries']} entries need context; {pr['probes_executed_context']:,} "
+            f"test points ran for them, 0 failures (section 9). The scenario runs made for 0.1.0 (man-to-man, zones, presses, "
+            f"restarts) were done in a session scratchpad and are not in the repo, so their counts are no longer quoted here.")
+
+
+VALUE_MEANING = OrderedDict([
+    ("d3", ("Line-relative", "How far behind the three-point line (+) or inside it (-), in the regime `is_three` uses.")),
+    ("d_sideline", ("Line-relative", "Distance to the nearer sideline's inside edge; above 0 in bounds.")),
+    ("d_endline", ("Line-relative", "Distance to the attacked end line's inside edge; above 0 in bounds.")),
+    ("d_division", ("Line-relative", "Distance to the division line's near edge: 0 or more in the frontcourt, below 0 in the backcourt.")),
+    ("sd_paint_out", ("Line-relative", "Signed distance to the paint rectangle: below 0 inside it.")),
+    ("ball_angle_delta", ("Line-relative", "Angle at the rim between the object and the ball, 0 to 180 degrees.")),
+    ("rim_dist", ("Per-player relative (decision 12)", "Distance from the player to the rim centre (the same number as r).")),
+    ("rim_bearing", ("Per-player relative (decision 12)", "Direction from the player to the rim.")),
+    ("ball_dist", ("Per-player relative (decision 12)", "Distance from the player to the ball.")),
+    ("ball_bearing", ("Per-player relative (decision 12)", "Direction from the player to the ball.")),
+    ("matchup_dist", ("Per-player relative (decision 12)", "Distance from the player to his matchup.")),
+    ("matchup_bearing", ("Per-player relative (decision 12)", "Direction from the player to his matchup.")),
+])
+VALUE_NEEDS = [({"bx", "by"}, "ball"), ({"mx", "my"}, "matchup")]
+
+
+def relative_values(E):
+    e = next(x for x in E if x["id"] == "rule_continuous_coordinates")
+    V = Values(e["value_exprs"])
+    missing = sorted(set(e["value_exprs"]) - set(VALUE_MEANING))
+    if missing:
+        raise SystemExit(f"gen_doc: add a plain sentence for these values: {missing}")
+    n_probe = sum(len(p["want"]) for p in e.get("probes_values") or [])
+    rows = ["| Value | Group | Meaning | Exact value (expr) | Needs |", "|---|---|---|---|---|"]
+    for name, src in e["value_exprs"].items():
+        group, text_ = VALUE_MEANING[name]
+        need = [w for keys, w in VALUE_NEEDS if V.items[name][0] & keys]
+        rows.append(f"| `{name}` | {group} | {esc(text_)} | {code(src)} | {', '.join(need) or 'own position only'} |")
+    return "\n".join(rows) + (f"\n\n{n_probe} test values are stored with the entry (`probes_values`) and run by `check.py`, "
+                              "the empty (null) cases included.")
+
+
+def context_names(doc, E):
+    names = doc["context_names"]
+    used = Counter()
+    for e in E:
+        srcs = ([e["expr"]] if e.get("expr") else []) + list((e.get("value_exprs") or {}).values())
+        for n in {n for src in srcs for n in re.findall(r"[A-Za-z_][A-Za-z_0-9]*", src)} & set(names):
+            used[n] += 1
+    rows = ["| Name | What it is | Unit | Empty (None) when | Entries that use it |", "|---|---|---|---|---|"]
+    for n, d in names.items():
+        rows.append(f"| `{n}` | {esc(d['what'])}{' Its x is flipped for a left-side label.' if d.get('mirrored_with_x') else ''} | "
+                    f"{esc(d['unit'])} | {esc(d['none_when'])} | {used.get(n, 0)} |")
+    return "\n".join(rows)
+
+
+def journal(doc):
+    out = []
+    for j in doc.get("journal") or []:
+        out.append(f"**{j['version']} ({j['date']}, {esc(j['title'])}).** {esc(j['summary'])}")
+        out.append("")
+        for k, f in enumerate(j.get("findings") or [], 1):
+            out.append(f"{k}. **{f['id']} ({f['severity']}): {esc(f['title'])}.** Wrong: {esc(f['what_was_wrong'])} "
+                       f"Changed: {esc(f['what_changed'])} Evidence: {esc(f['evidence'])}")
+        if "geometry_changes" in j:
+            out.append("")
+            out.append(f"Geometry and rule-logic changes in {j['version']} (everything else is text, probes, lists and tools):")
+            out.append("")
+            out += [f"- {esc(g)}" for g in j["geometry_changes"]] or ["- none"]
+        out.append("")
+    return "\n".join(out).rstrip()
+
+
+def decision12(doc, E):
+    e = next(x for x in E if x["id"] == "rule_continuous_coordinates")
+    rel = [n for n in e["value_exprs"] if VALUE_MEANING[n][0].startswith("Per-player")]
+    if len(rel) != 6:
+        raise SystemExit("gen_doc: the per-player relative layer must hold 6 values")
+    return ("done. The attacked-rim base frame is unchanged. The per-player relative layer is stored by "
+            "`rule_continuous_coordinates` as " + ", ".join(f"`{n}`" for n in rel) + " (section 6.0): distance and bearing to the rim, "
+            "the ball and the matchup, empty when the ball or the matchup is missing. Still to do: \"passes away\" from a learned "
+            "passing-lane model (later; it needs tracking data), and `config/movement_grammar/kinematics.yaml` keeps its own "
+            "ball_distance until the freeze lifts (section 13, item 39).")
 
 
 def dropped(doc):
@@ -523,12 +716,13 @@ def decision9(E):
     new_ctx = sorted(CTX_NAMES - ORIGINAL_CTX)
     used = Counter()
     for e in E:
-        if e.get("expr"):
-            for n in set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", e["expr"])) & set(new_ctx):
-                used[n] += 1
+        srcs = ([e["expr"]] if e.get("expr") else []) + list((e.get("value_exprs") or {}).values())
+        for n in {n for src in srcs for n in re.findall(r"[A-Za-z_][A-Za-z_0-9]*", src)} & set(new_ctx):
+            used[n] += 1
     n_null = sum(1 for e in E if not e.get("expr"))
-    return (f"The evaluator now accepts the context names {', '.join('`' + n + '`' for n in new_ctx)}. "
-            f"Exact rules use these today: {', '.join(f'`{k}` ({v} entry)' if v == 1 else f'`{k}` ({v} entries)' for k, v in sorted(used.items())) or 'none'}. "
+    return (f"The evaluator now accepts the context names {', '.join('`' + n + '`' for n in new_ctx)}; each is defined in "
+            f"section 2 (context names). "
+            f"Exact rules and value expressions use these today: {', '.join(f'`{k}` ({v} entry)' if v == 1 else f'`{k}` ({v} entries)' for k, v in sorted(used.items())) or 'none'}. "
             f"Of the 7 entries loop 2 named, these now have an exact rule: {', '.join('`' + i + '`' for i in got)}; "
             f"these stay in words: {', '.join('`' + i + '`' for i in still)}. "
             f"{n_null} entries in total have no exact rule (most are labelling procedures, provider encodings and "
@@ -584,6 +778,9 @@ def check(md, E, shown):
     left = re.findall(r"\{\{[A-Z0-9_]+\}\}", md)
     if left:
         problems.append(f"unfilled placeholders {sorted(set(left))}")
+    for sec, mode, n, want, where in frame_counts_in(md):
+        if n != want:
+            problems.append(f"frame count: {sec} s ({mode}) is {want} frames, the page says {n}: ...{where}")
     return problems
 
 
@@ -615,6 +812,13 @@ def build():
         "SHOT_ZONE_ALT": by_side(L("shot_zone_alt")),
         "RULES": rules(E),
         "TESTS": tests_section(doc, E),
+        "GRID_COURT_REGION": grid_sentence(doc),
+        "DEPTH_WHY": depth_why(doc),
+        "RELATIVE_TESTS": relative_tests(doc),
+        "RELATIVE_VALUES": relative_values(E),
+        "CONTEXT_NAMES": context_names(doc, E),
+        "JOURNAL": journal(doc),
+        "DECISION12": decision12(doc, E),
         "DROPPED": dropped(doc),
         "DECISION9": decision9(E),
         "DECISION13": decision13(E),
@@ -628,6 +832,7 @@ def build():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--check", action="store_true", help="do not write; fail if the file on disk differs")
     args = ap.parse_args()
     md, E = build()
     problems = check(md, E, E)
@@ -635,6 +840,12 @@ def main():
         for p in problems[:40]:
             print("FAIL", p)
         raise SystemExit(f"gen_doc: {len(problems)} problems; page not written")
+    if args.check:
+        out = Path(args.out)
+        if not out.exists() or out.read_text() != md:
+            raise SystemExit(f"{out} is out of date: run python tools/specgen/named_spots/gen_doc.py")
+        print(f"{out} is up to date")
+        return
     Path(args.out).write_text(md)
     print(f"wrote {args.out} ({md.count(chr(10))} lines, {len(E)} entries)")
 

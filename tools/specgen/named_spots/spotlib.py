@@ -5,6 +5,8 @@ against an AST whitelist before they are compiled. Missing positions give "unkno
 context (ball, handler, assigned attacker) gives None, never False or out of bounds.
 """
 import ast
+import hashlib
+import json
 import math
 from pathlib import Path
 
@@ -205,3 +207,11 @@ def load(path=CONFIG):
     """Return (document, {id: Spot}) for every entry with an expr."""
     doc = yaml.load(Path(path).read_text(), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
     return doc, {e["id"]: Spot(e) for e in doc["entries"]}
+
+
+def rules_sha(doc):
+    """SHA-256 of everything in the file except the journal (the journal quotes the test results,
+    so the results cannot depend on it). The stored test summaries carry this hash; gen_doc.py
+    refuses a summary made from other rules."""
+    body = {k: v for k, v in doc.items() if k != "journal"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
