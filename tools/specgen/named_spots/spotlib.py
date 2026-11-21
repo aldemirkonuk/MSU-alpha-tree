@@ -18,6 +18,26 @@ C = dict(RIM_Y_FROM_END=1.6002, END_Y=-1.6002, BOARD_Y=-0.381, LANE_X=1.8288, FT
 
 
 MAX_ABS_M = 100.0
+FRAME_S = 1001 / 30000  # one frame interval at 29.97 fps (rule_frame_timing)
+
+
+def frames_for(seconds, mode="at_least"):
+    """Frame count for a duration, the one helper behind every "(N frames)" in the dictionary.
+
+    A run of N frames spans N - 1 intervals of 1001/30000 s (rule_frame_timing).
+    at_least:  the smallest N whose elapsed time is >= seconds  (">= 0.50 s" -> 16)
+    more_than: the smallest N whose elapsed time is >  seconds  ("> 3.000 s" -> 91)
+    at_most:   the largest  N whose elapsed time is <= seconds  ("up to 0.5 s" -> 15)
+    """
+    q = seconds / FRAME_S
+    eps = 1e-9
+    if mode == "at_least":
+        return math.ceil(q - eps) + 1
+    if mode == "more_than":
+        return math.floor(q + eps) + 2
+    if mode == "at_most":
+        return math.floor(q + eps) + 1
+    raise ValueError(mode)
 
 
 def _fin(v):
@@ -68,10 +88,11 @@ def env(x, y, z=None, **ctx):
     return e
 
 
+# Every context name is defined once, in the YAML block context_names; check.py fails if the two differ.
 CTX_NAMES = {"bx", "by", "hx", "hy", "ax_", "ay_", "ball_side", "dribbling", "lowest_defender_y", "px", "py",
              "sx", "sy", "n_off_in_paint", "team_centroid_x", "team_centroid_y", "t_since_catch_s", "table_side_x_sign",
-             "lowest_attacker_y", "game_clock_s", "shot_clock_s"}
-MIRROR_X = ("bx", "hx", "ax_", "px", "sx", "team_centroid_x")
+             "lowest_attacker_y", "game_clock_s", "shot_clock_s", "mx", "my"}
+MIRROR_X = ("bx", "hx", "ax_", "px", "sx", "team_centroid_x", "mx")
 POINT_NAMES = {"x", "y", "z", "ax", "r", "t", "m"}
 OK_NODES = (ast.Expression, ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Compare, ast.IfExp, ast.Call, ast.Name,
             ast.Constant, ast.Load, ast.Tuple, ast.And, ast.Or, ast.Not, ast.USub, ast.UAdd, ast.Add, ast.Sub,
@@ -144,6 +165,35 @@ class Spot:
         return out
 
 
+class Values:
+    """Numeric value expressions of one entry (value_exprs), e.g. rule_continuous_coordinates.
+
+    at(x, y, **ctx) returns {name: number or None}. A value is None when the position is missing,
+    or when a context name its expression uses is missing or not finite. It is never 0 or False.
+    """
+
+    def __init__(self, exprs):
+        self.items = {}
+        for name, src in exprs.items():
+            names = check_expr(src)
+            self.items[name] = (names, compile(src, name, "eval"))
+
+    def at(self, x, y, z=None, **ctx):
+        if not _ok(x) or not _ok(y):
+            return {k: None for k in self.items}
+        e = env(x, y, z, **{k: v for k, v in ctx.items() if _fin(v)})
+        out = {}
+        for name, (names, code) in self.items.items():
+            need = names & CTX_NAMES
+            if "ball_side" in need:
+                need = (need - {"ball_side"}) | {"bx", "by"}
+            if any(not _fin(ctx.get(n)) for n in need) or ("z" in names and not _ok(z)):
+                out[name] = None
+            else:
+                out[name] = float(eval(code, {"__builtins__": {}}, e))
+        return out
+
+
 def court_region(spots, x, y):
     """The canonical region label(s) of a point, or ["unknown"] when the position is missing."""
     if not _ok(x) or not _ok(y):
@@ -153,5 +203,5 @@ def court_region(spots, x, y):
 
 def load(path=CONFIG):
     """Return (document, {id: Spot}) for every entry with an expr."""
-    doc = yaml.safe_load(Path(path).read_text())
+    doc = yaml.load(Path(path).read_text(), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
     return doc, {e["id"]: Spot(e) for e in doc["entries"]}
