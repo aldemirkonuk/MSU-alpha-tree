@@ -1,6 +1,6 @@
 pack: identity_pack
-version: 0.1.1
-date: '2026-10-25'
+version: 0.2.0
+date: '2026-11-11'
 owner: Mac session for Aldemir
 status: proposal under the build freeze (baseline 3 of 8). Every numeric value is an engineering proposal until measured on MSU film; the harness numbers below come from simulated cues on real NBA SportVU motion.
 scope: >-
@@ -37,12 +37,13 @@ conventions:
   time_base: production 29.97 or 59.94 fps; the SportVU harness runs at 25 Hz. Every duration is written in seconds and converted with the source dt (frames = round(seconds / dt)).
   terms:
     detection: one person box on the floor in one frame, with its cue observations; no id
-    tracklet: detections linked by motion only, cut at every ambiguity, so a tracklet never contains two people (purity by construction)
-    chain: tracklets joined by unambiguous continuations (single parent, single child, nobody else in reach); the unit that carries one identity
+    tracklet: 'detections linked by motion only, cut at every ambiguity the motion layer can see (pair-swap, merge, jump, contested detection, edge band). Purity is a measured property (metric chain_purity), not a guarantee: a box can pass to another person with no test firing'
+    chain: 'one clean tracklet; the unit that carries one identity. A chain that starts in reach of tracklets that just ended is a group child of them and is re-confirmed by its own cues. Nothing is joined by geometry alone (0.2.0)'
     group: the set of chains that ended together in an ambiguity (crossing, merge, pile-up); its members' identities pass to its children as a mixture prior
     label: a roster player id (season roster, per game); HOLD = no label, with a candidate set
     lock: the state of a chain whose label posterior reached p_lock; it keeps the label until release or a swap alarm
     swap: a committed label on a detection of a different person (or of a non-player); the quantity that must be zero
+    sigma_p: 'per-axis standard deviation of the part of one player''s floor-position error that is not shared with the players within 3 m of him in the same frame. Error shared through the homography moves neighbours together, does not hurt identity and is excluded (metric pairwise_sigma_p)'
   probability_model: >-
     Cue observations are treated as independent given the identity, each tempered by a factor tau <= 1 for unmodelled
     correlation between frames; the label posterior of a chain is computed jointly with every other visible chain of the
@@ -73,6 +74,11 @@ research:
   - {ref: 'Luiten et al. HOTA: A Higher Order Metric for Evaluating Multi-Object Tracking. IJCV 2021, arXiv 2009.07736.', url: 'https://arxiv.org/abs/2009.07736', supports: 'HOTA = sqrt(DetA x AssA); AssA isolates association (identity) quality; IDF1 over-weights association, MOTA over-weights detection.'}
   - {ref: 'Ristani et al. Performance Measures and a Data Set for Multi-Target, Multi-Camera Tracking. ECCVW 2016, arXiv 1609.01775.', url: 'https://arxiv.org/abs/1609.01775', supports: 'IDF1, IDP, IDR from the optimal one-to-one matching of true and predicted identities.'}
   - {ref: 'TrackID3x3 (3x3 basketball tracking with identification), 2025.', url: 'https://www.themoonlight.io/en/review/trackid3x3-a-dataset-and-algorithm-for-multi-player-tracking-with-identification-and-pose-estimation-in-3x3-basketball-full-court-videos', supports: 'identity annotated mainly by jersey number; ID switches under occlusion reported as the open problem (secondary review page, not the paper).'}
+  - {ref: 'Koshkina, Elder. A General Framework for Jersey Number Recognition in Sports Video. arXiv 2405.13896, 2024.', url: 'https://arxiv.org/html/2405.13896v1', supports: 'tracklet accuracy after voting over all legible frames 87.45 % (test) and 79.31 % (challenge), so misreads persist for seconds (table 9); per-crop accuracy on legible hockey crops 91.4 % (table 5); 5.9 % of hockey player images legible (table 1); the main digit-count confusion is a two-digit number read as one digit (sec 3.4.4, table 3). Basis of the harness options p_trunc, p_repeat and p_misread_persist.'}
+  - {ref: 'Cioppa et al. SoccerNet 2023 Challenges Results. arXiv 2309.06006, 2023.', url: 'https://arxiv.org/pdf/2309.06006', supports: 'jersey number recognition, best of 15 teams 92.85 % tracklet accuracy (table 7); re-ID of the same action across cameras rank-1 91.26 %, and players of one team look very similar (sec 6); the tracking winner splits tracklets that cross and fine-tunes re-ID on unambiguous tracklets (sec 7.4).'}
+  - {ref: 'Mansourian et al. Multi-task Learning for Joint Re-identification, Team Affiliation and Role Classification (PRTreID). arXiv 2401.09942, 2024.', url: 'https://arxiv.org/html/2401.09942v1', supports: 'team affiliation 95.6 % per crop (table 6); re-ID rank-1 89.57 % on unmasked crops (table 2), with the note that identity-only re-ID may group players by skin colour. Our crops are skin- and head-masked, so the good profile (implied rank-1 about 0.90 among on-court teammates) is an upper estimate.'}
+  - {ref: 'Crang et al. Concurrent validity of computer-vision player tracking software using broadcast footage. arXiv 2508.19477, 2025.', url: 'https://arxiv.org/pdf/2508.19477', supports: 'three commercial broadcast-tracking providers against TRACAB on one 2022 World Cup match: position RMSE on detected frames 0.44-1.13 m for the best provider, 1.07-2.23 m and 2.49-16.24 m for the others (table 2). Soccer, absolute error on a larger field: an upper bound for sigma_p, not a value (the error shared by neighbours does not hurt identity).'}
+  - {ref: 'Maglo, Orcesi, Pham. KaliCalib: A Framework for Basketball Court Registration. arXiv 2209.07795, 2022.', url: 'https://ar5iv.arxiv.org/html/2209.07795', supports: 'basketball court registration at 960x540: RMS error 1.27 m (test) and 1.40 m (challenge) at bottom-of-frame points, 76.5 % of images under 1 m (table 1). Absolute calibration error; same caveat as Crang et al.'}
   provider_note: >-
     Aldemir asked how broadcast providers (he named Peacock) do it. Streaming providers show tracking graphics bought from
     the league's in-arena vendor; no public document describes their identity logic. ShotTracker (MSU's in-arena system)
@@ -84,8 +90,8 @@ design_principles:
   rule: Abstain rather than guess. A label is emitted only when its joint posterior is >= p_lock; otherwise the detection carries HOLD with its candidate set.
   why: zero swaps is a hard requirement; coverage is the variable that pays for it.
 - id: DP2
-  rule: Tracklets are pure by construction. The motion tracker cuts every tracklet involved in an ambiguity (pair-swap test, merge, nearby miss, camera cut) instead of guessing through it.
-  why: a standard tracker that extends tracks through crossings is where swaps are born (harness config naive_tracker shows it).
+  rule: 'Tracklets are cut, not guessed through. The motion tracker cuts every tracklet involved in an ambiguity it can see (pair-swap test, merge, nearby miss of any class, jump, contested detection, edge band, camera cut). Purity is then measured (chain_purity), not assumed: a box that changes person with no test firing is the residual, and the label rules (BRACKET, COLOUR LATCH) withhold the label where a box may not belong to the chain''s person.'
+  why: 'a standard tracker that extends tracks through crossings is where swaps are born (harness config naive_tracker shows it). Review round 2 showed that purity by construction was false: 50 clean chains with two people in 120 min at sigma_p 0.30 m (RV-23).'
 - id: DP3
   rule: Identity is a constrained labelling of chains, not a property of the tracker. Constraints are hard - team, on-court lineup, one label per person per frame, at most five labels per team per frame.
   why: the lineup turns a 13-way choice into a 5-way choice and makes elimination possible (four locked teammates leave one label).
@@ -93,7 +99,7 @@ design_principles:
   rule: Re-confirm after every crossing. Teammate crossings - children of a group inherit only the mixture of the group's identities and must be confirmed by their own cues before a label is emitted again. Opponent crossings - re-confirmed on every frame by team colour (colour veto, per-box colour HOLD, class alarm) and still recorded as split points.
   why: Aldemir's lock-and-keep rule needs a re-check at exactly the moments where a keep would be a guess.
 - id: DP5
-  rule: Lock from entry to exit. A locked chain keeps its label through unambiguous gaps; the identity is released on frame exit, camera cut, substitution or long loss.
+  rule: 'Lock from entry to exit. A locked chain keeps its label while its track is unbroken. After any gap the continuation is a new chain with the old label as its prior and locks again on its own cues (0.2.0: a lock is never inherited on geometry alone). The identity is released on frame exit, camera cut, substitution or long loss.'
   why: the owner rule (lock on entry, release on exit).
 - id: DP6
   rule: Every label change is logged with its evidence; a swap alarm (locked label contradicted by cues) demotes the chain, splits it at the last close encounter and sends it to review.
@@ -166,7 +172,7 @@ cues:
     and every other number shares the rest; partial read d -> P(d | n) = (1 - e_ocr) / len(digits(n)) when d is a
     digit of n, else e_partial. Reads below ocr_min_score are discarded (counted for the read-rate metric).
   params:
-    e_ocr: {value: 0.1, unit: probability, why: 'assumed full-read error after the score gate at 1080p; SoccerNet and Basket-AI report about 79-90 % read accuracy, so 10 % is the planning value until measured on MSU film'}
+    e_ocr: {value: 0.1, unit: probability, why: 'assumed full-read error after the score gate at 1080p. Published per-crop accuracy on legible crops is 91.4 % (hockey; Koshkina and Elder 2024, table 5); tracklet accuracy after voting is 79-93 % (SoccerNet 79.31-87.45 %, same paper; 92.85 % best of the 2023 challenge; hockey 83.17 %, Vats et al. 2021). 10 % is the planning value until measured on MSU film (OQ-3)'}
     confusable_share: {value: 0.5, unit: probability, why: 'half of OCR errors go to a visually confusable number (digit shape pairs); the rest spread uniformly'}
     e_partial: {value: 0.05, unit: probability, why: probability of a partial digit that is not in the true number (fold, arm across the chest)}
     sighting_gap_s: {value: 0.2, unit: s, why: reads closer than this are the same view of the jersey and are counted once}
@@ -222,7 +228,7 @@ cue_common:
     merged_box_iou: {value: 0.5, unit: IoU, why: a box overlapping another person's box above this is flagged merged and gives no cues}
 
 tracklets:
-  summary: Motion-only linking of detections frame to frame with a pair-swap likelihood test; any track involved in an ambiguity is cut, so tracklets are pure.
+  summary: Motion-only linking of detections frame to frame with a pair-swap likelihood test; any track involved in an ambiguity the motion layer can see is cut. Purity is measured (chain_purity), not guaranteed.
   rule: |
     Per frame: predict each active track with an alpha-beta (constant-velocity) filter; cost = squared distance to each
     detection; gate = gate_base_m x gap + gate_k x sigma_pair (sigma_pair = max(sqrt(2) x sigma_p, sigma_floor_m), grown
@@ -231,22 +237,32 @@ tracklets:
     swapped assignment is LLR = [c(i,l) + c(k,j) - c(i,j) - c(k,l)] / (2 sigma_pair^2); LLR < swap_llr_min fails.
     MERGE TEST: a track without a detection, or matched to a merged / no-cue box, fails together with every track within
     merge_base_m + merge_k x sigma_pair (two people in one box, or a person hidden behind another).
+    OPP GUARD (0.2.0): a track without a detection fails with every track in that radius whatever the class. The person
+    who lost his box may be hidden behind the other one, and the next box of either track can be his.
     ENCOUNTER GROUP: a track that fails a test ends its clean tracklet (reason ambiguous) and continues as an amb segment
     (motion kept, identity unknown, never labelled); failing pairs join one encounter group (union of the identities that
     entered it, including tracks that vanished inside it). A track that passes every test for clear_s leaves the group
     as a new clean tracklet whose explicit parents are all identities that entered the group (it must be re-confirmed).
     This replaces cutting at every frame of a long close encounter (a defender 1 m from his man would otherwise create
     a new tracklet every frame).
+    UNRESOLVED GROUP (0.2.0): a group is resolved when the tracks live in it plus the tracks that already left it are at
+    least as many as the identities that entered it. While a member is still hidden the group is unresolved, and a track
+    leaves it only after passing every test for unresolved_clear_s (the hidden member can come back in this track's box).
     JUMP TEST: a one-frame innovation above jump_k x sigma_pair moves the track into an encounter group (with every
     person that vanished within reach). CONTESTED DETECTION: a matched detection near the predicted position of a
-    same-class person that vanished less than contest_s ago does the same. NEWCOMER: a detection that starts a new
-    track within the merge radius of a tracked person makes both ambiguous.
-    COLOUR: an opponent pair (both tracks confidently of different classes) is not cut by the pair-swap or merge
-    test; team colour separates them, and a detection whose observed class contradicts its track's class during such an
-    encounter (colour veto) makes the pair ambiguous. Every encounter is still recorded as a candidate split point.
-    LEADING GUARD: a new track that starts from a detection with another detection within isolation_m starts as an amb
-    segment (group = identities that vanished within reach) and becomes clean after clear_s; TRAILING GUARD: a track
-    that is lost next to another detection gives its last clear_s detections to an amb segment.
+    person of any class that vanished less than contest_s ago does the same (0.2.0: other classes too). NEWCOMER: a
+    detection that starts a new track within the merge radius of a tracked person makes both ambiguous.
+    EDGE BAND (0.2.0): a matched box within edge_band_m of the left or right frame edge keeps its track in an amb
+    segment, and a track that starts there starts as one. The track comes out of the band as a clean tracklet with no
+    parents (as FOV ENTRY): next to the edge one person can step out in the frame in which another steps in.
+    COLOUR: an opponent pair (both tracks confidently of different classes) is not cut by the pair-swap test, nor by the
+    merge test on a merged / no-cue box; team colour separates them, and a detection whose observed class contradicts
+    its track's class during such an encounter (colour veto) makes the pair ambiguous. The exemption does not cover a
+    lost detection (OPP GUARD). Every encounter is still recorded as a candidate split point.
+    LEADING GUARD: a new track that starts from a merged / no-cue box, or from a detection with another detection
+    within isolation_m, starts as an amb segment (group = identities that vanished within reach) and becomes clean
+    after clear_s; TRAILING GUARD: a track that is lost next to another detection gives its last clear_s detections to
+    an amb segment.
     DECISION DELAY: entering a group moves the last clear_s detections of the clean tracklet into the amb segment, so a
     swap made up to clear_s before a test fires never reaches a labelled tracklet (labels are emitted clear_s late).
     NO COASTING (pure): an unmatched track ends (lost, or fov_exit within fov_edge_m of the frame edge); the chain linker
@@ -270,24 +286,29 @@ tracklets:
     vel_beta: {value: 0.05, unit: '1', why: 'alpha-beta velocity gain; per-frame differences of a 0.3 m noisy position are about 10 m/s, so velocity must be heavily smoothed'}
     sigma_floor_m: {value: 0.1, unit: m, why: 'minimum pair sigma in the swap test (filter lag on sharp cuts is about 0.1 m even with exact positions)'}
     fov_edge_m: {value: 1.5, unit: m, why: tracks ending this close to the frame edge are treated as leaving the frame}
+    unresolved_clear_s: {value: 0.5, unit: s, why: 'UNRESOLVED GROUP: while a member of the encounter group is still hidden (fewer tracks live in the group or already out of it than identities that entered), a track leaves only after passing every test for this long instead of clear_s. A teammate hidden for 0.72 s re-appeared in the tracked player''s box 1.4 m away (below the jump test) and got his label (review round 2, RV-23). First value: 1.5 s removes more hand-overs and costs about 14 points of coverage'}
+    edge_band_m: {value: 1.5, unit: m, why: 'EDGE BAND: a matched box this close to the left or right frame edge keeps its track in an amb segment. One player stepped out of view in the frame in which a teammate stepped in 1.0-1.3 m away: one clean tracklet of 20 + 125 boxes, no test fired (review round 2, RV-23). Equal to fov_edge_m; first value'}
   outputs: [tracklet_id, start_frame, end_frame, end_reason (cut | ambiguous | lost | fov_exit | end), amb (encounter segment), encounter_group, explicit_parents, encounter_frames]
 
 chains:
-  summary: Tracklets are joined into chains only by unambiguous continuations; all other starts receive a mixture prior from the group that may contain them.
+  summary: Every clean tracklet is a chain of its own. A start in reach of tracklets that just ended receives their identities as a mixture prior and is re-confirmed by its own cues; nothing is joined by geometry alone.
   rule: |
     A clean tracklet that leaves an encounter group has explicit parents (the group's identities). Any other new
     tracklet starting at frame s at position p takes as parent candidates the tracklets that ended within link_window_s
     before s (no camera cut in between, not ended by fov_exit) whose last position is within reach = reach_base_m +
     v_max_mps x gap + 3 sigma_pair of p; an amb segment in reach contributes all identities of its group.
-    UNIQUE CONTINUATION: no explicit parents, exactly one parent candidate, that parent has exactly one child candidate,
-    the parent ended with reason lost, and both the parent's last detection and the new first detection are isolated
-    (no other detection within isolation_m in that frame) -> the tracklet joins the parent's chain (lock inherited).
-    GROUP CHILD: otherwise a new chain with prior = (1 - leak) x mean over parent chains of their posterior at their
+    CONTINUATION (0.2.0; replaces UNIQUE CONTINUATION, which joined the tracklet to its parent's chain and inherited the
+    lock): a tracklet with exactly one parent candidate is a group child of that one parent (RECONFIRM). The parent's
+    label is its prior, never its lock; it locks again only with own-cue support (own_margin_nats, at least one cue
+    sample). A teammate who appears where a lost player could be is then not labelled as him.
+    GROUP CHILD: a new chain with prior = (1 - leak) x mean over parent chains of their posterior at their
     end + leak x uniform over the on-court candidates of the class (adaptive leak, see leak_eps). No parents (start, after a cut, frame entry):
     uniform prior.
     AMB SEGMENTS are chains of their own, never labelled (HOLD with the group as candidate set).
     FOV ENTRY: a chain that starts within fov_edge_m of the frame edge has no parents (released identities are not
-    inherited across an exit; entering players are re-acquired by cues).
+    inherited across an exit; entering players are re-acquired by cues). This holds for a tracklet that leaves an
+    encounter group there too (0.2.0: explicit parents are dropped), and for every track that was inside the edge band.
+    The requirement asks to match a re-entering player to his stored track first (R-DT-06); the pack does not (OQ-8).
   params:
     link_window_s: {value: 1.5, unit: s, why: 'longest occlusion that is still bridged by a group prior; longer losses re-acquire from scratch'}
     reach_base_m: {value: 1.0, unit: m, why: body width}
@@ -313,9 +334,22 @@ assignment:
     LOCK (live) / EMIT (offline) needs all of: joint posterior >= p_lock; chain margin (S without the one-label
     constraint) >= min_evidence_nats; own-cue support (at least one cue sample of the chain's own and its own cues favour
     the label by >= own_margin_nats); for a label with a confusable teammate among the candidates, own jersey evidence
-    >= twin_jersey_nats against that teammate; the box itself is not merged and does not show another team's colour.
+    >= twin_jersey_nats against that teammate; the box itself is not merged and does not show another team's colour;
+    the box passes the COLOUR LATCH and the BRACKET rule below.
     Offline label of a chain: the label with the highest mean marginal over its frames, emitted on the frames where all
     the conditions hold (one label per chain, so no within-chain flicker).
+    The posterior answers which label a chain has. It does not answer whether a box still belongs to the chain's person
+    (a foreign box at the edge of a correct chain carried posterior 1.0). Two per-box rules answer that (0.2.0):
+    COLOUR LATCH: after a box of a chain shows another class, the label is withheld until colour_latch_n consecutive
+    boxes show the chain's class again; offline also on the colour_latch_n boxes before such a box. The lock state is
+    not touched.
+    BRACKET: a dense-cue sample (appearance, height or gait, every cue_stride_s) contradicts a label when the box's own
+    evidence for the label is more than bracket_nats below the best other candidate of the team. Offline a label is
+    emitted only on boxes between two samples of the same run of consecutive frames of the chain that both do not
+    contradict it (the first and last boxes of a run, outside its samples, carry no label). Live only the earlier side
+    exists: the latest sample of the run, at or before the box, must not contradict it; the boxes of a hand-over that
+    lie before the next sample cannot be known live. The rule applies to the locked and the probable tier. A
+    configuration without a dense cue (harness ablations motion_team, plus_jersey) cannot make the check and skips it.
     PROBABLE TIER (owner decision 25 Oct 2026, OD-8; offline only, never live): on a frame of that chain where the lock
     conditions fail, the same label is emitted as a separate, flagged probable label when joint posterior >= p_probable,
     chain margin >= probable_min_evidence_nats, own cues (>= one sample) favour it by >= probable_own_margin_nats and the
@@ -333,6 +367,8 @@ assignment:
     confusable_rate: {value: 1.0, unit: nats/s, why: 'CONFUSABLE PAIRS (per-game confusion list of the reference pack): teammates whose expected appearance + height log-likelihood ratio grows slower than this (tau_app kappa_app (1 - cos of templates) + tau_height (dh/sigma_h)^2/2, per cue sample) cannot be told apart by soft cues within a possession'}
     twin_jersey_nats: {value: 5.0, unit: nats, why: 'a label with a confusable teammate among the candidates locks only when the chain''s own jersey evidence favours it over that teammate by this much (more than one capped sighting: one misread confusable with the twin''s number, 7 read as 80 for 30, locked a twin in the harness); template bias made the SportVU twins swap on appearance alone (review round 1)'}
     own_margin_nats: {value: 0.5, unit: nats, why: 'OWN-CUE SUPPORT: a chain locks a label only if it has at least one cue sample of its own and its own cues favour that label over every other candidate by at least this; priors (group mixture, children, elimination) can speed a lock up, never decide it (a group child inherited a teammate''s label when a hidden teammate stepped out; tolerance 1.0 against still let it through)'}
+    colour_latch_n: {value: 1, unit: boxes, why: 'COLOUR LATCH: after a box of a chain shows another class, the label is withheld until this many consecutive boxes show the chain''s class again (offline also on this many boxes before the contradicting box). A locked track that had moved onto an official emitted its label on the one box whose colour was misread (review round 2, RV-24). Costs about e_team of the labelled boxes. It does not stop a colour error that lasts for a run of boxes'}
+    bracket_nats: {value: 0.3, unit: nats, why: 'BRACKET: an own-cue sample contradicts a label when its evidence for the label is more than this below the best other candidate of the team. A label is emitted only between two samples of one run that do not contradict it (live: after the latest sample that does not). The posterior is P(chain = label) and says nothing about whether a box still belongs to the chain''s person; foreign boxes at chain edges carried posterior 1.0 (review round 2, RV-22). Value measured by the statistics lens (0.3: 0 offline swaps on the five failing games)'}
     class_window_s: {value: 1.0, unit: s, why: 'live swap catch for opponents: a locked chain whose last 1 s of team-colour evidence is confidently the other class raises a class alarm (opponent pairs are not cut by the tracklet layer, see tracklets.rule)'}
     p_probable: {value: 0.9, unit: probability, why: 'PROBABLE TIER (owner decision 25 Oct 2026, OD-8; offline only): a detection the locked tier leaves on HOLD gets a flagged probable label when the chain''s joint posterior for its offline label is >= this and the lower bars below hold. Probable labels are shown to viewers flagged as probable and never feed stats or any metric that counts locked identity'}
     probable_min_evidence_nats: {value: 1.0, unit: nats, why: 'probable tier: chain margin without the one-label constraint (min_evidence_nats is 2.0 for a lock); elimination alone still never gives a probable label'}
@@ -345,15 +381,15 @@ state_machine:
   states:
     ENTER: chain started with no parent (frame entry, start of play, after a camera cut); candidates = free on-court labels of its class
     CONFIRMING: posterior of the best label < p_lock; output HOLD with candidates
-    LOCKED: label emitted every frame while the chain is visible
+    LOCKED: 'label emitted on every box of the chain that passes the per-box holds (merged box, colour HOLD, COLOUR LATCH, BRACKET)'
     HELD: the chain ended inside a group (crossing, merge, pile-up); the identity is reserved for the group's children for link_window_s
-    RECONFIRM: a group child; prior = mixture of the group's identities; output HOLD until p_lock (cues confirm which member it is)
+    RECONFIRM: 'a group child or the continuation of one lost chain; prior = mixture of the parents'' identities; output HOLD until p_lock with own-cue support (cues confirm who it is)'
     ALARM: a LOCKED chain's label fell below p_unlock (contradicting cues); output HOLD, chain split at its last encounter, review record written
     RELEASED: frame exit, camera cut, substitution, or loss longer than link_window_s; the identity is free
   transitions:
   - {id: SM-1, from: ENTER, to: CONFIRMING, when: first frame of a chain without parents}
   - {id: SM-2, from: CONFIRMING, to: LOCKED, when: 'joint posterior >= p_lock, chain margin >= min_evidence_nats and own-cue support (own_margin_nats, at least one cue sample)'}
-  - {id: SM-3, from: LOCKED, to: LOCKED, when: unique continuation after a short gap (single parent, single child, isolated) - the lock is inherited}
+  - {id: SM-3, from: LOCKED, to: RECONFIRM, when: 'continuation after a gap (one parent in reach within link_window_s) - the parent''s label is a prior, not a lock; own-cue support is needed again (0.2.0; 0.1.1 inherited the lock)'}
   - {id: SM-4, from: LOCKED, to: HELD, when: the chain ends with reason ambiguous (pair-swap test failed, merge, nearby miss)}
   - {id: SM-5, from: HELD, to: RECONFIRM, when: a child tracklet starts within reach and link_window_s}
   - {id: SM-6, from: RECONFIRM, to: LOCKED, when: 'joint posterior >= p_lock with own evidence margin; time from the group end to this frame is the time-to-reconfirm metric'}
@@ -374,7 +410,9 @@ swap_catch:
     1. Prevention: pair-swap and merge tests cut tracklets, so a group child is matched to the group's members by cues
        (frame matching: the members' evidence before the group vs the child's evidence after it), never by motion alone.
     2. Live catch: a LOCKED chain whose posterior for its label drops below p_unlock raises ALARM; the chain is split at
-       its last close encounter (encounter_frames from the tracklet layer) and the part after it is re-confirmed.
+       its last close encounter (encounter_frames from the tracklet layer) and the part after it is re-confirmed. A
+       class alarm with no encounter on record splits at the first box of the current run of boxes that show another
+       class (first_bad_frame in the log; a stretch of at most colour_latch_n agreeing boxes does not end the run).
     3. Offline catch (change-point): for every chain and every close encounter in it, the split log-likelihood gain
        G = max_L1 S_before[L1] + max_L2 S_after[L2] - max_L S_all[L] is computed; the best split with G >= split_llr_min is
        applied, and the search repeats on each part (at most max_splits). When several split points are equally good
@@ -398,7 +436,8 @@ confidence_and_abstention:
     label reaches p_lock, (c) the chain margin is below min_evidence_nats or the chain's own cues do not favour the label (own_margin_nats),
     (d) the box is merged or occluded (no cues), (e) the chain is in ALARM or inside an encounter group, or (f) the box's
     own team-colour observation contradicts its chain's team (a one-frame swap with an opponent or an official at a
-    chain edge, or a colour misread; costs about e_team of the boxes). HOLD carries the candidate set (labels with posterior >= 0.05). Downstream consumers use
+    chain edge, or a colour misread; costs about e_team of the boxes), (g) the box is inside the COLOUR LATCH after such a
+    box, or (h) the box is not bracketed by own-cue samples that agree with the label (BRACKET; assignment rule). HOLD carries the candidate set (labels with posterior >= 0.05). Downstream consumers use
     candidate sets for counting (a HOLD in a two-player group still counts both players on the floor) and never guess.
     Live panel (owner decision 25 Oct 2026, OD-10): when unsure the live panel shows HOLD with the candidate list; no
     provisional or probable label is ever shown live. The probable tier (assignment rule, OD-8) exists offline only and is
@@ -436,8 +475,20 @@ hard_cases:
   test: test_camera_cut_releases_and_reacquires
 - id: HC-fov
   case: Player leaves and re-enters the broadcast field of view
-  handling: exit releases (owner rule); entry starts a new chain with no parents; re-acquired by cues.
-  test: test_fov_exit_releases
+  handling: 'exit releases (owner rule); entry starts a new chain with no parents, also next to another player; boxes inside the edge band carry no label; re-acquired by cues.'
+  test: test_fov_exit_releases, test_fov_edge_start_next_to_another_player_has_no_parents
+- id: HC-edge-swap
+  case: One player steps out of view at the frame edge in the frame in which another steps in beside him
+  handling: 'the motion layer sees one smooth track; EDGE BAND keeps every track inside edge_band_m of the edge in an amb segment and lets it out with no parents.'
+  test: test_same_edge_exit_and_entry_is_not_one_tracklet
+- id: HC-hidden-handover
+  case: A person hidden behind a tracked player comes back in that player's box (the visible box changes person without a jump)
+  handling: 'OPP GUARD and UNRESOLVED GROUP keep the track ambiguous while the hidden person is unaccounted for (unresolved_clear_s); after that BRACKET and COLOUR LATCH withhold the label on boxes that own-cue samples or the box colour do not confirm. Live, the boxes between the hand-over and the next cue sample cannot be known.'
+  test: test_hidden_teammate_handover_is_not_labelled, test_opponent_hidden_behind_a_player_takes_his_box_no_label, test_foreign_teammate_tail_is_not_labelled_offline, test_track_jump_to_official_with_one_colour_misread_emits_no_label
+- id: HC-continuation
+  case: A locked player is lost in mid-frame and somebody appears within reach and link_window_s
+  handling: 'the new chain has the lost chain as its only parent (prior); it is labelled only when its own cues confirm it (SM-3, RECONFIRM).'
+  test: test_sm3_continuation_reconfirms, test_continuation_of_another_person_is_not_labelled
 - id: HC-substitution
   case: Substitutions during dead balls (and late PBP entries)
   handling: lineup candidates widen to outgoing + incoming inside sub_window_s; a released player's label is not available after his substitution leaves the window.
@@ -486,7 +537,7 @@ metrics:
   definition: for each true player, the sequence of emitted labels on his detections (HOLD skipped); every change between two consecutive emitted labels counts one switch.
 - id: swap_events
   name: Swap events (the zero-swap quantity)
-  definition: maximal runs of frames in which a true player's detection carries a wrong label (or an official's detection carries any label), runs closer than 1 s merged. Target 0.
+  definition: 'maximal runs of frames in which a true player''s detection carries a wrong label (or a non-player''s detection - an official or a same-kit bystander - carries any label), runs closer than 1 s merged. Target 0.'
 - id: wrong_label_frames
   name: Wrong-label frames
   definition: detections with an emitted label different from the true player.
@@ -517,6 +568,18 @@ metrics:
 - id: recording_standard
   name: Recording standard (OD-9)
   definition: per game, the source resolution and frame rate of the main wide recording.
+- id: swap_rate_bound
+  name: Swap rate with exposure and upper bound
+  definition: 'swap events per labelled player-hour, per true crossing and per game of game_minutes of play, each with the one-sided upper bound at bound_confidence (exact Poisson; 3.0 events when none is seen), next to the exposure it was measured on (game-runs, minutes of play, labelled player-hours, crossings, chains). A zero count is reported as this bound, never as proof of zero.'
+- id: swap_mechanism
+  name: Swap mechanism (harness only)
+  definition: 'each swap event attributed to the first simulated error that fits: same_kit_non_player, official, lineup_wrong (the true player was not a candidate), overlap_unflagged, colour_run, jersey_misread, else other (tracklet impurity, appearance); cross_team counts events labelled as a player of the other team (R-ID-08); impure_chain counts, on top of that attribution, the events whose chain also holds boxes of the labelled player himself (the chain''s label is right and the box is foreign: tracklet impurity). Every other event is a wrong decision about a whole chain (evidence model, lineup). Attribution by co-occurrence within mechanism_window_s.'
+- id: chain_purity
+  name: Chain purity (harness only)
+  definition: 'per run: clean chains, impure_clean_chains (clean chains whose boxes belong to more than one true person), impure_minority_boxes (their boxes of anyone but the most frequent person, split into teammate, opponent and non-player) and impure_labelled_boxes (minority boxes that carry a locked label). Purity is measured, not guaranteed; the target for labelled foreign boxes is 0.'
+- id: pairwise_sigma_p
+  name: Pairwise position noise
+  definition: 'standard deviation per axis of (tracked minus hand-clicked foot point) differences between two players within 3 m in the same frame, divided by sqrt(2); the sigma_p of conventions.terms, measured on our own film.'
 
 acceptance:
 - {id: ACC-1, metric: swap_events, scope: 'gold sample (>= 5 MSU games, >= 20 min of labelled live play each, all 10 players labelled per frame)', threshold: '== 0 (offline labels)', on_fail: 'every swap gets a review record; the root cause (cue, rule, threshold) is fixed and the gold sample re-run; a swap is never waived'}
@@ -527,15 +590,20 @@ acceptance:
 - {id: ACC-6, metric: time_to_reconfirm, scope: gold sample, threshold: 'median <= 1.0 s, p90 <= 3.0 s, share within 2 s >= 0.80 (offline)', on_fail: cue rates or pair-test thresholds revisited}
 - {id: ACC-7, metric: invariants, scope: every game, threshold: 'ID-INV-1..5 zero breaks', on_fail: quarantine affected frames (identity_review queue, R-IV-01)}
 - {id: ACC-8, metric: calibration, scope: gold sample, threshold: 'observed error <= calibration_slack x (1 - mean posterior) in every bin with >= 1,000 labels', on_fail: raise p_lock and re-tune taus}
-- {id: ACC-H1, metric: swap_events, scope: 'SportVU harness, cue profile good, sigma_p 0.15 and 0.30 m, all three games, config full (offline)', threshold: '== 0', on_fail: spec defect - fix before 0.1.x is accepted}
+- {id: ACC-H1, metric: swap_events, scope: 'SportVU harness, cue profile good, sigma_p 0.15 and 0.30 m, all three games, seeds 1-5, config full (offline)', threshold: '== 0 in every game-run; reported with its exposure and upper bound (swap_rate_bound)', on_fail: 'spec defect - fix before the version is accepted. A zero on fewer game-runs is not a pass'}
+- {id: ACC-H3, metric: swap_events, scope: 'SportVU harness, cue profile hard, sigma_p 0.15 and 0.30 m, all three games, seeds 1-5, config full (offline)', threshold: '== 0 in every game-run; reported with its exposure, upper bound and mechanisms (swap_mechanism)', on_fail: 'spec defect - fix the rule; a residual that cannot be removed is stated on the page with its rate and mechanism, never waived and never hidden by a metric change'}
+- {id: ACC-H4, metric: chain_purity, scope: 'SportVU harness, cue profiles good and hard, sigma_p 0.15 and 0.30 m, all three games, seeds 1-5, config full (offline)', threshold: 'swap events on impure chains (swap_mechanism impure_chain) == 0 and impure_labelled_boxes == 0 in every game-run; impure_minority_boxes reported per million clean-chain boxes', on_fail: 'tracklet-layer defect - trace the chain (which test should have fired) and fix the rule; never answered by a lower count through a metric change'}
 - {id: ACC-P1, metric: probable_error_rate, scope: 'SportVU harness (every cue profile and sigma_p, config full) and the gold sample, offline', threshold: 'reported with probable_coverage_gain on every run; probable labels never enter swap_events, idsw, IDF1, HOTA, coverage or any stat', on_fail: 'a probable label found in a stat input is a defect; a probable error rate above 1 % on the gold sample raises p_probable'}
 - {id: ACC-R1, metric: recording_standard, scope: every game that feeds player-level numbers, threshold: '>= 1080p and >= 59.94 fps (OD-9)', on_fail: 'team-level numbers only, or probable-only player labels for that game'}
+- {id: ACC-R2, metric: pairwise_sigma_p, scope: every game that feeds player-level numbers, threshold: '<= 0.30 m (proposal; no published basketball value exists, PW-3)', on_fail: 'team-level numbers only, or probable-only player labels for that game (as ACC-R1)'}
 - {id: ACC-H2, metric: idsw, scope: 'SportVU harness, config naive_tracker, cue profile good, sigma_p 0.30 m', threshold: '> 0 (the harness must be able to produce swaps; otherwise it cannot test the rules)', on_fail: harness defect}
 gold_sample:
   plan: >-
     Hand-label all ten players every 0.5 s on >= 5 MSU games (>= 20 min live play each, including at least 20 crossings
     and 5 substitution windows per game) in the local review tool; ShotTracker player ids, if MSU staff share them, replace
-    hand labels as truth. Frames between labels are interpolated only inside one labelled chain.
+    hand labels as truth. Frames between labels are interpolated only inside one labelled chain. Before any tuning,
+    measure single-crop rank-1 among the five on-court teammates on skin-masked torso-and-legs crops (OQ-7): it
+    selects the harness cue profile (good, masked_app or worse).
 
 harness:
   summary: >-
@@ -561,8 +629,39 @@ harness:
     pbp_lag_s: {value: [-1.0, 4.0], unit: s, why: PBP substitution time minus true change (the lineup feed the assigner sees)}
     n_referees: {value: 3, unit: persons, why: officials on the floor as distractors (D-I three-person crews)}
     e_ref_class: {value: 0.02, unit: probability, why: officials misclassified as a team}
-    reach_dist_ref_m: {value: 14.0, unit: m, why: camera distance at which jersey sighting rates are quoted; rates fall linearly to 30 % at 28 m}
-  noise_grid_sigma_p_m: [0.15, 0.30, 0.50]
+    reach_dist_ref_m: {value: 14.0, unit: m, why: camera distance at which jersey sighting rates are quoted; rates fall linearly to sighting_far_factor at sighting_far_m}
+    seeds: {value: 5, unit: runs, why: 'default number of random seeds per game, cue profile and sigma_p (harness --seeds). One seed per game is one draw: the 0.1.1 zero held on seed 1 only (RV-11)'}
+    bound_confidence: {value: 0.95, unit: probability, why: 'confidence of the one-sided upper bound on the swap rate (exact Poisson; 3.0 events when none is seen)'}
+    game_minutes: {value: 40.0, unit: min, why: 'length of a college game; swap rates are also quoted per game of this length'}
+    shuffle_box_order: {value: true, unit: flag, why: 'boxes inside a frame are handed to the assigner in random order (side random stream). Sorted by true roster index, the order leaked identity wherever a tie is broken by position in the list (forced configs; RV-13). False reproduces the 0.1.1 detections bit for bit'}
+    mechanism_window_s: {value: 3.0, unit: s, why: 'a wrong-label run is attributed to a simulated error (colour run, unflagged overlap, jersey misread) when that error touched the same person within this time before the run or during it; attribution by co-occurrence, not proof of cause'}
+    jersey_mechanism_window_s: {value: 10.0, unit: s, why: 'same, for jersey misreads (a read acts for as long as the chain lives)'}
+    position_noise_white_share: {value: 0.5, unit: '1', why: 'share of the position-noise variance that is white; the rest is AR(1) (the movement noise model)'}
+    position_noise_rho: {value: 0.9, unit: '1', why: 'AR(1) coefficient per 25 Hz frame of the correlated part of the position noise'}
+    occl_ar_rho: {value: 0.95, unit: '1', why: 'AR(1) coefficient per frame of the drop / keep draw of an overlapped box, so drops come in runs of about 0.8 s'}
+    sighting_far_m: {value: 28.0, unit: m, why: camera distance at which the jersey sighting rate reaches its floor}
+    sighting_far_factor: {value: 0.3, unit: '1', why: jersey sighting rate at sighting_far_m relative to reach_dist_ref_m (smaller numbers on the far side)}
+    sighting_blur_speed_mps: {value: 5.0, unit: m/s, why: above this speed motion blur lowers the jersey sighting rate}
+    sighting_blur_factor: {value: 0.5, unit: '1', why: jersey sighting rate above sighting_blur_speed_mps relative to slower movement}
+    partial_random_digit_share: {value: 0.05, unit: probability, why: share of simulated partial reads whose digit is random instead of one of the player's digits}
+    sim_confusable_share: {value: 0.5, unit: probability, why: 'share of simulated full misreads that go to a shape-confusable number (the simulator''s own value; the assigner reads confusable_share)'}
+    height_ref_noise_m: {value: 0.015, unit: m, why: 'error of the reference height the assigner holds per player (optimistic: listed heights are 0.02-0.05 m off until measured; 0.03 m changed no swap count in review loop 2)'}
+    twin_app_delta: {value: 0.15, unit: '1', why: 'per-dimension appearance difference of a simulated look-alike pair before normalisation (a profile''s twin_delta range replaces it)'}
+    twin_height_delta_m: {value: 0.01, unit: m, why: largest height difference inside a simulated look-alike pair}
+    twin_gait_delta: {value: 0.2, unit: '1', why: per-dimension gait difference of a simulated look-alike pair before normalisation}
+    gait_ref_noise: {value: 0.1, unit: '1', why: per-dimension error of the gait reference the assigner holds}
+    official_height_m: {value: [1.85, 0.06], unit: m, why: mean and sd of the simulated officials' heights}
+    bystander_x_sd_m: {value: 4.0, unit: m, why: 'a same-kit non-player (cue_profile_options.bystanders_per_team) stands around mid-court along the far sideline with this spread'}
+    bystander_y_inset_m: {value: [0.2, 0.6], unit: m, why: how far inside the far sideline his foot point falls (inside the tracked area)}
+    sighting_window_s: {value: 6.37, unit: s, why: 'window of visible time for the share of windows without a jersey read (cue_stats); the mean tracklet length of the hockey figure it is compared with (Vats et al. 2021: 50.4 % of tracklets show no number)'}
+    teleport_m: {value: 1.0, unit: m, why: 'a SportVU player moving further than this in one 0.04 s frame is a source id artefact, treated as a cut (RV-04)'}
+    crossing_dist_m: {value: 1.0, unit: m, why: 'centre distance below which two players are in a crossing (metric time_to_reconfirm; exposure count)'}
+    crossing_flip_deg: {value: 90.0, unit: deg, why: bearing flip between the two players that makes a close pass a crossing}
+    crossing_pad_s: {value: 0.3, unit: s, why: the bearing is compared this long before and after the close stretch}
+    reconfirm_horizon_s: {value: 10.0, unit: s, why: 'a player not labelled correctly within this time after a crossing counts as censored, not as a re-confirm time'}
+    calibration_edges: {value: [0.995, 0.999, 0.9999], unit: probability, why: 'lower edges of the posterior bins of the calibration table (emitted labels only, so the table starts at p_lock)'}
+  noise_grid_sigma_p_m: [0.15, 0.30, 0.50, 0.75]
+  noise_grid_note: 'No published value of sigma_p for basketball broadcast exists. Published absolute position errors of broadcast tracking start at 0.44 m (soccer; Crang et al. 2025) and court registration at 1.27 m RMS (KaliCalib); both include the error neighbours share, so they are upper bounds. 0.15 and 0.30 m are the acceptance points (ACC-H1, ACC-R2), 0.50 m is the margin row and 0.75 m a stress row: above 0.50 m the pack labels almost nothing, so position precision is a precondition, not a lever.'
   calibration_note: 'assigner_overrides are the cue parameters the production system would fit on labelled crops of that recording quality (kappa_app about 1 / app_noise^2 scaled to the good profile, sigma_h, e_team, e_ocr). The assigner must be calibrated per recording quality: poor video read with good-video parameters is overconfident (profile poor_uncalibrated).'
   cue_profiles:
     good:
@@ -621,6 +720,119 @@ harness:
       outlier_h: 0.25
       gait_noise: 0.9
       twin_pairs_per_team: 1
+    hard:
+      note: 'good video with the error structure the review of 11 Nov 2026 found missing: colour errors in runs, truncated and repeated jersey misreads, unflagged overlaps, slow appearance error, graded look-alikes, same-kit non-players, wrong lineup rows, sigma_p told inexactly. Rates are assumptions (cue_profile_options). The sighting rate is halved because p_repeat doubles the sightings: the visible read rate stays that of good'
+      e_team: 0.03
+      jersey_sightings_per_s: 0.3
+      jersey_sighting_len_s: [0.12, 0.4]
+      e_ocr: 0.05
+      p_partial: 0.1
+      app_dims: 16
+      app_w_ind: 0.35
+      app_w_game: 0.15
+      app_noise: 0.12
+      app_rho: 0.9
+      game_card: true
+      template_crops: 50
+      sigma_h: 0.05
+      outlier_h: 0.15
+      gait_noise: 0.6
+      twin_pairs_per_team: 3
+      assigner_overrides: {}
+      team_burst_per_s: 0.02
+      team_burst_len_s: [0.4, 1.5]
+      team_burst_hit: 0.8
+      p_trunc: 0.1
+      p_repeat: 0.5
+      repeat_gap_s: [0.24, 0.6]
+      p_misread_persist: 0.5
+      misread_persist_s: 10.0
+      p_overlap_unflagged: 0.3
+      app_slow_noise: 0.12
+      app_slow_tau_s: 10.0
+      twin_delta: [0.15, 0.6]
+      bystanders_per_team: 1
+      bystander_per_min: 0.1
+      bystander_len_s: [5.0, 20.0]
+      pbp_late_share: 0.3
+      pbp_late_s: [10.0, 30.0]
+      pbp_missing_share: 0.05
+      pbp_wrong_player_share: 0.05
+      sigma_told_range: [0.67, 1.5]
+    masked_app:
+      note: 'good video with a weaker appearance cue: single-crop rank-1 about 0.73 among on-court teammates instead of 0.90, for skin- and head-masked crops (no published number exists; RV-17); assigner refitted (kappa_app)'
+      e_team: 0.01
+      jersey_sightings_per_s: 0.6
+      jersey_sighting_len_s: [0.12, 0.4]
+      e_ocr: 0.05
+      p_partial: 0.2
+      app_dims: 16
+      app_w_ind: 0.25
+      app_w_game: 0.15
+      app_noise: 0.14
+      app_rho: 0.9
+      game_card: true
+      template_crops: 50
+      sigma_h: 0.05
+      outlier_h: 0.15
+      gait_noise: 0.6
+      twin_pairs_per_team: 1
+      assigner_overrides: {kappa_app: 14.7}
+    lit_jersey:
+      note: 'good video with the jersey visibility published for hockey broadcast (about 5 % of player frames legible, about half of 6 s windows without a read; RV-18) and 10 % read error; assigner told e_ocr 0.10'
+      e_team: 0.01
+      jersey_sightings_per_s: 0.16
+      jersey_sighting_len_s: [0.2, 0.9]
+      e_ocr: 0.1
+      p_partial: 0.2
+      app_dims: 16
+      app_w_ind: 0.35
+      app_w_game: 0.15
+      app_noise: 0.12
+      app_rho: 0.9
+      game_card: true
+      template_crops: 50
+      sigma_h: 0.05
+      outlier_h: 0.15
+      gait_noise: 0.6
+      twin_pairs_per_team: 1
+      assigner_overrides: {e_ocr: 0.1}
+  cue_profile_options:
+    team_burst_per_s: {default: 0.0, unit: 1/s per person, meaning: 'start rate of a run of wrong team-colour reads on one person (a defender''s kit inside the box, shadow, similar kits). A player reads as the opponent, an official or bystander as a team', basis: 'published per-crop team error 3.4-4.4 % with occlusion named as a cause (Vats 2021; PRTreID 2024); 0.02 x about 1 s x 0.8 is 1.5 % of frames'}
+    team_burst_len_s: {default: [0.4, 1.5], unit: s, meaning: length range of one colour-error run, basis: assumption}
+    team_burst_hit: {default: 0.8, unit: probability, meaning: share of frames inside a run that carry the wrong class, basis: assumption}
+    p_trunc: {default: 0.0, unit: probability per sighting, meaning: 'a two-digit number is read as a FULL one-digit number (one digit hidden, not flagged partial)', basis: 'Koshkina and Elder 2024, sec 3.4.4: the main digit-count confusion; 0.10 is a planning value (OQ-3)'}
+    p_repeat: {default: 0.0, unit: probability, meaning: 'the same view of the jersey is interrupted and resumed: the read outcome (right or wrong) repeats after repeat_gap_s', basis: 'tracklet accuracy after voting is only 79-93 %, so reads are not independent after 0.2 s (Koshkina and Elder 2024)'}
+    repeat_gap_s: {default: [0.24, 0.6], unit: s, meaning: gap before a repeated read, basis: just above sighting_gap_s}
+    p_misread_persist: {default: 0.0, unit: probability, meaning: 'a wrong full read is read the same wrong way at the player''s next sighting when that starts within misread_persist_s (same crease, same occluding arm)', basis: 'about 4 % of tracklets still carry a wrong number after about 19 s of votes (Koshkina and Elder 2024, table 9)'}
+    misread_persist_s: {default: 10.0, unit: s, meaning: how long a misread can persist, basis: assumption}
+    p_overlap_unflagged: {default: 0.0, unit: probability, meaning: 'share of detected overlapped boxes that are NOT flagged as overlapped; the near player''s team colour, jersey read and appearance are read inside the far player''s box (runs of about 0.8 s)', basis: 'assumption: production flags a box only at IoU >= merged_box_iou'}
+    app_slow_noise: {default: 0.0, unit: '1', meaning: 'extra appearance error per dimension that persists for app_slow_tau_s (pose, body orientation, lighting)', basis: 'assumption, same size as app_noise; no published number'}
+    app_slow_tau_s: {default: 10.0, unit: s, meaning: time constant of the slow appearance error, basis: assumption}
+    twin_delta: {default: null, unit: '1', meaning: 'range of the appearance difference of the look-alike pairs (twin_pairs_per_team of them), so similarity is graded from twin to ordinary teammate; height difference scales with it', basis: 'similarity between teammates is a continuum, not one twin pair'}
+    bystanders_per_team: {default: 0, unit: persons, meaning: 'same-kit non-players per team: a person in team kit standing just inside the far sideline (bench player, substitute waiting at the table). Not on the roster the assigner knows; no number is read; any label on him is a swap', basis: assumption}
+    bystander_per_min: {default: 0.1, unit: 1/min, meaning: how often each bystander steps into the tracked area, basis: 'assumption: about one substitution in three has the waiting substitute detected inside the court polygon (the three games have about 0.33 substitution rows per team per minute)'}
+    bystander_len_s: {default: [5.0, 20.0], unit: s, meaning: how long he stays, basis: assumption}
+    pbp_late_share: {default: 0.0, unit: probability, meaning: 'share of substitutions the play-by-play logs late by pbp_late_s instead of pbp_lag_s', basis: 'NCAA play-by-play logs substitutions at dead balls and has unclean entries; rates are assumptions'}
+    pbp_late_s: {default: [10.0, 30.0], unit: s, meaning: lag range of a late substitution row (about one possession), basis: assumption}
+    pbp_missing_share: {default: 0.0, unit: probability, meaning: 'share of substitutions with no play-by-play row: the lineup feed stays wrong until the team''s next logged substitution', basis: assumption}
+    pbp_wrong_player_share: {default: 0.0, unit: probability, meaning: 'share of substitutions whose row names a wrong incoming player (another bench teammate) until the team''s next logged substitution', basis: assumption}
+    sigma_told_range: {default: [1.0, 1.0], unit: '1', meaning: 'the assigner is told sigma_p times a factor drawn log-uniformly from this range once per run (sigma_p is estimated in production, never known)', basis: 'review loop 2: told 1.5 x gave a swap, told 0.5 x cut coverage to a fifth'}
+  cannot_show: >-
+    The harness tests the rules against stated assumptions, not against MSU video. (1) Every cue is simulated; the rates
+    of the hard profile are assumptions until measured (OQ-3, OQ-7). (2) Not simulated at all: detector false positives
+    and duplicate boxes, 30 or 60 fps (the harness runs at 25 Hz), jersey sightings tied to body orientation, kits of
+    similar colour, position noise that grows during contact. (3) A zero is a bound, not a proof: section 1 gives the
+    exposure and the one-sided upper bound on the swap rate. (4) The assigner's cue parameters are about four times
+    less confident than the simulated world deserves (kappa_app 20 against a fitted 76; height 4.8 x; team colour
+    2.5 x). That margin protects the result: refitting every parameter literally to the simulated world gave 1 offline
+    and 6 live swap events in 90 min. Calibration per recording quality must keep the margin. (5) The posterior is not
+    calibrated (3 to 50 times under-confident in the simulated world), and the calibration table holds emitted labels
+    only, so it cannot fail before ACC-1 does. (6) Ranked by measured effect on the unchanged 0.1.1 rules (statistics
+    lens, 90 min of play, sigma_p 0.15 m, offline swap events): colour errors in runs 3 to 153, late lineup rows 4 to
+    30, truncated and repeated jersey reads 1 to 24, slow appearance error 6 to 7, sigma_p told 1.5 x 1; holding at
+    zero: no game card, appearance drift, three look-alike pairs, height reference error, position noise growing with
+    camera distance.
   height_by_position_m:
     G: [1.91, 0.06]
     F: [2.03, 0.05]
@@ -700,6 +912,13 @@ journal:
       solver's live result carries no probable label (Result.probable is None live).
     why: 'owner decision 25 Oct 2026 (OQ-2): HOLD with candidates is acceptable live; provisional labels would invite stats from guesses.'
     evidence: Live labels and live metrics unchanged (harness rows identical). Tests test_od8_single_sighting_gives_a_probable_label_not_a_lock (live carries no probable label), test_owner_decisions_25_oct_recorded.
+- version: 0.2.0
+  date: '2026-11-11'
+  changes:
+  - 'Review round 2 (five independent lenses, 11 Nov 2026; rows RV-11 onward in review_round_2). The 0.1.1 claim of zero swaps does not hold: it rested on one random seed. Seeds 1-5 give 5 offline swap events in 30 game-runs on the good cue profile (ACC-H1 NOT met).'
+  - 'Harness batch (RV-11 to RV-21): no assigner rule changed. The harness now runs five seeds by default, reports the exposure and the upper bound behind every swap count, attributes each swap event to a mechanism, writes the spec version and parameter hash with every run, and hands boxes to the assigner in random order.'
+  - 'New cue profile hard (colour errors in runs, truncated / repeated / persistent jersey misreads, unflagged overlaps, slow appearance error, graded look-alikes, same-kit non-players, late / missing / wrong lineup rows, sigma_p told inexactly) with acceptance ACC-H3; new profiles masked_app and lit_jersey; sigma_p 0.75 m stress row; ACC-R2 (pairwise position noise). The stored profiles good, poor and poor_uncalibrated reproduce bit for bit.'
+  - 'Failing baseline for the assigner batches (seeds 1-5, config full, offline swap events at sigma_p 0.15 / 0.30 m): good 1 / 4 in 15 + 15 game-runs; hard 965 / 801. Coverage offline: good 0.607 / 0.460, hard 0.487 / 0.374. The zero-swap rule is unchanged; the rules that must meet it on these baselines are the next batches.'
 
 open_questions:
 - id: OQ-1
@@ -708,7 +927,7 @@ open_questions:
   question: 'Live labels: is HOLD acceptable on the live panel (with the candidate set), or do you want a provisional label marked "unconfirmed"? The zero-swap rule is met only if provisional labels never feed stats.'
   decision: 'Decided 25 Oct 2026 (OD-10): the live panel shows HOLD with the candidate list when unsure; no provisional labels (outputs.live_panel).'
 - id: OQ-3
-  question: Jersey read rate and OCR error at our recording quality are the largest unknowns (the harness assumes 0.6 sightings per second and 5 % error for good video). Measure them on the first labelled MSU game before tuning anything else?
+  question: 'Jersey read rate and OCR error at our recording quality are the largest unknowns (the good profile assumes 0.6 sighting starts per second, about 0.4 per visible second, and 5 % error). Measure on the first labelled MSU game, before tuning anything else: legible-frame share, sightings per visible second, share of 6 s in-view windows without a read, per-sighting error after the score gate, the truncation rate (a two-digit number read as one digit), the probability that the next sighting repeats the same wrong read as a function of the gap, and the length of team-colour error runs. These are the columns of the cue-statistics table (section 14).'
 - id: OQ-4
   question: ShotTracker ids from MSU staff would give exact identity truth for MSU home games; ask staff?
   decision: 'Decided 25 Oct 2026 (OD-9): yes - action item AI-1 (open_items).'
@@ -718,6 +937,8 @@ open_questions:
 - id: OQ-6
   question: 'Poor recordings (720p, low bitrate, dim): appearance stops separating teammates, so labels wait for two jersey sightings. Should we set a minimum recording standard (1080p, 60 fps) for any game that feeds player-level numbers?'
   decision: 'Decided 25 Oct 2026 (OD-9): yes - requirement.recording_standard and acceptance ACC-R1 (below it: team-level only or probable-only).'
+- id: OQ-7
+  question: 'Appearance carries most of the harness coverage, and the good profile assumes a single-crop rank-1 of about 0.90 among the on-court teammates: the level of the best published re-ID on unmasked crops, which can use the skin and head cues this pack forbids. No published number exists for skin-masked teammate re-ID. Measure it on the first labelled MSU game (gold_sample); until then the coverage quoted for good video is an upper estimate and profile masked_app (rank-1 about 0.73) is shown beside it.'
 
 open_items:
 - id: AI-1
@@ -730,6 +951,11 @@ open_items:
   owner: Aldemir (owner decision 25 Oct 2026, OD-9)
   status: open
   feeds: [requirement.recording_standard, ACC-R1]
+- id: AI-3
+  action: 'Move the remaining simulator literals (referee paths, height-outlier shape, the 1 s merge gap of swap events, the 3 s context window of swap_context) into harness.params and add a spec test that obsmodel.py, metrics.py and harness.py carry no other numeric literal (review round 2, RV-20).'
+  owner: Mac session
+  status: open
+  feeds: [harness]
 
 planned_work:
 - id: PW-1
@@ -743,7 +969,11 @@ planned_work:
 - id: PW-3
   lever: better position precision during encounters
   why: 'Coverage falls with sigma_p (section 1); two players closer than about 4 sigma cannot be kept apart by motion.'
-  measure: tracker sigma_p on MSU film (movement noise model)
+  measure: 'pairwise position noise on MSU film (metric pairwise_sigma_p): standard deviation of (tracked minus hand-clicked foot point) differences between two players within 3 m, per frame. The identity layer needs <= 0.30 m (ACC-R2); at 0.50 m it labels about a quarter of the boxes and at 0.75 m under a tenth'
+- id: PW-4
+  lever: per-game self-supervised re-ID fine-tuning from pure tracklets
+  why: 'Coverage lever: positives inside one tracklet, negatives from tracklets visible at the same time; the SoccerNet 2023 tracking winner (Maglo et al.) reached HOTA 75.61 against 69.54 this way. It needs no identity labels and no forbidden cue.'
+  measure: 'single-crop rank-1 among on-court teammates before and after fine-tuning on the first labelled MSU game (OQ-7), then the harness coverage at the measured rank-1'
 
 review_round_1:
 - id: RV-01
@@ -786,3 +1016,49 @@ review_round_1:
   finding: Catching swaps after the fact does not replace prevention.
   fix: Kept as a harness config (naive_tracklets_full_catch) and stated in the doc; alarms and splits are the safety net, not the mechanism.
   evidence: See section 1 results.
+
+review_round_2:
+- id: RV-11
+  finding: 'ACC-H1 (0 offline swaps at sigma_p 0.15 and 0.30 m) held for seed 1 only: the harness ran one random draw per game (--seeds 1), and three games give 8.9-11.4 labelled player-hours, which bound the rate at 0.76 swap events per 40-minute game, not at zero. With seeds 1-5 the unchanged 0.1.1 rules make 1 offline swap event at 0.15 m and 4 at 0.30 m (5 of 30 game-runs; live 0 and 6).'
+  fix: 'harness.params.seeds 5 is the default of --seeds. ACC-H1 covers seeds 1-5 and every game-run; a zero on fewer runs is not a pass. Every summary row carries its exposure (game-runs, minutes, labelled player-hours, crossings, chains) and the one-sided 95 % upper bound on the swap rate per labelled player-hour, per crossing and per 40-minute game (metric swap_rate_bound, metrics.exposure, params bound_confidence, game_minutes). The page computes the ACC-H1 verdict from the results (met / NOT met / not evaluated) and never prints "met" on an incomplete run.'
+  evidence: 'Gate before any edit (gates/baseline.json; 3 games x seeds 1-5 x 0.15 / 0.30 m, config full, good, 783 min of play per noise level): offline swap events 1 / 4 (G3 0.15 seed 3; G1 0.30 seeds 2 and 4, G2 0.30 seed 3, G3 0.30 seed 4), live 0 / 6, wrong frames 1 / 7 offline; coverage offline 0.607 / 0.460, live 0.380 / 0.272; IDF1 0.678 / 0.560; re-confirm median 1.16 / 2.2 s; invariants 0. Offline exposure 58.5 / 44.4 labelled player-hours, 25,580 crossings: 0.05 / 0.20 events per game, upper bounds 0.24 / 0.47 per game. Tests test_seeds_default_is_five_and_acc_h1_covers_every_seed, test_zero_swaps_is_reported_with_exposure_and_an_upper_bound, test_full_config_has_no_swaps_seed2 (strict xfail until the assigner batches clear it), test_harness_rows_carry_exposure_mechanisms_and_cue_stats.'
+- id: RV-12
+  finding: 'Truth-leak audit of the simulator (14 paths): the lineup feed was never wrong (true changes within -1 to 4 s), every overlap was either dropped or flagged with no cue, the assigner was told sigma_p exactly, each team had exactly one look-alike pair and every other pair far apart, appearance error decorrelated in 0.4 s, and nobody in team kit was in view except the ten players.'
+  fix: 'Each case is now an option of the cue profile (harness.cue_profile_options), off by default and drawn from a side random stream: pbp_late_share / pbp_missing_share / pbp_wrong_player_share (lineup rows), p_overlap_unflagged (the near player''s colour, number and appearance inside the far player''s box), sigma_told_range, twin_delta with twin_pairs_per_team (graded look-alikes), app_slow_noise (error lasting 10 s), bystanders_per_team (same-kit non-player just inside the far sideline; any label on him is a swap). New profile hard switches them all on with stated assumptions; acceptance ACC-H3; metric swap_mechanism attributes every swap event (metrics.swap_mechanisms). No assigner rule changed.'
+  evidence: 'Stored profiles reproduce bit for bit: simulator fingerprint equal to the 0.1.1 code (test_stored_profiles_reproduce_bit_for_bit) and the gate after the change (gates/after_H.json) equal to gates/baseline.json in every field of all 60 rows. Hard gate (gates/after_H_hard.json = baseline_hard.json; seeds 1-5, 783 min per noise level; lineup rows 1,180, of which 353 late, 52 missing, 50 wrong player): offline swap events 965 / 801 at 0.15 / 0.30 m in 15 / 15 of 15 game-runs (live 843 / 688), 49 / 41 per 40-minute game; by mechanism lineup_wrong 550 / 483, same_kit_non_player 116 / 123, colour_run 112 / 73, jersey_misread 84 / 52, overlap_unflagged 51 / 40, official 29 / 18, other 23 / 12; 138 / 89 events labelled a player of the other team (R-ID-08). Coverage offline 0.487 / 0.374, live 0.284 / 0.208; IDF1 0.578 / 0.475; re-confirm median 1.56 / 2.4 s; invariants 0; probable-tier error rate 4.3 / 5.1 %. Single options on good, 3 games x 15 min: every lineup row late by 10-30 s (0.15 m) 16 offline / 10 live events, all lineup_wrong. Tests test_lineup_rows_can_be_late_missing_or_wrong, test_unflagged_overlap_carries_the_near_players_cues, test_same_kit_non_player_is_in_view_and_not_on_the_roster, test_sigma_told_factor_and_graded_lookalikes, test_swap_mechanism_attribution, test_hard_profile_switches_every_option_on_and_options_are_documented.'
+- id: RV-13
+  finding: 'Leak L2: boxes inside a frame reached the assigner sorted by true roster index (officials last). Wherever a tie is broken by position in the list (forced labelling), the order carried identity.'
+  fix: 'harness.params.shuffle_box_order (true): the simulator shuffles the boxes of every frame with a side random stream. False gives the 0.1.1 order.'
+  evidence: 'G1, 15 min, 0.30 m, seed 2: config full gives the same label on every box with and without the shuffle (live and offline); full_forced live 655 -> 656 swap events, offline unchanged. The whole good gate is unchanged (RV-12). Test test_box_order_is_shuffled_and_the_spec_does_not_depend_on_it.'
+- id: RV-14
+  finding: 'Team-colour errors were independent per frame at 1 % (good), a third of the published per-crop error (3.4-4.4 %; Vats 2021, PRTreID 2024), while real errors cluster on overlapped crops. With runs of opponent colour the unchanged rules label a player as an opponent (RV-03 does not hold under runs).'
+  fix: 'Simulator only in this batch: team_burst_per_s, team_burst_len_s, team_burst_hit (a player reads as the opponent for 0.4-1.5 s; an official or bystander reads as a team); hard uses them with e_team 0.03, the YAML''s own planning value. The rule that stops a chain entering the wrong team''s problem is left to the assigner batch.'
+  evidence: 'good plus team_burst_per_s 0.02 only (1.5 % of frames), 3 games x 15 min, 0.30 m: 4 live and 4 offline swap events, all labelled as a player of the other team (the published-evidence lens measured 5 / 5 on 3 x 12 min). Hard gate: colour_run 112 / 73 offline events (RV-12). A plain synthetic scene (1-2 s of opponent colour on a standing player, also right after a cut) did not reproduce it; the harness does. Test test_colour_errors_come_in_runs.'
+- id: RV-15
+  finding: 'Two reads of one chain more than sighting_gap_s 0.2 s apart count as independent sightings, and two capped sightings lock. Published tracklet accuracy after voting over about 19 s is 79-93 % (Koshkina and Elder 2024; SoccerNet 2023), so misreads persist; the simulator never repeated a read outcome.'
+  fix: 'Simulator only in this batch: p_repeat with repeat_gap_s (the same view interrupted and resumed, outcome repeated) and p_misread_persist with misread_persist_s (the same wrong number at the next sighting). The sighting-independence rule is left to the assigner batch; OQ-3 lists the repeat rate as a first measurement.'
+  evidence: 'Synthetic (team colour and jersey only): number 23 read as 11 twice, 0.3 s apart, labels the player as the teammate who wears 11 on 211 boxes live and 301 offline (test_repeated_misread_within_one_view_never_locks, strict xfail for the assigner batch). good plus p_trunc 0.10, p_partial 0.10, p_repeat 0.5, 3 games x 15 min, 0.30 m: 3 live / 2 offline swap events, all jersey_misread. Hard gate: jersey_misread 84 / 52 offline events. Test test_truncated_and_persistent_jersey_misreads.'
+- id: RV-16
+  finding: 'The main published jersey confusion, a two-digit number read as a full one-digit number (Koshkina and Elder 2024, sec 3.4.4), was missing from the simulator (a half-hidden number was always flagged partial) and from the likelihood (such a read counts 7.5 nats against the truth). 28 of the 44 two-digit players of the three harness rosters have a digit that is a teammate''s number (count of the published-evidence lens).'
+  fix: 'Simulator only in this batch: p_trunc (hard: 0.10 with p_partial 0.10). The truncation term of the likelihood and the hard case are left to the assigner batch; OQ-3 lists the truncation rate.'
+  evidence: 'Synthetic (team colour and jersey only): two full reads 3 on the chain of 23 while number 3 is on the floor label him 3 on 203 boxes live and 301 offline (test_truncated_read_never_locks_the_one_digit_teammate, strict xfail for the assigner batch). Harness numbers under RV-15.'
+- id: RV-17
+  finding: 'Appearance, not the jersey, carries most of the harness coverage, and the good profile implies a single-crop rank-1 of 0.90 among on-court teammates: the level of the best published re-ID on unmasked crops (PRTreID 89.6 %, SoccerNet 91.3 %), which may use the skin and head cues this pack forbids. No number exists for skin-masked crops, so the coverage quoted for good video is an upper estimate.'
+  fix: 'metrics.cue_stats measures what a profile assumes in literature units and the page prints it per profile (section 14). New profile masked_app (rank-1 about 0.73, assigner kappa_app 14.7). OQ-7 and the gold-sample plan ask for the rank-1 measurement before any tuning; PW-4 records self-supervised re-ID fine-tuning from pure tracklets as a lever.'
+  evidence: 'Measured on the simulated detections (30 runs): good rank-1 0.908 (look-alike pairs 0.839), hard 0.762. masked_app, 3 games x 15 min, 0.30 m, seed 1: rank-1 0.739, coverage offline 0.464 -> 0.384, live 0.273 -> 0.203, 0 swap events (the lens measured 0.470 -> 0.405 on 3 x 12 min). Test test_cue_stats_are_in_literature_units.'
+- id: RV-18
+  finding: 'The good profile gives a jersey read in almost every 6 s of visibility (6.5 % of 6.37 s windows without a read; 9.6 % of player boxes legible), while hockey broadcast at 720p shows no number in 50.4 % of 6.4 s tracklets and 5.9 % of images are legible. The e_ocr rationale mixed per-read and tracklet accuracy and named a source that is not in the pack.'
+  fix: 'New profile lit_jersey (0.16 sighting starts per second, 0.2-0.9 s, e_ocr 0.10, assigner told 0.10). e_ocr rationale rewritten with the published per-crop and tracklet numbers; the unknown source removed. OQ-3 lists what to measure on the first labelled MSU game; the page prints the same statistics per profile.'
+  evidence: 'lit_jersey, 3 games x 15 min, 0.30 m, seed 1: 5.5 % of player boxes legible, 45 % of windows without a read; coverage offline 0.464 -> 0.430, live 0.273 -> 0.237; 1 offline swap event (15 boxes), 0 live (the lens measured 0.470 -> 0.430 and 0 swaps on 3 x 12 min). Test test_cue_stats_are_in_literature_units.'
+- id: RV-19
+  finding: 'The sigma_p grid (0.15 / 0.30 / 0.50 m) had no citation and no definition. Published absolute errors of broadcast tracking start at 0.44 m (soccer; Crang et al. 2025) and basketball court registration at 1.27 m RMS (KaliCalib); just above the grid the pack labels almost nothing.'
+  fix: 'conventions.terms defines sigma_p as the part of the position error not shared with neighbours. Grid extended to 0.75 m as a stress row with noise_grid_note. Metric pairwise_sigma_p, acceptance ACC-R2 (<= 0.30 m, proposal), PW-3 measure rewritten, two sources added with the caveat that they are upper bounds.'
+  evidence: 'good, config full, 3 games x 15 min, seed 1, sigma_p 0.75 m: coverage offline 0.086, live 0.040, 1 swap event each (the lens measured 0.087 / 0.041 on 3 x 12 min). Test test_review_round_2_recorded.'
+- id: RV-20
+  finding: 'The stored results were stamped spec 0.1.0 under a 0.1.1 page and nothing compared them. Three sentences of the page said more than the table (cue coverage "without adding swaps" from one cell; invariants "over every config" without naive_tracker and after the duplicate guard; "ACC-H1: met"). Simulator constants lived in the code although the YAML is the single source of truth.'
+  fix: 'harness.py writes the spec version, the YAML sha256 and a parameter hash (parameters, cue profiles, configs; prose excluded) with every run and row; the page prints them and marks the results stale when the hash differs. The cue sentence lists swaps at every noise level and both modes; the invariant sentence covers every config and gives the duplicate-guard count; an acceptance table gives a harness verdict per ACC row; minutes use the dt of the results. Twenty-one simulator and metric constants moved to harness.params (position noise mix, occlusion run length, sighting distance and blur factors, misread shares, reference noises, look-alike deltas, teleport, crossing and re-confirm definitions, calibration bins). Left as literals: referee paths, height-outlier shape, the 1 s merge gap and the 3 s context window (open item AI-3).'
+  evidence: 'results/identity_test/sportvu_harness.json reads spec_version 0.1.0; a preview of the page on it prints "stale" and "ACC-H1: not evaluated (6 of 30 game-runs)". Fingerprint and gate unchanged after moving the constants (RV-12). Tests test_results_carry_spec_version_and_hashes, test_param_names_unique_and_read_by_code.'
+- id: RV-21
+  finding: 'Simulation optimism ranked by measured effect on the unchanged rules (statistics lens, 90 min of play, 0.15 m, offline swap events): colour errors in runs 3-153, late lineup rows 4-30, truncated and repeated jersey reads 1-24, appearance error lasting 10-60 s 6-7, cue parameters refitted to the simulated world 1 (6 live), sigma_p told 1.5 x 1. The assigner is about four times less confident than the simulated world, and that hidden margin, not calibration, protects the result; the posterior is 3 to 50 times under-confident and the calibration table cannot fail.'
+  fix: 'The ranking sets the hard profile (RV-12) and the paragraph harness.cannot_show, printed on the page as "What this harness cannot show". No parameter of the assigner changed.'
+  evidence: 'Statistics lens notes (sections 3 and 4) and their outputs; my own runs of the three top-ranked options reproduce the direction and size (RV-12, RV-14, RV-15). Not reproduced here: the refit and calibration tables (they need the lens''s patched assigner).'

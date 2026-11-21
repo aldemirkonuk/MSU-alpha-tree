@@ -24,7 +24,6 @@ from obsmodel import Truth  # noqa: E402
 
 FT = 0.3048
 SV_DT = 0.04
-TELEPORT_M = 1.0  # m in one 0.04 s frame (25 m/s): not a human movement
 PRIVATE = Path.home() / "MSU-Alpha-3-private"
 DATA = PRIVATE / "data" / "research" / "sportvu_2015_16" / "json"
 CACHE = PRIVATE / "work" / "identity_harness_2026-10-25" / "cache"
@@ -80,7 +79,7 @@ def build(json_path, cache_dir=CACHE):
     # frame, is treated as a gap (a cut), so the harness never scores the source's own swaps.
     on = ~np.isnan(pos[:, :, 0])
     step = np.nanmax(np.hypot(*(np.diff(pos, axis=0)).transpose(2, 0, 1)), axis=1)
-    gap[1:] |= (on[1:] != on[:-1]).any(1) | (np.nan_to_num(step) > TELEPORT_M)
+    gap[1:] |= (on[1:] != on[:-1]).any(1) | (np.nan_to_num(step) > P["teleport_m"])
     team = np.array([team_ids.index(roster[p][0]) for p in pids], dtype=np.int8)
     jersey = np.array([str(roster[p][1]) for p in pids])
     position = np.array([str(roster[p][2]) for p in pids])

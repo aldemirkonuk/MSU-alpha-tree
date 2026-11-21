@@ -2,8 +2,10 @@
 
 Pipeline (each step is a section of the YAML):
   detections (no ids, with cue observations)
-    -> tracklets   motion-only linking with the pair-swap and merge tests (pure by construction)
-    -> chains      unambiguous continuations joined; other starts get a group mixture prior
+    -> tracklets   motion-only linking with the pair-swap, merge, jump, contested-detection and edge-band tests
+                   (purity is measured by metrics.chain_purity, not guaranteed by construction)
+    -> chains      one chain per clean tracklet; a start in reach of ended tracklets gets their mixture prior
+                   (a continuation is re-confirmed by its own cues, never inherited)
     -> evidence    tempered cue log-likelihoods per detection and roster player
     -> solve       per frame and team, the exact joint label posterior under one-person-one-label,
                    with the identity state machine (lock, hold, re-confirm, alarm, release),
@@ -168,18 +170,20 @@ class Tracklet:
     parents: list | None = None               # explicit parents (clean tracklet leaving an encounter group)
 
 
-_STATS = {"pair_or_merge": 0, "newcomer": 0, "lead_guard": 0, "contested": 0, "jump": 0, "solo_nocue": 0, "unmatched_dets": 0, "unmatched_tracks": 0}
+_STATS = {"pair_or_merge": 0, "newcomer": 0, "lead_guard": 0, "contested": 0, "jump": 0, "solo_nocue": 0, "edge_band": 0,
+          "unresolved_wait": 0, "unmatched_dets": 0, "unmatched_tracks": 0}
 
 
 class _Groups:
     """Union-find of encounter groups; each root holds the clean tracklets (identities) that entered it."""
 
     def __init__(self):
-        self.parent, self.entering = [], []
+        self.parent, self.entering, self.left = [], [], []
 
     def new(self, tids):
         self.parent.append(len(self.parent))
         self.entering.append(set(tids))
+        self.left.append(0)
         return len(self.parent) - 1
 
     def root(self, g):
@@ -193,10 +197,19 @@ class _Groups:
         if ra != rb:
             self.parent[rb] = ra
             self.entering[ra] |= self.entering[rb]
+            self.left[ra] += self.left[rb]
         return ra
 
     def members(self, g):
         return sorted(self.entering[self.root(g)])
+
+    def leave(self, g):
+        self.left[self.root(g)] += 1
+
+    def resolved(self, g, n_live):
+        """UNRESOLVED GROUP: as many tracks (live in the group or already out of it) as identities that entered."""
+        r = self.root(g)
+        return n_live + self.left[r] >= len(self.entering[r])
 
 
 def _near_fov_edge(x, fov_row, edge):
@@ -206,10 +219,12 @@ def _near_fov_edge(x, fov_row, edge):
 def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=("team",)):
     """Motion-only tracklets.
 
-    mode 'pure' (YAML tracklets): a track that fails the pair-swap test, meets a merged / no-cue box or loses its
-    detection next to another track enters an encounter group: its clean tracklet ends and an amb segment
-    continues the motion; when it has passed every test for clear_s it leaves the group as a new clean tracklet
-    whose parents are all identities that entered the group. No coasting.
+    mode 'pure' (YAML tracklets): a track that fails the pair-swap test, meets a merged / no-cue box, loses its
+    detection next to another track of any class (OPP GUARD) or is matched inside the edge band enters an
+    encounter group: its clean tracklet ends and an amb segment continues the motion; when it has passed every
+    test for clear_s (unresolved_clear_s while a member of its group is still hidden) it leaves the group as a
+    new clean tracklet whose parents are all identities that entered the group (none after the edge band).
+    No coasting.
     mode 'naive': a standard tracker - Hungarian through everything, coasting up to link_window_s.
     Returns (tracklets, det -> tracklet, groups).
     """
@@ -230,6 +245,8 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
         return ca >= 0 and cb >= 0 and ca != cb
     coast_max = frames(prm["coast_max_s"], dt) if pure else frames(prm["link_window_s"], dt)
     clear_n = max(1, frames(prm["clear_s"], dt))
+    unres_n = max(clear_n, frames(prm["unresolved_clear_s"], dt))
+    edge_band = prm["edge_band_m"]
     det_trk = np.full(d.n, -1, dtype=np.int64)
     trks: list[Tracklet] = []
     G = _Groups()
@@ -247,6 +264,8 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
     def finish(t, last, reason, pos=None, a=None):
         if reason == "lost" and pos is not None and _near_fov_edge(pos[0], d.fov[last], prm["fov_edge_m"]):
             reason = "fov_exit"
+            if t.amb and t.group >= 0:
+                G.leave(t.group)  # he left the frame: his group is not waiting for him (UNRESOLVED GROUP)
         if pure and a is not None and not t.amb and reason in ("lost", "ambiguous", "fov_exit") and t.dets \
                 and not _isolated_det(t.dets[-1]):
             # trailing guard: the last clear_s detections before a loss go to an amb segment (a swap made just
@@ -263,6 +282,8 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
                 seg.dets = tail
                 det_trk[tail] = seg.tid
                 seg.end, seg.reason = last, reason
+                if reason == "fov_exit":
+                    G.leave(g_)
                 if t.dets:
                     t.end, t.reason = int(d.frame[t.dets[-1]]), reason
                 else:
@@ -337,7 +358,7 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
             gap = np.array([f - a["last"] for a in act], dtype=float)
             pred = np.array([a["pos"] + a["vel"] * g * dt for a, g in zip(act, gap)])
             sig = sig0 * (1.0 + 0.5 * (gap - 1.0))
-        bad_pairs, solo_bad, contested, jumped = [], set(), {}, set()
+        bad_pairs, solo_bad, contested, jumped, edged = [], set(), {}, set(), set()
         if pure and T:
             I = np.array(sorted(matched))
             if len(I) > 1:
@@ -361,6 +382,11 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
                 if C[i, jj] > (prm["jump_k"] * sig[i]) ** 2 and f - act[i]["last"] == 1:
                     solo_bad.add(i)
                     jumped.add(i)
+                # EDGE BAND: next to the frame edge a box can pass to a person who steps in while its own steps out
+                if edge_band > 0 and _near_fov_edge(d.xy[idx[jj], 0], d.fov[f], edge_band):
+                    solo_bad.add(i)
+                    edged.add(i)
+                    act[i]["edge"] = True
             for i in range(T):
                 nocue_hit = i in matched and d.nocue[idx[matched[i]]]
                 if i in matched and not nocue_hit:
@@ -368,7 +394,10 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
                 rad = prm["merge_base_m"] + prm["merge_k"] * sig[i]
                 ref = d.xy[idx[matched[i]]] if i in matched else pred[i]
                 dtr = np.hypot(*(pred - ref).T)
-                near = [int(k) for k in np.where(dtr < rad)[0] if k != i and not opponents(act[i], act[k])]
+                # OPP GUARD: a track that lost its detection fails with every track in the radius, whatever the class
+                # (its box may be riding the other person); the colour exemption is kept for no-cue hits only
+                near = [int(k) for k in np.where(dtr < rad)[0]
+                        if k != i and (i not in matched or not opponents(act[i], act[k]))]
                 if near:
                     bad_pairs.extend((i, k) for k in near)
                 elif nocue_hit:
@@ -376,12 +405,10 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
             # contested detection: a matched detection within reach of a person who vanished < contest_s ago
             CW = frames(prm["contest_s"], dt)
             for i, jj in matched.items():
-                ci = cls_of(act[i])
                 for v in vanished:
                     g_ = f - v["last"]
-                    if g_ > CW or v["tid"] == a_tid(i) or act[i]["born"] > v["last"] or \
-                            (ci >= 0 and v["cls"] >= 0 and v["cls"] != ci):
-                        continue
+                    if g_ > CW or v["tid"] == a_tid(i) or act[i]["born"] > v["last"]:
+                        continue  # OPP GUARD: a vanished person of another class contests the detection too
                     tg = g_ * dt
                     sv = sig0 + (prm["v_err_mps"] * tg + 0.5 * prm["a_max_mps2"] * tg**2) / 3.0
                     di2 = C[i, jj]
@@ -395,7 +422,8 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
         newly_bad = {i for pr in bad_pairs for i in pr} | solo_bad
         if pure:
             _STATS["pair_or_merge"] += len({i for pr in bad_pairs for i in pr})
-            _STATS["solo_nocue"] += len(solo_bad - set(contested))
+            _STATS["solo_nocue"] += len(solo_bad - set(contested) - edged)
+            _STATS["edge_band"] += len(edged)
             _STATS["contested"] += len(contested)
             _STATS["jump"] += len(jumped)
             _STATS["unmatched_dets"] += M - len(matched)
@@ -447,8 +475,8 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
         for i, a in enumerate(act):
             t = a["tr"]
             if i not in matched:
-                if t.amb:
-                    finish(t, a["last"], "lost", a=a)
+                if t.amb:  # an amb segment lost at the frame edge is an exit too (not a hidden person)
+                    finish(t, a["last"], "lost", a["pos"], a=a)
                 elif t.reason != "ambiguous":
                     finish(t, a["last"], "lost", a["pos"], a=a) if (f - a["last"]) > coast_max else None
                 if t.reason == "" and (f - a["last"]) <= coast_max:
@@ -456,12 +484,20 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
                 continue
             if t.amb and i not in newly_bad:
                 a["clear"] += 1
-                if a["clear"] >= clear_n:  # leaves the encounter group as a new clean tracklet
-                    k = a["clear"]
+                ready = a["clear"] >= clear_n
+                if ready and a["clear"] < unres_n:  # UNRESOLVED GROUP: a member is still hidden -> wait longer
+                    r_ = G.root(t.group)
+                    n_live = sum(1 for b in act if b["tr"].amb and b["last"] >= f - 1 and G.root(b["tr"].group) == r_)
+                    ready = G.resolved(r_, n_live)
+                    _STATS["unresolved_wait"] += int(not ready)
+                if ready:  # leaves the encounter group as a new clean tracklet
+                    k = clear_n
                     tail = t.dets[-k:]
                     del t.dets[-k:]
+                    G.leave(t.group)
                     finish(t, int(d.frame[t.dets[-1]]) if t.dets else f, "ambiguous")
-                    nt = new_tracklet(None, int(d.frame[tail[0]]), parents=G.members(t.group))
+                    # a track that was inside the edge band comes out with no parents (as FOV ENTRY)
+                    nt = new_tracklet(None, int(d.frame[tail[0]]), parents=[] if a.pop("edge", False) else G.members(t.group))
                     nt.dets = list(tail)
                     det_trk[tail] = nt.tid
                     a["tr"] = nt
@@ -479,7 +515,7 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
             if pure:  # newcomer test: a person appearing next to a tracked one makes both ambiguous
                 rad = prm["merge_base_m"] + prm["merge_k"] * sig0
                 nb = [a for a in act if a["last"] == f and np.hypot(*(a["pos"] - d.xy[j])) < rad]
-            if pure and not nb and not _isolated_det(j):
+            if pure and not nb and (d.nocue[j] or not _isolated_det(j)):  # a merged / no-cue box never starts a clean tracklet
                 _STATS["lead_guard"] += 1
                 g0 = G.new([])
                 for v in vanished:  # who could this be: identities that vanished within reach
@@ -505,6 +541,9 @@ def build_tracklets(d: Dets, sigma_p: float, mode: str = "pure", prm=None, cues=
                         g0 = G.union(g0, gv)
                 seg = new_tracklet(j, f, amb=True, group=g0)
                 na["tr"] = seg
+            elif pure and edge_band > 0 and _near_fov_edge(d.xy[j, 0], d.fov[f], edge_band):
+                na["tr"] = new_tracklet(j, f, amb=True, group=G.new([]))  # EDGE BAND: a start inside the band is never clean
+                na["edge"] = True
             else:
                 na["tr"] = new_tracklet(j, f)
             act.append(na)
@@ -543,7 +582,9 @@ class Chain:
 
 
 def link_chains(trks, det_trk, d: Dets, sigma_p, mode="pure", prm=None, groups=None):
-    """Chains: unique continuations joined, group children get mixture parents, amb segments stay unlabelled."""
+    """Chains: one chain per clean tracklet (pure); a start in reach of ended tracklets is a group child of them and is
+    re-confirmed by its own cues (a continuation never inherits a lock); amb segments stay unlabelled. Only the
+    naive mode joins tracklets."""
     prm = prm or P
     groups = groups or {}
     dt = d.dt
@@ -579,7 +620,9 @@ def link_chains(trks, det_trk, d: Dets, sigma_p, mode="pure", prm=None, groups=N
             parents_of[t] = []
             continue
         if tr.parents is not None:
-            parents_of[t] = sorted(resolve(tr.parents, tr.start))
+            # FOV ENTRY holds for a tracklet that leaves an encounter group at the frame edge too (no parents)
+            edge_start = mode == "pure" and _near_fov_edge(start_xy[t][0], d.fov[tr.start], prm["fov_edge_m"])
+            parents_of[t] = [] if edge_start else sorted(resolve(tr.parents, tr.start))
             continue
         s = tr.start
         while ptr < len(ended) and ended[ptr].end < s:
@@ -598,17 +641,6 @@ def link_chains(trks, det_trk, d: Dets, sigma_p, mode="pure", prm=None, groups=N
                 if np.hypot(*(end_xy[u.tid] - start_xy[t])) <= reach:
                     cands.append(u.tid)
         parents_of[t] = sorted(resolve(cands, s))
-    children = {}
-    for t, ps in parents_of.items():
-        for u in ps:
-            children.setdefault(u, []).append(t)
-
-    def isolated(j, xy):
-        f = d.frame[j]
-        lo, hi = d.fstart[f], d.fstart[f + 1]
-        others = [k for k in range(lo, hi) if k != j]
-        return not others or np.min(np.hypot(*(d.xy[others] - xy).T)) > prm["isolation_m"]
-
     chain_of = {}
     chains: list[Chain] = []
     tdets = {}
@@ -623,12 +655,7 @@ def link_chains(trks, det_trk, d: Dets, sigma_p, mode="pure", prm=None, groups=N
             tdets[cid] = list(tr.dets)
             chain_of[t] = cid
             continue
-        if mode == "pure":
-            if (tr.parents is None and len(ps) == 1 and ps[0] in chain_of and children.get(ps[0]) == [t]
-                    and trks[ps[0]].reason == "lost"
-                    and isolated(tr.dets[0], start_xy[t]) and isolated(trks[ps[0]].dets[-1], end_xy[ps[0]])):
-                joined = ps[0]
-        else:  # naive: nearest free parent, inherit
+        if mode != "pure":  # naive: nearest free parent, inherit (pure: a continuation is a group child, RECONFIRM)
             free = [u for u in ps if u not in taken and u in chain_of]
             if free:
                 joined = min(free, key=lambda u: np.hypot(*(end_xy[u] - start_xy[t])))
@@ -924,7 +951,53 @@ def directional_mixtures(chains, d: Dets, EV, CL, g: Game, prm=None):
     return fwd_mix, bwd_mix
 
 
-def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, conf=None):
+def _bracket(d: Dets, g: Game, chains, EV, has_cue, label, probable, mode, prm, stats):
+    """BRACKET rule (YAML assignment): a label stays only on boxes that lie between two dense-cue samples of the same
+    run of consecutive frames of the chain, each of which on its own does not contradict the label by more than
+    bracket_nats (the box's own evidence for the label minus the best other candidate of the team). Live only the
+    earlier side exists: the latest sample of the run, at or before the box, must not contradict. Everything else
+    drops to HOLD (locked and probable tier). The posterior says which label a chain has; this says whether the
+    box still belongs to the chain's person. has_cue marks the boxes with a dense-cue sample (appearance, height
+    or gait, every cue_stride_s); a configuration without a dense cue cannot make the check and skips the rule."""
+    if has_cue is None or not has_cue.any():
+        return
+    tol = prm["bracket_nats"]
+    for c in chains:
+        if c.kind == "amb":
+            continue
+        lab = label[c.dets]
+        prb = probable[c.dets]
+        both = np.where(lab >= 0, lab, prb)
+        if not np.any(both >= 0):
+            continue
+        fr = d.frame[c.dets]
+        hc = has_cue[c.dets]
+        ev = EV[c.dets]
+        brk = np.r_[0, np.where(np.diff(fr) > 1)[0] + 1, len(fr)]
+        on = g.cand[fr].any(0)
+        for L in np.unique(both[both >= 0]):
+            tm = np.where((g.team == g.team[L]) & on)[0]
+            tm = tm[tm != L]
+            s = ev[:, L] - (ev[:, tm].max(1) if len(tm) else -np.inf)
+            good = hc & (s >= -tol)
+            keep = np.zeros(len(fr), dtype=bool)
+            for a_, b_ in zip(brk[:-1], brk[1:]):
+                idx = np.where(hc[a_:b_])[0] + a_
+                if mode == "live":
+                    for u, v in zip(idx, np.r_[idx[1:], b_]):
+                        if good[u]:
+                            keep[u:v] = True
+                else:
+                    for u, v in zip(idx[:-1], idx[1:]):
+                        if good[u] and good[v]:
+                            keep[u:v + 1] = True
+            drop = c.dets[(both == L) & ~keep]
+            stats["bracket_hold"] += int(np.sum(label[drop] >= 0))
+            label[drop] = HOLD
+            probable[drop] = HOLD
+
+
+def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, conf=None, dense=None):
     """Run the identity state machine frame by frame. mode 'live' (evidence so far) or 'offline' (whole chain)."""
     prm = prm or P
     abstain, alarms = cfg.get("abstain", True), cfg.get("alarms", True)
@@ -970,7 +1043,13 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
     log_dummy = math.log(prm["dummy_eps"])
     log_pt = math.log(prm["p_team"] / (1 - prm["p_team"]))
     cw = max(1, frames(prm["class_window_s"], d.dt))
-    stats = {"enum_fallback_frames": 0, "alarms": 0, "class_alarms": 0, "dup_guard": 0, "releases": 0, "colour_hold": 0}
+    stats = {"enum_fallback_frames": 0, "alarms": 0, "class_alarms": 0, "dup_guard": 0, "releases": 0, "colour_hold": 0,
+             "latch_hold": 0, "bracket_hold": 0}
+    latch_n = int(prm["colour_latch_n"])
+    agree = np.full(nC, latch_n, dtype=np.int64)   # COLOUR LATCH: agreeing boxes since the chain's last contradicting box
+    first_bad = np.full(nC, -1, dtype=np.int64)    # k of the first box of the current run of contradicting boxes
+    blocked = np.zeros(d.n, dtype=bool)            # label withheld on this box (latch); the lock state is not touched
+    contra = np.zeros(d.n, dtype=bool)             # the box showed another class than its chain
     cues_used = set(cfg.get("cues", ["team", "jersey", "appearance", "height", "gait"]))
     enc_sets = [np.array(sorted(set(c.enc))) for c in chains]
     if mode == "offline":
@@ -1000,8 +1079,13 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
         if len(enc):
             fr = d.frame[chains[cid].dets]
             k_split = max(1, int(np.searchsorted(fr, enc[-1])))
+        elif kind == "class_alarm" and first_bad[cid] >= 0:
+            k_split = max(1, int(first_bad[cid]))  # no encounter: the swap sits at the first contradicting box
+        if kind == "class_alarm" and first_bad[cid] >= 0:
+            extra = dict(extra, first_bad_frame=int(d.frame[chains[cid].dets[first_bad[cid]]]))
         k_off[cid] = k_split
         mix[cid] = None
+        agree[cid], first_bad[cid] = latch_n, -1
         log.append({"kind": kind, "frame": f, "chain": int(cid), "from": locked_from,
                     "split_frame": int(d.frame[chains[cid].dets[k_split]]), **extra})
 
@@ -1038,7 +1122,18 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
             if cls != OFFICIAL and srt[-1] - np.logaddexp(srt[0], srt[1]) >= log_pt:
                 if "team" in cues_used and d.cls_obs[j] >= 0 and d.cls_obs[j] != cls:
                     stats["colour_hold"] += 1  # this box shows another class than its chain: HOLD (swap or misread)
+                    contra[j] = True
+                    agree[cid] = 0
+                    if first_bad[cid] < 0:
+                        first_bad[cid] = det_k[j]
                     continue
+                if "team" in cues_used and agree[cid] < latch_n:  # COLOUR LATCH: not yet latch_n agreeing boxes in a row
+                    blocked[j] = True
+                    stats["latch_hold"] += 1
+                if d.cls_obs[j] >= 0:
+                    agree[cid] += 1
+                    if agree[cid] > latch_n:
+                        first_bad[cid] = -1
                 per_team[cls].append((j, cid, o))
         for team, items in per_team.items():
             if not items:
@@ -1097,7 +1192,9 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
                         stats["releases"] += 1
                         log.append({"kind": "release_substitution", "frame": f, "chain": int(cid), "from": int(L0)})
                     elif (not alarms) or full[L0] >= p_unlock:
-                        label[j], post[j] = L0, full[L0]
+                        post[j] = full[L0]
+                        if not blocked[j]:
+                            label[j] = L0
                         continue
                     else:
                         stats["alarms"] += 1
@@ -1110,9 +1207,11 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
                 own_ok = n_cue >= 1 and (len(oth_) == 0 or oc_[b] - oth_.max() >= own_min)  # own cues must favour it
                 if mrow[b] >= p_lock and margin >= prm["min_evidence_nats"] and own_ok and twin_ok(cid, det_k[j], cand[b], cand):
                     locked[cid] = cand[b]
-                    label[j], post[j] = cand[b], mrow[b]
+                    post[j] = mrow[b]
+                    if not blocked[j]:
+                        label[j] = cand[b]
                 elif not abstain:
-                    label[j], post[j] = map_lab.get(r, HOLD), mrow[b]
+                    label[j], post[j] = map_lab.get(r, HOLD), mrow[b]  # forced labels ignore the latch (config full_forced)
                 else:
                     post[j] = mrow[b]
         if mode == "live":  # ID-INV-1 guard (reachable only through the non-exact fallback or forced MAP)
@@ -1141,18 +1240,25 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
             ow_oth[:, L] = -np.inf
             own_ok = (ow[:, L] - ow_oth.max(1) >= own_min) & (CUMN[ptr[c.cid + 1] - 1] >= 1)
             if abstain:
+                kk = np.where(contra[c.dets])[0]  # offline the latch also covers the boxes before a contradicting box
+                for s_ in range(1, latch_n + 1):
+                    blocked[c.dets[kk[kk - s_ >= 0] - s_]] = True
+                own_ok &= ~blocked[js]
                 cand_c = np.where(np.isfinite(SNEF[js]).any(0))[0]
                 ok = np.isfinite(sL) & (pL >= p_lock) & (margin >= prm["min_evidence_nats"]) & own_ok \
                     & twin_ok(c.cid, 0, L, cand_c)
                 # OD-8 probable tier (offline only): where the locked tier abstains but the posterior and the chain's
                 # own cues pass the lower bar; flagged, shown to viewers only, never written to `label`
-                own_p = (ow[:, L] - ow_oth.max(1) >= prm["probable_own_margin_nats"]) & (CUMN[ptr[c.cid + 1] - 1] >= 1)
+                own_p = (ow[:, L] - ow_oth.max(1) >= prm["probable_own_margin_nats"]) & (CUMN[ptr[c.cid + 1] - 1] >= 1) \
+                    & ~blocked[js]
                 pr = np.isfinite(sL) & ~ok & (pL >= prm["p_probable"]) & (margin >= prm["probable_min_evidence_nats"]) \
                     & own_p & twin_ok(c.cid, 0, L, cand_c, prm["probable_twin_jersey_nats"])
                 probable[js[pr]] = L
             else:
                 ok = np.isfinite(sL)
             label[js[ok]] = L
+        if abstain:
+            _bracket(d, g, chains, EV, dense, label, probable, mode, prm, stats)
         stats["probable_dup_guard"] = 0
         for f in range(d.n_frames):
             lo, hi = d.fstart[f], d.fstart[f + 1]
@@ -1170,6 +1276,8 @@ def solve(d: Dets, g: Game, chains, EV, CL, cfg, mode="live", prm=None, J=None, 
                     stats["probable_dup_guard"] += 1
                     pb[pb == v] = HOLD
         stats["probable_labels"] = int(np.sum(probable >= 0))
+    elif abstain:
+        _bracket(d, g, chains, EV, dense, label, probable, mode, prm, stats)
     return Result(label, post, log, chains, det_chain, stats, probable)
 
 
@@ -1188,7 +1296,8 @@ def run(d: Dets, g: Game, cfg: dict, sigma_p: float, prm=None):
     J = jersey_evidence(d, g, chains, cues, prm)
     EV = OWN + J
     conf = confusable_pairs(g, cues, prm)
-    live = solve(d, g, chains, EV, CL, cfg, "live", prm, J, conf)
+    dense = np.any(OWN != 0, axis=1)  # boxes with an appearance / height / gait sample (BRACKET rule)
+    live = solve(d, g, chains, EV, CL, cfg, "live", prm, J, conf, dense)
     split_log = []
     off_chains = chains
     if cfg.get("splits", True):
@@ -1196,7 +1305,7 @@ def run(d: Dets, g: Game, cfg: dict, sigma_p: float, prm=None):
         del OWN
         off_chains, split_log = split_chains(chains, d, EV_raw, CL, g, prm)
         del EV_raw
-    off = solve(d, g, off_chains, EV, CL, cfg, "offline", prm, J, conf)
+    off = solve(d, g, off_chains, EV, CL, cfg, "offline", prm, J, conf, dense)
     off.log = split_log + off.log
     reasons = {}
     for t in trks:

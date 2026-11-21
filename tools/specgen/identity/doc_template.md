@@ -23,7 +23,7 @@ How the spec reads that rule: a detection carries a player id only when the evid
 
 {{RESULTS_TABLE}}
 
-What the columns mean: **swaps** = swap events, runs of frames where a player carries another player's id (or an official carries any id); the target is 0. **IDF1** and **HOTA** are the standard tracking scores (1 = perfect; they fall when boxes are left on HOLD). **coverage** = share of player boxes that carry an id. **re-confirm** = median seconds from the end of a true crossing until the player carries his correct id again.
+What the columns mean: **swaps** = swap events, runs of frames where a player carries another player's id (or an official or another non-player carries any id); the target is 0. **Game-runs** = games x random seeds: one seed is one draw of the simulated noise and cues, and a zero on one draw is not a result. **IDF1** and **HOTA** are the standard tracking scores (1 = perfect; they fall when boxes are left on HOLD). **coverage** = share of player boxes that carry an id. **re-confirm** = median seconds from the end of a true crossing until the player carries his correct id again. The **hard** cue profile adds the error structure of real video (colour errors in runs, truncated and repeated jersey misreads, unflagged overlaps, slow appearance error, look-alikes, same-kit non-players, wrong lineup rows); its rates are assumptions, listed in section 14 with what the harness cannot show.
 
 {{FINDINGS}}
 

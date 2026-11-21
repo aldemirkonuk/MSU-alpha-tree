@@ -104,3 +104,37 @@ def test_inv2_and_calibration():
     post = np.array([0.999, 0.999, 0.9999, 0.9999, 0.996, 0.996])
     cal = metrics.calibration(d, lab, post)
     assert sum(b["labels"] for b in cal) == 6 and sum(b["wrong"] for b in cal) == 1
+
+
+def test_chain_purity_counts_foreign_boxes_by_kind():
+    """Review round 2 (ATK-03, RV-23): purity of the clean chains is measured against the truth ids."""
+    from types import SimpleNamespace as NS
+    src = np.array([0, 0, 0, 0, 1, 1, 7, -1, 3, 3, 3, 5, 5])
+    d = NS(src=src)
+    team = np.array([0] * 7 + [1] * 7)
+    chains = [NS(kind="group", dets=np.arange(0, 8)),      # player 0 x 4, teammate 1 x 2, opponent 7, an official
+              NS(kind="root", dets=np.arange(8, 11)),      # pure
+              NS(kind="amb", dets=np.arange(11, 13))]      # amb segments are not counted
+    label = np.full(len(src), -1)
+    label[[0, 1, 4, 7]] = 0                                 # two right labels, one on the teammate, one on the official
+    pu = metrics.chain_purity(d, chains, team, label)
+    assert pu == {"clean_chains": 2, "clean_chain_boxes": 11, "impure_clean_chains": 1, "impure_minority_boxes": 4,
+                  "impure_teammate_boxes": 2, "impure_opponent_boxes": 1, "impure_non_player_boxes": 1, "impure_labelled_boxes": 2}
+
+
+def test_swap_mechanism_separates_a_foreign_box_from_a_wrong_chain():
+    """impure_chain: the run's chain also holds boxes of the labelled player (right label, foreign box). A chain that is
+    wrong as a whole is not counted (evidence model or lineup)."""
+    from types import SimpleNamespace as NS
+    n = 40
+    src = np.r_[np.zeros(30, int), np.ones(10, int)]        # chain 0: player 0 for 30 frames, then teammate 1 for 10
+    d = NS(src=np.r_[src, np.full(n, 2)], frame=np.r_[np.arange(n), np.arange(n)])
+    det_chain = np.r_[np.zeros(n, int), np.ones(n, int)]    # chain 1: player 2 throughout
+    team = np.array([0] * 7 + [1] * 7)
+    cand = np.ones((n, 14), dtype=bool)
+    flags = {k: np.zeros(2 * n, dtype=bool) for k in ("overlap_unflagged", "colour_run", "jersey_trunc", "jersey_repeat")}
+    label = np.r_[np.zeros(n, int), np.full(n, -1)]          # chain 0 labelled 0 on every box: 10 foreign boxes
+    assert metrics.swap_mechanisms(d, label, cand, team, flags, 0.04, 0, det_chain) == {"other": 1, "impure_chain": 1}
+    label = np.r_[np.full(n, -1), np.full(n, 3)]             # chain 1 (pure, player 2) labelled 3: a wrong chain
+    assert metrics.swap_mechanisms(d, label, cand, team, flags, 0.04, 0, det_chain) == {"other": 1}
+    assert metrics.swap_mechanisms(d, label, cand, team, flags, 0.04, 0) == {"other": 1}  # without chains: no attribution

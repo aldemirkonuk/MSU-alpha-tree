@@ -16,6 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import harness as hz  # noqa: E402
 import idlib  # noqa: E402
 
 ROOT = HERE.parents[2]
@@ -67,6 +68,67 @@ def fmt(x, nd=3):
     return str(x)
 
 
+def provenance(res):
+    """Which spec made the results, and whether that is the spec on this page (behaviour hash: parameters, cue profiles,
+    configs; prose and journal edits do not change it)."""
+    now = hz.spec_hashes()["params_sha256"]
+    made = sorted({(r.get("spec_version", res.get("spec_version")), r.get("params_sha256", res.get("params_sha256"))) for r in res["per_game"]},
+                  key=lambda x: (str(x[0]), str(x[1])))
+    txt = "; ".join(f"spec {v}" + (f" (parameter hash `{h[:12]}`)" if h else " (no parameter hash recorded)") for v, h in made)
+    stale = any(h != now for _, h in made)
+    return (f"Results computed with {txt}. This page: spec {SPEC['version']} (parameter hash `{now[:12]}`). "
+            + ("**The results are older than the spec on this page: every number in this section is stale until the harness is re-run.**"
+               if stale else "The results match the spec on this page.")), stale
+
+
+def gate_rows(res, prof):
+    """Config full, offline, at the two acceptance noise levels: the rows ACC-H1 (good) and ACC-H3 (hard) are judged on."""
+    return [r for r in res["per_game"] if r["config"] == "full" and r["profile"] == prof and r["mode"] == "offline"
+            and round(r["sigma_p"], 2) in (0.15, 0.3)]
+
+
+def gate_verdict(res, prof):
+    """-> (verdict text, events, game-runs present, game-runs required). A zero on fewer game-runs than required
+    (three games x seeds 1..harness.params.seeds x two noise levels) is not a pass."""
+    rows = gate_rows(res, prof)
+    need = {(g, sg, sd) for g in sorted({r["game"] for r in res["per_game"]}) for sg in (0.15, 0.3) for sd in range(1, int(idlib.P["seeds"]) + 1)}
+    have = {(r["game"], round(r["sigma_p"], 2), r["seed"]) for r in rows}
+    ev = sum(r["swap_events"] for r in rows if (r["game"], round(r["sigma_p"], 2), r["seed"]) in need)
+    n, m = len(have & need), len(need)
+    if not rows:
+        return "not run", 0, 0, m
+    if ev:
+        return f"NOT met ({ev} swap events in {n} of {m} game-runs)", ev, n, m
+    if n < m:
+        return f"not evaluated ({n} of {m} game-runs, 0 swap events so far)", ev, n, m
+    return f"met (0 swap events in {m} game-runs)", ev, n, m
+
+
+def acceptance_table(res, by):
+    """Every acceptance row with what the harness can say about it."""
+    rows = []
+    gold = "needs the gold sample (MSU film)"
+    for a in SPEC["acceptance"]:
+        i = a["id"]
+        if i in ("ACC-H1", "ACC-H3"):
+            v = gate_verdict(res, "good" if i == "ACC-H1" else "hard")[0]
+        elif i == "ACC-H2":
+            x = by.get(("naive_tracker", "good", 0.3, "offline"))
+            v = "not run" if x is None else (f"met ({x['idsw']} switches)" if x["idsw"] > 0 else "NOT met")
+        elif i == "ACC-7":
+            n = sum(s_.get("inv1_duplicates", 0) + s_.get("inv2_over_five", 0) + s_.get("inv3_outside_lineup", 0)
+                    for s_ in res["summary"] if s_["config"] == "full")
+            v = f"harness, config full: {n} breaks of ID-INV-1..3 (ID-INV-4 and ID-INV-5 are not counted by the harness)"
+        elif i == "ACC-P1":
+            v = "reported (probable tier table)" if any(s_.get("probable_labels") is not None for s_ in res["summary"]) else "not run"
+        elif i in ("ACC-R1", "ACC-R2"):
+            v = "not measurable on the harness (per-game check on our own film)"
+        else:
+            v = gold
+        rows.append([i, f"`{a['metric']}`", a["threshold"], v])
+    return table(["Id", "Metric", "Threshold", "Harness verdict"], rows)
+
+
 def results_section(res):
     if res is None:
         return ("_The harness has not been run yet (`python tools/specgen/identity/harness.py`)._", "", "")
@@ -76,7 +138,8 @@ def results_section(res):
     frames = {}
     for r in res["per_game"]:
         frames[r["game"]] = r["frames"]
-    minutes = sum(frames.values()) * 0.04 / 60
+    minutes = sum(frames.values()) * res.get("dt", 0.04) / 60
+    prov, stale = provenance(res)
     tables = []
     for prof in SPEC["harness"]["cue_profiles"]:
         rows = []
@@ -90,19 +153,81 @@ def results_section(res):
                              fmt(off["reconfirm_median_s"], 2), off["games"]])
         if rows:
             note = SPEC["harness"]["cue_profiles"][prof]["note"]
-            tables.append(f"**Cue profile `{prof}`** ({note}). Swaps are summed over the games; the scores are weighted by player boxes.\n\n"
+            tables.append(f"**Cue profile `{prof}`** ({note}). Swaps are summed over the game-runs (games x seeds); the scores are weighted by "
+                          "player boxes. The re-confirm median counts only the players who were labelled again within "
+                          f"{idlib.P['reconfirm_horizon_s']:.0f} s.\n\n"
                           + table(["Config", "What it is", "sigma_p (m)", "Swaps offline", "Swaps live", "IDF1 offline", "HOTA offline",
-                                   "Coverage offline", "Coverage live", "Re-confirm median (s)", "Games"], rows))
+                                   "Coverage offline", "Coverage live", "Re-confirm median (s)", "Game-runs"], rows))
+    # exposure and rate bounds (config full): a zero is a bound, not a proof
+    erows = []
+    for prof in SPEC["harness"]["cue_profiles"]:
+        for sig in sorted({s["sigma_p"] for s in summ if s["profile"] == prof and s["config"] == "full"}):
+            for mode in ("offline", "live"):
+                x = by.get(("full", prof, sig, mode))
+                e = x.get("exposure") if x else None
+                if e:
+                    erows.append([f"`{prof}`", f"{sig:.2f}", mode, f"{e['game_runs']} (seeds {', '.join(map(str, x['seeds']))})", fmt(e["play_minutes"], 0),
+                                  fmt(e["labelled_player_hours"], 1), e["crossings"], e["chains"], e["swap_events"], x["runs_with_swaps"],
+                                  fmt(e["rate_per_game"], 2), fmt(e["upper_per_game"], 2), fmt(e["upper_per_labelled_player_hour"]),
+                                  f"{e['upper_per_crossing']:.1e}"])
+    if erows:
+        conf = int(round(100 * idlib.P["bound_confidence"]))
+        tables.append(f"**Exposure and swap rate** (config `full`). A count of zero is a bound, not a proof: the last three columns are "
+                      f"the one-sided {conf} % upper bounds on the rate the count supports (exact Poisson; 3.0 events when none is seen). "
+                      f"A game is {idlib.P['game_minutes']:.0f} minutes of play.\n\n"
+                      + table(["Cue profile", "sigma_p (m)", "Mode", "Game-runs", "Play (min)", "Labelled player-hours", "Crossings", "Chains",
+                               "Swap events", "Runs with a swap", "Events per game", "Upper bound per game", "Upper bound per labelled player-hour",
+                               "Upper bound per crossing"], erows))
+    mrows = []
+    for prof in SPEC["harness"]["cue_profiles"]:
+        for sig in sorted({s["sigma_p"] for s in summ if s["profile"] == prof and s["config"] == "full"}):
+            for mode in ("offline", "live"):
+                x = by.get(("full", prof, sig, mode))
+                if x and x.get("swap_mechanism"):
+                    mc = x["swap_mechanism"]
+                    mrows.append([f"`{prof}`", f"{sig:.2f}", mode, x["swap_events"]] + [mc.get(k, 0) for k in MECHANISMS]
+                                 + [mc.get("cross_team", 0), mc.get("impure_chain", 0) if x.get("clean_chains") is not None else "-"])
+    if mrows:
+        tables.append("**Swap events by mechanism** (config `full`; attribution by co-occurrence with the simulated error, metric "
+                      "`swap_mechanism`). `other` is what the rules do on their own: tracklet impurity and appearance. The last column "
+                      "counts the events whose chain also holds boxes of the labelled player himself (the label is right, the box is "
+                      "foreign: tracklet impurity); every other event is a wrong decision about a whole chain.\n\n"
+                      + table(["Cue profile", "sigma_p (m)", "Mode", "Swap events"] + [k.replace("_", " ") for k in MECHANISMS]
+                              + ["of which cross-team", "of which impure chain"], mrows))
+    prows = []
+    for prof in SPEC["harness"]["cue_profiles"]:
+        for sig in sorted({s["sigma_p"] for s in summ if s["profile"] == prof and s["config"] == "full"}):
+            for mode in ("offline", "live"):
+                x = by.get(("full", prof, sig, mode))
+                if x and x.get("clean_chains") is not None:
+                    prows.append([f"`{prof}`", f"{sig:.2f}", mode, x["clean_chains"], x["impure_clean_chains"], x["impure_minority_boxes"],
+                                  x["impure_teammate_boxes"], x["impure_opponent_boxes"], x["impure_non_player_boxes"],
+                                  f"{1e6 * x['impure_minority_boxes'] / max(1, x['clean_chain_boxes']):.1f}", x["impure_labelled_boxes"]])
+    if prows:
+        tables.append("**Chain purity** (config `full`, metric `chain_purity`). Purity is measured, not guaranteed: a clean chain is "
+                      "impure when its boxes belong to more than one true person; its minority boxes are the foreign ones. A foreign "
+                      "box that carries a locked label is a swap.\n\n"
+                      + table(["Cue profile", "sigma_p (m)", "Mode", "Clean chains", "Impure", "Foreign boxes", "of a teammate",
+                               "of an opponent", "of a non-player", "Foreign boxes per million", "Foreign boxes with a label"], prows))
+    tables.append("**Acceptance on the harness.**\n\n" + acceptance_table(res, by))
     full_good = [by.get(("full", "good", sg, "offline")) for sg in (0.15, 0.3)]
-    acc_h1 = all(x is not None and x["swap_events"] == 0 for x in full_good)
     naive = by.get(("naive_tracker", "good", 0.3, "offline"))
-    head = (f"Three NBA SportVU 2015-16 games ({', '.join(games)}; {minutes:.0f} minutes of tracked play) with true ids; ids stripped, "
-            "noise, broadcast view, occlusions, cuts and simulated cues added (section 14). ")
+    head = prov + "\n\n" + (f"Three NBA SportVU 2015-16 games ({', '.join(games)}; {minutes:.0f} minutes of tracked play per seed) with true ids; "
+                            "ids stripped, noise, broadcast view, occlusions, cuts and simulated cues added (section 14). ")
     if all(x is not None for x in full_good):
+        v1 = gate_verdict(res, "good")
         head += (f"The spec (`full`, cue profile good) makes **{full_good[0]['swap_events']} swap events offline at sigma_p 0.15 m and "
-                 f"{full_good[1]['swap_events']} at 0.30 m** (acceptance ACC-H1: {'met' if acc_h1 else 'NOT met'}). ")
+                 f"{full_good[1]['swap_events']} at 0.30 m in {full_good[0]['games']} and {full_good[1]['games']} game-runs** "
+                 f"(acceptance ACC-H1: {v1[0]}). ")
+    v3 = gate_verdict(res, "hard")
+    if v3[2]:
+        fh = [by.get(("full", "hard", sg, "offline")) for sg in (0.15, 0.3)]
+        head += (f"On the hard cue profile (error structure of real video, rates assumed) it makes **{fh[0]['swap_events'] if fh[0] else '-'} "
+                 f"and {fh[1]['swap_events'] if fh[1] else '-'}** (ACC-H3: {v3[0]}). ")
+    else:
+        head += "The hard cue profile has not been run (ACC-H3: not run). "
     if naive is not None:
-        head += f"A standard tracker on the same detections makes {naive['swap_events']} (sigma_p 0.30 m)."
+        head += f"A standard tracker on the same detections makes {naive['swap_events']} (sigma_p 0.30 m, good)."
     f = []
     s3 = {c: by.get((c, "good", 0.3, "offline")) for c in CONFIG_ORDER}
     if all(s3.get(c) for c in ("full", "naive_tracker")):
@@ -123,8 +248,12 @@ def results_section(res):
                  f"{fmt(s3['motion_team_lineup']['coverage'])}): they only decide which five candidates a box can be.")
     steps = [c for c in ("plus_jersey", "plus_appearance", "full") if s3.get(c)]
     if steps:
-        f.append("- **Each identity cue adds coverage without adding swaps:** " + "; ".join(
-            f"`{c}` {fmt(s3[c]['coverage'])} (swaps {s3[c]['swap_events']})" for c in steps) + ".")
+        def sw(c, mode):
+            return " / ".join(str(by[(c, "good", sg, mode)]["swap_events"]) for sg in sigs_good if (c, "good", sg, mode) in by)
+        sigs_good = sorted({s_["sigma_p"] for s_ in summ if s_["profile"] == "good" and s_["config"] in steps})
+        f.append("- **Each identity cue adds coverage** (offline, sigma_p 0.30 m): " + "; ".join(
+            f"`{c}` {fmt(s3[c]['coverage'])}" for c in steps) + ". Swap events at sigma_p " + " / ".join(f"{sg:.2f}" for sg in sigs_good)
+            + " m where run: " + "; ".join(f"`{c}` offline {sw(c, 'offline')}, live {sw(c, 'live')}" for c in steps) + ".")
     if s3.get("full_no_jersey") and s3.get("full_no_lineup"):
         f.append(f"- **Dropping a cue costs coverage:** without jersey numbers {fmt(s3['full_no_jersey']['coverage'])} "
                  f"(swaps {s3['full_no_jersey']['swap_events']}); without the lineup {fmt(s3['full_no_lineup']['coverage'])} "
@@ -134,7 +263,15 @@ def results_section(res):
         f.append(f"- **Position precision sets the coverage.** At sigma_p 0.15 / 0.30 / 0.50 m the spec labels "
                  f"{fmt(fs[0]['coverage'])} / {fmt(fs[1]['coverage'])} / {fmt(fs[2]['coverage'])} of player boxes offline "
                  f"(swaps {fs[0]['swap_events']} / {fs[1]['swap_events']} / {fs[2]['swap_events']}). Two players closer than "
-                 "about 4 sigma cannot be kept apart by motion, so their boxes wait on HOLD until a cue says who is who.")
+                 "about 4 sigma cannot be kept apart by motion, so their boxes wait on HOLD until a cue says who is who."
+                 + (f" Stress row 0.75 m: {fmt(by[('full', 'good', 0.75, 'offline')]['coverage'])} "
+                    f"(swaps {by[('full', 'good', 0.75, 'offline')]['swap_events']}): position precision is a precondition (ACC-R2), not a lever."
+                    if ("full", "good", 0.75, "offline") in by else ""))
+    for alt, what in (("masked_app", "a weaker appearance cue (skin- and head-masked crops, OQ-7)"), ("lit_jersey", "the jersey visibility published for hockey broadcast (OQ-3)")):
+        fa = by.get(("full", alt, 0.3, "offline"))
+        if fa and fs[1]:
+            f.append(f"- **`{alt}`**: with {what} the spec labels {fmt(fa['coverage'])} of player boxes offline at sigma_p 0.30 m instead of "
+                     f"{fmt(fs[1]['coverage'])} (swaps {fa['swap_events']}). The good-video coverage is an upper estimate until these are measured.")
     fp = [by.get(("full", "poor", sg, "offline")) for sg in (0.15, 0.3, 0.5)]
     fu = [by.get(("full", "poor_uncalibrated", sg, "offline")) for sg in (0.15, 0.3, 0.5)]
     if all(fp):
@@ -171,12 +308,35 @@ def results_section(res):
         f.append("- **Posterior calibration** (`full`, good, sigma_p 0.30 m, offline): " + "; ".join(
             f"posterior {b['bin'][0]}-{b['bin'][1]}: {b['labels']} labels, {b['wrong']} wrong" for b in fg["calibration"]) + ".")
     if summ:
-        inv = sum(s_.get("inv1_duplicates", 0) + s_.get("inv2_over_five", 0) + s_.get("inv3_outside_lineup", 0) for s_ in summ
-                  if s_["config"] not in ("naive_tracker",))
-        f.append(f"- Invariants ID-INV-1 to ID-INV-3 broken {inv} times over every config and noise level.")
+        def inv_of(s_):
+            return s_.get("inv1_duplicates", 0) + s_.get("inv2_over_five", 0) + s_.get("inv3_outside_lineup", 0)
+        inv = sum(inv_of(s_) for s_ in summ)
+        bad = sorted({s_["config"] for s_ in summ if inv_of(s_)})
+        dg = sum(s_.get("dup_guard", 0) for s_ in summ)
+        dgc = sorted({s_["config"] for s_ in summ if s_.get("dup_guard", 0)})
+        f.append(f"- Invariants ID-INV-1 to ID-INV-3 broken {inv} times in the emitted labels over every config, cue profile and noise level"
+                 + (f" (configs: {', '.join(f'`{c}`' for c in bad)})" if bad else "") + ". They are counted after the duplicate guard, "
+                 f"which removed a repeated label {dg} times" + (f" (configs: {', '.join(f'`{c}`' for c in dgc)})" if dgc else "") + ".")
     f.append("- The cue error rates are assumptions (section 14); the real jersey read rate and OCR error on our recordings are the "
              "largest unknowns (open question OQ-3).")
     return head, "\n\n".join(tables), "\n".join(f)
+
+
+MECHANISMS = ["same_kit_non_player", "official", "lineup_wrong", "overlap_unflagged", "colour_run", "jersey_misread", "other"]
+
+
+def cue_stats_table(res):
+    """What each cue profile assumes, in the units the literature reports (measured on the simulated detections)."""
+    cs = (res or {}).get("cue_stats") or []
+    if not cs:
+        return "_Not in the results file yet (written by the harness from 0.2.0 on)._"
+    rows = [[f"`{c['profile']}`", c["runs"], fmt(c["legible_frame_share"]), fmt(c["sightings_per_visible_s"], 2), fmt(c["no_read_window_share"]),
+             fmt(c["app_rank1_teammates"], 2), fmt(c["app_rank1_teammates_lookalikes"], 2),
+             f"{c['pbp_rows']['rows']} / {c['pbp_rows']['late']} / {c['pbp_rows']['missing']} / {c['pbp_rows']['wrong_player']}"] for c in cs]
+    lit = ["published", "-", "0.059 hockey, 0.122 soccer", "-", "0.504 hockey 720p", "0.90-0.91 unmasked crops", "-", "-"]
+    return table(["Cue profile", "Runs", "Player boxes with a jersey read", "Sightings per visible second",
+                  f"{idlib.P['sighting_window_s']} s windows without a read", "Appearance rank-1 among on-court teammates", "Same, look-alike pairs",
+                  "Lineup rows: all / late / missing / wrong player"], rows + [lit])
 
 
 def build():
@@ -244,6 +404,7 @@ def build():
         + f"\n\n**Gold sample.** {SPEC['gold_sample']['plan']}"
     h = SPEC["harness"]
     prof_keys = list(h["cue_profiles"]["good"])
+    prof_keys += [k for k in h["cue_profile_options"] if any(k in p_ for p_ in h["cue_profiles"].values())]
 
     def cell(v):
         if isinstance(v, list):
@@ -251,16 +412,24 @@ def build():
         if isinstance(v, dict):
             return "; ".join(f"{a} {b}" for a, b in v.items()) or "none (YAML values)"
         return v
-    prof_rows = [[k] + [cell(h["cue_profiles"][p].get(k, "")) for p in h["cue_profiles"]] for k in prof_keys]
+    prof_rows = [[k] + [cell(h["cue_profiles"][p].get(k, "off" if k in h["cue_profile_options"] else "")) for p in h["cue_profiles"]] for k in prof_keys]
+    opt_rows = [[f"`{k}`", cell(v["default"]) if v["default"] is not None else "none", v["unit"], v["meaning"], v["basis"]]
+                for k, v in h["cue_profile_options"].items()]
     cfg_rows = [[f"`{k}`", v["tracklets"], ", ".join(v["cues"]), v["lineup"], v["abstain"], v["alarms"], v["splits"], v.get("note", "")]
                 for k, v in h["configs"].items()]
     rep["HARNESS"] = h["summary"].strip() + f"\n\nData: {h['data']}\n\n" + params_table(h["params"]) \
         + f"\n\n{h['calibration_note']}" \
-        + f"\n\nNoise grid sigma_p: {', '.join(map(str, h['noise_grid_sigma_p_m']))} m (white + AR(1) mix of tools/specgen/movement/sim.py)." \
+        + f"\n\nNoise grid sigma_p: {', '.join(map(str, h['noise_grid_sigma_p_m']))} m (white + AR(1) mix of tools/specgen/movement/sim.py). {h['noise_grid_note']}" \
         + "\n\nHeights are not in SportVU; they are drawn per roster position (G / F / C mean and sd: " \
         + "; ".join(f"{k} {v[0]} / {v[1]} m" for k, v in h["height_by_position_m"].items()) + ")." \
         + "\n\n**Cue profiles** (simulator truth; the assigner keeps the YAML cue parameters):\n\n" \
         + table(["Field"] + list(h["cue_profiles"]), prof_rows) \
+        + "\n\n**Optional error models** (off in good, poor and poor_uncalibrated; the hard profile switches them on; every one draws from a " \
+          "side random stream, so the stored profiles reproduce bit for bit):\n\n" \
+        + table(["Option", "Off value", "Unit", "What it simulates", "Basis"], opt_rows) \
+        + "\n\n**What each profile assumes, in literature units** (measured on the simulated detections; compare with our own film, OQ-3 and OQ-7):\n\n" \
+        + cue_stats_table(res) \
+        + f"\n\n**What this harness cannot show.** {h['cannot_show'].strip()}" \
         + "\n\n**Configs** (ablations of the spec):\n\n" + table(["Config", "Tracklets", "Cues", "Lineup", "Abstain", "Alarms", "Splits", "Note"], cfg_rows) \
         + ("\n\nProduction-only parameters (act on pixels, OCR scores, crop banks or the gold sample; the harness has none): "
            + ", ".join(f"`{p}`" for p in SPEC["production_only_params"]) + ".")
@@ -280,6 +449,10 @@ def build():
     if SPEC.get("review_round_1"):
         rr = SPEC["review_round_1"]
         jr.append("**Review round 1 (self-review against the requirements and hard cases)**\n\n"
+                  + table(["Id", "Finding", "Fix", "Evidence"], [[x["id"], x["finding"], x["fix"], x["evidence"]] for x in rr]))
+    if SPEC.get("review_round_2"):
+        rr = SPEC["review_round_2"]
+        jr.append("**Review round 2 (independent lenses, 11 Nov 2026)**\n\n"
                   + table(["Id", "Finding", "Fix", "Evidence"], [[x["id"], x["finding"], x["fix"], x["evidence"]] for x in rr]))
     rep["JOURNAL"] = "\n\n".join(jr)
     out = tpl
