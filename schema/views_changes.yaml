@@ -1,0 +1,271 @@
+# Proposed schema changes of the views catalogue (baseline 5, 2026-11-20). PROPOSAL; do not treat as schema.
+# Source of every entry: config/views/*.yaml (0.1.0). No file of schema/tables/ is edited. The requirements session
+# approves; the schema owner merges. Every entry carries "not applied: proposal for the requirements session".
+# Lint: python tools/specgen/views/vwlib.py --check (a table.column a view reads must exist in schema/tables or be
+# listed in a schema/*_changes.yaml file; this file holds the ones no other baseline proposes).
+# Test: tests/views/test_views_doc.py (no proposed column already exists; every read_by names a real element).
+version: 0.1.0
+status: proposed (not applied; proposal for the requirements session)
+date: '2026-11-20'
+owner: Mac session for Aldemir (baseline 5 of 8, labels core and doc)
+pack: config/views/ (core.yaml and the three views files)
+reading_order: [column_additions, new_tables, removals, cross_file_notes]
+design: >-
+  A view adds no stored truth. What the views need and the schema lacks is of four kinds: (1) the link from a row to
+  its video, the clip index of R-VZ-10, which every "number links to its frames" rule reads; (2) the frozen products a
+  person reads (half-time packet, notes sheet, model card, pre-game pairings, swing plays), so that a page can be
+  rebuilt and compared; (3) the working state of the Studio and the review screens (drafts, the parts of the priority
+  score, guide version, time per item, the owner's confirmation); (4) the records behind the platform screens
+  (parameter registry, export log, alerts, JEV calibration). read_by names the view and element that show the value
+  (view.element). Most of these elements describe the value in their shows text today and do not list the column as an
+  input yet; the column joins their inputs when the proposal is approved.
+counts: {column_additions: 19, tables_touched: 8, new_tables: 11, new_table_columns: 109, removals: 1}
+
+# ---------------------------------------------------------------------------------------------------------------------
+column_additions:
+  state_corrections:
+  - {column: draft_id, type: string, unit: n/a, requirement: [R-AS-03], read_by: [draft_diff_promote.draft_list, draft_diff_promote.diff], definition: 'The draft the correction belongs to (FK state_drafts.draft_id). Null for a correction made by the pipeline.', why: 'R-AS-03: an edit is a draft version with a diff. The table has no link from a correction to its draft.', status: 'not applied: proposal for the requirements session'}
+  - {column: edit_kind, type: 'enum (label, boundary, parameter, model_version)', unit: n/a, requirement: [R-AS-03, R-AS-09], read_by: [draft_diff_promote.draft_list, draft_diff_promote.audit_log], definition: 'What kind of edit made the correction.', why: 'The draft list shows and filters by the kind of edit; no column holds it.', status: 'not applied: proposal for the requirements session'}
+  review_queue:
+  - {column: priority_parts, type: 'map<string, float>', unit: n/a, requirement: [R-HR-03], read_by: [review_queue.queue_list], definition: 'The parts of the priority score: failed gold case, disagreement, downstream impact, audit draw, identity weakness.', why: 'R-HR-03 orders the one queue by these parts. The table stores only their product, so the order cannot be explained on screen.', status: 'not applied: proposal for the requirements session'}
+  - {column: triggers, type: 'list<string>', unit: n/a, requirement: [R-HR-01], read_by: [review_queue.trigger_summary, review_item.guess_panel], definition: 'Every trigger folded into the item, not only the first.', why: 'Several flags of one cause fold into one item (one row per cause). The column trigger holds one value.', status: 'not applied: proposal for the requirements session'}
+  - {column: is_audit_item, type: bool, unit: n/a, requirement: [R-HR-03, R-HR-06], read_by: [review_item.guess_panel, review_item.blind_reshow], definition: 'True when the item was drawn for the random audit share. The guess is hidden on it until the answer is stored.', why: 'The review screen must know which items hide the guess; today only blind re-shows are marked (review_labels.is_repeat_blind).', status: 'not applied: proposal for the requirements session'}
+  - {column: raised_known_at_utc, type: timestamp, unit: UTC, requirement: [R-HR-01, R-PR-15], read_by: [live_game_state_panel.flag_feed], definition: 'When the system first knew of the flag.', why: 'The live flag feed is as known: a flag found offline must never appear for a past instant. The table has no known-at time; the feed works round it with state_frame.flag_ids.', status: 'not applied: proposal for the requirements session'}
+  - {column: cleared_known_at_utc, type: timestamp, unit: UTC, requirement: [R-HR-01, R-PR-15], read_by: [live_game_state_panel.flag_feed], definition: 'When the system knew the flag had cleared. Null while open.', why: 'A cleared flag stays in the feed for a short time, greyed; the feed needs the instant it closed.', status: 'not applied: proposal for the requirements session'}
+  - {column: status_history, type: 'list<struct<status, at_utc, by>>', unit: n/a, requirement: [R-HR-03, R-HR-05], read_by: [review_queue.queue_list, review_item.label_history], definition: 'Every status the item had, with time and actor.', why: 'The queue shows how an item moved (queued, shown, answered, disputed, closed); status holds only the last value.', status: 'not applied: proposal for the requirements session'}
+  review_labels:
+  - {column: guide_version, type: string, unit: n/a, requirement: [R-HR-15], read_by: [review_item.as_of_banner, labeller_agreement_report.agreement_matrix], definition: 'Version of the labelling guide in force when the label was made.', why: 'R-HR-15: a label is read against the guide it was made under. No column holds the version.', status: 'not applied: proposal for the requirements session'}
+  - {column: seconds_on_item, type: float, unit: s, requirement: [R-HR-02], read_by: [review_queue.budget_bar], definition: 'Seconds from the item opening to the answer being stored.', why: 'R-HR-02 sets a median time per item of 20 s, to calibrate. Nothing stores the time, so the median cannot be measured.', status: 'not applied: proposal for the requirements session'}
+  - {column: owner_confirmed_at_utc, type: timestamp, unit: UTC, requirement: [R-HR-16, R-HR-12], read_by: [review_item.label_history, review_queue.gold_set_status, labeller_agreement_report.ai_label_gate], definition: 'When the owner confirmed the label. Null until then.', why: 'Decision of 11 Nov 2026: a label made by Claude counts as gold only after the owner confirms it. gold_set alone does not show that the confirmation happened.', status: 'not applied: proposal for the requirements session'}
+  error_catalogue:
+  - {column: next_fix, type: string, unit: n/a, requirement: [R-RR-03, R-RR-05], read_by: [run_record_report.worst_cases], definition: 'The fix proposed for the cause of this case.', why: 'The failure analysis lists the next fix beside each worst case; the table stops at the cause.', status: 'not applied: proposal for the requirements session'}
+  - {column: expected_gain, type: string, unit: n/a, requirement: [R-RR-03, R-RR-05], read_by: [run_record_report.worst_cases], definition: 'The gain the fix is expected to bring, in the unit of the failed requirement, with how it was estimated.', why: 'As next_fix.', status: 'not applied: proposal for the requirements session'}
+  hypothesis_results:
+  - {column: p_raw, type: float, unit: probability, requirement: [R-HY-01, R-VA-07], read_by: [hypothesis_results.result_table], definition: 'The p-value before the correction for the family.', why: 'The table shows the raw and the adjusted value side by side; only p_adjusted is stored.', status: 'not applied: proposal for the requirements session'}
+  - {column: family_id, type: string, unit: n/a, requirement: [R-VA-07], read_by: [hypothesis_results.family_view], definition: 'The family of hypotheses the correction was made over.', why: 'The family view groups results by family; no column names it.', status: 'not applied: proposal for the requirements session'}
+  coach_quiz:
+  - {column: question_type, type: 'enum (who_guards, which_set, which_defence, what_next)', unit: n/a, requirement: [R-GU-03], read_by: [coach_quiz.question_card, coach_quiz.score_table], definition: 'One of the four question types of R-GU-03.', why: 'The score table is per question type; the table stores the question as text only.', status: 'not applied: proposal for the requirements session'}
+  - {column: model_version, type: string, unit: n/a, requirement: [R-GU-03, R-PR-16], read_by: [coach_quiz.system_answer, coach_quiz.score_table], definition: 'Version of the model that gave the system answer.', why: 'A score cannot be compared across versions without it.', status: 'not applied: proposal for the requirements session'}
+  team_box:
+  - {column: period_scope, type: 'enum (game, half_1, half_2, overtime)', unit: n/a, requirement: [R-VZ-08], read_by: [halftime_packet.score_block, halftime_packet.four_factors], definition: 'The part of the game the row covers.', why: 'R-VZ-08 asks that every counting number of the packet equals the official half-time box. The table has one row per game; the packet works round it with the pull time.', status: 'not applied: proposal for the requirements session'}
+  player_box:
+  - {column: period_scope, type: 'enum (game, half_1, half_2, overtime)', unit: n/a, requirement: [R-VZ-08], read_by: [halftime_packet.foul_trouble_bonus], definition: 'The part of the game the row covers.', why: 'As team_box.period_scope.', status: 'not applied: proposal for the requirements session'}
+
+# ---------------------------------------------------------------------------------------------------------------------
+new_tables:
+  clip_index:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-VZ-10, R-VZ-02, R-VI-20]
+    grain: one row per event, action or possession row that can be shown as a clip
+    primary_key: [game_id, row_ref]
+    read_by: [possession_explorer.clip_export, postgame_report.clip_browser]
+    why: 'R-VZ-10 names the table and its columns; no file of schema/tables holds it. Without it no number can be followed to its frames.'
+    licence: computed by us. The row holds times and ids only; the video stays in the private store.
+    columns:
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key (FK games.game_id).'}
+      - {column: row_ref, type: string, unit: n/a, definition: 'Table name and primary key of the row the clip shows (events, passes, screens, shots, possessions, chances and the like).'}
+      - {column: video_id, type: string, unit: n/a, definition: 'Video file the times refer to (FK video_files.video_id).'}
+      - {column: in_s, type: float, unit: s, definition: 'Clip start in video seconds. The window before the key frame comes from config per event type (R-HR-02).'}
+      - {column: out_s, type: float, unit: s, definition: 'Clip end in video seconds.'}
+      - {column: key_frame, type: int, unit: frame, definition: 'The frame that carries the moment (screen moment, help moment, release).'}
+      - {column: replay_ids, type: 'list<string>', unit: n/a, definition: 'Replay segments that show the same play (R-VI-20). Empty when none.'}
+  state_drafts:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-AS-03, R-AS-09, R-AS-04]
+    grain: one row per draft state version of a game
+    primary_key: [draft_id]
+    read_by: [draft_diff_promote.draft_list, draft_diff_promote.promote_bar, draft_diff_promote.held_out_flag, draft_diff_promote.audit_log, studio_game_canvas.as_of_banner]
+    why: 'R-AS-03 and R-AS-09: an edit makes a draft version with a diff; only the owner promotes; undo restores the previous version byte for byte. No table holds a draft, its state or who promoted it.'
+    licence: computed by us.
+    columns:
+      - {column: draft_id, type: string, unit: n/a, definition: 'Draft key.'}
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key.'}
+      - {column: pass, type: string, unit: n/a, definition: 'Pass the draft edits (blind or anchored).'}
+      - {column: base_state_version, type: string, unit: n/a, definition: 'The current state version the draft started from. It stays byte-identical until promotion.'}
+      - {column: draft_state_version, type: string, unit: n/a, definition: 'The state version of the draft.'}
+      - {column: change_set_id, type: string, unit: n/a, definition: 'The diff against the base (FK change_sets.change_set_id, proposed in schema/platform_changes.yaml).'}
+      - {column: status, type: 'enum (open, promoted, discarded, undone)', unit: n/a, definition: 'State of the draft.'}
+      - {column: opened_by, type: string, unit: n/a, definition: 'Who opened it (the owner, or a named Claude session).'}
+      - {column: opened_at_utc, type: timestamp, unit: UTC, definition: 'When it was opened.'}
+      - {column: reason, type: string, unit: n/a, definition: 'Why the edit was made.'}
+      - {column: held_out_game, type: bool, unit: n/a, definition: 'True when the game is held out or holds gold items. Such a draft cannot enter a training set.'}
+      - {column: recompute_status, type: 'enum (none, running, done, failed)', unit: n/a, definition: 'State of the recompute of what depends on the edit (R-AS-04).'}
+      - {column: promoted_by, type: string, unit: n/a, definition: 'The owner. Null until promoted.'}
+      - {column: promoted_at_utc, type: timestamp, unit: UTC, definition: 'When it was promoted.'}
+      - {column: undone_at_utc, type: timestamp, unit: UTC, definition: 'When the promotion was undone. Null otherwise.'}
+  halftime_packets:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-VZ-08]
+    grain: one row per game and packet build
+    primary_key: [packet_id]
+    read_by: [halftime_packet.as_of_banner, halftime_packet.data_basis]
+    why: 'R-VZ-08 says the packet lands in results/<game id>/halftime_packet and that the time from the first-half video to the packet is measured. No table records the snapshot it was frozen at, so a rebuilt packet cannot be told from the first one.'
+    licence: computed by us.
+    columns:
+      - {column: packet_id, type: string, unit: n/a, definition: 'Packet key.'}
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key.'}
+      - {column: pass, type: string, unit: n/a, definition: 'Pass the packet was built on (live or blind). Never anchored.'}
+      - {column: snapshot_known_at_utc, type: timestamp, unit: UTC, definition: 'The instant the packet is frozen at. It reads nothing known later.'}
+      - {column: state_version, type: string, unit: n/a, definition: 'State version read.'}
+      - {column: pbp_pulled_at_utc, type: timestamp, unit: UTC, definition: 'Pull time of the play-by-play and the box the packet read.'}
+      - {column: horn_to_page_s, type: float, unit: s, definition: 'Seconds from the first-half horn to the page. Reported, not a gate (K23).'}
+      - {column: supersedes_packet_id, type: string, unit: n/a, definition: 'The earlier packet of the same game, when this one is a rebuild. Both are kept.'}
+      - {column: page_ref, type: string, unit: n/a, definition: 'Where the page lies in the private store.'}
+  postgame_notes:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-VZ-09]
+    grain: one row per candidate finding of a game
+    primary_key: [game_id, note_id]
+    read_by: [postgame_notes.notes_list, postgame_notes.left_out, postgame_report.notes]
+    why: 'R-VZ-09 asks for the ten notes of a game, each with its number and clip. No table holds a note, its rank or why a candidate was left out; the sheet reads metric_value_log and clip_index and rebuilds the ranking each time.'
+    licence: computed by us.
+    columns:
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key.'}
+      - {column: note_id, type: string, unit: n/a, definition: 'Note key.'}
+      - {column: sentence, type: string, unit: n/a, definition: 'The finding in one plain sentence.'}
+      - {column: metric_id, type: string, unit: n/a, definition: 'Registry id of the number in the sentence.'}
+      - {column: value, type: float, unit: unit of the metric, definition: 'The value shown.'}
+      - {column: n, type: int, unit: count, definition: 'Cases behind the value.'}
+      - {column: rank_size, type: float, unit: n/a, definition: 'Rank score for the size of the finding against the season value of the team.'}
+      - {column: rank_value, type: float, unit: n/a, definition: 'Rank score for what the finding was worth in points.'}
+      - {column: gate_result, type: 'enum (shown, too_few, not_reliable, duplicate)', unit: n/a, definition: 'Whether the note passed its checks, and if not, why it was left out.'}
+      - {column: shown_rank, type: int, unit: n/a, definition: 'Place on the sheet, 1 to 10. Null when left out.'}
+      - {column: clip_row_ref, type: string, unit: n/a, definition: 'The clip of the note (FK clip_index.row_ref).'}
+      - {column: run_id, type: string, unit: n/a, definition: 'Run that built the sheet.'}
+  pregame_matchups:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-MX-06]
+    grain: one row per predicted pairing of a game and snapshot
+    primary_key: [game_id, snapshot_id, attacker_id, defender_id]
+    read_by: [pregame_card.mismatch_map, pregame_card.mismatch_check]
+    why: 'R-MX-06 asks for the mismatch map before the game and its check after it. No table holds the predicted pairings; the card draws the map from profile snapshots and earlier matchups and cannot store what it predicted.'
+    licence: computed by us.
+    columns:
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key.'}
+      - {column: snapshot_id, type: string, unit: n/a, definition: 'The pre-game snapshot the prediction was frozen at.'}
+      - {column: attacker_id, type: string, unit: n/a, definition: 'Player with the ball side of the pairing.'}
+      - {column: defender_id, type: string, unit: n/a, definition: 'Predicted defender.'}
+      - {column: predicted_share, type: float, unit: share, definition: 'Predicted share of the attacker''s floor time guarded by this defender.'}
+      - {column: height_diff_m, type: float, unit: m, definition: 'Attacker height minus defender height, listed values.'}
+      - {column: speed_diff_mps, type: float, unit: m/s, definition: 'Attacker top speed minus defender top speed, from tracking when it exists.'}
+      - {column: mismatch_class, type: string, unit: n/a, definition: 'The class of the mismatch (size, speed, none).'}
+      - {column: model_version, type: string, unit: n/a, definition: 'Version of the model or rule that made the prediction.'}
+      - {column: observed_share, type: float, unit: share, definition: 'Filled after the game from defensive_matchups. Null before.'}
+  swing_plays:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-PR-12]
+    grain: one row per event of a game and model version
+    primary_key: [game_id, event_id, model_version]
+    read_by: [win_probability_chart.swing_plays, live_game_state_panel.wp_leverage_strip, postgame_report.win_probability]
+    why: 'R-PR-12 names the tables wp_live and swing_plays; neither exists. The live values have columns in schema/live_state_changes.yaml (predictions). The change each event made has no home, so the list of swing plays is rebuilt each time.'
+    licence: computed by us.
+    columns:
+      - {column: game_id, type: string, unit: n/a, definition: 'Game key.'}
+      - {column: event_id, type: string, unit: n/a, definition: 'The event (FK events.event_id).'}
+      - {column: model_version, type: string, unit: n/a, definition: 'Win-probability model version.'}
+      - {column: wp_before, type: float, unit: probability, definition: 'Home win probability before the event.'}
+      - {column: wp_after, type: float, unit: probability, definition: 'Home win probability after the event.'}
+      - {column: wp_change, type: float, unit: probability, definition: 'After minus before.'}
+      - {column: band_lo, type: float, unit: probability, definition: 'Lower end of the band of the change.'}
+      - {column: band_hi, type: float, unit: probability, definition: 'Upper end of the band of the change.'}
+      - {column: known_at_utc, type: timestamp, unit: UTC, definition: 'When the value was published (as known).'}
+      - {column: clip_row_ref, type: string, unit: n/a, definition: 'The clip of the event (FK clip_index.row_ref).'}
+  model_cards:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-PR-16]
+    grain: one row per model version
+    primary_key: [model_version]
+    read_by: [model_card.identity_block, model_card.data_block, model_card.features_block, model_card.scores_block, model_card.failures_block, model_card.release_block]
+    why: 'R-PR-16: every model version has a card and a prediction resolves to it. Nothing in schema/tables holds a card; the view assembles it from run records and requirement results.'
+    licence: computed by us.
+    columns:
+      - {column: model_version, type: string, unit: n/a, definition: 'Model version key, as written on every prediction.'}
+      - {column: stage, type: string, unit: n/a, definition: 'Pipeline stage the model serves.'}
+      - {column: purpose, type: string, unit: n/a, definition: 'What the model is for and what it is not for.'}
+      - {column: training_data_ref, type: string, unit: n/a, definition: 'Games, period and label sets it was trained on, by id.'}
+      - {column: held_out_ref, type: string, unit: n/a, definition: 'Gold sets and held-out games, with the check that none was trained on (R-HR-07).'}
+      - {column: feature_metric_ids, type: 'list<string>', unit: n/a, definition: 'Features by registry id.'}
+      - {column: scores_run_id, type: string, unit: n/a, definition: 'Run whose requirement results are the scores of the card.'}
+      - {column: known_failures_ref, type: string, unit: n/a, definition: 'Rows of error_catalogue that describe its known failures.'}
+      - {column: release_decision, type: 'enum (candidate, released, withdrawn)', unit: n/a, definition: 'Whether the version may be used.'}
+      - {column: released_by, type: string, unit: n/a, definition: 'The owner.'}
+      - {column: released_at_utc, type: timestamp, unit: UTC, definition: 'When it was released.'}
+      - {column: card_sha256, type: string, unit: n/a, definition: 'Hash of the card, so a prediction can prove which card it resolved to.'}
+  parameter_registry:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-CX-29, R-AS-08]
+    grain: one row per parameter and version
+    primary_key: [parameter_id, version]
+    read_by: [parameter_sweep.parameter_picker, parameter_sweep.sweep_chart]
+    why: 'R-CX-29 and R-AS-08: a parameter is swept and its effect shown. The parameters live in the config packs as {value, unit, why, evidence}; no table lists them, so the sweep cannot name what it changed.'
+    licence: computed by us.
+    columns:
+      - {column: parameter_id, type: string, unit: n/a, definition: 'Config file and dotted key.'}
+      - {column: version, type: string, unit: n/a, definition: 'Version of the pack that holds the value.'}
+      - {column: value, type: string, unit: n/a, definition: 'The value, as written.'}
+      - {column: unit, type: string, unit: n/a, definition: 'Its unit.'}
+      - {column: why, type: string, unit: n/a, definition: 'Why this value.'}
+      - {column: evidence, type: string, unit: n/a, definition: 'Tag and text: measured, published, decided or assumed.'}
+      - {column: sweep_lo, type: float, unit: unit of the parameter, definition: 'Lower end of the range a sweep may try.'}
+      - {column: sweep_hi, type: float, unit: unit of the parameter, definition: 'Upper end of the range a sweep may try.'}
+      - {column: reads_metric_ids, type: 'list<string>', unit: n/a, definition: 'Metrics whose value depends on the parameter.'}
+  export_log:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-PR-19, R-AS-10, R-EN-23]
+    grain: one row per export
+    primary_key: [export_id]
+    read_by: [monitoring_board.privacy_lane]
+    why: 'R-PR-19: the export audit finds no video frame outside the private store. An audit needs a record of every export; none exists.'
+    licence: computed by us.
+    columns:
+      - {column: export_id, type: string, unit: n/a, definition: 'Export key.'}
+      - {column: at_utc, type: timestamp, unit: UTC, definition: 'When.'}
+      - {column: by, type: string, unit: n/a, definition: 'Who.'}
+      - {column: view_id, type: string, unit: n/a, definition: 'The view the export came from (VW id).'}
+      - {column: export_kind, type: 'enum (clip_reference, top_down_render, video_clip_private, sql, aggregate_table, page)', unit: n/a, definition: 'One of the export kinds of the display contract.'}
+      - {column: target, type: string, unit: n/a, definition: 'Where it was written.'}
+      - {column: inside_private_store, type: bool, unit: n/a, definition: 'True when the target lies inside the private store.'}
+      - {column: row_count, type: int, unit: count, definition: 'Rows or items written.'}
+      - {column: gate_result, type: string, unit: n/a, definition: 'Result of the published-number gate (R-DQ-15) for an aggregate; n/a otherwise.'}
+  alerts:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-DQ-08]
+    grain: one row per alert
+    primary_key: [alert_id]
+    read_by: [monitoring_board.alerts]
+    why: 'R-DQ-08: monitoring raises alerts. No table holds an alert, when it opened or when its rule cleared.'
+    licence: computed by us.
+    columns:
+      - {column: alert_id, type: string, unit: n/a, definition: 'Alert key.'}
+      - {column: rule_id, type: string, unit: n/a, definition: 'The monitoring rule that fired.'}
+      - {column: scope, type: string, unit: n/a, definition: 'Table, model or source the alert is about.'}
+      - {column: value, type: float, unit: unit of the rule, definition: 'The value that broke the rule.'}
+      - {column: threshold, type: float, unit: unit of the rule, definition: 'The limit of the rule.'}
+      - {column: opened_at_utc, type: timestamp, unit: UTC, definition: 'When the rule fired.'}
+      - {column: closed_at_utc, type: timestamp, unit: UTC, definition: 'When the rule cleared. An alert is not closed by hand.'}
+      - {column: run_id, type: string, unit: n/a, definition: 'Run that raised it.'}
+  jev_calibration_results:
+    status: 'not applied: proposal for the requirements session'
+    requirement: [R-HR-19, R-HR-17]
+    grain: one row per label type, confidence bin and run
+    primary_key: [run_id, label_type, confidence_bin]
+    read_by: [jev_calibration_report.type_table, jev_calibration_report.reliability_curve]
+    why: 'R-HR-19: the external consultant is calibrated per label type against gold. The report reads run_requirement_results, which has no place for a confidence bin.'
+    licence: computed by us.
+    columns:
+      - {column: run_id, type: string, unit: n/a, definition: 'Run key.'}
+      - {column: label_type, type: string, unit: n/a, definition: 'Label type.'}
+      - {column: confidence_bin, type: string, unit: n/a, definition: 'Bin of the stated confidence.'}
+      - {column: n, type: int, unit: count, definition: 'Gold items in the bin.'}
+      - {column: agreement, type: float, unit: share, definition: 'Share of the bin that agrees with gold.'}
+      - {column: ci95_lo, type: float, unit: share, definition: 'Lower end of the 95 % interval.'}
+      - {column: ci95_hi, type: float, unit: share, definition: 'Upper end of the 95 % interval.'}
+      - {column: consultant_version, type: string, unit: n/a, definition: 'Model and prompt version of the consultant.'}
+
+# ---------------------------------------------------------------------------------------------------------------------
+removals:
+  - {table: rosters, column: headshot_url, requirement: [R-PR-19], decision: 'owner decision of 11 Nov 2026: no headshots anywhere', why: 'No view may show or need a face image. The lint of this pack already refuses the column as an input (display_contract.identity.banned_column_pattern); the column itself still invites a pull of face images.', status: 'not applied: proposal for the requirements session'}
+
+cross_file_notes:
+  - 'The views also read columns that exist only as proposals of the sister baselines (live state, identity, platform, named spots). The catalogue page counts them per change file. They are not repeated here.'
+  - 'Pipeline quality scores (HOTA, IDF1, identity accuracy, kappa) are read from run_requirement_results by requirement id and metric name. They have no registry id; that is a registry follow-up, not a schema change.'

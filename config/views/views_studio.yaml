@@ -1,0 +1,2355 @@
+# Views catalogue, studio surface (baseline 5). The Analyst Studio, the review and labelling screens, the model bench
+# and the data-platform screens.
+# Contract and index: config/views/core.yaml. Lint: python tools/specgen/views/vwlib.py --check config/views/views_studio.yaml
+# The first record is the worked example of this file. The other records of the index are written by the view author.
+file: views_studio
+version: 0.1.0
+date: '2026-11-20'
+
+views:
+  studio_game_canvas:
+    id: VW-STU-01
+    name: Studio game canvas
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What does the system hold about this moment of the game, where did each value come from, and can I trust it?
+    grain: frame
+    as_of: {view: mixed, pass: [blind, anchored]}
+    refresh: {class: per_frame}
+    min_width_px: 1280
+    definitions:
+      - 'editable: nothing on the canvas itself. Four kinds of edit start here and open the draft view: a label (identity, set, coverage, event), a boundary of a segment, a registered parameter, the model version of a stage (R-AS-03).'
+      - 'an edit creates: a draft state version with a diff, shown in draft_diff_promote. The canvas keeps showing the current version until the owner promotes; a switch shows the draft beside it, marked DRAFT.'
+      - 'never editable: video, detections and tracks as stored, the official play-by-play and box score, a stored model output, a run record, a locked identity in place, any hash. A layer toggle, a filter and a saved selection change the screen, not the data.'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'RECORDED, the pass, the state version and whether it is the current version or a draft, the game clock and video time of the playhead, the level of the stretch under it.'
+        inputs: {}
+      - key: video
+        kind: video
+        component: video_player
+        shows: The broadcast video from the private store, with the layers the user switched on.
+        inputs: {}
+        as_of: as_of_event
+        grade_rule: contract
+      - key: court
+        kind: court
+        component: top_down_court
+        shows: 'Ten players and the ball from above at the playhead, in the named-spots frame, with the area the camera sees and the layers the user switched on.'
+        inputs:
+          tables: [player_positions.player_id, player_positions.team_id, player_positions.track_id, player_positions.spot, player_positions.speed_mps]
+          spots: ['layer:zone_scheme:court_region', 'layer:zone_scheme:three_depth', 'layer:spot', 'layer:landmark']
+        as_of: as_of_event
+        requirements: [R-VZ-01]
+        identity_rule: probable_flagged_offline
+        grade_rule: contract
+      - key: state_panel
+        kind: tile
+        embeds: live_game_state_panel
+        shows: 'The live game-state panel at the playhead: what the system knew at that instant, tile for tile as on the live surface.'
+        inputs: {}
+        as_of: as_of_known
+        requirements: [R-PR-15]
+        identity_rule: locked_or_hold
+        number_rule: {class: live_state, grade: by rule 1, age: as on the live panel, link: state}
+        grade_rule: contract
+        notes: 'The embedded panel keeps the live identity rule: locked or HOLD. What was true at the instant, and how late it became known, is shown in the inspector beside each value.'
+      - key: timeline
+        kind: timeline
+        component: timeline
+        shows: 'Rows on one time scale with one playhead: every state dimension, transitions, events, possessions, chances, set phases, scheme states, replays and breaks, corrections, and the crowd loudness curve.'
+        inputs:
+          tables: [set_instance_phases.phase_name, set_instance_phases.start_ts_ms, set_instance_phases.end_ts_ms, scheme_states.l1_base_scheme_code, scheme_states.l1_conf, frames.is_replay, frames.camera_shot_type, state_corrections.correction_id, audio_seconds.loudness_rel_db]
+          events: ['dim:flow_state', 'dim:ball_status', 'dim:possession_team', 'dim:team_control', 'dim:game_clock_running', 'dim:shot_clock_status', 'dim:camera_shot_type', 'dim:scorebug_visible']
+        as_of: as_of_event
+        requirements: [R-AU-03]
+        numbers: true
+        number_rule: {class: descriptive, n: the seconds of the game with audio, descriptive_mark: 'the loudness curve is marked descriptive - for hypothesis use only', link: frames}
+        grade_rule: contract
+      - key: layers
+        kind: overlay
+        shows: 'Overlays on video and court, each switched on alone: boxes, tracks, ids, court lines, passing lanes, spacing hull, defender matchups, transition numbers, value heat map, trails, pass arrows, switch marks, set template path.'
+        inputs:
+          tables: [detections.bbox_px, detections.det_conf, detections.team_label, detections.track_id, tracks.track_id, tracks.player_id, tracks.identity_conf, tracks.jersey_number_voted, frames.homography, frames.mapping_conf, frame_geometry.passing_lanes, frame_geometry.spacing_mean_m, frame_geometry.hull_area_m2, defensive_matchups.defender_id, defensive_matchups.attacker_id, defensive_matchups.matchup_prob, transition_numbers.numbers_label, transition_numbers.advantage, possession_value.value_xpts, movement_primitives.primitive_type, passes.passer_id, passes.receiver_id, set_instances.set_code]
+          metrics: [M-SPACE-001, M-SPACE-002, M-IMP-063]
+          events: ['ball_actions:pass', 'screens:screen', 'defense:switch', 'defense:matchup', 'cuts:cut', 'transition:numbers_advantage', 'composition:set_match']
+        layers: [boxes, tracks, ids, court lines, passing lanes, spacing hull, defender matchups, transition numbers, value heat map, trails, pass arrows, switch marks, set template path]
+        as_of: as_of_event
+        requirements: [R-AS-12, R-VZ-04]
+        identity_rule: probable_flagged_offline
+        number_rule:
+          - {class: measurement, unit: 'metres, square metres', error: 'from the position error of the players involved, printed in the inspector', link: frames}
+          - {class: model, band: in the inspector, model_version: in the inspector, link: frames}
+        grade_rule:
+          imputed: 'A box or id of an off-screen player is not drawn on video. On the court it is the hollow marker with its region.'
+          unknown: 'Nothing is drawn. The layer list says how many objects the layer could not draw.'
+        notes: 'A probable identity label may appear on the ids layer, with the word "probable" on the mark (OD-8). The value heat map uses the sequential scale; a cell with too few cases takes the no-data style.'
+      - key: layer_list
+        kind: control
+        component: layer_toggle
+        shows: 'The list of layers with a tick each. A layer that cannot be drawn at the level under the playhead is greyed with the reason.'
+        inputs: {}
+        requirements: [R-AS-12]
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected object in a fixed order: what it is, value, grade and confidence, source and as-of (true at, known at), version of model, rule and config, lineage, history, actions. A stat adds its metric id and formula from the registry.'
+        inputs:
+          tables: [state_transitions.transition_id, state_transitions.sources, state_transitions.conf, state_transitions.dq, state_transitions.known_at_utc, state_transitions.supersedes_id, state_segments.src, state_segments.conf, state_segments.opened_by_transition_id]
+        as_of: as_of_event
+        requirements: [R-AS-02, R-EN-19]
+        notes: 'Selectable objects (R-AS-02): detection box, track, player, ball, score, clock, state segment, transition, event, set, coverage, stat value, model output.'
+      - key: selection_query
+        kind: control
+        component: selection_query
+        shows: 'The SQL of the current selection with its metric ids, the count of rows, and the saved selections.'
+        inputs: {}
+        requirements: [R-AS-06, R-EN-18, R-EN-23]
+      - key: filter_bar
+        kind: control
+        component: filter_bar
+        shows: 'Filters by player, lineup, set, coverage, period and state. Each definition in use is named.'
+        inputs: {}
+      - key: tree_navigator
+        kind: control
+        component: tree_navigator
+        shows: 'The game as a tree to walk down: game, half, five-minute window, possession, chance, action, player.'
+        inputs: {}
+      - key: command_palette
+        kind: control
+        component: command_palette
+        shows: 'Every action by name; the 20 most used have keys.'
+        inputs: {}
+        requirements: [R-AS-07]
+      - key: clip_export
+        kind: control
+        component: clip_export
+        shows: 'Export of the moment or the selection: a clip reference with its overlay spec, a top-down render, or a clip file inside the private store.'
+        inputs: {}
+        requirements: [R-AS-10]
+    interactions:
+      - {action: scrub, at: timeline, target: 'video, court, state panel and overlays move to the same game-clock instant through the clock map'}
+      - {action: step, at: video, target: 'one frame, one second or one possession'}
+      - {action: select, at: view, target: 'any on-screen object opens the inspector with value, source, confidence, version and lineage'}
+      - {action: add_select, at: view, target: adds an object to the selection}
+      - {action: clear, at: view, target: clears the selection}
+      - {action: brush, at: timeline, target: 'a time range; the Studio writes its SQL with metric ids'}
+      - {action: lasso, at: court, target: 'players or a court zone; the Studio writes its SQL with metric ids'}
+      - {action: filter, at: filter_bar, target: 'filters by state, such as clutch, home ball, after timeout'}
+      - {action: toggle_layer, at: layer_list, target: one overlay on or off}
+      - {action: inspect_query, at: selection_query, target: the rows the selection returns}
+      - {action: drill_down, at: timeline, target: the possession under the playhead, to: possession_explorer}
+      - {action: drill_down, at: tree_navigator, target: the branch chosen; the playhead moves to its start}
+      - {action: edit, at: view, target: 'a label, a boundary, a parameter or a model version; the edit opens a draft', to: draft_diff_promote}
+      - {action: command, at: command_palette, target: any action by name}
+      - {action: export, at: clip_export, target: a clip reference of the moment, produces: clip_reference}
+      - {action: export, at: clip_export, target: a clip file written inside the private store, produces: video_clip_private}
+      - {action: export, at: selection_query, target: the query text of the selection, produces: sql}
+      - {action: export, at: selection_query, target: an aggregate of the selection through the published-number gate, produces: aggregate_table}
+    degraded:
+      D1_bug_away: 'The timeline shades the stretch. The clock in the state panel shows its grade; the inspector shows the dead-reckoned value, its guaranteed interval and the reading that ended the stretch.'
+      D2_off_main: 'Video plays. The court shows hollow markers with regions up to the limit, then removes them. Layers that need the main camera are greyed in the layer list with the reason.'
+      D3_replay: 'Video shows the replay; court and state panel stay at the last live instant, marked REPLAY. The replay segment is a selectable object linked to the play it shows.'
+      D4_break: 'The break is a shaded segment on the timeline. Court and state panel show "break"; the playhead can jump to the first live frame after it.'
+      D5_no_video: 'A card "no video" in place of video and court. Timeline rows and the state panel show what the feed gave.'
+      feed_stale: 'A recorded game uses the final play-by-play; the banner prints its version. In a blind pass the scorebook-only rows of the timeline are empty and say so.'
+    empty_state: 'No game chosen: the list of processed games. A game with no run yet: "not processed", with the stages that are missing. A layer or row with no rows says "none in this game" instead of staying blank.'
+    requirements: [R-AS-01, R-AS-02, R-AS-06, R-AS-07, R-AS-10, R-AS-12, R-VZ-01, R-VZ-02, R-VZ-03, R-VZ-04, R-PR-15, R-EN-18, R-EN-19, R-EN-23, R-AU-03]
+    decisions: [K09, K15, K23, OD-8, OD-10]
+    depends_on:
+      baselines: [live_state, state_machine, named_spots, movement_grammar, identity_pack, metrics]
+      tables: [video_files, frames, clock_map, player_positions, ball_states, state_segments, state_transitions, events, possessions, chances, set_instance_phases, scheme_states, state_corrections, audio_seconds, detections, tracks, frame_geometry, defensive_matchups, transition_numbers, possession_value, movement_primitives, passes, set_instances, run_records, clip_index]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R2, ACC-VW-R3, ACC-VW-R4, ACC-VW-N1, ACC-VW-N3, ACC-VW-G1, ACC-VW-G2, ACC-VW-I1, ACC-VW-P1, ACC-VW-Q1]
+    wireframe: docs/data/views/studio_game_canvas.svg
+    notes: >-
+      One canvas (R-AS-01): video and court side by side, the state panel at the right, the timeline across the bottom,
+      the inspector over the panel when something is selected. Playback keeps video, court and panel within one frame.
+      Edits open the draft view and are recomputed there (R-AS-03, R-AS-04). First renderable at P1 with video, court,
+      boxes, tracks and the feed-only panel; events and the full timeline at P2; value layers at P5.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  draft_diff_promote:
+    id: VW-STU-02
+    name: 'Draft, diff and promote'
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What exactly would this edit change, which stats and predictions move with it, and should it become the current version?
+    grain: item
+    as_of: {view: as_of_event, pass: [blind, anchored]}
+    refresh: {class: on_edit}
+    min_width_px: 1280
+    definitions:
+      - 'item: one draft. A draft is one proposed edit, or a batch of edits made in one session, on one game.'
+      - 'editable: the proposed value and the reason of an open draft; the choice to promote, discard or undo. The four kinds of edit of R-AS-03: relabel an identity, set, coverage or event; move a boundary; change a registered parameter (R-CX-29); swap a model version.'
+      - 'an edit creates: a draft state version. It is a row of state_corrections plus a change set that lists every row it touches. Amending a draft writes a new correction that supersedes the old one; the old one stays readable.'
+      - 'promote: the owner only. It moves the current pointer to the draft version and logs who, when and why. The analyst seat and a Claude session can open and amend drafts; they cannot promote.'
+      - 'undo: moves the current pointer back to the version before. Byte for byte the same rows are current again (R-AS-09). Undo is itself a logged row.'
+      - 'never editable: the current version in place, a promoted version, the audit log, the raw readings behind a corrected value, the official record, and any row of a held-out game without the held-out flag on the draft.'
+      - 'recompute scope: only segments, stats and predictions whose clock range overlaps the change are recomputed (decision K09). Everything else is shown as unchanged, with its count.'
+    params:
+      possession_edit_visible_s: {value: 2.0, unit: s, why: 'an edit of possession scope shows its recomputed values within this time', evidence: 'requirement: R-AS-04 (proposal; reported, not a gate, decision K23)', mirrors: 'config/views/core.yaml:refresh_classes.on_edit.budget_s.value'}
+      whole_game_edit_visible_s: {value: 60.0, unit: s, why: 'a parameter change over a whole game shows its recomputed values within this time', evidence: 'requirement: R-AS-04 (proposal; reported, not a gate, decision K23)', mirrors: 'config/views/core.yaml:refresh_classes.on_edit.params.whole_game_recompute_s.value'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'DRAFT, the game, the pass, the current state version and the draft version, who opened the draft and when, and the flag HELD-OUT GAME when it applies.'
+        inputs: {}
+      - key: draft_list
+        kind: table
+        shows: 'Open and closed drafts of the game: kind of edit, target, old and new value, reason, who, when, state (open, promoted, discarded, undone), and the count of rows each one changes.'
+        inputs:
+          tables: [state_corrections.correction_id, state_corrections.target_table, state_corrections.target_row_key, state_corrections.target_range_end_key, state_corrections.field, state_corrections.raw_value, state_corrections.corrected_value, state_corrections.correction_source, state_corrections.reason, state_corrections.reviewer, state_corrections.reviewed_utc, state_corrections.supersedes_correction_id, state_corrections.tool_version]
+        requirements: [R-AS-03]
+        number_rule: {class: descriptive, n: rows the draft changes, descriptive_mark: 'a count of rows, not an estimate', link: rows}
+        grade_rule: contract
+      - key: diff
+        kind: table
+        shows: 'Exactly the rows the draft changes, grouped by table: added, removed, changed, with the old and the new value side by side and the clock range of each. Rows that stay the same are counted, not listed.'
+        inputs:
+          tables: [change_sets.change_set_id, change_sets.table_name, change_sets.row_id, change_sets.op, change_sets.old_row_hash, change_sets.new_row_hash, change_sets.dimension, change_sets.period, change_sets.game_clock_ds, change_sets.before_earliest_change, change_sets.from_output_key, change_sets.to_output_key, state_segments.dimension, state_segments.value, state_segments.from_frame, state_segments.to_frame, state_segments.correction_id, state_transitions.transition_id, state_transitions.ttype, state_transitions.supersedes_id, state_transitions.correction_id]
+          events: [T18]
+        requirements: [R-AS-03]
+        number_rule: {class: descriptive, n: changed rows per table, descriptive_mark: 'a count of rows, not an estimate', link: state}
+        grade_rule: contract
+        notes: 'Old and new value each keep the appearance of their own grade. The new value carries the word DRAFT and is never drawn as current.'
+      - key: downstream_impact
+        kind: table
+        shows: 'Every stat and prediction that moves: metric id, old value, new value and the difference, each with its n and interval or its band, and whether the old value was ever published.'
+        inputs:
+          tables: [metric_value_log.metric_id, metric_value_log.value, metric_value_log.n, metric_value_log.status, metric_value_log.snapshot_id, metric_value_log.registry_version, metric_value_log.lineage_handle, metric_value_log.consumer, stat_corrections.metric_id, stat_corrections.old_value, stat_corrections.new_value, stat_corrections.old_n, stat_corrections.new_n, stat_corrections.was_published, predictions.prediction_id, predictions.target, predictions.point_value, predictions.interval95, predictions.model_version]
+          metrics: [M-TEFF-001, M-SIT-055, M-IMP-063]
+        requirements: [R-AS-04]
+        number_rule:
+          - {class: estimate, n: cases behind the old and the new value, interval: printed after each value, level: 0.95, link: rows, min_n: registry}
+          - {class: model, band: printed after each prediction, model_version: printed in the row, link: rows}
+        grade_rule: contract
+        notes: 'The three metric ids are examples of the three kinds that move (a count, a win probability, a possession value). The table lists whatever the change set reaches, by id.'
+      - key: recompute_status
+        kind: tile
+        shows: 'What is being recomputed and what is stale: the stages running, the clock range in work, the time since the edit, and the count of values still marked stale.'
+        inputs:
+          tables: [stage_runs.run_id, stage_runs.stage, stage_runs.dag_node, stage_runs.status, stage_runs.started_utc, stage_runs.finished_utc, stage_runs.duration_s, stage_runs.error]
+        requirements: [R-AS-04]
+        number_rule: {class: measurement, unit: seconds, error: 'wall-clock time of the stage run as logged, to 0.1 s', link: rows}
+        grade_rule:
+          carried: 'A value that waits for its recompute is greyed and carries the word "stale" until the new value arrives. It is never shown solid.'
+      - key: video
+        kind: video
+        component: video_player
+        shows: 'The moment the selected diff row belongs to, from the private store.'
+        inputs: {}
+        grade_rule: contract
+      - key: court
+        kind: court
+        component: top_down_court
+        shows: 'The same moment from above, with a switch between the current version and the draft. Under the draft a changed label or boundary is drawn with the word DRAFT.'
+        inputs:
+          spots: ['layer:zone_scheme:court_region', 'layer:spot']
+        identity_rule: probable_flagged_offline
+        grade_rule: contract
+      - key: audit_log
+        kind: table
+        shows: 'One line per edit, promotion, discard and undo: who, when, why, the version before and the version after, the tool version. Append-only; nothing in it can be changed.'
+        inputs:
+          tables: [current_pointers.table_name, current_pointers.output_key, current_pointers.supersedes_output_key, current_pointers.set_at_utc, current_pointers.set_by_run_id, current_pointers.known_from_utc, current_pointers.reason, registry_change_log.table_name, registry_change_log.row_key, registry_change_log.column_name, registry_change_log.old_value, registry_change_log.new_value, registry_change_log.changed_by, registry_change_log.changed_at_utc, registry_change_log.reason]
+        requirements: [R-AS-09]
+        numbers: none
+        grade_rule: contract
+      - key: held_out_flag
+        kind: tile
+        shows: 'Whether the game is held out or holds gold items. If so the draft carries the flag HELD-OUT, and the tile says the draft cannot enter a training set.'
+        inputs:
+          tables: [run_requirement_results.hold_game, review_labels.gold_set, predictions.is_holdout_2025_26]
+        requirements: [R-AS-09]
+        numbers: none
+        grade_rule: contract
+      - key: promote_bar
+        kind: control
+        shows: 'Promote (owner only), Discard, Undo the last promotion. Promote is disabled while a recompute runs or a held-out flag is not acknowledged.'
+        inputs: {}
+        requirements: [R-AS-03, R-AS-09]
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected diff row or stat: both versions, the lineage of each, and the correction that links them.'
+        inputs: {}
+        requirements: [R-EN-19]
+    interactions:
+      - {action: select, at: diff, target: 'a changed row; the inspector shows both versions and video and court jump to its moment'}
+      - {action: select, at: downstream_impact, target: 'a stat or prediction; the inspector lists the changed rows that move it'}
+      - {action: scrub, at: video, target: 'video and court move together inside the changed clock range'}
+      - {action: filter, at: draft_list, target: 'drafts by state, kind of edit and author'}
+      - {action: edit, at: draft_list, target: 'amend an open draft: a new correction that supersedes it; the old one stays'}
+      - {action: promote, at: promote_bar, target: 'the draft becomes the current version; owner only; logged'}
+      - {action: undo, at: promote_bar, target: 'the version before the last promotion is current again, byte for byte'}
+      - {action: inspect_query, at: downstream_impact, target: the rows and the query with metric ids for both versions}
+      - {action: drill_down, at: diff, target: the changed moment on the game canvas, to: studio_game_canvas}
+      - {action: drill_down, at: downstream_impact, target: the lineage of a moved value, to: lineage_explorer}
+      - {action: export, at: audit_log, target: the audit log of the game as a page, produces: page}
+    degraded:
+      D1_bug_away: 'A diff row inside the stretch shows the clock with its grade and interval. A boundary moved inside the stretch prints the dead-reckoned clock range it now covers.'
+      D2_off_main: 'Video plays. The court shows hollow markers with regions up to the limit. A relabel of a player who is off screen is refused, with the reason.'
+      D3_replay: 'A draft cannot change live state from a replay frame. The replay is offered as evidence for the draft and linked to the play it shows.'
+      D4_break: 'Diff rows inside a break are listed with the word BREAK. Video and court show the last live instant.'
+      D5_no_video: 'The diff, the impact table and the audit log work from the feed. Video and court show a card "no video for this stretch".'
+      feed_stale: 'A recorded game uses the final play-by-play; the banner prints its version. If a newer version arrived after the draft was opened, the draft is marked "built on an older version" and must be rebuilt before promotion.'
+    empty_state: 'No draft for this game: "no open draft", with the list of promoted and undone ones. A draft that changes no row says "no row changes" and cannot be promoted.'
+    requirements: [R-AS-03, R-AS-04, R-AS-09, R-CX-29, R-EN-19, R-VZ-02, R-VZ-03, R-PR-19]
+    decisions: [K09, K12, K15, K23, D19, OD-8]
+    depends_on:
+      baselines: [live_state, state_machine, named_spots, identity_pack, metrics]
+      tables: [state_corrections, change_sets, state_segments, state_transitions, metric_value_log, stat_corrections, predictions, stage_runs, video_files, frames, clock_map, player_positions, ball_states, current_pointers, registry_change_log, run_requirement_results, review_labels, run_records]
+    phase: P2
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R2, ACC-VW-E1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-G1, ACC-VW-G2, ACC-VW-L1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      Three requirement rows live here: edits as drafts (R-AS-03), live recompute (R-AS-04) and audit with undo
+      (R-AS-09). First renderable at P2, when state segments and transitions exist to be corrected. Parameter and
+      model-version drafts arrive with the stages they touch.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  model_bench:
+    id: VW-STU-03
+    name: Model bench
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Which version of this stage is better on the gold set, on which slices, and what does each one get wrong?
+    grain: model version
+    as_of: {view: as_of_event, pass: [blind]}
+    refresh: {class: on_run}
+    min_width_px: 1280
+    definitions:
+      - 'stages: detection, tracking, team, jersey, pose, court, OCR, action, value, sequence model (R-AS-05).'
+      - 'gold: versions are compared on the frozen gold set named in the banner. Gold items are never trained on (R-HR-07) and count as gold only after the owner confirmed them (R-HR-12, R-HR-16).'
+      - 'editable: the chosen version of a stage.'
+      - 'an edit creates: a draft of kind "swap a model version" (R-AS-03). On promotion the chosen version is written to the run record of the next run (R-AS-05).'
+      - 'never editable: a gold label, a target (only the planner changes one, with a log, R-RR-07), a score, a row of the error catalogue (append-only, R-RR-05).'
+    params:
+      regression_drop_max_points: {value: 1, unit: points, why: 'a version that drops more than this on any gold test of its phase or an earlier one is marked "blocks release"', evidence: 'requirement: R-VA-09 (initial value, to calibrate)'}
+      slice_flag_min_n: {value: 50, unit: count, why: 'a slice with fewer cases is listed with its n but never flagged', evidence: 'requirement: R-RR-03a and R-RR-04'}
+      weak_slice_gap_points: {value: 5, unit: points, why: 'a slice this far below target on a passing run gets the flag "pass, weak slice"', evidence: 'requirement: R-RR-04 (proposal)'}
+      worst_cases_shown: {value: 20, unit: count, why: 'failure cases listed per failed requirement', evidence: 'requirement: R-RR-03b'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The stage, version A and version B, the gold set and its version, the runs compared, and "blind pass".'
+        inputs: {}
+      - key: stage_picker
+        kind: control
+        shows: 'The stage, and the two versions to compare, taken from the run records.'
+        inputs:
+          tables: [run_records.run_id, run_records.model_versions, run_records.config_hashes, run_records.git_commit, run_records.status, run_records.game_ids]
+        requirements: [R-AS-05]
+      - key: score_table
+        kind: table
+        shows: 'One row per requirement and metric: target, version A, version B, the difference, pass, fail or not testable, n and the interval, per source tier.'
+        inputs:
+          tables: [run_requirement_results.run_id, run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.target, run_requirement_results.value, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.n, run_requirement_results.result, run_requirement_results.delta_vs_previous, run_requirement_results.source_tier, run_requirement_results.gate, run_requirement_results.descriptive_only]
+        requirements: [R-AS-05, R-RR-02, R-VA-04]
+        number_rule: {class: estimate, n: gold cases of the row, interval: 'bootstrap resampled by game, printed after each value', level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+        notes: 'A requirement with no gold sample reads "not testable", never "pass" (R-RR-02).'
+      - key: slice_table
+        kind: table
+        shows: 'The same scores per slice: the nine technical slices and the six game-situation slices, each with its n, and the flag "pass, weak slice" where it applies.'
+        inputs:
+          tables: [run_requirement_results.slice_key, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.result, run_requirement_results.robustness_variant]
+        requirements: [R-RR-04, R-RR-06]
+        number_rule: {class: estimate, n: gold cases in the slice, interval: printed after each value, level: 0.95, link: rows, min_n: 50}
+        grade_rule: contract
+      - key: failure_cases
+        kind: table
+        shows: 'The cases each version gets wrong: gold label, prediction, slice, cause, rank among the worst, and whether the other version gets it right.'
+        inputs:
+          tables: [error_catalogue.error_id, error_catalogue.run_id, error_catalogue.requirement_id, error_catalogue.game_id, error_catalogue.video_id, error_catalogue.frame_index, error_catalogue.video_ts_ms, error_catalogue.gold_label, error_catalogue.prediction, error_catalogue.slice_values, error_catalogue.model_version, error_catalogue.cause, error_catalogue.worst_case_rank, error_catalogue.clip_link, error_catalogue.fix_verified]
+        requirements: [R-AS-05, R-RR-05]
+        number_rule: {class: label, confidence: 'the confidence the version gave its wrong answer, where stored', version: the model version of the row, link: frames}
+        grade_rule: contract
+      - key: case_video
+        kind: video
+        component: video_player
+        shows: 'The clip of the selected failure case.'
+        inputs: {}
+        grade_rule: contract
+      - key: case_overlay
+        kind: overlay
+        shows: 'On the clip: the output of version A, the output of version B and the gold label, each switched on alone, each with its own dash style.'
+        inputs:
+          tables: [detections.bbox_px, detections.det_conf, detections.model_version, detections.track_id, detections.jersey_read_front, detections.jersey_read_conf, tracks.track_id, tracks.player_id, tracks.identity_conf, tracks.model_version]
+        layers: [version A output, version B output, gold label]
+        identity_rule: probable_flagged_offline
+        numbers: true
+        number_rule: {class: label, confidence: printed beside each box or label, version: the model version of the layer, link: frames}
+        grade_rule: contract
+      - key: release_check
+        kind: tile
+        shows: 'For the candidate version: every gold test of its phase and earlier phases re-run, the largest drop, and the verdict "may release" or "blocks release".'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.delta_vs_previous, run_requirement_results.result, run_requirement_results.gate, run_requirement_results.n]
+        requirements: [R-VA-09]
+        number_rule: {class: estimate, n: gold cases of the test with the largest drop, interval: printed after the drop, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: learning_curve
+        kind: chart
+        shows: 'Per label type: the model metric after each labelled batch, against the count of labels, with a band. A flat curve says more labels of this type no longer help.'
+        inputs:
+          tables: [run_requirement_results.run_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.n, review_labels.label_type, review_labels.labelled_at_utc, review_labels.gold_set]
+        requirements: [R-HR-09]
+        number_rule: {class: estimate, n: gold cases scored after each batch, interval: a fading band round the line, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: choose_version
+        kind: control
+        shows: 'Choose version A or B for the stage. The choice opens a draft; nothing changes until the owner promotes it.'
+        inputs: {}
+        requirements: [R-AS-05, R-AS-03]
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected score or case: the runs, the config hashes and model versions behind it, and the model card of each version.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: stage_picker, target: 'stage, version A, version B and the gold set'}
+      - {action: select, at: score_table, target: 'a score; the inspector shows both runs and the gold cases behind the value'}
+      - {action: select, at: failure_cases, target: 'a case; the clip and the overlays move to it'}
+      - {action: scrub, at: case_video, target: the clip of the case and its overlays}
+      - {action: toggle_layer, at: case_overlay, target: 'version A output, version B output or the gold label'}
+      - {action: drill_down, at: slice_table, target: the failure cases of the slice}
+      - {action: drill_down, at: failure_cases, target: the case as a review item, to: review_item}
+      - {action: drill_down, at: score_table, target: the model card of a version, to: model_card}
+      - {action: inspect_query, at: score_table, target: the rows and the query behind the scores}
+      - {action: edit, at: choose_version, target: 'the version of the stage; opens a draft', to: draft_diff_promote}
+      - {action: export, at: score_table, target: the comparison as a page, produces: page}
+    degraded:
+      D1_bug_away: 'Not a state of the bench. A slice "scorebug away" is one of the technical slices and has its own row.'
+      D2_off_main: 'A case on a frame off the main camera plays; the slice "camera shot type" names it. Overlays that need court positions are off, with the reason.'
+      D3_replay: 'Replay frames are not gold cases. A case whose clip crosses a replay shows the replay shaded.'
+      D4_break: 'Breaks hold no gold case. Nothing to show.'
+      D5_no_video: 'Scores and slices are shown. The clip is replaced by a card "video not in the private store for this game".'
+      feed_stale: 'Not applicable. The bench reads the blind pass, which uses no play-by-play.'
+    empty_state: 'No gold set yet: "no gold set registered", and every requirement reads "not testable". Only one version of a stage: its scores alone, with "nothing to compare".'
+    requirements: [R-AS-05, R-AS-03, R-HR-07, R-HR-09, R-HR-12, R-HR-16, R-RR-02, R-RR-04, R-RR-05, R-RR-06, R-RR-07, R-VA-04, R-VA-09, R-VZ-02, R-VZ-03]
+    decisions: [K12, OD-8]
+    depends_on:
+      baselines: [live_state, identity_pack]
+      tables: [run_records, run_requirement_results, error_catalogue, video_files, frames, clock_map, detections, tracks, review_labels]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R4, ACC-VW-N1, ACC-VW-N2, ACC-VW-E1, ACC-VW-G2, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      The scores are requirement metrics (HOTA, IDF1, read rates), stored per run in run_requirement_results. They are
+      not registry metrics, so no M-id is listed. The learning curve (R-HR-09) sits here because it answers the same
+      question for labels: is the model still getting better.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  parameter_sweep:
+    id: VW-STU-04
+    name: Parameter sensitivity sweep
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: If I move this parameter across its range, which stats and which win probabilities move, and by how much?
+    grain: item
+    as_of: {view: as_of_event, pass: [pbp_only, anchored]}
+    refresh: {class: on_edit, budget_s: 60.0, evidence: 'requirement: R-AS-04 (a whole-game parameter change within 60 s, proposal; reported, not a gate, decision K23)'}
+    min_width_px: 1280
+    definitions:
+      - 'item: one registered parameter (R-CX-29): its name, definition, unit, default, valid range and who may change it.'
+      - 'sweep: the dependent metrics are recomputed at steps across the valid range, on the games chosen in the scope bar. The sweep is scratch work. It writes no state version and serves no number to any other view.'
+      - 'editable: the value to try, the range and step of the sweep (inside the valid range), the games in scope.'
+      - 'an edit creates: nothing, until "Open as draft". That opens a draft of kind "change a parameter" with the chosen value (R-AS-03).'
+      - 'never editable: the valid range and the owner of a parameter (registry facts), the formula of a metric, a target of a requirement.'
+      - 'named variants: where the registry holds side-by-side definitions, the sweep shows them as named columns instead of a range: screen rule strict and loose (R-ST-17), the run rules (K05), the three garbage-time flags (K28), the possession count per source definition (R-SY-17).'
+    params:
+      sweep_steps_default: {value: 11, unit: count, why: 'points computed across the valid range, ends included', evidence: 'assumed: enough to see a bend in the curve; replaced by what the 60 s budget allows on the pilot games'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'SWEEP (nothing is saved), the parameter, the registry version, the games in scope and the pass.'
+        inputs: {}
+      - key: parameter_picker
+        kind: control
+        shows: 'The parameter by its registry key: definition, unit, default, valid range, who may change it, the metrics that declare it, and its change history.'
+        inputs:
+          tables: [registry_change_log.table_name, registry_change_log.row_key, registry_change_log.column_name, registry_change_log.old_value, registry_change_log.new_value, registry_change_log.changed_by, registry_change_log.changed_at_utc, registry_change_log.reason]
+        requirements: [R-CX-29, R-MR-04]
+      - key: scope_bar
+        kind: control
+        component: filter_bar
+        shows: 'The games, the team and the period the sweep runs on. The count of possessions in scope is printed.'
+        inputs: {}
+      - key: sweep_chart
+        kind: chart
+        shows: 'One small chart per dependent metric: the metric against the parameter value, with its band, the default marked, the value in use marked, and the value being tried marked.'
+        inputs:
+          tables: [metric_value_log.metric_id, metric_value_log.parameters, metric_value_log.value, metric_value_log.n, metric_value_log.status, metric_value_log.binding_hash, metric_value_log.registry_version]
+          metrics: [M-SIT-006, M-SIT-052, M-TEFF-045, M-IMP-006]
+        requirements: [R-AS-08]
+        number_rule: {class: estimate, n: cases at each step, interval: a fading band round the line, level: 0.95, link: rows, min_n: registry}
+        grade_rule: contract
+        notes: 'The four metric ids are examples of metrics that declare a parameter. The chart draws every metric that declares the chosen one (the test of R-AS-08).'
+      - key: win_probability_shift
+        kind: chart
+        shows: 'How the win probability of the games in scope moves across the range: the largest and the mean change, with the band of the model.'
+        inputs:
+          tables: [predictions.prediction_id, predictions.target, predictions.level, predictions.point_value, predictions.interval95, predictions.model_version, predictions.game_id]
+          metrics: [M-SIT-055, M-TRAT-059]
+        phase: P6
+        requirements: [R-AS-08]
+        number_rule: {class: model, band: a fading band round the line, model_version: printed in the legend, link: rows}
+        grade_rule:
+          unknown: 'Before a win-probability model exists the chart shows a dash and "no model before P6". The pre-game ratings probability is drawn alone where it depends on the parameter.'
+      - key: flipped_rows
+        kind: table
+        shows: 'What changes class between the value in use and the value tried: possessions, events or labels that flip, counted per table, with the list one click away.'
+        inputs:
+          tables: [change_sets.table_name, change_sets.row_id, change_sets.op, change_sets.period, change_sets.game_clock_ds]
+        number_rule: {class: descriptive, n: rows that flip, descriptive_mark: 'a count of rows, not an estimate', link: rows}
+        grade_rule: contract
+      - key: rule_variants
+        kind: table
+        shows: 'Named definitions side by side for the same games: strict and loose screen rule, each run rule, each garbage-time flag, the possession count under each source definition, with the difference between them.'
+        inputs:
+          tables: [screens.strict_rule_fired, screens.loose_rule_fired, runs.definition_code, runs.run_id, possessions.is_garbage_time_source, possessions.garbage_time_ctg_adapted, possessions.garbage_time_wp, possessions.poss_num_ncaa, team_box.possessions_source, source_definitions.source, source_definitions.concept, source_definitions.definition_text, source_definitions.difference_from_ours]
+          metrics: [M-TEFF-001, M-TEFF-002, M-PASS-030, M-SIT-052]
+          events: ['screens:screen_stationarity']
+        requirements: [R-ST-17, R-SY-17]
+        number_rule:
+          - {class: official, source: the source named in each column, as_of: the pull time of the source, link: rows}
+          - {class: estimate, n: cases under each definition, interval: printed after each value, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: open_as_draft
+        kind: control
+        shows: 'Open the tried value as a draft. The sweep itself stays unsaved.'
+        inputs: {}
+        requirements: [R-AS-03]
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected point: the parameter value, the metric id and formula from the registry, n, and the rows behind it.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: scope_bar, target: 'games, team and period of the sweep'}
+      - {action: brush, at: sweep_chart, target: 'a part of the range; every chart zooms to it'}
+      - {action: select, at: sweep_chart, target: 'one step of one metric; the inspector shows value, n and rows'}
+      - {action: select, at: rule_variants, target: 'one definition; the inspector shows its text and its source'}
+      - {action: drill_down, at: flipped_rows, target: the rows that flip as a list; each row links to its frames}
+      - {action: drill_down, at: sweep_chart, target: the registry entry of the metric, to: metric_browser}
+      - {action: inspect_query, at: sweep_chart, target: the query with the metric id and the parameter binding of each step}
+      - {action: edit, at: open_as_draft, target: 'the tried value becomes a draft parameter change', to: draft_diff_promote}
+      - {action: export, at: sweep_chart, target: the sweep as a page, produces: page}
+    degraded:
+      D1_bug_away: 'No change. A metric that reads the clock uses each value with its grade; the count of possessions with a dead-reckoned clock is printed.'
+      D2_off_main: 'A tracking metric states the share of time it could use at each step. A step with too few usable cases reads "too few" with n.'
+      D3_replay: 'Replays never enter a number.'
+      D4_break: 'Breaks never enter a number.'
+      D5_no_video: 'Only play-by-play metrics are swept for the game. Tracking metrics read "no video" for it.'
+      feed_stale: 'The sweep prints the play-by-play version it ran on. A game whose final play-by-play is not in the store is left out and counted.'
+    empty_state: 'No parameter chosen: the list of registered parameters with the count of metrics that declare each. A parameter no metric declares: "no dependent metric". Too few cases at every step: "too few" with n, and no curve.'
+    requirements: [R-AS-08, R-AS-03, R-AS-04, R-CX-29, R-MR-04, R-ST-17, R-SY-17, R-VZ-02, R-VZ-03, R-EN-18]
+    decisions: [K05, K06, K12, K23, K28]
+    depends_on:
+      baselines: [live_state, metrics, movement_grammar]
+      tables: [registry_change_log, metric_value_log, predictions, change_sets, screens, runs, possessions, team_box, source_definitions, run_records]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-E1, ACC-VW-L1, ACC-VW-Q1]
+    wireframe: null
+    notes: >-
+      Renderable at P0p for play-by-play metrics (clutch, garbage time, runs, possession counts). Tracking parameters
+      join with their stages; the win-probability chart at P6. Decision taken here: a sweep is never stored as state.
+      Only the one value the owner opens as a draft can reach the current version.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  network_view:
+    id: VW-STU-05
+    name: Network (explain) view
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: For this frame or possession, what went into each network, what came out, and what did the network look at?
+    grain: frame
+    as_of: {view: as_of_event, pass: [blind]}
+    refresh: {class: on_select, budget_s: 10.0, evidence: 'assumed: one forward pass and one explanation map for the selected instant; replaced by the time measured on the pilot games (reported, not a gate, decision K23)'}
+    min_width_px: 1280
+    definitions:
+      - 'trigger: the view refreshes when the selected frame, possession or model changes (refresh class on_select), with its own budget because a forward pass and an explanation map take longer than a plain selection.'
+      - 'networks: every neural network of the pipeline. The test of R-AS-11 names three: the detector, the jersey reader and the sequence model.'
+      - 'no explanation method: a model without one shows input and output only, and the map says "no explanation method for this model" (R-AS-11).'
+      - 'no face: the jersey reader is shown the number region of the torso. A person crop is drawn with the head region masked. Nothing of this view can be exported as pixels.'
+      - 'editable: nothing. The view is read-only.'
+      - 'an edit creates: nothing. "Send to review" adds one row to the review queue with the trigger "manual"; it changes no label.'
+      - 'never editable: the input, the output, the map, the model version.'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'RECORDED, the frame or possession, the model and its exact version, the run that produced the stored output.'
+        inputs: {}
+      - key: model_picker
+        kind: control
+        shows: 'The stage and the model version, taken from the run record of the selected output.'
+        inputs:
+          tables: [run_records.run_id, run_records.model_versions, run_records.config_hashes, run_records.processing_resolution, run_records.frame_policy]
+      - key: architecture
+        kind: chart
+        shows: 'A block diagram of the network: input, the main blocks in order, output heads. Sizes and counts are on the model card, not here.'
+        inputs:
+          tables: [run_records.model_versions]
+        requirements: [R-AS-11]
+        numbers: none
+        grade_rule: contract
+      - key: input_view
+        kind: video
+        shows: 'Exactly what the network received for the selected instant: the frame or crop at processing resolution, with the graphics mask applied.'
+        inputs:
+          tables: [frames.frame_index, frames.video_ts_ms, frames.graphics_mask_ref, frames.camera_shot_type, frames.is_replay, detections.det_id, detections.bbox_px, detections.inside_graphics_mask]
+        requirements: [R-AS-11]
+        grade_rule: contract
+      - key: output_view
+        kind: overlay
+        shows: 'The raw output drawn on the input: boxes with class and score, the digits read with their score, or the ranked sets and next actions of the sequence model.'
+        inputs:
+          tables: [detections.object_class, detections.det_conf, detections.person_class, detections.person_class_conf, detections.jersey_read_front, detections.jersey_read_back, detections.jersey_read_conf, detections.model_version, set_instances.set_code, set_instances.classifier_probs, set_instances.match_confidence, set_instances.model_version, belief_states.top3_sets, belief_states.next_action_probs, belief_states.model_version]
+        layers: [detector output, jersey reader output, sequence model output]
+        requirements: [R-AS-11]
+        numbers: true
+        number_rule: {class: label, confidence: the score printed beside each output, version: the model version of the banner, link: frames}
+        grade_rule: contract
+      - key: explanation_map
+        kind: overlay
+        shows: 'One attention or saliency map over the input, on the sequential scale, with the name of the method. For the sequence model: the weight of each earlier moment.'
+        inputs:
+          tables: [frames.frame_index, detections.det_id]
+        layers: [explanation map]
+        requirements: [R-AS-11]
+        numbers: true
+        number_rule: {class: descriptive, n: one instant and one model, descriptive_mark: 'the map is descriptive: it shows where the output is sensitive, not why the model is right', link: frames}
+        grade_rule:
+          unknown: 'No method for this model: no map is drawn and the element says "no explanation method for this model".'
+      - key: raw_output_table
+        kind: table
+        shows: 'The top outputs before any threshold: class or label, score, and the threshold the pipeline applies, read from config.'
+        inputs:
+          tables: [detections.det_conf, detections.person_class_conf, detections.jersey_read_conf, set_instances.classifier_probs, belief_states.next_action_probs]
+        number_rule: {class: label, confidence: the raw score of each row, version: the model version of the banner, link: frames}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected output: value, score, model version, config hash, lineage, and the model card.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: model_picker, target: the stage and the model version}
+      - {action: select, at: output_view, target: 'one output; the inspector shows score, version and lineage, and the map is drawn for it'}
+      - {action: select, at: raw_output_table, target: 'one row; the same output is marked on the input'}
+      - {action: toggle_layer, at: explanation_map, target: the map on or off}
+      - {action: step, at: input_view, target: one frame forward or back}
+      - {action: drill_down, at: architecture, target: the model card of the version, to: model_card}
+      - {action: drill_down, at: output_view, target: the same instant on the game canvas, to: studio_game_canvas}
+      - {action: command, at: view, target: 'send the instant to the review queue as a manual item', to: review_queue}
+    degraded:
+      D1_bug_away: 'No change for the detector and the sequence model. The OCR reader shows its input with "no scorebug in frame" and no output.'
+      D2_off_main: 'Input and output are shown as stored. A model that does not run off the main camera says "not run on this camera shot".'
+      D3_replay: 'The frame is shown with the word REPLAY. Outputs on replay frames are evidence only and feed no state.'
+      D4_break: 'A card "break: no model output is stored for this stretch".'
+      D5_no_video: 'A card "no video: nothing was given to a vision model". The sequence model shows its feed-only input and output.'
+      feed_stale: 'Not applicable to vision models. The sequence model input lists which feed values were missing.'
+    empty_state: 'Nothing selected: "select a frame or a possession on the canvas". A model with no stored output for the instant: "this model did not run here", with the frame policy of the run.'
+    requirements: [R-AS-11, R-AS-02, R-AS-10, R-PR-19, R-VZ-02]
+    decisions: [K23]
+    depends_on:
+      baselines: [live_state]
+      tables: [run_records, frames, detections, set_instances, belief_states]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R4, ACC-VW-N1, ACC-VW-G2, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      A "Should" row. First renderable at P1 for the detector and the jersey reader; the sequence model at P4.
+      Decision taken here: the view shows stored outputs and one map computed on request; it never re-runs a model
+      with changed inputs. What-if questions belong to the parameter sweep and the model bench.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  review_queue:
+    id: VW-STU-06
+    name: Review queue
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Which moments should I label next, why these, and how much of my weekly budget do they take?
+    grain: item
+    as_of: {view: as_of_event, pass: [blind, anchored]}
+    refresh: {class: on_run}
+    min_width_px: 1280
+    definitions:
+      - 'one queue (R-HR-03): every kind of item waits in the same list. Order: failed gold cases first; then disagreement (between models, between sources, invariant breaks) times downstream impact; a random audit share; identity weakness per player as an input to the score.'
+      - 'triggers (R-HR-01): low confidence on an identity or a jersey number; ball lost or a scramble; player count not 10 for longer than the set time; scoreboard against play-by-play; set match below threshold or no template; coverage or matchup unclear after a switch. Further sources: unmatched CV events, crossings with a swap risk (R-DT-24), track gaps over 1 s (R-DT-11), probable identity runs, quarantined values, market-mapping doubts (R-MK-17), unwhistled-contact candidates (R-RF-21), disputes of the outside approver (R-HR-19), manual items.'
+      - 'one moment, one item: flags on the same target within the same clip window are folded into one item that lists all its triggers.'
+      - 'reproducible order (R-HR-03): the score of an item and its parts are stored. The list can be rebuilt from them.'
+      - 'editable: the status of an item (defer, skip with a reason, reopen); a manual item added by hand; the weekly budget.'
+      - 'an edit creates: a new status row for the item, logged with who and when; a new queue row for a manual item; a draft parameter change for the budget (the owner can raise it at any time, R-HR-04).'
+      - 'never editable: the priority score and its parts, the trigger, the model guess, the audit draw, the gold membership of an item. Labels are made on the review item screen, not here.'
+    params:
+      weekly_budget_h: {value: 2.0, unit: h, why: 'review time per week the queue plans for; the queue says so when it asks for more', evidence: 'requirement: R-HR-04 (default)'}
+      median_item_time_target_s: {value: 20.0, unit: s, why: 'planning time per item until the measured median replaces it; items queued are at most the budget divided by the median', evidence: 'requirement: R-HR-02 and R-HR-04 (initial value, to calibrate)'}
+      audit_share: {value: 0.10, unit: share, why: 'share of the queue drawn at random, so that the queue does not bias the test set', evidence: 'requirement: R-HR-03 and R-MM-05'}
+      thin_class_below: {value: 30, unit: count, why: 'a class with fewer labels is highlighted as thin', evidence: 'assumed: the K12 minimum n reused as the thin-class line until the learning curve gives a number per label type', mirrors: 'config/views/core.yaml:display_contract.numbers.params.min_n_default.value'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The week, the run that built the queue, the count of open items, and who is labelling: the owner, or a Claude session on his behalf.'
+        inputs: {}
+      - key: budget_bar
+        kind: tile
+        shows: 'The weekly budget, the time used this week, the time the open queue asks for (items times the measured median per item), and in words whether the queue asks for more than the budget.'
+        inputs:
+          tables: [review_queue.budget_week, review_queue.status, review_queue.item_id, review_labels.labelled_at_utc, review_labels.item_id]
+        requirements: [R-HR-04]
+        number_rule: {class: measurement, unit: hours and seconds, error: 'the median and the 90th percentile of the time per item are both printed, with the count of items they come from', link: rows}
+        grade_rule: contract
+      - key: queue_list
+        kind: table
+        shows: 'The items in order: rank, label type, game and game clock, every trigger of the item in words, the score and its parts, the model guess with its confidence (hidden on audit items), the planned time, the status.'
+        inputs:
+          tables: [review_queue.item_id, review_queue.priority, review_queue.trigger, review_queue.target_table, review_queue.target_key, review_queue.game_id, review_queue.video_id, review_queue.center_ts_ms, review_queue.clip_window_s, review_queue.model_guess, review_queue.status, error_catalogue.error_id, error_catalogue.requirement_id, error_catalogue.worst_case_rank, scoreboard_flags.flag_id, scoreboard_flags.flag_type, scoreboard_flags.priority, scoreboard_flags.status, cv_events_unmatched.cv_event_id, cv_events_unmatched.unmatched_reason, cv_events_unmatched.review_status, quarantine_rows.rule_id, quarantine_rows.table_name, quarantine_rows.first_seen_utc, quarantine_rows.resolution, identity_switch_log.kind, identity_switch_log.review_status, identity_probable_runs.mean_posterior, identity_probable_runs.review_status, identity_confusions.n_confusions]
+          events: ['bigs:id_swap_risk', 'ball_actions:loose_ball', 'ball_actions:contested_ball', 'composition:set_match', 'defense:switch', 'defense:matchup', T18]
+        requirements: [R-HR-01, R-HR-03, R-MM-05, R-RR-05, R-DT-11, R-DT-24, R-MK-17, R-RF-21]
+        number_rule:
+          - {class: label, confidence: the confidence of the model guess, version: the model version of the guess, link: frames}
+          - {class: descriptive, n: flags folded into the item, descriptive_mark: 'the priority score is a ranking score, not a probability', link: frames}
+        grade_rule:
+          quarantined: 'Shown hatched, with the two values that contradict each other and the source of each. The queue and the item screen are the only places that show it.'
+      - key: trigger_summary
+        kind: table
+        shows: 'Open items counted per trigger and per label type, with the count that are failed gold cases and the count drawn for the audit share.'
+        inputs:
+          tables: [review_queue.trigger, review_queue.status, review_queue.target_table]
+        requirements: [R-HR-01]
+        number_rule: {class: descriptive, n: open items in the cell, descriptive_mark: 'a count of items, not an estimate', link: rows}
+        grade_rule: contract
+      - key: label_counts
+        kind: table
+        shows: 'Stored labels per label type and class, split by who made them (owner, Claude, model pre-label) and by gold status. A thin class is highlighted with the word "thin" and its count.'
+        inputs:
+          tables: [review_labels.label_type, review_labels.value, review_labels.labeller, review_labels.prelabel_by, review_labels.gold_set, review_labels.action, review_labels.labelled_at_utc]
+        requirements: [R-HR-08, R-HR-05, R-HR-16]
+        number_rule: {class: descriptive, n: labels in the cell, descriptive_mark: 'a count of labels, not an estimate', link: rows}
+        grade_rule: contract
+      - key: gold_set_status
+        kind: table
+        shows: 'Each gold set and interim truth set: version, frozen or open, items, the share the owner confirmed, items pre-labelled by Claude that still wait for him, the manifest hash, and the result of the check that no item was trained on.'
+        inputs:
+          tables: [review_labels.gold_set, review_labels.labeller, review_labels.action, review_labels.item_id, review_labels.label_type, run_requirement_results.requirement_id, run_requirement_results.result]
+        requirements: [R-HR-07, R-HR-12, R-HR-16, R-VA-17]
+        number_rule: {class: descriptive, n: items of the set, descriptive_mark: 'counts of items; an item is gold only with the confirmation of the owner', link: rows}
+        grade_rule: contract
+      - key: filter_bar
+        kind: control
+        component: filter_bar
+        shows: 'Filters by label type, trigger, game, player, status and labeller.'
+        inputs: {}
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected item: every flag behind it, the score parts as stored, the model and rule versions, and the earlier labels of the same target.'
+        inputs: {}
+    interactions:
+      - {action: drill_down, at: queue_list, target: the item on the review item screen, to: review_item}
+      - {action: command, at: view, target: 'next disputed label: opens the first open item', to: review_item}
+      - {action: select, at: queue_list, target: 'an item; the inspector shows its flags and score parts'}
+      - {action: filter, at: filter_bar, target: 'label type, trigger, game, player, status, labeller'}
+      - {action: edit, at: queue_list, target: 'defer, skip with a reason or reopen an item: a new status row; or add a manual item'}
+      - {action: edit, at: budget_bar, target: 'the weekly budget: a draft parameter change', to: draft_diff_promote}
+      - {action: drill_down, at: label_counts, target: 'the labels of a cell as rows; each row opens its item', to: review_item}
+      - {action: drill_down, at: gold_set_status, target: the agreement report of the label type, to: labeller_agreement_report}
+      - {action: inspect_query, at: queue_list, target: the rows and the stored scores that give the order}
+      - {action: export, at: label_counts, target: 'label counts per type and class, aggregates only', produces: aggregate_table}
+    degraded:
+      D1_bug_away: 'Items inside a stretch with no scorebug show the game clock with its grade. Scoreboard items cannot arise there and the summary says so.'
+      D2_off_main: 'Items raised off the main camera carry the camera shot in their trigger line. Identity and position items are not raised there; the count of seconds left out is printed.'
+      D3_replay: 'No item is raised on a replay frame. A replay linked to an item is offered on the item screen as evidence.'
+      D4_break: 'No item is raised in a break, except scoreboard corrections made during a timeout or review.'
+      D5_no_video: 'Only feed items are listed for the game (scoreboard against play-by-play cannot be checked; market mapping and play-by-play conflicts can). The banner says "no video".'
+      feed_stale: 'The queue prints the play-by-play version it was built on. Items that need the final play-by-play wait and are counted as "waiting for the final play-by-play".'
+    empty_state: 'No open item: "queue empty", with the label counts and the date of the next run. Nothing processed yet: "no game processed", and only the manual-item control.'
+    requirements: [R-HR-01, R-HR-03, R-HR-04, R-HR-05, R-HR-07, R-HR-08, R-HR-12, R-HR-16, R-MM-05, R-RR-05, R-ID-14, R-DT-11, R-DT-24, R-SB-01, R-MK-17, R-RF-21, R-HR-19, R-VA-17, R-PR-18, R-VZ-02]
+    decisions: [K12, OD-8, OD-10]
+    depends_on:
+      baselines: [live_state, state_machine, movement_grammar]
+      tables: [review_queue, review_labels, error_catalogue, scoreboard_flags, cv_events_unmatched, quarantine_rows, identity_switch_log, identity_probable_runs, identity_confusions, run_requirement_results, run_records]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-G1, ACC-VW-G2, ACC-VW-P1, ACC-VW-Q1, ACC-VW-B1]
+    wireframe: null
+    notes: >-
+      This is the owner input "flag the moments the system is unsure of, for me to label". Decisions taken here: label
+      counts and gold-set status are elements of the queue, because they answer "where should the next hour go". Flags
+      on one moment are folded into one item. The queue never reorders by hand.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  review_item:
+    id: VW-STU-07
+    name: Review item screen
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What happened in this clip, is the guess of the system right, and if not, what is the right label?
+    grain: item
+    as_of: {view: as_of_event, pass: [blind, anchored]}
+    refresh: {class: on_select}
+    min_width_px: 1280
+    definitions:
+      - 'one screen, four variants. Clip, court, guess, answer keys and label history are the same for every label type. One variant panel is shown, chosen by the label type of the item: turnover, screen, identity, scoreboard. The turnover and the screen variant catalogue the two private tools in use (R-PR-18); their code and data stay private.'
+      - 'two stored objects: the model guess and the label of a person are separate rows. Confirm copies the guess into a label with who, when, model version and tool version (R-HR-05). Correct writes the label of the reviewer beside the guess. Abstain stores "not visible" or "cannot tell" as an answer.'
+      - 'who labels (R-HR-16): the banner names the labeller. A label made by a Claude session is stored apart, is shown with the name Claude wherever it appears, and counts as gold only after the owner confirms it.'
+      - 'guess shown or hidden: prefilled on a normal item (R-HR-02). Hidden on an audit item and on a blind re-show, together with every earlier label, until the answer is stored.'
+      - 'editable: the answer of the reviewer; the clip window of this item (the reviewer can extend it, R-HR-02); a quick reason.'
+      - 'an edit creates: a new row of review_labels. A changed mind is another row; the earlier one stays. A label that contradicts a stored state value also writes a correction and opens a draft state version; it never overwrites the value (R-AS-03).'
+      - 'never editable: the model guess, an earlier label, the official play-by-play, the scorebug reading as read, the clip window in config, gold membership (only the confirmation of the owner makes an item gold), the labelling guide.'
+      - 'no face: an identity item shows jersey, kit and appearance card. No face crop is cut, shown or stored (R-PR-19).'
+      - 'coverage (K04): a fine ball-screen coverage is offered as the guess only at confidence 0.8 or more; below that the guess is the coarse class.'
+    params:
+      window_shot_before_s: {value: 3.0, unit: s, why: 'clip start before a shot', evidence: 'requirement: R-HR-02'}
+      window_shot_after_s: {value: 2.0, unit: s, why: 'clip end after a shot', evidence: 'requirement: R-HR-02'}
+      window_ball_screen_before_s: {value: 4.0, unit: s, why: 'clip start before a ball screen', evidence: 'requirement: R-HR-02'}
+      window_ball_screen_after_s: {value: 3.0, unit: s, why: 'clip end after a ball screen', evidence: 'requirement: R-HR-02'}
+      window_foul_before_s: {value: 3.0, unit: s, why: 'clip start before a foul', evidence: 'requirement: R-HR-02'}
+      window_foul_after_s: {value: 3.0, unit: s, why: 'clip end after a foul', evidence: 'requirement: R-HR-02'}
+      window_default_before_s: {value: 3.0, unit: s, why: 'clip start for any other label type', evidence: 'requirement: R-HR-02'}
+      window_default_after_s: {value: 3.0, unit: s, why: 'clip end for any other label type', evidence: 'requirement: R-HR-02'}
+      median_item_time_target_s: {value: 20.0, unit: s, why: 'median time per item the screen is designed for; measured and reported per session', evidence: 'requirement: R-HR-02 (initial value, to calibrate)'}
+      reshow_share: {value: 0.05, unit: share, why: 'share of past items shown again blind', evidence: 'requirement: R-HR-06'}
+      coverage_fine_min_conf: {value: 0.8, unit: probability, why: 'a fine coverage is offered as the guess only at this confidence', evidence: 'decision: K04', mirrors: 'config/views/core.yaml:display_contract.numbers.params.coverage_fine_min_conf.value'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The item and its label type, the game and game clock, the labeller by name, the version of the labelling guide, the place in the queue, and the frame rate of the file.'
+        inputs: {}
+        requirements: [R-HR-15, R-HR-16]
+      - key: clip
+        kind: video
+        component: video_player
+        shows: 'The clip with the window of its event type, looping. Replay segments linked to the event are offered as extra evidence, with their time offset and camera view.'
+        inputs:
+          tables: [review_queue.center_ts_ms, review_queue.clip_window_s, review_queue.video_id, frames.replay_segment_id, frames.replay_of_event_id, frames.replay_offset_s, frames.camera_view]
+        requirements: [R-HR-02, R-VI-20]
+        grade_rule: contract
+      - key: court
+        kind: court
+        component: top_down_court
+        shows: 'The same instant from above, beside the clip: ten players and the ball, with the track or the event of the item marked.'
+        inputs:
+          spots: ['layer:zone_scheme:court_region', 'layer:spot', 'layer:landmark']
+        requirements: [R-HR-02]
+        identity_rule: probable_flagged_offline
+        grade_rule: contract
+      - key: guess_panel
+        kind: tile
+        shows: 'The guess of the system with its confidence and model version, and the triggers that raised the item. On an audit item or a blind re-show the tile reads "guess hidden" until the answer is stored.'
+        inputs:
+          tables: [review_queue.model_guess, review_queue.trigger, review_queue.priority, review_labels.prelabel_by, review_labels.model_version]
+        requirements: [R-HR-02]
+        number_rule: {class: label, confidence: printed beside the guess, version: the model version of the guess, link: frames}
+        grade_rule:
+          quarantined: 'The contradicted value is shown hatched beside the value that contradicts it, each with its source and time. The reviewer decides which stands.'
+      - key: answer_bar
+        kind: control
+        shows: 'Confirm (enter), not this (x), cannot tell (u), not visible, answers 1 to 9 for the label type, three or four quick reasons, extend the clip, undo the last answer.'
+        inputs: {}
+        requirements: [R-HR-02, R-HR-05]
+      - key: variant_turnover
+        kind: table
+        shows: 'The turnover as the official record has it (player, type, team turnover or not, clock) beside what the video shows. Answers: as scored, wrong player, wrong type, not a turnover on video, cannot tell.'
+        inputs:
+          tables: [turnovers.turnover_id, turnovers.turnover_type, turnovers.is_team_turnover, turnovers.live_ball, turnovers.player_id, turnovers.team_id, turnovers.period, turnovers.game_clock_s, turnovers.source, pbp_versions.pbp_version_id]
+          metrics: [M-TOV-001, M-TOV-002]
+          events: ['ball_actions:live_ball_turnover', 'ball_actions:violation_turnover', 'ball_actions:turnover_abstention', T03, T13]
+        requirements: [R-PR-18, R-VA-17]
+        identity_rule: locked_or_hold
+        number_rule: {class: official, source: 'the official play-by-play, by version', as_of: the play-by-play version of the banner, link: frames}
+        grade_rule: contract
+      - key: variant_screen
+        kind: table
+        shows: 'The screen: its moment, its kind, screener and user, whether the strict rule and the loose rule fired, the measured contact distance, screener speed and duration, and the coverage guess. Answers: screen or not, the kind, the moment (one frame step), the coverage.'
+        inputs:
+          tables: [screens.screen_id, screens.screen_kind, screens.screen_moment_frame, screens.screen_moment_ts_ms, screens.screener_id, screens.user_id, screens.strict_rule_fired, screens.loose_rule_fired, screens.contact_distance_m, screens.screener_speed_mps, screens.duration_s, screens.coverage_coarse, screens.coverage_fine_code, screens.confidence, screens.model_version]
+          events: ['screens:screen', 'screens:screen_moment', 'screens:screen_stationarity', 'screens:ball_screen', 'screens:ball_screen_coverage', 'screens:moving_screen_hint']
+        requirements: [R-PR-18, R-ST-17, R-ST-20]
+        identity_rule: locked_or_hold
+        number_rule:
+          - {class: label, confidence: printed beside kind and coverage, version: the rule set and model version of the row, link: frames}
+          - {class: measurement, unit: 'metres, metres per second, seconds', error: 'from the position error of screener and user, printed beside each value', link: frames}
+        grade_rule: contract
+      - key: variant_identity
+        kind: table
+        shows: 'The chain in question: locked label or HOLD, the candidates in order of posterior, the evidence per cue, the crossing or alarm that raised the item, the switch-log rows around it, and how often this pair was confused before. A probable run is listed by chain, frames and mean posterior; its name is read on the clip and the court, flagged "probable".'
+        inputs:
+          tables: [identity_frames.chain_id, identity_frames.label_player_id, identity_frames.lock_state, identity_frames.hold_reason, identity_frames.candidates, identity_frames.candidate_posteriors, identity_frames.candidates_open, identity_frames.evidence_by_cue, identity_frames.posterior, identity_frames.mode, identity_switch_log.kind, identity_switch_log.frame, identity_switch_log.frame_last, identity_switch_log.from_label, identity_switch_log.to_label, identity_switch_log.evidence_before, identity_switch_log.evidence_after, identity_switch_log.review_status, identity_probable_runs.chain_id, identity_probable_runs.frame_start, identity_probable_runs.frame_end, identity_probable_runs.mean_posterior, identity_probable_runs.review_status, identity_confusions.n_confusions, confusable_pairs.separation_rate_nats_per_s, tracks.jersey_number_voted, tracks.jersey_vote_conf, detections.jersey_read_front, detections.jersey_read_back, detections.jersey_read_conf]
+          events: ['bigs:id_swap_risk', T22]
+        requirements: [R-ID-19, R-ID-17, R-ID-20, R-DT-24]
+        phase: P1
+        identity_rule: locked_or_hold
+        number_rule: {class: label, confidence: the posterior of each candidate, version: the identity pack and model version of the run, link: frames}
+        grade_rule: contract
+        notes: 'Answers: one of the candidates, "none of these" (the candidate list is open), cannot tell. A locked label is never changed in place: the answer adds a row to the switch log and opens a draft.'
+      - key: appearance_card
+        kind: table
+        shows: 'For each candidate: jersey number, kit colours, shoes, sleeves, leg sleeves, headband, tape, undershirt, as filled at tip. No face image.'
+        inputs:
+          tables: [appearance_cards.player_id, appearance_cards.team_id, appearance_cards.shoes, appearance_cards.sleeves, appearance_cards.leg_sleeves, appearance_cards.headband, appearance_cards.tape, appearance_cards.undershirt, kit_cards.kit_colour_primary, kit_cards.kit_colour_secondary, kit_cards.number_colour, kit_cards.uniform_variant, jersey_history.jersey_number]
+        requirements: [R-ID-12]
+        identity_rule: locked_or_hold
+        numbers: none
+        grade_rule: contract
+      - key: variant_scoreboard
+        kind: table
+        shows: 'The discrepancy and its type: the scorebug reading, the play-by-play, and the make the camera saw, side by side with their times, the lag, and the authority order (scorebook, then arena board, then scorebug). Answers: which value stands, or cannot tell.'
+        inputs:
+          tables: [scoreboard_flags.flag_id, scoreboard_flags.flag_type, scoreboard_flags.field, scoreboard_flags.observed_value, scoreboard_flags.expected_value, scoreboard_flags.corrected_value, scoreboard_flags.lag_s, scoreboard_flags.window_s, scoreboard_flags.not_seen, scoreboard_flags.invariant_id, scoreboard_flags.status, scoreboard_ocr.score_home_parsed, scoreboard_ocr.score_away_parsed, scoreboard_ocr.game_clock_parsed_s, scoreboard_ocr.field_conf_json, score_events.seen_cv, score_events.seen_ocr, score_events.seen_pbp, score_events.delta_points, score_events.board_lag_s, score_events.score_home_after, score_events.score_away_after]
+          events: [T05, T12, T17, T18]
+        requirements: [R-SB-01, R-IV-40, R-IV-42]
+        phase: P2
+        number_rule:
+          - {class: official, source: 'each of the three sources, named in its column', as_of: the play-by-play version and the frame of each reading, link: frames}
+          - {class: live_state, grade: by rule 1, age: the lag of each reading in seconds, link: state}
+        grade_rule:
+          quarantined: 'Both contradicting values are shown hatched with their sources. This is the item that resolves the quarantine.'
+      - key: blind_reshow
+        kind: control
+        shows: 'A re-show looks like any item, with the guess and every earlier label hidden. Nothing says it is a re-show until the answer is stored; then the earlier answer and "same" or "different" are shown.'
+        inputs:
+          tables: [review_labels.is_repeat_blind, review_labels.agrees_with_previous]
+        requirements: [R-HR-06]
+      - key: label_history
+        kind: table
+        shows: 'Every stored label of this target, newest first: who (owner, Claude, model pre-label), when, the action, the value, the tool and model version, gold or not. Hidden on audit items and re-shows until the answer is stored.'
+        inputs:
+          tables: [review_labels.label_id, review_labels.item_id, review_labels.labeller, review_labels.labelled_at_utc, review_labels.action, review_labels.value, review_labels.reason, review_labels.tool, review_labels.model_version, review_labels.prelabel_by, review_labels.gold_set, state_corrections.correction_id, state_corrections.reviewer]
+        requirements: [R-HR-05, R-HR-16]
+        numbers: none
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected track, event or reading: value, source, confidence, version and lineage.'
+        inputs: {}
+    interactions:
+      - {action: scrub, at: clip, target: 'clip and court move together inside the window'}
+      - {action: step, at: clip, target: 'one frame back or forward, to set a moment'}
+      - {action: confirm, at: answer_bar, target: 'the guess is copied into a label of the reviewer'}
+      - {action: correct, at: answer_bar, target: 'another answer is stored beside the guess'}
+      - {action: abstain, at: answer_bar, target: '"not visible" or "cannot tell" is stored as the answer'}
+      - {action: undo, at: answer_bar, target: 'the last answer of this session is withdrawn by a new row; the earlier row stays readable'}
+      - {action: edit, at: clip, target: 'extend the clip window for this item; the config window is unchanged'}
+      - {action: select, at: court, target: 'a player or the ball; the inspector shows identity state and evidence'}
+      - {action: select, at: variant_identity, target: 'a candidate; clip and court mark the chain and the appearance card moves to him'}
+      - {action: drill_down, at: label_history, target: the moment on the game canvas, to: studio_game_canvas}
+      - {action: drill_down, at: variant_identity, target: the confusion list of the pair, to: identity_quality_report}
+      - {action: drill_down, at: guess_panel, target: what the network saw at this instant, to: network_view}
+      - {action: command, at: view, target: 'next disputed label'}
+      - {action: export, at: clip, target: a clip reference of the item, produces: clip_reference}
+    degraded:
+      D1_bug_away: 'The clip plays. The game clock in the banner is shown with its grade and interval. A scoreboard item cannot be answered "bug correct" for a frame with no bug; the answer list drops it.'
+      D2_off_main: 'The clip plays. The court shows hollow markers with regions up to the limit, then removes them, and says "off the main camera". "Not visible" is offered first.'
+      D3_replay: 'An item is never centred on a replay frame. A linked replay is shown as evidence, marked REPLAY, with its offset to the live event.'
+      D4_break: 'Only scoreboard corrections arise in a break. Court shows "break"; the clip shows the board or the scorebug.'
+      D5_no_video: 'A card "no video for this item". Only feed items can be answered, from the rows of the sources; clip, court and identity variants are not offered.'
+      feed_stale: 'The banner prints the play-by-play version. A turnover or scoreboard item built on a version that has since changed is marked "play-by-play changed" and is rebuilt before it can be answered.'
+    empty_state: 'No item open: "pick an item in the queue". An item whose clip fails the frame-rate check: "clip refused: frame rate differs from its record", with both rates, and no answer keys.'
+    requirements: [R-HR-02, R-HR-05, R-HR-06, R-HR-12, R-HR-15, R-HR-16, R-PR-18, R-PR-19, R-VI-20, R-VA-17, R-ST-17, R-ST-20, R-ID-12, R-ID-17, R-ID-19, R-ID-20, R-DT-24, R-SB-01, R-IV-40, R-IV-42, R-AS-03, R-VZ-01, R-VZ-02]
+    decisions: [K04, K15, OD-8, OD-10]
+    depends_on:
+      baselines: [live_state, state_machine, named_spots, movement_grammar, identity_pack, metrics]
+      tables: [review_queue, review_labels, video_files, frames, clock_map, player_positions, ball_states, turnovers, pbp_versions, screens, identity_frames, identity_switch_log, identity_probable_runs, identity_confusions, confusable_pairs, tracks, detections, appearance_cards, kit_cards, jersey_history, scoreboard_flags, scoreboard_ocr, score_events, state_corrections, clip_index, run_records]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R2, ACC-VW-N1, ACC-VW-G1, ACC-VW-G2, ACC-VW-I1, ACC-VW-P1, ACC-VW-E1, ACC-VW-L1, ACC-VW-B1]
+    wireframe: docs/data/views/review_item.svg
+    notes: >-
+      Phase P0 for the turnover and scoreboard variants from play-by-play and video alone (the two private tools run
+      today under freeze exceptions). The screen variant needs tracking (P1 and P2); the identity variant needs the
+      identity run (P1). Decision taken here: a probable name is never printed in a row of this screen; it is read on
+      the clip and court layers, flagged (rule 2 of the contract). See the report for the exception the review of
+      probable runs may need.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  coach_quiz:
+    id: VW-STU-08
+    name: Coach quiz
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: At this paused moment, does the system read the game the way I do?
+    grain: second
+    as_of: {view: as_of_known, pass: [blind]}
+    refresh: {class: on_select}
+    min_width_px: 1280
+    definitions:
+      - 'four question types (R-GU-03): who guards a named player, which set, which defence, what happens next.'
+      - 'as known: the system answers from its belief state at the paused second (R-GU-01), with nothing dated after it. The video cannot be moved past the pause until the answer of the owner is stored.'
+      - 'order: the owner answers first. The answer of the system stays hidden until then, so that it cannot lead him.'
+      - 'random draw: the paused moments are drawn at random from live play, with a logged seed. Replays, breaks and stretches off the main camera are not drawn.'
+      - 'editable: the answer of the owner, once per question.'
+      - 'an edit creates: one quiz row with the question, both answers and the result. A later change of mind is a new row; the first answer is the one that is scored.'
+      - 'never editable: the moment, the question, the answer of the system, the score, the pass mark (set per type after game 3 from the measured distribution, D18).'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'QUIZ, as known at the pause, the game and game clock, the model version that answers, the count of questions done in this session.'
+        inputs: {}
+      - key: paused_frame
+        kind: video
+        component: video_player
+        shows: 'The video up to the pause and the paused frame. Playing on is locked until the answer is stored.'
+        inputs: {}
+        grade_rule: contract
+      - key: court
+        kind: court
+        component: top_down_court
+        shows: 'The paused instant from above. Hidden until the owner has answered, so that the drawing does not answer the matchup question for him.'
+        inputs:
+          spots: ['layer:zone_scheme:court_region', 'layer:spot']
+        identity_rule: locked_or_hold
+        grade_rule: contract
+      - key: question_card
+        kind: control
+        shows: 'One question of one type, with the answer choices: the players on the floor, the sets of the library, the defences, the next actions.'
+        inputs:
+          tables: [coach_quiz.quiz_id, coach_quiz.question, coach_quiz.video_ts_ms, coach_quiz.game_id]
+        requirements: [R-GU-03]
+      - key: system_answer
+        kind: tile
+        shows: 'After the owner answered: the answer of the system with its confidence, its top three sets with probabilities, the defensive scheme, the matchup it holds, the next-action probabilities, and "same" or "different".'
+        inputs:
+          live_state: [offense_set, defense_scheme, matchups, ball_handler]
+          tables: [coach_quiz.system_answer, coach_quiz.aldemir_answer, coach_quiz.correct, belief_states.second_index, belief_states.ball_team_id, belief_states.phase, belief_states.top3_sets, belief_states.defense_scheme_code, belief_states.next_action_probs, belief_states.confidence, belief_states.model_version, defensive_matchups.defender_id, defensive_matchups.attacker_id, defensive_matchups.matchup_prob]
+          events: ['composition:live_belief', 'composition:set_match', 'defense:matchup', 'defense:scheme_fingerprint']
+        requirements: [R-GU-01, R-GU-03]
+        identity_rule: locked_or_hold
+        number_rule: {class: label, confidence: printed beside each answer of the system, version: the model version of the belief state, link: frames}
+        grade_rule:
+          unknown: 'Where the system holds no belief (HOLD on the player asked about, no set matched) its answer reads "no answer" with the reason, and the question is scored as not answered, not as wrong.'
+      - key: score_table
+        kind: table
+        shows: 'Per question type, game and model version: questions asked, answered by the system, the share correct with its interval, and the pass mark once it is set.'
+        inputs:
+          tables: [coach_quiz.quiz_id, coach_quiz.question, coach_quiz.correct, coach_quiz.game_id, run_requirement_results.requirement_id, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.target]
+        requirements: [R-GU-03]
+        number_rule: {class: estimate, n: questions of the type, interval: printed after each share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected answer: the belief state behind it, its inputs, the model version and lineage.'
+        inputs: {}
+    interactions:
+      - {action: correct, at: question_card, target: 'the owner picks his answer; it is stored before the answer of the system is shown'}
+      - {action: abstain, at: question_card, target: '"cannot tell" is stored; the question is not scored'}
+      - {action: select, at: system_answer, target: 'an answer of the system; the inspector shows the belief state behind it'}
+      - {action: scrub, at: paused_frame, target: 'back from the pause only; forward is locked until the answer is stored'}
+      - {action: drill_down, at: score_table, target: the questions of a cell as rows; each row reopens its moment}
+      - {action: drill_down, at: system_answer, target: the moment on the game canvas after the answer, to: studio_game_canvas}
+      - {action: command, at: view, target: next question}
+    degraded:
+      D1_bug_away: 'A moment may be drawn. The banner shows the game clock with its grade. No question asks about the clock.'
+      D2_off_main: 'Not drawn. A moment off the main camera is skipped and counted.'
+      D3_replay: 'Not drawn. Replay frames are never quiz moments.'
+      D4_break: 'Not drawn.'
+      D5_no_video: 'No quiz for the stretch: a card "no video". Scores of earlier questions stay visible.'
+      feed_stale: 'No change. The quiz reads the blind pass and uses no play-by-play.'
+    empty_state: 'Before the third processed game: "the quiz starts with the third processed game" (R-GU-03). No belief state for the game: "no belief state stored", and no question is drawn.'
+    requirements: [R-GU-03, R-GU-01, R-ID-19, R-VZ-01, R-VZ-02, R-VZ-03]
+    decisions: [D18, K12, OD-10]
+    depends_on:
+      baselines: [live_state, named_spots, identity_pack, movement_grammar]
+      tables: [coach_quiz, belief_states, defensive_matchups, run_requirement_results, video_files, frames, clock_map, player_positions, ball_states, run_records]
+    phase: P4
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R2, ACC-VW-N1, ACC-VW-N2, ACC-VW-G1, ACC-VW-G2, ACC-VW-I1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      The only Studio view that reads as_of_known throughout: the question is what the system believed at the pause.
+      So identity is locked or HOLD, as on the live panel (OD-10). Decision taken here: the court drawing and the answer
+      of the system stay hidden until the owner has answered.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  metric_browser:
+    id: VW-STU-09
+    name: Metric browser
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What is this stat, how is it computed, can it be computed today, and which views show it?
+    grain: item
+    as_of: {view: as_of_event, pass: [pbp_only, anchored]}
+    refresh: {class: on_run}
+    min_width_px: 1280
+    definitions:
+      - 'item: one metric of config/metrics.yaml, by its id. The browser is the view over the registry; the generated catalogue pages are documents and are linked, not copied (R-MR-01).'
+      - 'categories: the category list is read from the registry at render time. The nineteen ids listed in the registry table are one per category, so that every category is reachable from a view.'
+      - 'no formula here: definition, formula, unit and parameters are read from the registry row and shown as text. The browser holds no second definition (rule 8).'
+      - 'editable: nothing. Filters and the sample scope change the screen only.'
+      - 'an edit creates: nothing. A definition changes in the registry file under version control; the change appears in the change history. A parameter default is tried in the parameter sweep and changed through a draft.'
+      - 'never editable: an id, a definition, a formula, a value range, a served value.'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The registry version and date, the count of metrics and categories as read, and the scope of the sample value (game, team, pass).'
+        inputs: {}
+      - key: filter_bar
+        kind: control
+        component: filter_bar
+        shows: 'Filters by category, data tier, computable now or not, level (team, player, lineup), depth, and a text search over names and aliases.'
+        inputs: {}
+      - key: registry_table
+        kind: table
+        shows: 'One row per metric: id, name, category, unit, level, data tier, computable now, minimum sample, value range, and the count of views that show it.'
+        inputs:
+          metrics: [M-TEFF-001, M-TRAT-001, M-SHOOT-001, M-SQ-001, M-PASS-001, M-TOV-001, M-REB-001, M-FOUL-001, M-DEF-001, M-TRN-001, M-PLAY-001, M-SPACE-001, M-PHYS-001, M-IMP-001, M-PROF-001, M-SIT-001, M-COACH-001, M-MKT-001, M-TREE-001]
+        requirements: [R-MR-01, R-PR-14]
+        number_rule: {class: descriptive, n: metrics in the registry as counted at render time, descriptive_mark: 'registry facts, not game numbers', link: none_fixed}
+        grade_rule: contract
+      - key: metric_page
+        kind: table
+        shows: 'The registry row of the selected metric as text: definition, formula, estimator, unit, value range, parameters with defaults, variants, edge cases, as-of rule, minimum sample, sources, related requirements, and the link to its catalogue page.'
+        inputs: {}
+        requirements: [R-MR-01, R-MR-04]
+        numbers: none
+      - key: sample_value
+        kind: tile
+        shows: 'The value of the metric for the chosen scope, served through the query layer by its id, with its n and interval or its source. A metric that cannot be computed yet reads "not computable before" and the phase.'
+        inputs:
+          tables: [metric_value_log.metric_id, metric_value_log.value, metric_value_log.n, metric_value_log.status, metric_value_log.grain, metric_value_log.entity_keys, metric_value_log.filters, metric_value_log.parameters, metric_value_log.registry_version, metric_value_log.as_of_event, metric_value_log.lineage_handle]
+          metrics: [M-TEFF-001, M-TEFF-002]
+        requirements: [R-EN-18]
+        number_rule:
+          - {class: estimate, n: cases behind the value, interval: printed after the value, level: 0.95, link: rows, min_n: registry}
+          - {class: official, source: the official box score or play-by-play where the metric is a count of it, as_of: the version of the source, link: rows}
+        grade_rule: contract
+        notes: 'The two ids are examples (a counted and a box-score possession figure). The tile serves whichever id is selected.'
+      - key: used_by
+        kind: table
+        shows: 'The views and elements of this catalogue that list the metric id, and the requirement rows that name it.'
+        inputs: {}
+        requirements: [R-PR-14]
+        numbers: none
+      - key: change_history
+        kind: table
+        shows: 'Every logged change of the registry row: when, who, the field, the old and the new text, the reason.'
+        inputs:
+          tables: [registry_change_log.table_name, registry_change_log.row_key, registry_change_log.column_name, registry_change_log.old_value, registry_change_log.new_value, registry_change_log.changed_by, registry_change_log.changed_at_utc, registry_change_log.reason]
+        numbers: none
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The sample value: its query with the metric id, its rows, its lineage.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: filter_bar, target: 'category, data tier, computable now, level, depth, text search'}
+      - {action: select, at: registry_table, target: 'a metric; the page, the sample value, the views that use it and its history are shown'}
+      - {action: drill_down, at: sample_value, target: the rows behind the value; each row links to its frames}
+      - {action: drill_down, at: metric_page, target: 'a parameter of the metric, in the sweep', to: parameter_sweep}
+      - {action: drill_down, at: used_by, target: 'a view that shows the metric; it opens with the same scope', to: possession_explorer}
+      - {action: inspect_query, at: sample_value, target: the query with the metric id and the rows it returns}
+      - {action: export, at: sample_value, target: the query text of the sample value, produces: sql}
+      - {action: export, at: registry_table, target: 'the filtered list of metrics as a page (registry facts only)', produces: page}
+    degraded:
+      D1_bug_away: 'No change to the registry. A sample value that reads the clock states the share of possessions with a dead-reckoned clock.'
+      D2_off_main: 'A sample value from tracking states the share of time it could use.'
+      D3_replay: 'Replays never enter a number.'
+      D4_break: 'Breaks never enter a number.'
+      D5_no_video: 'Registry rows are shown as always. A sample value of a tracking metric reads "no video for this game".'
+      feed_stale: 'The sample value prints the play-by-play version it was computed from.'
+    empty_state: 'No metric matches the filters: "no metric matches", with the filters named. No game processed: registry rows are shown and every sample value reads "no processed game".'
+    requirements: [R-MR-01, R-MR-04, R-PR-14, R-EN-18, R-CX-29, R-VZ-02, R-VZ-03]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state, metrics]
+      tables: [metric_value_log, registry_change_log, run_records]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-2, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-Q1]
+    wireframe: null
+    notes: >-
+      This view is how the stat catalogue maps into the views catalogue: one row of the inventory per registry
+      category points here. The registry pages are readable today; the sample value needs the query layer and the
+      play-by-play tables (P0p).
+
+  # -------------------------------------------------------------------------------------------------------------------
+  lineage_explorer:
+    id: VW-STU-10
+    name: Lineage explorer
+    surface: studio
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Which input files, stage runs, code and config versions produced this row, and what depends on it?
+    grain: item
+    as_of: {view: as_of_event, pass: [blind, anchored, pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 1280
+    definitions:
+      - 'item: one stored row, or one stage output (a partition of a table). Lineage is resolved through the partition manifests; a per-frame row carries no lineage string of its own (R-EN-19).'
+      - 'upstream: the stage runs and stage outputs that fed the row, back to raw pulls, video files and play-by-play versions, with the code version and config hash of every step.'
+      - 'downstream: the outputs, served metric values, predictions and published numbers that read the row.'
+      - 'editable: nothing. The view is read-only.'
+      - 'an edit creates: nothing. Which version is current changes only by a promotion in the draft view; a re-run is started from the pipeline, not from here.'
+      - 'never editable: a hash, an output key, a run record, a pointer, a manifest.'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The table and key of the row, the pass, the state version, and whether the row is of the current version or of an older one.'
+        inputs: {}
+      - key: row_header
+        kind: tile
+        shows: 'The stage output the row belongs to: output key, table, stage, content hash, schema version, rows and bytes, the run that first wrote it, and the pointer that makes it current.'
+        inputs:
+          tables: [stage_outputs.output_key, stage_outputs.table_name, stage_outputs.stage, stage_outputs.pass, stage_outputs.content_hash, stage_outputs.file_sha256, stage_outputs.schema_version, stage_outputs.rows, stage_outputs.bytes, stage_outputs.first_run_id, stage_outputs.created_utc, stage_outputs.code_version, stage_outputs.config_hash, current_pointers.output_key, current_pointers.set_by_run_id, current_pointers.set_at_utc, current_pointers.supersedes_output_key, current_pointers.reason]
+        requirements: [R-EN-19, R-RR-01]
+        number_rule: {class: measurement, unit: rows and bytes, error: 'exact, counted when the output was written', link: rows}
+        grade_rule: contract
+      - key: upstream_graph
+        kind: chart
+        shows: 'The dependency graph above the row: stage runs as boxes, stage outputs as arrows, ending in raw pulls, video files and play-by-play versions. Each box shows stage, code version, config hash, status, duration and cost.'
+        inputs:
+          tables: [stage_runs.run_id, stage_runs.stage, stage_runs.dag_node, stage_runs.inputs, stage_runs.outputs, stage_runs.code_version, stage_runs.config_hash, stage_runs.git_commit, stage_runs.status, stage_runs.started_utc, stage_runs.finished_utc, stage_runs.duration_s, stage_runs.cost_usd, stage_runs.counts, stage_outputs.inputs, raw_pulls.pull_id, raw_pulls.source, raw_pulls.endpoint, raw_pulls.sha256, raw_pulls.fetched_at_utc, video_files.video_id, video_files.source_kind, pbp_versions.pbp_version_id, pbp_versions.plays_sha256, pbp_versions.known_at_utc]
+        requirements: [R-EN-19]
+        number_rule: {class: measurement, unit: 'seconds, rows, US dollars', error: 'as logged by each stage run', link: rows}
+        grade_rule: contract
+      - key: downstream_list
+        kind: table
+        shows: 'What reads the row: later stage outputs, metric values served (by metric id and consumer), predictions, and whether any of them was published.'
+        inputs:
+          tables: [stage_outputs.output_key, stage_outputs.inputs, metric_value_log.metric_id, metric_value_log.lineage_handle, metric_value_log.consumer, metric_value_log.served_utc, metric_value_log.status, predictions.prediction_id, predictions.model_version, predictions.frozen_sha256, stat_corrections.metric_id, stat_corrections.was_published]
+        requirements: [R-EN-19]
+        number_rule: {class: descriptive, n: dependents of the row, descriptive_mark: 'a count of dependents, not an estimate', link: rows}
+        grade_rule: contract
+      - key: version_history
+        kind: table
+        shows: 'The versions of the row: each change set that touched it, the correction behind it, the hashes before and after, and which version each pointer made current and when.'
+        inputs:
+          tables: [change_sets.change_set_id, change_sets.table_name, change_sets.row_id, change_sets.op, change_sets.old_row_hash, change_sets.new_row_hash, change_sets.from_output_key, change_sets.to_output_key, state_corrections.correction_id, state_corrections.reason, state_corrections.reviewer, state_corrections.reviewed_utc, current_pointers.known_from_utc]
+        requirements: [R-AS-09]
+        numbers: none
+        grade_rule: contract
+      - key: lineage_audit
+        kind: tile
+        shows: 'The lineage check of the run: of a random one percent of output rows, the share whose lineage resolves to input files and config hashes, and the rows that did not resolve.'
+        inputs:
+          tables: [run_requirement_results.run_id, run_requirement_results.requirement_id, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.result, run_requirement_results.target]
+        requirements: [R-EN-19]
+        number_rule: {class: estimate, n: rows sampled, interval: printed after the share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected box or arrow: the full run record of the stage, its inputs and outputs by key, its hashes.'
+        inputs: {}
+        requirements: [R-AS-02]
+    interactions:
+      - {action: select, at: upstream_graph, target: 'a stage run or an output; the inspector shows its record and hashes'}
+      - {action: drill_down, at: upstream_graph, target: 'the run record of a stage run', to: run_record_report}
+      - {action: drill_down, at: downstream_list, target: 'a dependent row; the explorer re-centres on it'}
+      - {action: drill_down, at: version_history, target: the draft or promotion that made a version, to: draft_diff_promote}
+      - {action: drill_down, at: row_header, target: 'the moment of the row on the game canvas, where the row has one', to: studio_game_canvas}
+      - {action: inspect_query, at: downstream_list, target: the query that lists the dependents}
+      - {action: export, at: upstream_graph, target: 'the lineage of the row as a page (keys and hashes, no data rows)', produces: page}
+    degraded:
+      D1_bug_away: 'Not a state of this view. A row written while the scorebug was away shows its grade in the row header.'
+      D2_off_main: 'Not a state of this view. A row with imputed positions names the imputation stage in its upstream graph.'
+      D3_replay: 'A row from a replay frame is marked "evidence only"; its downstream list is empty by rule and says so.'
+      D4_break: 'Not a state of this view.'
+      D5_no_video: 'The upstream graph ends in feed pulls only and says "no video input".'
+      feed_stale: 'The upstream graph names the play-by-play version used. A newer version in the store is flagged "a newer version exists" on the box.'
+    empty_state: 'Nothing selected: "select a value anywhere and choose Lineage". Lineage that does not resolve: the graph stops at the last resolved step with "manifest missing", and the row is listed in the lineage audit.'
+    requirements: [R-EN-19, R-RR-01, R-AS-02, R-AS-09, R-AS-10, R-EN-23, R-VZ-02]
+    decisions: [K09]
+    depends_on:
+      baselines: [live_state]
+      tables: [stage_outputs, current_pointers, stage_runs, raw_pulls, video_files, pbp_versions, metric_value_log, predictions, stat_corrections, change_sets, state_corrections, run_requirement_results, run_records]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N3, ACC-VW-P1, ACC-VW-Q1]
+    wireframe: null
+    notes: >-
+      The inspector shows the lineage of one value in a few lines; this view is the full graph behind that line.
+      Renderable at P0, as soon as stage runs and stage outputs are written for the play-by-play pipeline.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  hypothesis_results:
+    id: VW-RPT-08
+    name: Hypothesis result table
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Which registered hypotheses were tested, what was found, and which findings are only exploratory?
+    grain: item
+    as_of: {view: as_of_event, pass: [pbp_only, anchored]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'item: one test of one registered hypothesis (config/hypotheses.yaml). A hypothesis is registered before its data is looked at (R-HY-01).'
+      - 'one format: a null result has the same row as a positive one - estimate, interval, adjusted p, n, data version, decision (R-HY-05).'
+      - 'exploratory: a finding that was not registered first carries the word "exploratory" in its row and is promoted only after confirmation on held-out games (R-HY-04).'
+      - 'intervals: bootstrap over whole games, not possessions (R-VA-06). Multiple testing: Holm inside a registered family; Benjamini-Hochberg across exploratory features (R-VA-07).'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A new test writes a new row. A changed statement is a new version of the hypothesis with a new registration date.'
+      - 'never editable: a registration date, a statement after registration, an estimate, a decision. The decision is written by the test under the decision rule that was registered.'
+    params:
+      exploratory_q_max: {value: 0.10, unit: probability, why: 'false-discovery level across exploratory features; a row above it reads "not kept"', evidence: 'requirement: R-VA-07'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The data version, the games it covers, the date of the last test run, and the count of hypotheses registered, tested and still open.'
+        inputs: {}
+      - key: filter_bar
+        kind: control
+        component: filter_bar
+        shows: 'Filters by family, decision, registered or exploratory, and data version.'
+        inputs: {}
+      - key: result_table
+        kind: table
+        shows: 'One row per test: hypothesis id and statement, expected direction, primary metric by id, estimate with its interval, adjusted p, n, achieved power, data version, decision, and the word "exploratory" where it applies.'
+        inputs:
+          tables: [hypothesis_results.hypothesis_id, hypothesis_results.test_date, hypothesis_results.estimate, hypothesis_results.ci95, hypothesis_results.p_adjusted, hypothesis_results.n, hypothesis_results.achieved_power, hypothesis_results.data_version, hypothesis_results.decision, hypothesis_results.exploratory]
+        requirements: [R-HY-01, R-HY-04, R-HY-05, R-VA-06]
+        number_rule: {class: estimate, n: printed in the row, interval: printed after the estimate, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: family_view
+        kind: table
+        shows: 'Per family: the tests in it, raw and adjusted p side by side, the correction used, and which rows pass.'
+        inputs:
+          tables: [hypothesis_results.hypothesis_id, hypothesis_results.p_adjusted, hypothesis_results.exploratory, hypothesis_results.decision, hypothesis_results.n]
+        requirements: [R-VA-07]
+        number_rule: {class: estimate, n: tests in the family and cases per test, interval: the interval of each estimate is in the result table, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: registration_check
+        kind: tile
+        shows: 'For the selected hypothesis: registered on, first data version it could see, and "registered first: yes" or "no". A "no" turns the row exploratory.'
+        inputs:
+          tables: [hypothesis_results.hypothesis_id, hypothesis_results.test_date, hypothesis_results.data_version, hypothesis_results.exploratory]
+        requirements: [R-HY-01]
+        numbers: none
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected row: the registered text of the hypothesis, its analysis method, confounders and decision rule, and the query behind the estimate.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: filter_bar, target: 'family, decision, registered or exploratory, data version'}
+      - {action: select, at: result_table, target: 'a test; the inspector shows the registered text and the query'}
+      - {action: drill_down, at: result_table, target: 'the games and rows behind the estimate; each row links on to its frames'}
+      - {action: drill_down, at: result_table, target: the registry entry of the primary metric, to: metric_browser}
+      - {action: inspect_query, at: result_table, target: the rows and the query with metric ids}
+      - {action: export, at: result_table, target: the result table as a page, produces: page}
+    degraded:
+      D1_bug_away: 'Numbers are computed as specified. A test that reads the clock states the share of possessions with a dead-reckoned clock in its row.'
+      D2_off_main: 'A test on tracking data states the share of time it could use.'
+      D3_replay: 'Replays never enter a number.'
+      D4_break: 'Breaks never enter a number.'
+      D5_no_video: 'Tests that need video are listed as "not testable on this data version", never as null results.'
+      feed_stale: 'The banner prints the data version and the play-by-play versions inside it.'
+    empty_state: 'No test run yet: the registered hypotheses are listed with "not tested". A family with too few cases reads "too few" with n and makes no decision.'
+    requirements: [R-HY-01, R-HY-04, R-HY-05, R-VA-06, R-VA-07, R-VZ-02, R-VZ-03]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state]
+      tables: [hypothesis_results, run_records]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      The primary metric of a hypothesis is named by its registry id in config/hypotheses.yaml and printed from there;
+      the record lists no M-id because the set changes with the registry of hypotheses.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  game_processing_report:
+    id: VW-RPT-09
+    name: Game processing and data-quality report
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Is the data of this game complete and sound enough to use, and where is it weak?
+    grain: game
+    as_of: {view: as_of_event, pass: [blind, anchored, pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'one page per game and run, read top to bottom: verdict, intake, usable share, completeness, distributions, possession counts, official-record checks, invariant breaks, time at each level, latency, cost, revisions.'
+      - 'latency (decision K23): measured and reported beside its budget, per field and per view. It is never a pass or fail line on this page.'
+      - 'invariant breaks: each break is named by its invariant id, with the row and the frame. A value held in quarantine is named here by rule and row; the contradicted value itself is shown only on the review screens.'
+      - 'drift (K17): games 1 to 10 of a source tier show quantiles only. A drift verdict appears from game 11.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A wrong value is corrected by answering its review item, or by a new run; both leave this page as it was and produce a new page.'
+      - 'never editable: any number, flag or verdict of the page. A page of a failed run is kept until the fix is verified (R-RR-08).'
+    params:
+      usable_coverage_min: {value: 0.6, unit: score, why: 'a possession is usable at this coverage score or more', evidence: 'requirement: R-VI-06 (initial value, to calibrate on 3 games)'}
+      completeness_flag_below: {value: 0.95, unit: share, why: 'a field filled less than this is flagged', evidence: 'requirement: R-DQ-07 (proposal)'}
+      psi_flag_above: {value: 0.25, unit: index, why: 'a population stability index above this raises a drift flag', evidence: 'requirement: R-DQ-08 (proposal)'}
+      psi_baseline_games: {value: 10, unit: games, why: 'games of the same source tier needed before any drift verdict', evidence: 'requirement: R-DQ-08 (decision K17)'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The game, the run, the passes shown, the source tier of the video, the play-by-play version, and the state version.'
+        inputs: {}
+      - key: verdict
+        kind: tile
+        shows: 'The gate results of the game in words: play-by-play status, lineup status, final score equal to the official one or not, largest possession difference between passes, counts of segment breaks and untyped transitions, and whether the official record is reconciled.'
+        inputs:
+          tables: [game_gate_results.pbp_status, game_gate_results.lineup_status, game_gate_results.final_score_equal, game_gate_results.possession_diff_max, game_gate_results.segment_breaks, game_gate_results.untyped_transitions, game_gate_results.unknown_floor_labels, game_gate_results.view_cells_differ, games.pbp_status, games.lineup_status, games.official_record_reconciled, games.footage_quality_score]
+        number_rule:
+          - {class: official, source: the official box score and play-by-play, as_of: the play-by-play version of the banner, link: rows}
+          - {class: descriptive, n: breaks and differences counted over the whole game, descriptive_mark: 'counts of this game, not estimates', link: rows}
+        grade_rule: contract
+      - key: intake
+        kind: table
+        shows: 'Per video file: length against expected, dropped and frozen frames, letterboxing, overlays, frame rate and its spread, resolution, bitrate, edit type, and the cut map of video stretches against game-clock ranges.'
+        inputs:
+          tables: [video_files.video_id, video_files.duration_s, video_files.intake_expected_s, video_files.intake_dropped_frames, video_files.intake_frozen_frames, video_files.intake_letterbox_px, video_files.intake_overlays, video_files.fps_nominal, video_files.fps_constant, video_files.frame_interval_spread_ms, video_files.height_px, video_files.width_px, video_files.bitrate_kbps, video_files.quality_tier, video_files.is_full_game, video_files.source_kind, clock_map.from_video_ms, clock_map.to_video_ms, clock_map.from_gc_ds, clock_map.to_gc_ds]
+        requirements: [R-VI-02, R-VI-10]
+        phase: P1
+        number_rule: {class: measurement, unit: 'seconds, frames, pixels, frames per second', error: 'as measured at intake; the spread of the frame interval is printed beside the frame rate', link: frames}
+        grade_rule: contract
+      - key: usable_share
+        kind: tile
+        shows: 'The share of possessions that are usable (coverage score at or above the threshold), with its count, and the same share per half.'
+        inputs:
+          tables: [possessions.possession_id, possessions.usable_flag, possessions.coverage_mean, possessions.n_camera_cuts]
+          metrics: [M-TEFF-045]
+        requirements: [R-VI-06]
+        phase: P1
+        number_rule: {class: estimate, n: possessions of the game, interval: printed after the share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: completeness
+        kind: table
+        shows: 'Per table: rows, and the share of filled values per field. Fields under the flag line are listed first.'
+        inputs:
+          tables: [dq_reports.table_name, dq_reports.field, dq_reports.check, dq_reports.value, dq_reports.flag, dq_reports.note, stage_outputs.rows]
+        requirements: [R-DQ-07]
+        number_rule: {class: descriptive, n: rows of the table in this game, descriptive_mark: 'an exact share for this game, not an estimate', link: rows}
+        grade_rule: contract
+      - key: distributions
+        kind: chart
+        shows: 'For each key field: the quantiles of this game against the running baseline of its source tier, and from game 11 the stability index with its flag.'
+        inputs:
+          tables: [dq_reports.table_name, dq_reports.field, dq_reports.check, dq_reports.value, dq_reports.flag]
+        requirements: [R-DQ-08]
+        number_rule: {class: descriptive, n: rows of the field in this game and games in the baseline, descriptive_mark: 'quantiles only until 10 games of the same source tier exist; a verdict from game 11', link: rows}
+        grade_rule: contract
+      - key: possession_counts
+        kind: table
+        shows: 'Possessions per team under every definition in use: ours, the box-score formula, each outside source, each with its definition text and its difference from ours.'
+        inputs:
+          tables: [possessions.possession_id, possessions.team_id, possessions.poss_num_ncaa, team_box.possessions_source, source_definitions.source, source_definitions.concept, source_definitions.definition_text, source_definitions.difference_from_ours]
+          metrics: [M-TEFF-001, M-TEFF-002, M-TRN-066]
+        requirements: [R-SY-17]
+        number_rule: {class: official, source: the source named in each column, as_of: the pull time of each source, link: rows}
+        grade_rule: contract
+      - key: official_record_checks
+        kind: table
+        shows: 'Our state against the official record: score and clock against play-by-play, shot locations against the outside source, possessions against the box score, lineups against substitutions. Each check with its count of differences.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.result, shots.video_vs_espn_diff_m, identity_possession_checks.lineup_conflicts, identity_possession_checks.unexplained_holds_s, game_gate_results.breaks_lineup]
+          metrics: [M-SQ-008]
+        requirements: [R-VA-03]
+        number_rule:
+          - {class: official, source: the official record named in each row, as_of: the play-by-play and box version of the banner, link: rows}
+          - {class: measurement, unit: metres, error: 'the position error of the release point, printed beside the difference', link: frames}
+        grade_rule: contract
+      - key: invariant_breaks
+        kind: table
+        shows: 'Every invariant break of the game: the invariant id, the table and row, the game clock, the cause class (source gap, spec fault, label fault, lineup), the action taken (flag, quarantine), and whether a review answer resolved it.'
+        inputs:
+          tables: [state_second.invariant_breaks, state_frame.invariant_breaks, quarantine_rows.rule_id, quarantine_rows.table_name, quarantine_rows.first_seen_utc, quarantine_rows.resolution, quarantine_rows.resolved_by, quarantine_rows.resolved_utc, scoreboard_flags.invariant_id, scoreboard_flags.flag_type, scoreboard_flags.status, game_gate_results.segment_breaks, game_gate_results.breaks_source_gap, game_gate_results.breaks_spec_fault, game_gate_results.breaks_label_fault, game_gate_results.breaks_lineup]
+        requirements: [R-IV-40, R-SB-01]
+        number_rule: {class: descriptive, n: breaks per invariant in this game, descriptive_mark: 'counts of this game, not estimates', link: frames}
+        grade_rule: contract
+      - key: level_time
+        kind: chart
+        shows: 'The game as one bar: the seconds and the share of game time at each degradation level, and the stretches with a stale feed.'
+        inputs:
+          live_state: [degradation_level, feed_heartbeat]
+          tables: [state_second.degradation_level, state_second.feed_stale, state_second.feed_state, frames.camera_shot_type, frames.is_replay]
+          events: ['dim:camera_shot_type', 'dim:scorebug_visible', T25]
+        number_rule: {class: measurement, unit: seconds and share of game time, error: 'whole seconds; a boundary is known to one second', link: frames}
+        grade_rule: contract
+      - key: latency
+        kind: table
+        shows: 'Per field of the live state: how late the value became known after the event (median and 95th percentile), provisional and confirmed. Beside it the feed delay and the stream delay against real time, and per view the measured refresh time beside its budget. Reported, not gated.'
+        inputs:
+          live_state: [stream_delay_s, stamp_known_at_utc]
+          tables: [state_transitions.ttype, state_transitions.effective_frame, state_transitions.known_at_utc, state_transitions.est_utc, state_transitions.est_utc_err_s, state_transitions.known_video_ms, state_transitions.confirmed_at_utc, video_files.stream_delay_s, video_files.stream_delay_err_s, video_files.stream_delay_basis, state_second.feed_last_row_age_s, pbp_version_pulls.fetched_at_utc]
+        as_of: as_of_known
+        requirements: [R-SY-21, R-PR-15]
+        number_rule: {class: measurement, unit: seconds, error: 'median and 95th percentile are both printed; the error of the wall-clock estimate is printed beside each delay', link: state}
+        grade_rule: contract
+      - key: cost
+        kind: table
+        shows: 'Per stage: duration, GPU-seconds, CPU-seconds, API calls, storage and money; and the totals of the run.'
+        inputs:
+          tables: [stage_runs.stage, stage_runs.duration_s, stage_runs.gpu_s, stage_runs.cpu_s, stage_runs.api_calls, stage_runs.cost_usd, run_records.gpu_hours, run_records.compute_units, run_records.storage_raw_gb, run_records.storage_processed_mb]
+        requirements: [R-CS-13]
+        number_rule: {class: measurement, unit: 'seconds, calls, gigabytes, US dollars', error: 'as logged by each stage run', link: rows}
+        grade_rule: contract
+      - key: revisions
+        kind: tile
+        shows: 'How many versions of the play-by-play and of the box score exist for the game, when the last one arrived, and how many of our numbers a revision moved.'
+        inputs:
+          tables: [pbp_versions.pbp_version_id, pbp_versions.known_at_utc, pbp_versions.n_plays, stat_corrections.stat_correction_id, stat_corrections.was_published]
+        requirements: [R-SY-20]
+        number_rule: {class: official, source: the official play-by-play and box score, as_of: the time each version became known, link: rows}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected number: the check behind it, its rows, the run record and lineage.'
+        inputs: {}
+    interactions:
+      - {action: select, at: completeness, target: 'a field; the inspector shows the check and the rows that are empty'}
+      - {action: drill_down, at: invariant_breaks, target: 'a break as a review item, where one exists', to: review_item}
+      - {action: drill_down, at: level_time, target: 'a stretch on the game canvas', to: studio_game_canvas}
+      - {action: drill_down, at: revisions, target: the version diff of the game, to: pbp_version_diff}
+      - {action: drill_down, at: cost, target: the run record of the run, to: run_record_report}
+      - {action: drill_down, at: official_record_checks, target: the rows that differ; each row links to its frames}
+      - {action: inspect_query, at: possession_counts, target: the query with the metric ids of each definition}
+      - {action: export, at: view, target: the report as a page, produces: page}
+    degraded:
+      D1_bug_away: 'The page prints the seconds with no scorebug and the count of hidden stretches. Clock checks state the share of the game they could cover.'
+      D2_off_main: 'The page prints the seconds off the main camera. Tracking completeness is given for main-camera time and for all time, side by side.'
+      D3_replay: 'Replays never enter a number. Their seconds are a row of the level bar.'
+      D4_break: 'Breaks never enter a number. Their seconds are a row of the level bar.'
+      D5_no_video: 'Intake, usable share, level time and tracking completeness read "no video". The feed sections, possession counts and revisions are shown.'
+      feed_stale: 'The page prints the play-by-play version and its pull time, and the seconds of the live run during which the feed was stale.'
+    empty_state: 'Game not processed: "not processed", with the stages that are missing. A section whose stage did not run says "stage not run" instead of showing zeros.'
+    requirements: [R-VI-02, R-VI-06, R-VI-10, R-DQ-07, R-DQ-08, R-SY-17, R-SY-20, R-SY-21, R-VA-03, R-CS-13, R-IV-40, R-SB-01, R-RR-08, R-PR-15, R-VZ-02, R-VZ-03]
+    decisions: [K12, K17, K23]
+    depends_on:
+      baselines: [live_state, state_machine, metrics]
+      tables: [game_gate_results, games, video_files, clock_map, possessions, dq_reports, stage_outputs, team_box, source_definitions, run_requirement_results, shots, identity_possession_checks, state_second, state_frame, quarantine_rows, scoreboard_flags, frames, state_transitions, pbp_version_pulls, stage_runs, run_records, pbp_versions, stat_corrections]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-S1, ACC-VW-L1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      Two screens the task names are sections of this page: the latency report (K23) and the invariant-break list.
+      At P0 the page shows the feed sections; intake at P1; tracking completeness, level time and latency as their
+      stages arrive. The latency section reads as_of_known; every other section reads as_of_event.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  run_record_report:
+    id: VW-RPT-10
+    name: Run record and failure analysis
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What did this run test, what passed or failed and on what evidence, and what changed since the run before?
+    grain: run
+    as_of: {view: as_of_event, pass: [blind, anchored, pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'result (R-RR-02): pass, fail or not testable. A requirement with no gold sample is "not testable", never "pass". Each result has n and a 95 % interval from a bootstrap resampled by game.'
+      - 'slices (R-RR-03a): nine technical slices and six game-situation slices. Every slice shows its n. A slice with n below 50 is listed, not flagged.'
+      - 'cause (R-RR-03b): one of data, label, model, threshold, upstream gate, compute.'
+      - 'source tier (R-GT-03): one result row per tier of video source.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A target changes only through the planner, with date, old value, new value and reason (R-RR-07); the change is shown in the header of the next run.'
+      - 'never editable: a result, a target from this page, a row of the error catalogue (append-only, R-RR-05), the outputs of a failed run (kept until the fix is verified, R-RR-08).'
+    params:
+      bootstrap_resamples: {value: 1000, unit: count, why: 'resamples by game behind every interval', evidence: 'requirement: R-RR-02 (initial value, to calibrate)'}
+      slice_flag_min_n: {value: 50, unit: count, why: 'a slice with fewer cases is listed with its n but never flagged', evidence: 'requirement: R-RR-03a and R-RR-04'}
+      weak_slice_gap_points: {value: 5, unit: points, why: 'a slice this far below target on a passing run gets the flag "pass, weak slice"', evidence: 'requirement: R-RR-04 (proposal)'}
+      worst_cases_shown: {value: 20, unit: count, why: 'worst cases listed per failed requirement', evidence: 'requirement: R-RR-03b'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The run, its task, its status, its start and end, the games, the pass, and the run it is compared with.'
+        inputs: {}
+      - key: run_header
+        kind: tile
+        shows: 'Code commit, config hashes, model versions, seed, frame policy, processing resolution, mode, play-by-play source, compute units, GPU hours and storage. Any target that changed since the run before, with its logged reason.'
+        inputs:
+          tables: [run_records.run_id, run_records.task_id, run_records.status, run_records.start_utc, run_records.end_utc, run_records.game_ids, run_records.git_commit, run_records.config_hashes, run_records.input_hashes, run_records.model_versions, run_records.seed, run_records.frame_policy, run_records.processing_resolution, run_records.mode, run_records.pbp_source, run_records.compute_units, run_records.gpu_hours, run_records.gpu_type, run_records.storage_raw_gb, run_records.storage_processed_mb, run_records.requirement_ids, run_records.discrepancy_counts, registry_change_log.old_value, registry_change_log.new_value, registry_change_log.reason, registry_change_log.changed_at_utc]
+        requirements: [R-RR-01, R-RR-07]
+        number_rule: {class: measurement, unit: 'hours, compute units, gigabytes', error: 'as logged by the runner', link: rows}
+        grade_rule: contract
+      - key: stage_table
+        kind: table
+        shows: 'One row per stage: its node in the dependency graph, the output keys of its inputs and outputs, row counts, duration, cost, status, and the error text of a failed stage.'
+        inputs:
+          tables: [stage_runs.stage, stage_runs.dag_node, stage_runs.inputs, stage_runs.outputs, stage_runs.counts, stage_runs.duration_s, stage_runs.cost_usd, stage_runs.status, stage_runs.error, stage_runs.code_version, stage_runs.config_hash, stage_outputs.output_key, stage_outputs.content_hash, stage_outputs.rows]
+        requirements: [R-RR-01, R-EN-19]
+        number_rule: {class: measurement, unit: 'rows, seconds, US dollars', error: 'as logged by each stage run', link: rows}
+        grade_rule: contract
+      - key: requirement_results
+        kind: table
+        shows: 'One row per requirement tested and source tier: metric, target, value, pass, fail or not testable, n, the interval, the change against the run before, and whether the row is a gate or descriptive only.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.target, run_requirement_results.value, run_requirement_results.result, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.source_tier, run_requirement_results.gate, run_requirement_results.descriptive_only, run_requirement_results.hold_game, run_requirement_results.delta_vs_previous]
+        requirements: [R-RR-02, R-GT-03, R-RR-06]
+        number_rule: {class: estimate, n: gold cases of the row, interval: 'bootstrap resampled by game, printed after the value', level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: slice_report
+        kind: table
+        shows: 'For every failed requirement, and for passing ones too: the error rate per slice with its n, the confusion matrix, and the flag "pass, weak slice" where it applies.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.slice_key, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.result, run_requirement_results.robustness_variant, error_catalogue.gold_label, error_catalogue.prediction, error_catalogue.slice_values]
+        requirements: [R-RR-03a, R-RR-04]
+        number_rule: {class: estimate, n: gold cases in the slice, interval: printed after each rate, level: 0.95, link: rows, min_n: 50}
+        grade_rule: contract
+      - key: worst_cases
+        kind: table
+        shows: 'The twenty worst cases of each failed requirement: frame, clip link, gold label, prediction, the one cause from the fixed list, and the next fix with its expected gain in metric points.'
+        inputs:
+          tables: [error_catalogue.error_id, error_catalogue.requirement_id, error_catalogue.game_id, error_catalogue.video_id, error_catalogue.frame_index, error_catalogue.video_ts_ms, error_catalogue.clip_link, error_catalogue.gold_label, error_catalogue.prediction, error_catalogue.cause, error_catalogue.worst_case_rank, error_catalogue.model_version, error_catalogue.fix_verified]
+        requirements: [R-RR-03b, R-RR-05]
+        number_rule: {class: label, confidence: 'the confidence of the wrong prediction, where stored', version: the model version of the row, link: frames}
+        grade_rule: contract
+      - key: reproducibility
+        kind: tile
+        shows: 'Whether re-running the inputs of the record reproduced the output keys: the count of deterministic stages checked and the count that matched, and the GPU stages inside their tolerance.'
+        inputs:
+          tables: [stage_outputs.output_key, stage_outputs.content_hash, stage_outputs.first_run_id, run_requirement_results.requirement_id, run_requirement_results.result, run_requirement_results.n]
+        requirements: [R-RR-01]
+        number_rule: {class: descriptive, n: stages re-run, descriptive_mark: 'a count of stages that matched, not an estimate', link: rows}
+        grade_rule: contract
+      - key: filter_bar
+        kind: control
+        component: filter_bar
+        shows: 'Filters by result, phase, requirement family, source tier and cause.'
+        inputs: {}
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected result or case: its gold cases, the stage that produced the prediction, config hash and model version.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: filter_bar, target: 'result, phase, requirement family, source tier, cause'}
+      - {action: select, at: requirement_results, target: 'a result; the inspector shows its gold cases and the interval'}
+      - {action: drill_down, at: requirement_results, target: the slices and worst cases of the requirement}
+      - {action: drill_down, at: worst_cases, target: the case as a review item with its clip, to: review_item}
+      - {action: drill_down, at: stage_table, target: the lineage of a stage output, to: lineage_explorer}
+      - {action: drill_down, at: slice_report, target: the two versions side by side on the bench, to: model_bench}
+      - {action: inspect_query, at: requirement_results, target: the rows and the query behind a result}
+      - {action: export, at: view, target: the run record as a page, produces: page}
+    degraded:
+      D1_bug_away: 'Numbers are computed as specified. "Scorebug away" is a technical slice with its own row.'
+      D2_off_main: '"Camera shot type during the event" is a game-situation slice with its own row.'
+      D3_replay: 'Replays never enter a number.'
+      D4_break: 'Breaks never enter a number.'
+      D5_no_video: 'A run on a game with no video tests the feed requirements only. Video requirements read "not testable".'
+      feed_stale: 'The header prints the play-by-play source and version of the run.'
+    empty_state: 'No run yet: "no run recorded". A run that tested nothing: the header and the stage table, and "no requirement was tested in this run".'
+    requirements: [R-RR-01, R-RR-02, R-RR-03a, R-RR-03b, R-RR-04, R-RR-05, R-RR-06, R-RR-07, R-RR-08, R-GT-03, R-VA-09, R-EN-19, R-VZ-02, R-VZ-03]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state]
+      tables: [run_records, registry_change_log, stage_runs, stage_outputs, run_requirement_results, error_catalogue]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      The scores are requirement metrics stored per run; no registry M-id applies. The model bench is the interactive
+      two-version reading of the same tables; this page is the record of one run, read top to bottom.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  monitoring_board:
+    id: VW-RPT-11
+    name: Monitoring and alerts board
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Since the last game, is anything drifting, missing, late or over budget, and what needs my attention first?
+    grain: run
+    as_of: {view: as_of_known, pass: [blind, pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'as known: the board shows the state of the platform as known now and prints the time of its newest and its oldest input.'
+      - 'alert: a rule that is true now. An alert closes when its rule is no longer true. It cannot be closed by hand.'
+      - 'privacy lane (R-AS-10, R-PR-19): the board is where the standing privacy checks are read - no video frame and no face crop outside the private store, exports by kind, the outside-approver lane read-only and separate.'
+      - 'latency (K23): the trend is reported beside the budgets. It raises no alert.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. An alert threshold is a registered parameter: it is tried in the parameter sweep and changed through a draft.'
+      - 'never editable: an alert, a verdict, a count.'
+    params:
+      rolling_games: {value: 10, unit: games, why: 'window of the rolling calibration monitor', evidence: 'requirement: R-VA-14'}
+      rolling_ece_alert: {value: 0.05, unit: probability, why: 'alert line of the rolling calibration error', evidence: 'requirement: R-VA-14'}
+      feature_psi_alert: {value: 0.25, unit: index, why: 'alert line of the stability index of a key feature', evidence: 'requirement: R-VA-14 and R-DQ-08 (proposal)'}
+      market_completeness_min: {value: 0.95, unit: share, why: 'weekly market completeness below this, two weeks running, raises an alert', evidence: 'requirement: R-MK-33'}
+      market_unmatched_max: {value: 0.02, unit: share, why: 'a source whose unmatched share is above this raises an alert', evidence: 'requirement: R-MK-33'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'AS KNOWN, the time of the board, the last run and the last game it covers, the age of its oldest input.'
+        inputs: {}
+      - key: alerts
+        kind: table
+        shows: 'Open alerts, most urgent first: what, the rule in words with its threshold, since when, the game or source, and the link to the evidence.'
+        inputs:
+          tables: [dq_reports.game_id, dq_reports.table_name, dq_reports.field, dq_reports.check, dq_reports.value, dq_reports.flag, dq_reports.note, run_requirement_results.requirement_id, run_requirement_results.result, run_requirement_results.value, run_requirement_results.target]
+        requirements: [R-DQ-18, R-VA-14, R-MK-33]
+        number_rule: {class: descriptive, n: games or weeks the rule looked at, descriptive_mark: 'the value that tripped the rule, shown with its threshold', link: rows}
+        grade_rule: contract
+      - key: table_health
+        kind: table
+        shows: 'Per table and game: row volume, null rates, freshness, and the drift verdict of each key field once a baseline exists.'
+        inputs:
+          tables: [dq_reports.table_name, dq_reports.game_id, dq_reports.field, dq_reports.check, dq_reports.value, dq_reports.flag, stage_outputs.table_name, stage_outputs.rows, stage_outputs.created_utc]
+        requirements: [R-DQ-18, R-DQ-08]
+        number_rule: {class: descriptive, n: rows of the table in the game, descriptive_mark: 'exact counts and shares per game; a drift verdict only from game 11 (K17)', link: rows}
+        grade_rule: contract
+      - key: model_health
+        kind: chart
+        shows: 'Per deployed model: the calibration error over the last ten games as a line with its alert line, and the stability index of each key input feature.'
+        inputs:
+          tables: [run_requirement_results.run_id, run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.n, predictions.model_version, predictions.made_at_utc]
+          metrics: [M-MKT-091]
+        phase: P6
+        requirements: [R-VA-14, R-VA-18]
+        number_rule: {class: estimate, n: predictions in the ten games, interval: a fading band round the line, level: 0.95, link: rows, min_n: default}
+        grade_rule:
+          unknown: 'Before a model is deployed the chart shows a dash and "no deployed model before P6".'
+      - key: market_health
+        kind: table
+        shows: 'Per market source and week: completeness, the unmatched share, and the games of interest that lack a closing line from any enabled source.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.result, run_requirement_results.slice_key]
+          metrics: [M-MKT-055]
+        phase: P7
+        requirements: [R-MK-33]
+        number_rule: {class: estimate, n: games of the week per source, interval: printed after each share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: latency_trend
+        kind: chart
+        shows: 'Per view with a refresh budget: the measured time per game as points, with the budget as a line. No colour says pass or fail.'
+        inputs:
+          live_state: [stamp_known_at_utc, stream_delay_s]
+          tables: [run_requirement_results.run_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.descriptive_only, video_files.stream_delay_s]
+        requirements: [R-SY-21]
+        number_rule: {class: measurement, unit: seconds, error: 'median and 95th percentile per game are both drawn', link: rows}
+        grade_rule: contract
+      - key: budget_use
+        kind: table
+        shows: 'Compute units, GPU hours, storage, API calls and money against their caps, per week and per game; the cost of the outside approver under its monthly cap; the credit counters of each data source.'
+        inputs:
+          tables: [run_records.run_id, run_records.compute_units, run_records.gpu_hours, run_records.storage_raw_gb, run_records.storage_processed_mb, stage_runs.stage, stage_runs.api_calls, stage_runs.cost_usd, raw_pulls.source, raw_pulls.call_budget_counter, raw_pulls.fetched_at_utc]
+        requirements: [R-CS-13, R-HR-20]
+        number_rule: {class: measurement, unit: 'compute units, hours, gigabytes, calls, US dollars', error: 'as logged by the runner and the collectors', link: rows}
+        grade_rule: contract
+      - key: privacy_lane
+        kind: table
+        shows: 'The standing privacy checks with their last result: export paths that write video or a face crop outside the private store (must be none), exports counted by kind, numbers served by consumer, the check that no pipeline module reads the log of the outside approver, and the check that a run with the approver off is byte-identical.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.result, run_requirement_results.value, run_requirement_results.n, metric_value_log.consumer, metric_value_log.served_utc, metric_value_log.status]
+        requirements: [R-AS-10, R-PR-19, R-EN-23, R-HR-13, R-HR-20]
+        number_rule: {class: descriptive, n: exports and served numbers checked, descriptive_mark: 'counts from the audit; any count above zero in the first line is an alert', link: rows}
+        grade_rule: contract
+      - key: review_load
+        kind: tile
+        shows: 'Open review items against the weekly budget, and the label types paused by low agreement.'
+        inputs:
+          tables: [review_queue.status, review_queue.budget_week, review_queue.item_id]
+        requirements: [R-HR-04]
+        number_rule: {class: descriptive, n: open items, descriptive_mark: 'a count of items, not an estimate', link: rows}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected alert or number: the rule, the values behind it, the run records.'
+        inputs: {}
+    interactions:
+      - {action: select, at: alerts, target: 'an alert; the inspector shows the rule and the values that tripped it'}
+      - {action: drill_down, at: alerts, target: the processing report of the game the alert names, to: game_processing_report}
+      - {action: drill_down, at: model_health, target: the calibration report of the model, to: calibration_report}
+      - {action: drill_down, at: budget_use, target: the run record behind a cost, to: run_record_report}
+      - {action: drill_down, at: review_load, target: the review queue, to: review_queue}
+      - {action: drill_down, at: privacy_lane, target: the calibration report of the outside approver, to: jev_calibration_report}
+      - {action: inspect_query, at: table_health, target: the rows and the query behind a health number}
+      - {action: export, at: view, target: the board as a page, produces: page}
+    degraded:
+      D1_bug_away: 'The board prints, per game, the seconds with no scorebug as one of its health numbers. Nothing else changes.'
+      D2_off_main: 'The board prints, per game, the seconds off the main camera. Tracking health is given for main-camera time.'
+      D3_replay: 'Replays never enter a number.'
+      D4_break: 'Breaks never enter a number.'
+      D5_no_video: 'A game with no video shows its feed health only; its video lines read "no video".'
+      feed_stale: 'A stale feed during a live run is itself listed, with its start, its length and the last row received.'
+    empty_state: 'No alert: "no open alert", with the time of the last check. Fewer than eleven games of a source tier: "baseline building: quantiles only" in place of every drift verdict.'
+    requirements: [R-DQ-18, R-DQ-08, R-VA-14, R-VA-18, R-MK-33, R-CS-13, R-HR-04, R-HR-13, R-HR-20, R-AS-10, R-PR-19, R-EN-23, R-SY-21, R-VZ-02, R-VZ-03]
+    decisions: [K12, K17, K23]
+    depends_on:
+      baselines: [live_state, metrics]
+      tables: [dq_reports, run_requirement_results, stage_outputs, predictions, video_files, run_records, stage_runs, raw_pulls, metric_value_log, review_queue]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-S1, ACC-VW-L1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      At P0 the board shows table health, budget use and the privacy lane. Model health joins at P6 and market health
+      at P7. Decision taken here: the privacy lane of R-AS-10 is a section of this board, so that the standing checks
+      are read in one place after every run.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  labeller_agreement_report:
+    id: VW-RPT-12
+    name: Labeller agreement report
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Do my labels agree with my own earlier labels, with a second labeller and with the labels Claude made, for each label type?
+    grain: item
+    as_of: {view: as_of_event, pass: [blind, anchored]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'item: one label type (turnover, screen, identity, set, coverage, event).'
+      - 'self-agreement (R-HR-06): the share of blind re-shows on which the owner gave the same answer again. Below the line the label type is paused.'
+      - 'second labeller (R-HR-10, R-HR-14): agreement beyond chance on a shared sample. Claude is a named labeller; its labels are stored apart (R-HR-16).'
+      - 'gate for AI labels (R-HR-16): labels made by Claude are scored against the labels of the owner per type before any of them is used, and one counts as gold only after the owner confirmed it.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A disagreement is resolved by the owner on the review item screen, as a new label.'
+      - 'never editable: a label, an agreement number, the paused state of a label type (it lifts when agreement is back above the line).'
+    params:
+      reshow_share: {value: 0.05, unit: share, why: 'share of past items shown again blind', evidence: 'requirement: R-HR-06'}
+      self_agreement_min: {value: 0.95, unit: share, why: 'self-agreement below this pauses the label type', evidence: 'requirement: R-HR-06 (proposal)'}
+      kappa_min: {value: 0.75, unit: kappa, why: 'agreement beyond chance with a second labeller on sets and coverages', evidence: 'requirement: R-HR-10 (proposal)'}
+      shared_sample_min: {value: 50, unit: possessions, why: 'shared possessions needed before a kappa is printed', evidence: 'requirement: R-HR-14'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The labelling sessions covered, the date of the last one, the labellers by name, and the versions of the labelling guides.'
+        inputs: {}
+      - key: self_agreement
+        kind: table
+        shows: 'Per label type: items shown again blind, same answers, the share with its interval, the line, and "paused" where the share is below it.'
+        inputs:
+          tables: [review_labels.label_type, review_labels.labeller, review_labels.is_repeat_blind, review_labels.agrees_with_previous, review_labels.labelled_at_utc, review_labels.item_id]
+        requirements: [R-HR-06]
+        number_rule: {class: estimate, n: items shown again, interval: printed after the share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: agreement_matrix
+        kind: chart
+        shows: 'Per label type: a matrix of labellers against labellers with the agreement beyond chance in each cell, its n and interval. Cells with fewer shared possessions than the minimum read "too few".'
+        inputs:
+          tables: [review_labels.label_type, review_labels.labeller, review_labels.target_table, review_labels.target_key, review_labels.value, review_labels.tool]
+        requirements: [R-HR-10, R-HR-14]
+        number_rule: {class: estimate, n: shared possessions in the cell, interval: printed in the cell, level: 0.95, link: rows, min_n: 50}
+        grade_rule: contract
+      - key: ai_label_gate
+        kind: table
+        shows: 'Per label type: labels Claude made, how many the owner has confirmed, corrected or not yet seen, the agreement between the two with its interval, and "usable" or "not yet".'
+        inputs:
+          tables: [review_labels.label_type, review_labels.labeller, review_labels.prelabel_by, review_labels.action, review_labels.gold_set, review_labels.value, review_labels.item_id]
+        requirements: [R-HR-16, R-HR-12]
+        number_rule: {class: estimate, n: items labelled by both, interval: printed after the share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: disagreement_list
+        kind: table
+        shows: 'The items on which two labellers, or the owner and his own earlier answer, differ: label type, both values, who and when.'
+        inputs:
+          tables: [review_labels.item_id, review_labels.label_type, review_labels.target_table, review_labels.target_key, review_labels.value, review_labels.labeller, review_labels.labelled_at_utc, review_queue.item_id, review_queue.status]
+        numbers: none
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected cell or item: the labels behind it, each with who, when, tool and model version.'
+        inputs: {}
+    interactions:
+      - {action: select, at: agreement_matrix, target: 'a cell; the inspector lists the shared items and both labels'}
+      - {action: drill_down, at: disagreement_list, target: the item on the review item screen, to: review_item}
+      - {action: drill_down, at: self_agreement, target: the re-shown items of a label type as rows}
+      - {action: inspect_query, at: ai_label_gate, target: the rows and the query behind the agreement}
+      - {action: export, at: view, target: 'the agreement numbers per label type as a page', produces: page}
+    degraded:
+      D1_bug_away: 'Not applicable. Agreement is computed over stored labels.'
+      D2_off_main: 'Not applicable. Items answered "not visible" are counted in their own column.'
+      D3_replay: 'Not applicable. No item is centred on a replay.'
+      D4_break: 'Not applicable.'
+      D5_no_video: 'Label types that need video have no items for the game; the row says "no video".'
+      feed_stale: 'Not applicable. The banner prints the play-by-play version the turnover items were built on.'
+    empty_state: 'No re-show answered yet: "no blind re-show answered", with the count of items due. One labeller only: the matrix reads "no second labeller yet" and the self-agreement table stands alone.'
+    requirements: [R-HR-06, R-HR-10, R-HR-12, R-HR-14, R-HR-16, R-HR-05, R-VZ-02, R-VZ-03]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state]
+      tables: [review_labels, review_queue, run_records]
+    phase: P0
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-S1, ACC-VW-P1, ACC-VW-B1]
+    wireframe: null
+    notes: >-
+      Renderable at P0 from the labels of the two private tools. The report never shows a guess of a model as if it
+      were a label: model pre-labels have their own labeller name.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  identity_quality_report:
+    id: VW-RPT-13
+    name: Identity quality report
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: Which players does the system identify reliably, which pairs does it mix up, and may this game feed player-level numbers?
+    grain: player-game
+    as_of: {view: as_of_event, pass: [blind, anchored]}
+    refresh: {class: post_game}
+    min_width_px: 375
+    definitions:
+      - 'label: every number here reads locked labels only. HOLD is a state, counted as HOLD. The probable tier is counted in its own column as a share of frames; a probable name is never printed in a row and never feeds a number (OD-8).'
+      - 'recording standard (R-ID-18, OD-9): a game feeds player-level numbers only if recorded at 1080 lines or more and 59.94 frames per second or more. Below that the page says "team-level only".'
+      - 'locked labels never swap (R-ID-17): the switch log lists every label change, alarm and offline correction as a row. Nothing in it is overwritten.'
+      - 'no face: identity rests on jersey, kit, build and movement cues. The page shows no face image and uses none.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A wrong identity is corrected on the review item screen; that adds a row to the switch log and opens a draft.'
+      - 'never editable: a locked label in place, the switch log, an accuracy number.'
+    params:
+      recording_min_height_px: {value: 1080, unit: px, why: 'least picture height for player-level numbers', evidence: 'requirement: R-ID-18 (decision OD-9)'}
+      recording_min_fps: {value: 59.94, unit: fps, why: 'least frame rate for player-level numbers', evidence: 'requirement: R-ID-18 (decision OD-9)'}
+      jersey_read_target: {value: 0.90, unit: share, why: 'read rate at which the least usable player height in pixels is reported', evidence: 'requirement: R-ID-05'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'The game, the identity run and pack version, the pass, and in words whether the game meets the recording standard.'
+        inputs: {}
+      - key: recording_standard
+        kind: tile
+        shows: 'Picture height and frame rate of the file against the standard, and the verdict: player-level numbers, team-level only, or probable-only labels.'
+        inputs:
+          tables: [video_files.video_id, video_files.height_px, video_files.fps_nominal, video_files.fps_constant, video_files.quality_tier]
+        requirements: [R-ID-18]
+        number_rule: {class: measurement, unit: pixels and frames per second, error: 'as read from the file at intake', link: rows}
+        grade_rule: contract
+      - key: per_player
+        kind: table
+        shows: 'One row per player on the floor: frames locked, on HOLD and in the probable tier as shares of his on-court time, identity accuracy where gold exists, jersey read rate, corrected switches, agreement with the play-by-play lineup.'
+        inputs:
+          tables: [tracks.player_id, tracks.n_frames, tracks.n_frames_locked, tracks.n_frames_hold, tracks.n_frames_probable, tracks.identity_conf, tracks.jersey_number_voted, tracks.jersey_vote_conf, tracks.id_switches_corrected, tracks.agrees_with_pbp_lineup, tracking_quality_second.identity_state, tracking_quality_second.observed_share, run_requirement_results.requirement_id, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi]
+        requirements: [R-ID-14, R-DT-11]
+        identity_rule: locked_or_hold
+        number_rule: {class: estimate, n: on-court frames of the player and gold frames where accuracy is given, interval: printed after each share, level: 0.95, link: frames, min_n: default}
+        grade_rule: contract
+      - key: confusion_list
+        kind: table
+        shows: 'Pairs of players with any alarm or split between them: the count, the frames both were on the floor, the kind, and how fast the evidence tells the two apart.'
+        inputs:
+          tables: [identity_confusions.player_a_id, identity_confusions.player_b_id, identity_confusions.n_confusions, identity_confusions.player_frames, identity_confusions.kind, confusable_pairs.player_id_a, confusable_pairs.player_id_b, confusable_pairs.separation_rate_nats_per_s]
+        requirements: [R-ID-14]
+        identity_rule: locked_or_hold
+        number_rule:
+          - {class: descriptive, n: frames with both players on the floor, descriptive_mark: 'counts of this game, not estimates', link: frames}
+          - {class: measurement, unit: nats per second, error: 'from the spread over the frames of the pair, printed beside the rate', link: frames}
+        grade_rule: contract
+      - key: switch_log
+        kind: table
+        shows: 'Every row of the switch log: frame, chain, from and to label, the kind (alarm, lineup conflict, release at a substitution, offline correction), the evidence before and after, and its review status. Above it: swap events with their exposure and the upper bound of the swap rate.'
+        inputs:
+          tables: [identity_switch_log.row_seq, identity_switch_log.frame, identity_switch_log.frame_last, identity_switch_log.chain_id, identity_switch_log.from_label, identity_switch_log.to_label, identity_switch_log.kind, identity_switch_log.evidence_before, identity_switch_log.evidence_after, identity_switch_log.review_status, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_hi]
+          events: ['bigs:id_swap_risk', T22]
+        requirements: [R-ID-17, R-ID-20, R-DT-24]
+        identity_rule: locked_or_hold
+        number_rule: {class: estimate, n: exposure in frames and crossings, interval: 'the upper bound of the swap rate, printed', level: 0.95, link: frames, min_n: default}
+        grade_rule: contract
+      - key: lock_timeline
+        kind: timeline
+        shows: 'One row per player across the game: locked, HOLD, probable, off the floor, with crossings and substitutions marked.'
+        inputs:
+          tables: [identity_frames.frame_index, identity_frames.chain_id, identity_frames.lock_state, identity_frames.tier, identity_frames.hold_reason, tracks.start_frame, tracks.end_frame, tracks.chain_kind, tracks.end_reason]
+          events: ['bigs:id_swap_risk', T22]
+        requirements: [R-ID-20]
+        identity_rule: locked_or_hold
+        grade_rule: contract
+      - key: probable_runs
+        kind: table
+        shows: 'The probable log: chain, frame range, mean posterior, review status, and the count of probable runs that proved wrong where truth exists. No name is printed; the run opens on the review item screen.'
+        inputs:
+          tables: [identity_probable_runs.chain_id, identity_probable_runs.frame_start, identity_probable_runs.frame_end, identity_probable_runs.mean_posterior, identity_probable_runs.review_status]
+        number_rule: {class: label, confidence: the mean posterior of the run, version: the identity pack and model version of the run, link: frames}
+        grade_rule: contract
+      - key: lineup_check
+        kind: table
+        shows: 'Per possession: the lineup of the play-by-play against the labels seen, lineup conflicts, the share of abstention, and seconds of HOLD that nothing explains.'
+        inputs:
+          tables: [identity_possession_checks.possession_id, identity_possession_checks.lineup_pbp, identity_possession_checks.lineup_seen, identity_possession_checks.lineup_conflicts, identity_possession_checks.abstention_share, identity_possession_checks.unexplained_holds_s]
+        identity_rule: locked_or_hold
+        number_rule: {class: descriptive, n: possessions of the game, descriptive_mark: 'counts and shares of this game, not estimates', link: frames}
+        grade_rule: contract
+      - key: season_roll_up
+        kind: table
+        shows: 'Per player over the season: accuracy and coverage with n, lowest first. The players at the top get more labels first.'
+        inputs:
+          tables: [tracks.player_id, tracks.n_frames_locked, tracks.n_frames_hold, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.slice_key]
+        requirements: [R-ID-14]
+        identity_rule: locked_or_hold
+        number_rule: {class: estimate, n: games and gold frames of the player, interval: printed after each share, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: jersey_read_curve
+        kind: chart
+        shows: 'The jersey read rate against the height of the player in pixels, with its band, and the least height at which reading reaches the target.'
+        inputs:
+          tables: [detections.height_px, detections.jersey_read_conf, detections.jersey_read_front, detections.jersey_read_back, detections.occlusion_level]
+        requirements: [R-ID-05]
+        number_rule: {class: estimate, n: person boxes per height bin, interval: a fading band round the line, level: 0.95, link: frames, min_n: default}
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected row: the chain, its evidence per cue, the identity pack version and lineage.'
+        inputs: {}
+    interactions:
+      - {action: select, at: per_player, target: 'a player; the timeline, the confusion list and the switch log narrow to him'}
+      - {action: select, at: lock_timeline, target: 'a stretch; the inspector shows the lock state and the hold reason'}
+      - {action: drill_down, at: switch_log, target: the row as an identity review item, to: review_item}
+      - {action: drill_down, at: probable_runs, target: 'the run as an identity review item, where the name is read on clip and court', to: review_item}
+      - {action: drill_down, at: lock_timeline, target: the stretch on the game canvas, to: studio_game_canvas}
+      - {action: drill_down, at: confusion_list, target: the crossings of the pair as rows; each links to its frames}
+      - {action: inspect_query, at: per_player, target: the rows and the query behind a share}
+      - {action: export, at: view, target: the report as a page inside the private store, produces: page}
+    degraded:
+      D1_bug_away: 'No change. Identity does not read the scorebug.'
+      D2_off_main: 'Off the main camera no identity is locked. Those seconds are left out of coverage and printed as "off main camera" in every row.'
+      D3_replay: 'Replays never enter a number. A replay may be linked to a switch-log row as evidence.'
+      D4_break: 'Breaks never enter a number. Identities are released at a break and re-locked after it; the timeline shows the gap.'
+      D5_no_video: 'A card "no video: no identity run for this game". The season roll-up leaves the game out and says so.'
+      feed_stale: 'The lineup check prints the play-by-play version it used. With no final play-by-play the lineup check reads "waiting for the final play-by-play".'
+    empty_state: 'No identity run for the game: "no identity run". A player with no gold frames: accuracy reads "no gold" and only coverage is shown. Too few frames: "too few" with n.'
+    requirements: [R-ID-14, R-ID-05, R-ID-17, R-ID-18, R-ID-20, R-DT-11, R-DT-24, R-PR-19, R-VZ-02, R-VZ-03]
+    decisions: [K12, OD-8, OD-10]
+    depends_on:
+      baselines: [live_state, state_machine, movement_grammar, identity_pack]
+      tables: [video_files, tracks, tracking_quality_second, run_requirement_results, identity_confusions, confusable_pairs, identity_switch_log, identity_frames, identity_probable_runs, identity_possession_checks, detections, run_records]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-I1, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      Renders the per_game, per_season, switch_log, probable_log and per_possession outputs of the identity pack. The
+      quality numbers (accuracy, coverage, swap-rate bound) are metrics of that pack, stored per run; the stat registry
+      holds no M-id for them.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  jev_calibration_report:
+    id: VW-RPT-14
+    name: JEV calibration report
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: For each kind of question, how often is the outside approver right against my answer key, and may its verdicts count?
+    grain: model version
+    as_of: {view: as_of_event, pass: [blind]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'JEV: the outside approver. It never creates, changes or deletes a label, track, feature or prediction (R-HR-17). Its verdicts only confirm an item or send it to the review queue as a dispute.'
+      - 'read-only lane (R-AS-10): this report is the only screen of the lane. The Studio never writes to the consultation log, and no pipeline module reads it (R-HR-13).'
+      - 'calibration (R-HR-19): each consultation type is scored on the locked answer key of the owner before its verdicts count, and again on every change of the pinned model version.'
+      - 'not shown: the questions as sent (blind multiple choice with raw frames, R-HR-18) are shown to a model, not to a person; they are no view.'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A new answer key is a new key version made by the owner; it starts a new calibration.'
+      - 'never editable: the consultation log, a verdict, the answer key from this page, the pinned model version.'
+    params:
+      enable_top1_min: {value: 0.80, unit: share, why: 'a consultation type is switched on only at this top-1 accuracy on the answer key', evidence: 'requirement: R-HR-19 (proposal)'}
+      confirm_min_prob: {value: 0.85, unit: probability, why: 'a verdict confirms at this corrected probability or more', evidence: 'requirement: R-HR-19 (proposal)'}
+      dispute_min_prob: {value: 0.70, unit: probability, why: 'a verdict disputes at this corrected probability or more', evidence: 'requirement: R-HR-19 (proposal)'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'READ-ONLY LANE, the pinned model version, the version of the answer key, the date of the calibration.'
+        inputs: {}
+      - key: type_table
+        kind: table
+        shows: 'Per consultation type and pinned version: items on the answer key, top-1 accuracy with its interval, calibration error, and "on" or "off" against the line.'
+        inputs:
+          tables: [run_requirement_results.run_id, run_requirement_results.requirement_id, run_requirement_results.slice_key, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.target, run_requirement_results.result]
+        requirements: [R-HR-19]
+        number_rule: {class: estimate, n: items of the answer key for the type, interval: printed after each value, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: reliability_curve
+        kind: chart
+        shows: 'Per type: the corrected probability against the observed share right, in bins with their counts and a band, and the diagonal.'
+        inputs:
+          tables: [run_requirement_results.slice_key, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi]
+        requirements: [R-HR-19]
+        number_rule: {class: estimate, n: items in each bin, interval: a fading band per bin, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: verdict_use
+        kind: table
+        shows: 'Per game and type: consultations, confirms, disputes and "none of these"; the disputes that entered the review queue, and how the owner answered them.'
+        inputs:
+          tables: [review_queue.item_id, review_queue.trigger, review_queue.status, review_queue.game_id, review_labels.item_id, review_labels.action, review_labels.labeller]
+        requirements: [R-HR-17, R-HR-19]
+        number_rule: {class: descriptive, n: consultations of the game and type, descriptive_mark: 'counts of verdicts; a verdict is never a label', link: rows}
+        grade_rule: contract
+      - key: cost
+        kind: table
+        shows: 'Per game and per month: calls and cost of the lane against the monthly cap set by the owner.'
+        inputs:
+          tables: [stage_runs.stage, stage_runs.api_calls, stage_runs.cost_usd, stage_runs.started_utc]
+        requirements: [R-HR-20]
+        number_rule: {class: measurement, unit: calls and US dollars, error: 'as logged by the lane', link: rows}
+        grade_rule: contract
+      - key: isolation_checks
+        kind: tile
+        shows: 'Three standing checks with their last result: no pipeline module reads the consultation log; a run with the lane off is byte-identical to a run with it on; the Studio wrote nothing to the log.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.result, run_requirement_results.run_id]
+        requirements: [R-HR-13, R-HR-20, R-AS-10]
+        numbers: none
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected number: the calibration run, the key version and the pinned model version behind it.'
+        inputs: {}
+    interactions:
+      - {action: select, at: type_table, target: 'a consultation type; the curve and the verdict table narrow to it'}
+      - {action: drill_down, at: verdict_use, target: a dispute as a review item, to: review_item}
+      - {action: drill_down, at: type_table, target: the items of the answer key for the type as rows}
+      - {action: inspect_query, at: type_table, target: the rows and the query behind the accuracy}
+      - {action: export, at: view, target: the calibration report as a page, produces: page}
+    degraded:
+      D1_bug_away: 'Not applicable. Calibration reads the answer key.'
+      D2_off_main: 'Not applicable. Items off the main camera are not sent to the approver.'
+      D3_replay: 'Not applicable. Replay frames are not sent.'
+      D4_break: 'Not applicable.'
+      D5_no_video: 'No consultation is possible for the game; the verdict table says "no video".'
+      feed_stale: 'Not applicable.'
+    empty_state: 'No calibration yet: "no consultation type is calibrated; every type is off". A type with too few key items: "too few" with n, and the type stays off.'
+    requirements: [R-HR-13, R-HR-17, R-HR-18, R-HR-19, R-HR-20, R-AS-10, R-PR-19, R-VZ-02, R-VZ-03]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state]
+      tables: [run_requirement_results, review_queue, review_labels, stage_runs, run_records]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      The consultation log itself has no schema table by design: it is private and read by no pipeline module. The
+      report reads the calibration results as requirement results per run, the disputes from the review queue and the
+      cost from the stage runs. See the report to the lead for the table this may need.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  pbp_version_diff:
+    id: VW-RPT-15
+    name: Play-by-play version diff
+    surface: report
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What did the official play-by-play or box score change after the game, and which of our numbers moved because of it?
+    grain: game
+    as_of: {view: as_of_known, pass: [pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'version (R-SY-20): every pull that differs from the one before is stored as a version with a content hash. A pull with no change is counted and makes no version.'
+      - 'as known: the report compares what was known at two times. Each version prints the time it became known.'
+      - 'scope of re-scoring: only tables and published outputs whose clock range overlaps a change are re-scored, and they are marked. Everything else is listed as untouched, with its count.'
+      - 'editable: nothing. Choosing the two versions to compare changes the screen only.'
+      - 'an edit creates: nothing. The official record is never corrected by us; a disagreement with it is a review item.'
+      - 'never editable: a version (old versions stay readable), which version is canonical (the stored rule decides), a diff row.'
+    params:
+      rerun_within_days: {value: 7, unit: days, why: 'dependent outputs are re-run within this time after a revision', evidence: 'requirement: R-SY-20'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'AS KNOWN, the game, the two versions compared with the time each became known, and the count of pulls with no change.'
+        inputs: {}
+      - key: version_list
+        kind: table
+        shows: 'Every version of the play-by-play of the game: when it became known, plays, hash, source, the canonical rule; and under each the pulls that found it, with added, removed, changed and moved plays.'
+        inputs:
+          tables: [pbp_versions.pbp_version_id, pbp_versions.known_at_utc, pbp_versions.n_plays, pbp_versions.plays_sha256, pbp_versions.source, pbp_versions.canonical_rule, pbp_versions.n_duplicate_source_ids, pbp_version_pulls.pull_id, pbp_version_pulls.fetched_at_utc, pbp_version_pulls.is_change, pbp_version_pulls.change_class, pbp_version_pulls.n_added, pbp_version_pulls.n_removed, pbp_version_pulls.n_changed, pbp_version_pulls.n_moved, pbp_version_pulls.schedule_slot]
+        requirements: [R-SY-20]
+        number_rule: {class: official, source: the official play-by-play feed named in the row, as_of: the time the version became known, link: rows}
+        grade_rule: contract
+      - key: play_diff
+        kind: table
+        shows: 'Between the two versions: each play added, removed, changed or moved, the field, the old and the new value, and its period and clock.'
+        inputs:
+          tables: [pbp_diffs.diff_id, pbp_diffs.from_pbp_version_id, pbp_diffs.to_pbp_version_id, pbp_diffs.change_kind, pbp_diffs.source_play_id, pbp_diffs.field, pbp_diffs.field_class, pbp_diffs.old_value, pbp_diffs.new_value, pbp_diffs.period_old, pbp_diffs.period_new, pbp_diffs.seconds_remaining_old, pbp_diffs.seconds_remaining_new]
+        requirements: [R-SY-20]
+        number_rule: {class: official, source: the two versions named in the banner, as_of: the time each version became known, link: frames}
+        grade_rule: contract
+      - key: box_diff
+        kind: table
+        shows: 'Box statistics credited differently: the metric by id, the team or player, old and new value, old and new n, and whether the old value was ever published.'
+        inputs:
+          tables: [stat_corrections.stat_correction_id, stat_corrections.metric_id, stat_corrections.grain, stat_corrections.team_id, stat_corrections.player_id, stat_corrections.old_value, stat_corrections.new_value, stat_corrections.old_n, stat_corrections.new_n, stat_corrections.was_published, stat_corrections.cause_diff_id]
+          metrics: [M-PASS-001, M-TOV-001, M-REB-001, M-FOUL-001]
+        requirements: [R-SY-20]
+        identity_rule: locked_or_hold
+        number_rule: {class: official, source: the official box score, as_of: the two snapshots named in the row, link: rows}
+        grade_rule: contract
+        notes: 'The four metric ids are examples of counts a revision re-credits (assists, turnovers, rebounds, fouls). The table lists whichever ids the corrections name.'
+      - key: affected_outputs
+        kind: table
+        shows: 'Our tables and served numbers that used a changed value: the table, the clock range, re-scored or waiting, and the consumers that were served the old number. Untouched tables are counted in one line.'
+        inputs:
+          tables: [change_sets.change_set_id, change_sets.table_name, change_sets.op, change_sets.period, change_sets.game_clock_ds, change_sets.before_earliest_change, metric_value_log.metric_id, metric_value_log.status, metric_value_log.consumer, metric_value_log.served_utc, stage_outputs.output_key, stage_outputs.created_utc]
+        requirements: [R-SY-20]
+        number_rule: {class: descriptive, n: tables and served numbers that overlap a change, descriptive_mark: 'counts of rows and outputs, not estimates', link: rows}
+        grade_rule: contract
+      - key: change_strip
+        kind: timeline
+        shows: 'The game clock as one strip, with a mark at every changed play, so that the clock ranges that are re-scored can be seen at once.'
+        inputs:
+          tables: [pbp_diffs.period_new, pbp_diffs.seconds_remaining_new, pbp_diffs.change_kind]
+          events: [T18]
+        grade_rule: contract
+      - key: inspector
+        kind: control
+        component: inspector
+        shows: 'The selected change: both raw rows, the pulls that carried them, and the outputs that read them.'
+        inputs: {}
+    interactions:
+      - {action: filter, at: version_list, target: the two versions to compare}
+      - {action: select, at: play_diff, target: 'a changed play; the inspector shows both raw rows'}
+      - {action: brush, at: change_strip, target: 'a clock range; the diff tables narrow to it'}
+      - {action: drill_down, at: play_diff, target: the possession of the play with its video, to: possession_explorer}
+      - {action: drill_down, at: affected_outputs, target: the lineage of an affected output, to: lineage_explorer}
+      - {action: drill_down, at: box_diff, target: the plays that caused the re-credit}
+      - {action: inspect_query, at: affected_outputs, target: the query that finds the overlapping outputs}
+      - {action: export, at: view, target: the diff as a page, produces: page}
+    degraded:
+      D1_bug_away: 'Not applicable. The diff reads the feed, not the scorebug.'
+      D2_off_main: 'Not applicable.'
+      D3_replay: 'Not applicable.'
+      D4_break: 'Not applicable. A change dated inside a break is listed with the word BREAK.'
+      D5_no_video: 'No change. The link from a changed play goes to its rows instead of to video.'
+      feed_stale: 'This is the view that explains a stale or late feed after the fact: the banner prints the last pull, its result, and the time of the next scheduled pull.'
+    empty_state: 'One version only: "no revision since the first pull", with the count of pulls that found no change. No play-by-play for the game: "no play-by-play available".'
+    requirements: [R-SY-20, R-EN-19, R-PR-19, R-VZ-02, R-VZ-03]
+    decisions: [K09]
+    depends_on:
+      baselines: [live_state, state_machine, identity_pack, metrics]
+      tables: [pbp_versions, pbp_version_pulls, pbp_diffs, stat_corrections, change_sets, metric_value_log, stage_outputs, run_records]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N3, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      Renderable at P0p, as soon as two pulls of one game exist. Player rows of the box diff name players from the
+      official record; the page is owner-only.
+
+  # -------------------------------------------------------------------------------------------------------------------
+  model_card:
+    id: VW-CARD-04
+    name: Model card
+    surface: card
+    audience: [owner, analyst]
+    privacy: owner_only
+    question: What is this model, what was it trained and tested on, how well does it score out of sample, and where does it fail?
+    grain: model version
+    as_of: {view: as_of_known, pass: [blind, pbp_only]}
+    refresh: {class: on_run}
+    min_width_px: 375
+    definitions:
+      - 'one card per model version (R-PR-16). Every stored prediction names its model version, and every version resolves to a card.'
+      - 'frozen: the card is written when the version is registered and prints that date. A correction is a new revision of the card with its own date; the old one stays readable.'
+      - 'five blocks, always in this order: what it is; data and period; features by metric id; held-out and walk-forward scores; known failures.'
+      - 'source tags (R-RG-04): a model trained on a research-only or non-commercial source carries that tag on its card and on every output.'
+      - 'held out: gold sets and the held-out season are named, with the check that no item of them was trained on (R-HR-07).'
+      - 'editable: nothing.'
+      - 'an edit creates: nothing. A new model version makes a new card.'
+      - 'never editable: a score, the data block, the version, the source tags.'
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'FROZEN, the model, its version, the date it was registered, the revision of the card, and its source tags.'
+        inputs: {}
+      - key: identity_block
+        kind: table
+        shows: 'Name, stage, family, version, code commit, config hash, what the model is for and what it must not be used for, and the version it replaced.'
+        inputs:
+          tables: [run_records.run_id, run_records.model_versions, run_records.git_commit, run_records.config_hashes, run_records.seed]
+        requirements: [R-PR-16]
+        numbers: none
+        grade_rule: contract
+      - key: data_block
+        kind: table
+        shows: 'Training data: sources with their use class and permission status, period, games and rows, the priors and shrinkage written down, and the sets that were held out.'
+        inputs:
+          tables: [source_register.source, source_register.use_class, source_register.permission_status, source_register.seasons, run_records.game_ids, run_records.input_hashes, review_labels.gold_set]
+        requirements: [R-PR-16, R-RG-04, R-PE-08, R-HR-07]
+        number_rule: {class: descriptive, n: games and rows used for training, descriptive_mark: 'counts of the training data, not estimates', link: rows}
+        grade_rule: contract
+      - key: features_block
+        kind: table
+        shows: 'The inputs of the model, each by its metric id with name and unit from the registry, and its parameters by registry key.'
+        inputs:
+          metrics: [M-SIT-001, M-SIT-002, M-TRAT-001, M-TEFF-001]
+        requirements: [R-PR-16, R-CX-29]
+        number_rule: {class: descriptive, n: features of the model, descriptive_mark: 'a list of inputs by id; no value is shown', link: none_fixed}
+        grade_rule: contract
+        notes: 'The four ids are examples of features of a play-by-play win-probability model. A card lists the ids of its own model; a vision model lists its input tables instead.'
+      - key: scores_block
+        kind: table
+        shows: 'Held-out and walk-forward scores with n and interval, beside the baseline, per slice and per source tier. For a probability model: log loss, Brier score and calibration error.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.metric, run_requirement_results.value, run_requirement_results.n, run_requirement_results.ci95_lo, run_requirement_results.ci95_hi, run_requirement_results.target, run_requirement_results.slice_key, run_requirement_results.source_tier, run_requirement_results.hold_game, predictions.log_loss, predictions.crps, predictions.is_holdout_2025_26, predictions.model_version]
+          metrics: [M-MKT-087, M-MKT-088, M-MKT-091]
+        requirements: [R-PR-16, R-VA-04]
+        number_rule: {class: estimate, n: held-out cases of the row, interval: printed after each score, level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+      - key: failures_block
+        kind: table
+        shows: 'Known failures: the causes that lead the error catalogue for this version with their counts, the weak slices, and the conditions the model was never tested in.'
+        inputs:
+          tables: [error_catalogue.model_version, error_catalogue.requirement_id, error_catalogue.cause, error_catalogue.slice_values, error_catalogue.fix_verified, error_catalogue.error_id]
+        requirements: [R-PR-16, R-RR-05]
+        number_rule: {class: descriptive, n: failed cases per cause, descriptive_mark: 'counts from the error catalogue, not estimates', link: rows}
+        grade_rule: contract
+      - key: release_block
+        kind: tile
+        shows: 'The result of the regression check at release, the retraining rule that applies, and the version to roll back to.'
+        inputs:
+          tables: [run_requirement_results.requirement_id, run_requirement_results.result, run_requirement_results.delta_vs_previous, run_requirement_results.gate]
+        requirements: [R-VA-09, R-VA-18]
+        numbers: none
+        grade_rule: contract
+      - key: prediction_count
+        kind: tile
+        shows: 'How many stored predictions name this version, and the check that every one of them resolves to this card.'
+        inputs:
+          tables: [predictions.prediction_id, predictions.model_version, predictions.model_family]
+        requirements: [R-PR-16]
+        number_rule: {class: descriptive, n: stored predictions of this version, descriptive_mark: 'a count, not an estimate', link: rows}
+        grade_rule: contract
+    interactions:
+      - {action: select, at: scores_block, target: 'a score; the rows behind it are listed with the runs that produced them'}
+      - {action: drill_down, at: scores_block, target: this version against another on the bench, to: model_bench}
+      - {action: drill_down, at: failures_block, target: the failed cases of a cause in the run record, to: run_record_report}
+      - {action: drill_down, at: features_block, target: the registry entry of a feature, to: metric_browser}
+      - {action: inspect_query, at: scores_block, target: the rows and the query behind a score}
+      - {action: export, at: view, target: 'the card as a page; inside the private store until the rights gate clears a public edition', produces: page}
+    degraded:
+      D1_bug_away: 'Not applicable to a frozen card. Where the model was scored with the scorebug away, that is a slice of the scores block.'
+      D2_off_main: 'A model that reads tracking states the share of time observed in its data block.'
+      D3_replay: 'Not applicable. Replays never enter a number.'
+      D4_break: 'Not applicable. Breaks never enter a number.'
+      D5_no_video: 'The card carries the flag "trained on play-by-play and public data only" where it applies.'
+      feed_stale: 'The card prints the as-of time of every source in its data block.'
+    empty_state: 'A model version with no card: "no card: this version may not be used", and its predictions are listed as unresolved. A block with nothing to show says why ("no held-out score yet: not testable").'
+    requirements: [R-PR-16, R-RG-04, R-PE-08, R-VA-04, R-VA-09, R-VA-18, R-HR-07, R-RR-05, R-CX-29, R-VZ-02, R-VZ-03, R-PR-19]
+    decisions: [K12]
+    depends_on:
+      baselines: [live_state, metrics]
+      tables: [run_records, source_register, review_labels, run_requirement_results, predictions, error_catalogue]
+    phase: P1
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-S1, ACC-VW-P1]
+    wireframe: null
+    notes: >-
+      Kept owner-only for now: a card names training sources and failure cases. A public edition without licensed
+      detail is an open question for the owner. The card has no schema table of its own yet; it is assembled from the
+      run records, the requirement results, the error catalogue and the source register (see the report to the lead).

@@ -1,0 +1,918 @@
+# Views catalogue, live surface (baseline 5). Records of the live in-game panel and the half-time packet.
+# Contract and index: config/views/core.yaml. Lint: python tools/specgen/views/vwlib.py --check config/views/views_live.yaml
+# live_game_state_panel (VW-LIVE-01) is the one live view (R-PR-15): 15 elements. The live court, the win-probability and
+# leverage strip, the bench board, the foul tracker, timeouts left and the flag feed are elements of it, not views.
+# halftime_packet (VW-RPT-01) is the frozen page per team (R-VZ-08): 9 elements.
+# Every element says what it shows at each grade (by_grade), at each degradation level (by_level), how it prints its
+# age (number_rule.age) and what a viewer saw at that instant (notes, "As known").
+file: views_live
+version: 0.1.0
+date: '2026-11-20'
+
+views:
+  live_game_state_panel:
+    id: VW-LIVE-01
+    name: Live game-state panel
+    surface: live_panel
+    audience: [owner, analyst, msu_staff]
+    privacy: msu_staff
+    question: What is the state of this game right now, and how sure are we of each part of it?
+    grain: frame
+    as_of: {view: as_of_known, pass: [live, blind, anchored]}
+    refresh: {class: on_event}
+    covers_all_live_state: true
+    not_shown: {}
+    min_width_px: 375
+    definitions:
+      - 'known-at: the panel at instant t shows the values whose known_at_utc is at most t, at the state version that was current at t. Nothing learned after t is shown for t.'
+      - 'no back-dating: a late feed row, a correction (T18), a replay found afterwards, an identity lock gained later or a stat correction changes the panel only from its own known-at time on (live-state rule LATE_CORRECTION).'
+      - 'age: stamp_age_s of the value, the seconds since its last observation. It is printed as "<n> s ago" whenever the grade is carried or imputed; a solid value prints no age. The banner prints the oldest age on screen.'
+      - 'viewer time: known_at_utc is the event time plus the stream delay plus processing. The banner prints the stream delay, so a reader in the arena knows how far behind the panel runs.'
+      - 'recorded game: the panel reads the as_of_known view of the stored state, also for the anchored pass. It never reads as_of_event.'
+    params:
+      bug_away_share: {value: 0.21, unit: share, why: 'share of in-period seconds without a readable game clock; level D1 is a normal state of the panel, not an alarm', evidence: 'measured: results/live_state_test/measured_sensors.json clock.availability_in_period (33 broadcasts, pooled 79 % readable)', measured_file: results/live_state_test/measured_sensors.json, measured_key: summary.clock.availability_in_period.pooled, measured_one_minus: true, measured_round: 2}
+      hidden_stretch_median_s: {value: 6, unit: s, why: 'a typical hidden stretch ends while the clock is still provisional or just greyed', evidence: 'measured: results/live_state_test/measured_sensors.json clock.hidden_runs (3,189 stretches)', measured_file: results/live_state_test/measured_sensors.json, measured_key: summary.clock.hidden_runs.p50}
+      hidden_stretch_p90_s: {value: 19, unit: s, why: 'nine in ten hidden stretches end before the clock would turn to a dash', evidence: 'measured: results/live_state_test/measured_sensors.json clock.hidden_runs', measured_file: results/live_state_test/measured_sensors.json, measured_key: summary.clock.hidden_runs.p90}
+      hidden_stretches_per_game: {value: 73, unit: count, why: 'the dropout appearance is seen about once a minute of video, so it must be quiet and must not move the layout', evidence: 'measured: results/live_state_test/measured_sensors.json clock.hidden_runs (median game)', measured_file: results/live_state_test/measured_sensors.json, measured_key: summary.clock.hidden_runs.per_game_median}
+      clock_prov_max_s: {value: 3.0, unit: s, why: 'a dead-reckoned clock carries the badge "prov" this long after the last reading', evidence: 'config: config/live_state/core.yaml profile clock, clock_inferred_max_s (measured there)', mirrors: 'config/live_state/core.yaml:profiles.clock.params.clock_inferred_max_s.value'}
+      clock_greyed_max_s: {value: 30.0, unit: s, why: 'after this long without a reading the clock is a dash; only its guaranteed interval is printed', evidence: 'config: config/live_state/core.yaml profile clock, clock_carried_max_s (measured there)', mirrors: 'config/live_state/core.yaml:profiles.clock.params.clock_carried_max_s.value'}
+      make_confirm_window_s: {value: 4.0, unit: s, why: 'a make seen by CV stays "prov" at most this long; if the bug or the feed has not shown it by then, a row appears in the flag feed and the score stays "prov"', evidence: 'config: config/live_state/core.yaml profile counter, make_confirm_window_s', mirrors: 'config/live_state/core.yaml:profiles.counter.params.make_confirm_window_s.value'}
+      status_greyed_max_s: {value: 5.0, unit: s, why: 'a status value (ball status, restart pending, stoppage) is greyed this long off the main camera, unless the rules give its state a longer bound; then it is a dash', evidence: 'config: config/live_state/core.yaml profile status, status_carried_max_s', mirrors: 'config/live_state/core.yaml:profiles.status.params.status_carried_max_s.value'}
+      lineup_unverified_after_s: {value: 3.0, unit: s, why: 'a dead ball out of view for this long turns the lineups to "unverified"', evidence: 'config: config/live_state/core.yaml profile roster, lineup_unverified_after_s', mirrors: 'config/live_state/core.yaml:profiles.roster.params.lineup_unverified_after_s.value'}
+      hold_flag_after_s: {value: 10.0, unit: s, why: 'an identity on HOLD for this long raises a row in the flag feed', evidence: 'config: config/live_state/fields_play.yaml field player_identity, identity_hold_review_s', mirrors: 'config/live_state/fields_play.yaml:fields.player_identity.params.identity_hold_review_s.value'}
+      wp_clock_interval_max_s: {value: 10.0, unit: s, why: 'a win probability is shown only while the guaranteed clock interval is at most this wide; wider, the strip shows a gap and the tile a dash', evidence: 'config: config/live_state/fields_meta.yaml field win_probability, wp_clock_interval_max_s (assumed there)', mirrors: 'config/live_state/fields_meta.yaml:fields.win_probability.params.wp_clock_interval_max_s.value'}
+      wp_max_swing_no_event: {value: 0.25, unit: probability, why: 'a larger change between two published values with no score, turnover or foul event is held back by the state; the panel shows "held - input flagged" and never smooths it', evidence: 'requirement: R-PR-11 (config/live_state/fields_meta.yaml field win_probability)', mirrors: 'config/live_state/fields_meta.yaml:fields.win_probability.params.wp_max_swing_no_event.value'}
+      swing_marks_max: {value: 5, unit: count, why: 'the strip marks at most this many swings, the largest so far', evidence: 'requirement: R-PR-12 (the 5 largest swing plays per game)'}
+      flag_feed_rows_max: {value: 5, unit: count, why: 'rows of the flag feed shown without scrolling at 375 px; the rest sit behind "<n> more"', evidence: 'assumed: five rows of body text with a 44 px touch target fill about a third of a phone screen; replaced by the count the first wireframe fits'}
+      flag_cleared_linger_s: {value: 10.0, unit: s, why: 'a flag that closed stays in the feed this long, greyed and marked cleared, so a reader sees that it closed and why', evidence: 'assumed: two heartbeats of the panel (refresh class on_event, heartbeat_s 5 s); replaced after the first live capture'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'LIVE or RECORDED, the known-at time, the age of the oldest value on screen, the worst grade on screen, the degradation level in words, feed and stream delay.'
+        inputs:
+          live_state: [pass, state_version, video_frame, video_ts_ms, est_utc, stamp_src, stamp_conf, stamp_grade, stamp_age_s, stamp_known_at_utc, degradation_level, feed_heartbeat, stream_delay_s]
+          tables: [state_transitions.known_at_utc, state_transitions.state_version]
+          events: [T25]
+        numbers: true
+        number_rule: {class: live_state, grade: the worst grade of the tiles below, age: 'the oldest age of the tiles below, in whole seconds; "all fresh" when no value is carried or imputed', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'The line reads "all solid".'
+          observed: 'The line reads "all solid".'
+          inferred: 'The line names the tiles that hold a "prov" value.'
+          carried: 'The line names the oldest carried value and its age ("clock 12 s ago").'
+          imputed: 'The line counts the off-screen players drawn as estimates.'
+          unknown: 'The line counts the tiles that show a dash and gives the commonest reason.'
+          quarantined: 'Counted with unknown, as "under review". The value is in the review queue only.'
+        by_level:
+          D0_full: 'One quiet line: LIVE, as known <time>, all solid.'
+          D1_bug_away: 'Adds "bug away <n> s". No colour change, no layout change: this happens in about a fifth of all seconds.'
+          D2_off_main: 'Adds "off main camera <n> s".'
+          D3_replay: 'The word REPLAY, large. The known-at time stops.'
+          D4_break: 'The word BREAK and its age.'
+          D5_no_video: 'The words NO VIDEO - feed only.'
+          feed_stale: 'Adds "feed quiet <n> s".'
+        notes: >-
+          As known: the known-at time is that of the newest value on screen. When the stream delay is not measured the
+          banner says "stream delay not measured" and prints video time only; it never prints a wall-clock time it cannot
+          stand behind. On a recorded game the banner prints the instant chosen and the state version current at it.
+      - key: game_header
+        kind: tile
+        shows: 'Home and Away, game type and context, venue and site, rest and travel, officials crew, link to the rosters and to the pre-game card. Fixed before tip.'
+        inputs:
+          live_state: [game_id, rules_edition, game_context, venue_site, rest_travel, officials_crew, rosters_cards, pregame_card, scorebug_template]
+          events: [T00, T24]
+        number_rule: {class: official, source: the registry row of the game, as_of: the pre-game snapshot time, link: none_fixed}
+        grade_rule: contract
+        by_grade:
+          confirmed: Solid.
+          observed: Solid.
+          inferred: Not used for a fixed value.
+          carried: Not used for a fixed value.
+          imputed: Not used.
+          unknown: 'A dash and the reason ("crew not published", "no previous game for rest").'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: No change. Fixed fields are not degraded at any level.
+          D2_off_main: No change.
+          D3_replay: No change.
+          D4_break: No change.
+          D5_no_video: No change.
+          feed_stale: No change.
+        notes: >-
+          As known: the header is the frozen pre-game snapshot. A crew change or a roster fix entered after tip shows
+          only from its own known-at time. No age is printed; the snapshot time is.
+      - key: clock_period
+        kind: tile
+        component: state_tile
+        shows: 'Period and phase, game clock (the largest text), running or stopped, shot clock and its status, shot clock off, media segment, five-minute window.'
+        inputs:
+          live_state: [period, period_phase, game_clock_s, game_clock_running, shot_clock_s, shot_clock_status, shot_clock_off, media_segment, five_min_window]
+          tables: [clock_map.from_gc_ds, clock_map.to_gc_ds, clock_map.running, clock_map.err_ds]
+          events: [T01, T19, T20, T21]
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when the clock is carried; the guaranteed interval is printed with it', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: Solid digits. Tenths under 1:00.
+          observed: Solid digits.
+          inferred: 'Solid digits with "prov". The clock is dead-reckoned from the last reading.'
+          carried: 'Greyed digits, "<n> s ago" and the interval "between 7:31 and 7:42".'
+          imputed: Not used for a clock.
+          unknown: 'A dash and "bug away <n> s". The interval stays printed.'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Solid.
+          D1_bug_away: '"prov" for clock_prov_max_s, then greyed with age and interval up to clock_greyed_max_s, then a dash. A median stretch (6 s) ends greyed; nine in ten end before the dash. The shot clock follows the game clock.'
+          D2_off_main: As read while the bug is on screen; else as D1.
+          D3_replay: 'Frozen at the last live value, greyed. A clock seen inside the replay is never shown.'
+          D4_break: Frozen, greyed, with the age of the freeze.
+          D5_no_video: 'A dash and "no video". Period from the feed.'
+          feed_stale: No change. The clocks do not need the feed.
+        notes: >-
+          As known: in a hidden stretch the panel shows the dead-reckoned value that was on screen then. When the bug
+          returns and the estimate was off, the past instants keep the estimate; the miss is logged and only the
+          as_of_event view is re-graded (live-state rule SNAP_AND_LOG). A stop or start cue re-anchors the estimate from
+          the frame the cue was heard, not before.
+      - key: score
+        kind: tile
+        component: state_tile
+        shows: 'Score of Home and Away (the largest text with the clock), margin, current run, lead changes, ties, largest lead, close-game measure.'
+        inputs:
+          live_state: [score_home, score_away, margin, current_run, lead_changes, ties, largest_lead, close_game_measure]
+          tables: [score_events.delta_points, score_events.seen_ocr, score_events.seen_cv, score_events.seen_pbp, score_events.board_lag_s]
+          metrics: [M-SIT-015, M-SIT-017, M-SIT-023, M-SIT-024]
+          events: [T05, T12, T18]
+        definitions: ['run: the primary rule (net at least 8 points in 120 s) and the broadcast "a-b" form are both printed with their names (K05)']
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when carried; "stale" is added after counter_stale_mark_s', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: Solid. Bug and scorebook, or bug and CV, agree.
+          observed: Solid.
+          inferred: 'Solid with "prov": CV saw the make; the bug has not shown it yet (about 2 s).'
+          carried: 'Greyed with age. "stale" is added after counter_stale_mark_s with nothing watching.'
+          imputed: Not used for a score.
+          unknown: 'A dash and the reason.'
+          quarantined: 'Shown as unknown: a dash and "under review". The contradicted reading is in the review queue.'
+        by_level:
+          D0_full: Solid.
+          D1_bug_away: 'Solid while CV watches ball and rim; a make seen by CV is added as "prov". Greyed with age when nothing watches.'
+          D2_off_main: As read while the bug is on screen; else greyed with age.
+          D3_replay: Frozen, greyed.
+          D4_break: Frozen, greyed. Re-read on return before it is solid.
+          D5_no_video: From the feed while it is healthy, solid; else greyed with age.
+          feed_stale: 'Bug and CV keep the score solid. The scorer of the last basket is greyed.'
+        notes: >-
+          As known: a make seen by CV shows as "prov" from the frame the rule fired and turns solid at the frame the
+          bug or the feed agreed. If neither agrees inside make_confirm_window_s the score stays "prov" and a row
+          appears in the flag feed. A make withdrawn later (T18) stays on screen for every instant before the
+          withdrawal was known. A stat correction after the game never appears on the panel.
+      - key: foul_tracker
+        kind: tile
+        component: state_tile
+        shows: 'Team fouls per team, bonus state, fouls to give, personal fouls of the ten on the floor and of the bench, foul-trouble flags.'
+        inputs:
+          live_state: [team_fouls_home, team_fouls_away, bonus_home, bonus_away, player_fouls, foul_trouble, fouls_to_give]
+          tables: [foul_state.team_fouls_end, foul_state.personal_fouls_player_cum, foul_state.fouls_to_give_start]
+          metrics: [M-FOUL-001, M-FOUL-010, M-FOUL-011, M-FOUL-012, M-FOUL-114]
+          events: [T09, T10, T11]
+        requirements: [R-VZ-06g, R-SR-20, R-SB-05]
+        identity_rule: locked_or_hold
+        definitions: ['foul trouble: the cut-off table of the live-state field foul_trouble (K10 as changed, R-SR-20). The rule that fired is printed beside the flag.']
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when carried; a whistle with no feed row yet prints "foul pending <n> s"', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. Feed row and bug count agree (the bug shows team fouls up to its cap).'
+          observed: 'Solid. One source: the feed, or the bug.'
+          inferred: 'Team fouls solid with "prov": the feed is quiet and no whistle was heard, so the count is held by rule. Bonus and fouls to give take "prov" with it.'
+          carried: 'Greyed with age: a whistle of unknown cause was heard and no feed row says what it was. Bonus is a dash when the carried count is one below a threshold.'
+          imputed: Not used for a count.
+          unknown: 'A dash and the reason. A foul-trouble flag is a dash while the clock interval lies across a cut-off instant.'
+          quarantined: 'Shown as unknown: a dash and "under review" (the bug label and the count disagree).'
+        by_level:
+          D0_full: Solid. The bug count is checked against the fold up to its cap of 10.
+          D1_bug_away: 'Team fouls from the feed, solid. Without bug and feed, greyed with age.'
+          D2_off_main: As read; a whistle heard off camera marks team fouls "prov" until the feed row arrives.
+          D3_replay: Frozen, greyed.
+          D4_break: Frozen, greyed.
+          D5_no_video: From the feed while it is healthy.
+          feed_stale: 'Player fouls and foul trouble greyed with age (the bug shows no player fouls). Team fouls as read from the bug.'
+        notes: >-
+          As known: a player foul changes at the instant its feed row was known, not at the whistle. Between whistle
+          and row the tile shows "foul pending" and no player count moves. A foul re-assigned to another player later
+          changes the tile only from the known-at time of the correction.
+      - key: bench_board
+        kind: table
+        shows: 'Every player of both rosters in two blocks per team, on the floor and on the bench: number, name, personal fouls, the foul-trouble flag with the rule that set it, disqualified, seconds on the floor in this stint or seconds on the bench since he left.'
+        inputs:
+          live_state: [lineup_home, lineup_away, player_fouls, foul_trouble, stint_length_s]
+          tables: [rosters.player_id, rosters.team_id, players.broadcast_name, jersey_history.jersey_number, foul_state.personal_fouls_player_cum, foul_state.foul_trouble, foul_state.disqualified, lineup_stints.player_ids, lineup_stints.start_game_clock_s, substitutions.player_in_id, substitutions.player_out_id, substitutions.game_clock_s]
+          metrics: [M-FOUL-001, M-FOUL-047, M-FOUL-114, M-PHYS-009, M-COACH-052]
+          events: [T09, T22, 'dim:player_fouls', 'dim:lineup_home', 'dim:lineup_away']
+        requirements: [R-SR-20]
+        identity_rule: locked_or_hold
+        definitions: ['foul trouble: the same config table as the foul tracker; the 2 / 4 rule is a named second view (R-SR-20). No cut-off is written in this record.', 'bench order: players in foul trouble first, then by seconds on the bench. The order is a display choice and changes no value.']
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed on every greyed row; stint seconds are game-clock seconds and stop with the clock', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid row. The feed lineup and an identity lock agree on who is on the floor.'
+          observed: 'Solid row. One source.'
+          inferred: 'Only without a feed (blind pass): a count the state inferred, with "prov". With a feed a player count is never inferred.'
+          carried: 'Greyed row with age. The block title says "unverified" after a dead ball that was not seen.'
+          imputed: Not used.
+          unknown: 'A dash in the cell and the reason ("no feed", "slot not known"). A player whose slot is not known sits in a third block, "floor or bench not known".'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Solid.
+          D1_bug_away: 'No change. Player fouls and substitutions come from the feed, not from the bug.'
+          D2_off_main: 'Counts as read. The floor blocks say "unverified" after a dead ball that was not seen.'
+          D3_replay: Frozen, greyed.
+          D4_break: 'Frozen, greyed. On return the floor blocks say "unverified" until substitution rows or identity locks confirm.'
+          D5_no_video: 'From the feed while it is healthy. Stint seconds from the feed clock.'
+          feed_stale: 'Every foul count greyed with age. A floor row stays solid only where an identity lock confirms the player.'
+        notes: >-
+          As known: a substitution moves a player between blocks at the instant its row or an identity lock was known.
+          A substitution the feed reports late does not move him earlier on a recorded game. The board is built from the
+          feed by name and number (the roster number, not the number CV read); it needs no face image and shows none. It is the long form of the foul tracker and is rendered
+          and tested with it (the foul tracker carries the requirement row of the foul view).
+      - key: timeouts_left
+        kind: tile
+        component: state_tile
+        shows: 'Timeouts left per team by length, challenge available per team, the timeout format of the game.'
+        inputs:
+          live_state: [timeouts_left_home, timeouts_left_away, challenge_available_home, challenge_available_away, timeout_format]
+          tables: [timeouts.timeout_type, timeouts.charged, timeouts.became_media]
+          metrics: [M-COACH-002]
+          events: [T16, T17, T26]
+        requirements: [R-VZ-06h]
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when carried; a break with no owner yet prints "timeout - team pending <n> s"', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. Feed row and bug agree.'
+          observed: 'Solid. One source.'
+          inferred: 'Solid with "prov": a break has started and the charge is set by rule before the feed row; or a review is in progress and the charge waits for its outcome.'
+          carried: 'Greyed with age: a break whose owner is not known while the feed is quiet.'
+          imputed: Not used for a count.
+          unknown: 'A dash and the reason ("no feed and the bug shows no timeouts").'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Solid.
+          D1_bug_away: From the feed, solid; else greyed with age.
+          D2_off_main: As read.
+          D3_replay: Frozen, greyed.
+          D4_break: 'Frozen, greyed. A timeout taken into the break is "prov" until the feed row.'
+          D5_no_video: From the feed while it is healthy.
+          feed_stale: Greyed with age where the bug does not show timeouts.
+        notes: >-
+          As known: a timeout is charged on screen when its feed row or the bug count was known. A called timeout that
+          turned into a media timeout is shown as charged until the row that says otherwise was known. A challenge is
+          shown as used from the review start; whether it is kept shows only when the outcome row was known.
+      - key: possession_ball
+        kind: tile
+        component: state_tile
+        shows: 'Team in possession and team control, possession and chance number, ball status, flow state, restart pending, stoppage kind, free-throw state, try in flight, arrow, basket attacked, ball handler, seconds since control changed, backcourt count, transition numbers, ball-control state.'
+        inputs:
+          live_state: [possession_team, possession_seq, chance_seq, team_control, ball_status, try_in_flight, flow_state, restart_pending, stoppage, arrow, basket_attacked_home, ball_handler, secs_since_control_change, free_throw_state, backcourt_count_s, transition_numbers, ball_control_state]
+          tables: [state_segments.dimension, state_segments.value, state_segments.dq, state_transitions.ttype]
+          events: [T02, T03, T04, T06, T07, T08, T13, T14, T15, T23, 'dim:flow_state', 'dim:ball_status', 'dim:possession_team']
+        identity_rule: locked_or_hold
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when carried; "seconds since control changed" is itself an age and is a dash when control is not known', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. CV and a second sensor (a shot-clock reset, a feed row) agree.'
+          observed: Solid.
+          inferred: 'Solid with "prov": set by a rule before it is seen - possession from a shot-clock reset while off camera, a dead ball from a stopped clock, a stoppage kind before the whistle cause is known.'
+          carried: 'Greyed with age for at most status_greyed_max_s, or the longest time the rules allow for the status; then a dash.'
+          imputed: Not used in this tile.
+          unknown: 'A dash and the reason ("off main camera", "ball not seen 3 s"). The ball handler is a dash when his identity is on HOLD; the candidates are in the inspector.'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Solid.
+          D1_bug_away: No change. These values come from CV, not from the bug.
+          D2_off_main: 'Greyed with age up to the longest time the rules allow for the status, then a dash. The ball handler is a dash at once.'
+          D3_replay: Frozen, greyed.
+          D4_break: 'Greyed, then a dash on return until the first control is seen. Nothing is assumed after a break.'
+          D5_no_video: 'Team in possession from the feed, coarse. Everything else a dash and "no video".'
+          feed_stale: No change.
+        notes: >-
+          As known: a change of control shows at the frame CV saw it. If the scorebook later credits another team, or
+          the anchored pass moves the instant, the panel of that instant is unchanged. The possession number shown is the
+          count as known then; a possession split found later renumbers nothing on a past instant.
+      - key: lineup_identity
+        kind: tile
+        component: state_tile
+        shows: 'The five on the floor per team by name and number, each locked or HOLD with candidates, and the length of the current stint.'
+        inputs:
+          live_state: [lineup_home, lineup_away, player_identity, stint_length_s]
+          tables: [lineup_stints.player_ids, lineup_stints.duration_s, tracks.identity_conf, tracks.jersey_number_voted]
+          events: [T22]
+        requirements: [R-ID-19]
+        identity_rule: locked_or_hold
+        number_rule: {class: live_state, grade: by rule 1, age: 'printed when carried; a HOLD prints how long it has lasted', link: state}
+        grade_rule:
+          inferred: 'Not used for identity. A player is locked or HOLD; there is no provisional label (OD-10).'
+          carried: 'The lineup is greyed with the word "unverified" after a dead ball out of view.'
+        by_grade:
+          confirmed: 'Name and number solid: the feed lineup and five identity locks agree.'
+          observed: 'Solid: the feed lineup, or the identity locks, alone.'
+          inferred: 'Not used. No provisional label (OD-10).'
+          carried: 'Greyed with "unverified" after a dead ball out of view for lineup_unverified_after_s.'
+          imputed: 'Not used in this tile. An off-screen player keeps his locked name; only his court marker is hollow.'
+          unknown: 'HOLD: "?" with the candidates in order of posterior and the seconds on HOLD. A slot that is not known is a dash.'
+          quarantined: 'Shown as unknown: a dash and "under review" (a lineup conflict between the feed and the cues).'
+        by_level:
+          D0_full: 'Ten names solid; a player on HOLD shows "?" and his candidates.'
+          D1_bug_away: No change.
+          D2_off_main: Solid in live play. "unverified" after a dead ball that was not seen.
+          D3_replay: Frozen, greyed.
+          D4_break: 'Greyed and "unverified" on return, until substitution rows or identity locks confirm.'
+          D5_no_video: Lineups from the feed while it is healthy. Identity is a dash.
+          feed_stale: Lineups stay solid where identity locks confirm five players; else greyed with age.
+        notes: >-
+          As known: a lock gained later is never back-dated; for the earlier instants the player stays on HOLD. An
+          identity split found offline, or a probable label, never appears here (OD-8, OD-10).
+      - key: mini_court
+        kind: court
+        component: top_down_court
+        shows: 'Ten players, the ball and the officials from above in the named-spots frame, with the area the camera sees. A line under it says how many of the ten are drawn and what share of the court is in view.'
+        inputs:
+          live_state: [player_positions, ball_position, officials_positions, court_visible_frac, basket_attacked_home]
+          spots: ['layer:zone_scheme:court_region', 'layer:landmark', rim, three_point_arc, division_line]
+        layers: [camera_area, court_regions, officials]
+        identity_rule: locked_or_hold
+        numbers: true
+        number_rule: {class: live_state, grade: by rule 1, age: 'an off-screen marker prints the seconds since the player was last seen; the ball line prints "ball not seen <n> s"', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: Filled marker with the jersey number.
+          observed: 'Filled marker with the jersey number. A filled ball.'
+          inferred: 'Filled marker with a ring and "?": the position is seen, the identity is on HOLD. Ball: a ring on the holder while the ball is hidden in his hands.'
+          carried: 'Players and ball are not drawn at this grade (a position is never carried). An official is drawn greyed at the place last seen.'
+          imputed: 'Hollow outline with its 95 % region and the seconds since last seen, for at most offscreen_marker_max_s; then removed. No slow fade.'
+          unknown: 'No marker. The line "<n> of 10 drawn" says how many are missing.'
+          quarantined: 'Shown as unknown: no marker.'
+        by_level:
+          D0_full: Filled markers. Off-screen players hollow with their region.
+          D1_bug_away: No change.
+          D2_off_main: 'Hidden. In its place: "court hidden - off main camera".'
+          D3_replay: 'Hidden. In its place: "court hidden - replay".'
+          D4_break: 'Hidden. In its place: "court hidden - break".'
+          D5_no_video: 'Hidden. In its place: "court hidden - no video".'
+          feed_stale: No change.
+        notes: >-
+          As known: positions are those of the causal tracker at that frame. Nothing is smoothed with later frames and
+          no track is filled in backward. An off-screen marker is the forward estimate made then. The court is drawn
+          toward the attacked rim; the half-court side flips only when basket_attacked_home changes. The live court
+          draws no trails, no pass arrows and no acceleration (K03); those belong to the possession explorer. Stricter
+          than the review court on purpose: at D2 and worse the live court is hidden, not estimated.
+      - key: situation
+        kind: tile
+        component: state_tile
+        shows: 'Win probability with its band, leverage, expected points of the possession, clutch flag, the three garbage-time flags side by side, end-of-period windows.'
+        inputs:
+          live_state: [win_probability, leverage, expected_points, clutch, garbage_time, end_of_period_windows]
+          tables: [predictions.point_value, predictions.interval95, predictions.model_version]
+          metrics: [M-SIT-055, M-SIT-060, M-TEFF-024, M-SIT-006, M-SIT-052, M-COACH-054]
+        phase: P6
+        requirements: [R-PR-11, R-PR-09, R-MD-30]
+        definitions: ['clutch: at most 300 s left and margin at most 5, with the last-240 s flag beside it (K06)', 'garbage time: the win-probability rule first, the CTG-adapted and source flags beside it (K28)']
+        number_rule:
+          - {class: model, band: a static band around the value; no needle and no animation, model_version: printed under the value, link: state}
+          - {class: live_state, grade: the worst grade and the oldest age of the driving inputs, age: printed when the band is widened, link: state}
+        grade_rule:
+          carried: 'The value is held and marked "held" with the stoppage kind. It does not tick.'
+          unknown: 'No number. The reason is named: clock unknown, score stale, or "no model before P6".'
+        by_grade:
+          confirmed: 'Not used: a derived value is at best observed.'
+          observed: 'Value and band, solid. A flag that is yes is named.'
+          inferred: 'Value with "prov" and the wider band: a score is provisional or the clock is dead-reckoned. Leverage is the band over both possession cases while the team in possession is not known.'
+          carried: 'The last value greyed and marked "held" with the stoppage kind, or "held - replay". It does not tick.'
+          imputed: Not used.
+          unknown: 'No number, and the reason. A clutch or end-of-period flag that cannot be decided shows "open", never "no".'
+          quarantined: 'Shown as unknown: a dash and "held - input flagged" (a change above wp_max_swing_no_event with no score, turnover or foul event).'
+        by_level:
+          D0_full: 'Value and band. Before phase P6 every model value is a dash with "no model before P6".'
+          D1_bug_away: 'Value with a wider band and the age of the oldest driving input; "prov" while a score is provisional.'
+          D2_off_main: As D1. Expected points is a dash without positions.
+          D3_replay: 'The last value, marked "held - replay".'
+          D4_break: 'The last value, marked "held - break".'
+          D5_no_video: 'Win probability from the feed state with the wider band; expected points a dash.'
+          feed_stale: No change while bug and CV keep score and clock.
+        notes: >-
+          As known: the value at t is the engine started from the as_of_known state at t; it uses no input that became
+          known later. Replaying a recorded game with another model version is a new run and the tile prints that
+          version; the inputs stay as known. When wp_rule of garbage time is unknown the CTG-adapted flag is shown,
+          labelled as the fallback rule.
+      - key: wp_leverage_strip
+        kind: chart
+        shows: 'Win probability of the game so far as a line with its band, one point per published value, on the game-clock axis. Under it, leverage per possession as bars. Runs are shaded and the largest swings so far are marked. Not drawn before phase P6.'
+        inputs:
+          live_state: [win_probability, leverage, current_run, clutch, garbage_time]
+          tables: [predictions.wp_home_live, predictions.wp_band_lo, predictions.wp_band_hi, predictions.known_at_utc, predictions.model_version, possessions.leverage, possessions.pre_win_prob, score_events.delta_points, score_events.game_clock_s]
+          metrics: [M-SIT-055, M-SIT-058, M-SIT-059, M-SIT-060, M-SIT-025]
+          events: [T03, T05, T09, T12, T13, T16, T17]
+        phase: P6
+        requirements: [R-PR-09, R-PR-11, R-PR-12, R-MD-33]
+        definitions:
+          - 'run shading: the register rule (M-SIT-025, K05), named in the legend'
+          - 'swing: the change between two consecutive published values (M-SIT-058). The strip marks the swing_marks_max largest so far (R-PR-12).'
+          - 'clutch and garbage-time stretches are bands on the axis; each names its rule (K06, K28)'
+          - 'high leverage: the mark of the live-state field leverage, relative to the game so far'
+        number_rule:
+          - {class: model, band: 'a static band around the line; no needle, no animation, no smoothing', model_version: printed in the legend, link: state}
+          - {class: live_state, grade: the grade of each stretch of the line, age: 'a held stretch prints how long it has been held', link: state}
+        grade_rule:
+          carried: 'The line is flat and dashed for the held stretch, marked "held" with the reason.'
+          unknown: 'A gap in the line with the reason printed over it. Nothing is interpolated across a gap.'
+        by_grade:
+          confirmed: 'Not used: a derived value is at best observed.'
+          observed: Solid line with its band.
+          inferred: 'Solid line with the wider band; the stretch is marked "prov".'
+          carried: 'Flat dashed line, marked "held" with the stoppage kind, "replay" or "break".'
+          imputed: Not used.
+          unknown: 'A gap with the reason ("clock unknown", "score stale"). Leverage bars are missing over the gap.'
+          quarantined: 'Shown as unknown: a gap marked "held - input flagged". The held-back value is in the review queue only.'
+        by_level:
+          D0_full: 'Line, band, leverage bars, run shading, swing marks. Before phase P6 the strip is a card "no live model before P6" and draws no line.'
+          D1_bug_away: 'The band widens over the stretch; a gap once the clock interval is wider than wp_clock_interval_max_s.'
+          D2_off_main: As D1. Leverage is drawn as the band over both possession cases while possession is not known.
+          D3_replay: 'Flat dashed line marked "held - replay". The strip does not advance.'
+          D4_break: 'Flat dashed line marked "held - break".'
+          D5_no_video: 'Line from the feed state with the wider band; a gap when the feed is quiet too.'
+          feed_stale: No change while bug and CV keep score and clock. The band widens as fouls and timeouts age.
+        notes: >-
+          As known: every point sits at the game clock of its state and keeps the value that was published then. Nothing
+          is redrawn. A corrected score moves the line only from the known-at time of the correction; the earlier stretch
+          stays as it was shown. The what-was-true series (as_of_event) is a different series and belongs to the review
+          chart (win_probability_chart). The strip never caps or smooths a swing: a change the state held back is a gap
+          and a row in the flag feed (R-PR-11). Refresh target: within live_model_refresh_s of a scoreboard change,
+          measured and reported, not a gate (K23).
+      - key: tactics
+        kind: tile
+        component: state_tile
+        shows: 'Current offensive set, defensive scheme, ball-screen coverage and who guards whom, each with its confidence.'
+        inputs:
+          live_state: [offense_set, defense_scheme, ball_screen_coverage, matchups]
+          tables: [set_instances.set_code, set_instances.match_confidence, scheme_states.l1_base_scheme_code, scheme_states.l1_conf, screens.coverage_coarse, screens.coverage_fine_code, defensive_matchups.matchup_prob]
+          events: ['screens:ball_screen_coverage', 'defense:matchup', 'composition:set_match']
+        phase: P4
+        requirements: [R-DF-16]
+        identity_rule: locked_or_hold
+        definitions: ['coverage: the 4 coarse classes always; a fine coverage only at confidence 0.8 or more (K04)']
+        number_rule:
+          - {class: live_state, grade: by rule 1, age: printed when carried, link: state}
+          - {class: label, confidence: printed beside every label, version: in the inspector, link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Not used: a label is a model output.'
+          observed: 'The label with its confidence. A fine coverage only at confidence coverage_fine_min_conf or more.'
+          inferred: 'The label with "prov": a matchup pair with a player on HOLD (paired by track, "?" in place of the name), or a set named from its first actions only.'
+          carried: The last labels greyed, through a replay only.
+          imputed: 'A matchup pair with an off-screen member is outlined with "est"; its probability is taken over the region.'
+          unknown: 'A dash and the reason: "unsure" (below the confidence gate), "no set running", "off main camera".'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: 'Labels with confidence. Below its confidence gate a label is a dash with "unsure".'
+          D1_bug_away: No change.
+          D2_off_main: A dash. Tactics need the main camera.
+          D3_replay: The last labels, greyed.
+          D4_break: A dash.
+          D5_no_video: A dash and "no video".
+          feed_stale: No change.
+        notes: >-
+          As known: the label shown is the live belief at that second, the best candidate so far. The final label of
+          the possession, known only at its end, is not shown early and does not replace what was shown. Up to three set
+          candidates are in the inspector.
+      - key: flag_feed
+        kind: table
+        shows: 'The open flags of this instant, newest first: what the system is unsure about, which tile it touches, since when, and whether it is queued for review. One row per cause, not per frame. A count of open flags by trigger sits above the rows.'
+        inputs:
+          live_state: [stamp_grade, stamp_conf, stamp_age_s, player_identity, ball_visible, ball_control_state, tracking_quality, offense_set, ball_screen_coverage, matchups]
+          tables: [state_frame.flag_ids, state_frame.invariant_breaks, state_frame.players_on_floor, scoreboard_flags.flag_type, scoreboard_flags.field, scoreboard_flags.status, scoreboard_flags.created_utc, review_queue.trigger, review_queue.status, review_queue.target_table, tracks.identity_conf, tracks.jersey_vote_conf, set_instances.match_confidence, set_instances.unmatched_cluster_id, lineup_stints.player_count_error]
+          events: [T18, T25, 'ball_actions:loose_ball', 'composition:scramble', 'composition:set_match', 'defense:matchup_change_log', 'defense:multi_switch']
+        requirements: [R-HR-01, R-HR-03, R-SB-01]
+        identity_rule: locked_or_hold
+        definitions:
+          - 'triggers: the six of R-HR-01 - identity or jersey number unsure, ball lost or a scramble, player count not 10, scoreboard against play-by-play, set match unsure or no template, coverage or matchup unclear after a switch. Their thresholds live in the flag config of R-HR-01; none is written in this record.'
+          - 'state flags: a value in quarantine, and a confirm window that closed without its second sensor (live-state rules QUARANTINE and CONFIRM_WINDOW). They are listed with the six.'
+          - 'one row per cause: ten frames of the same crossing are one row with its age.'
+        number_rule:
+          - {class: live_state, grade: the grade of the flagged value, age: 'every row prints how long its flag has been open; a cleared row prints when it closed', link: state}
+          - {class: label, confidence: 'the confidence that fell under its threshold, printed with the threshold', version: 'the flag config version, in the inspector', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'No row for the value. A model label under its threshold may still have one.'
+          observed: 'No row for the value. A model label under its threshold may still have one.'
+          inferred: 'A row only when a confirm window closed without the second sensor ("score prov - not confirmed").'
+          carried: 'No row inside the carry limit. A row "stale" after counter_stale_mark_s.'
+          imputed: 'No row. An off-screen estimate is normal operation.'
+          unknown: 'A row when the cause is one of the six triggers; an identity on HOLD gets its row after hold_flag_after_s. A value that is unknown only because of a replay or a break has no row.'
+          quarantined: 'A row that names the field and says "under review". The contradicted reading is hidden here and the tile shows a dash (unknown). Only the review queue shows the reading.'
+        by_level:
+          D0_full: 'Rows of open flags; "nothing open" when there is none.'
+          D1_bug_away: 'No row for the missing bug: it is normal. Scoreboard flags wait until the bug is back.'
+          D2_off_main: 'No new identity, ball, count, set or coverage rows: those triggers need the main camera. Open rows stay with their age.'
+          D3_replay: 'Frozen. No flag is raised from replay pictures.'
+          D4_break: 'Frozen. On return a row "re-reading" stays until score, clock and lineups are solid again.'
+          D5_no_video: 'Only scoreboard and feed rows. One row "no video" heads the list.'
+          feed_stale: 'One row "feed quiet <n> s". Scoreboard-against-play-by-play rows cannot be raised and the list says so.'
+        notes: >-
+          As known: a row appears at the frame its flag entered the state and leaves flag_cleared_linger_s after its
+          cause cleared, as known then. A flag found only later - by the anchored pass, by an offline identity split, by
+          a gold check - never appears in the feed of a past instant; it exists in the review queue only. The feed asks
+          nothing of the reader during a game: labelling happens afterward in the review queue. At 375 px it shows
+          flag_feed_rows_max rows. An identity row shows "?" and the candidates, never a face crop.
+      - key: observability
+        kind: tile
+        component: state_tile
+        shows: 'What the broadcast shows and how well we see: camera shot type, bug visible, replay flag, coverage score, tracking quality, court-mapping confidence, ball visible, audio present.'
+        inputs:
+          live_state: [camera_shot_type, scorebug_visible, replay_flag, coverage_score, tracking_quality, court_mapping_conf, ball_visible, audio_present]
+          tables: [frames.camera_shot_type, frames.coverage_score, frames.mapping_conf]
+          events: ['dim:camera_shot_type', 'dim:scorebug_visible']
+        requirements: [R-SR-10, R-VI-05]
+        number_rule: {class: live_state, grade: by rule 1, age: 'not printed: these values are re-read every frame; the banner carries the age of the level', link: state}
+        grade_rule: contract
+        by_grade:
+          confirmed: Not used.
+          observed: A quiet mark per value.
+          inferred: 'The mark with "prov": the shot-type or replay detector is unsure, and the stricter level applies.'
+          carried: The audio mark greyed through a replay or a break.
+          imputed: 'Tracking quality counts the off-screen players under "est".'
+          unknown: 'A dash on the mark: stream lost, or court mapping below its gate.'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: A row of small marks, all quiet.
+          D1_bug_away: The bug mark is hollow.
+          D2_off_main: The camera mark names the shot type. Coverage and mapping show their low values.
+          D3_replay: The replay mark is on.
+          D4_break: The camera mark says break.
+          D5_no_video: Every mark is a dash except the feed.
+          feed_stale: No change here; the banner carries the feed line.
+        notes: >-
+          As known: the marks are what the detectors said at that frame. A replay found only after its transitions
+          were written shows as live play for the instants before it was found.
+    interactions:
+      - {action: select, at: view, target: 'any tile or value opens the inspector: value, grade, source, confidence, age, known-at time'}
+      - {action: drill_down, at: score, target: 'the last score change at its frame, in the possession explorer', to: possession_explorer}
+      - {action: drill_down, at: foul_tracker, target: the list of fouls of the game; each row links to its frames}
+      - {action: drill_down, at: bench_board, target: 'the fouls and stints of one player as known; each row links to its frames'}
+      - {action: drill_down, at: wp_leverage_strip, target: 'a swing mark or a leverage bar opens its possession; after the game the same click opens the layered chart', to: win_probability_chart}
+      - {action: drill_down, at: flag_feed, target: 'a row opens its state transition at the effective frame; after the game it opens the item in the review queue', to: review_queue}
+      - {action: drill_down, at: game_header, target: the frozen pre-game card, to: pregame_card}
+      - {action: toggle_layer, at: mini_court, target: 'the camera area, the court regions and the officials, each on or off'}
+      - {action: scrub, at: as_of_banner, target: 'recorded game only: move to any instant; the panel shows what was known then'}
+      - {action: export, at: view, target: the panel at one instant as a page with no video, produces: page}
+    degraded:
+      D1_bug_away: 'Normal operation - about a fifth of all seconds. Clocks go "prov", then greyed with age and interval, then a dash. Score and counts stay solid while CV or the feed watches. No tile moves or resizes. The flag feed raises no row for it.'
+      D2_off_main: 'The mini court, the ball handler and the tactics tile are hidden with the reason. Counts are shown as read. Status values grey with age, then turn to a dash. The win-probability band widens.'
+      D3_replay: 'The whole panel freezes at the last live instant and carries the word REPLAY. Nothing ticks; win probability is held and the strip does not advance.'
+      D4_break: 'The whole panel freezes and carries the word BREAK with its age. On return every value is re-read before it is solid; possession is a dash until the first control; lineups say "unverified".'
+      D5_no_video: 'Feed-only panel: score, fouls, timeouts, lineups, the bench board and a coarse possession from the feed. Clocks, court, tactics and identity are a dash with "no video".'
+      feed_stale: 'One line "feed quiet <n> s". Who scored, foul type, player fouls and substitutions grey with their age. Values the bug and CV can see stay solid.'
+    empty_state: 'No game chosen: "choose a game". Before tip: the header tile is filled; every live tile shows a dash and "not started". A tile whose inputs are not built yet shows a dash and the phase that brings them.'
+    requirements: [R-PR-15, R-PR-14, R-VZ-06g, R-VZ-06h, R-VZ-07, R-VZ-02, R-VZ-03, R-PR-19, R-PR-09, R-PR-11, R-PR-12, R-HR-01, R-ID-19, R-SR-20, R-SR-21, R-SR-22, R-SR-23]
+    decisions: [K03, K04, K05, K06, K10, K15, K23, K28, OD-8, OD-10]
+    depends_on:
+      baselines: [live_state, state_machine, identity_pack, named_spots, metrics, movement_grammar]
+      tables: [state_transitions, state_segments, state_frame, clock_map, score_events, foul_state, timeouts, lineup_stints, substitutions, rosters, players, jersey_history, tracks, player_positions, ball_states, frames, predictions, possessions, set_instances, scheme_states, screens, defensive_matchups, scoreboard_flags, review_queue]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-R3, ACC-VW-G1, ACC-VW-G2, ACC-VW-I1, ACC-VW-N2, ACC-VW-N3, ACC-VW-S1, ACC-VW-L1, ACC-VW-P1]
+    wireframe: docs/data/views/live_panel_d0.svg
+    wireframe_states: {D1_bug_away: docs/data/views/live_panel_d1.svg, D3_replay: docs/data/views/live_panel_d3.svg}
+    notes: >-
+      One panel per game (R-PR-15); the foul tracker, the bench board and timeouts left are elements of it and keep
+      their own render tests (R-VZ-06g, R-VZ-06h). The panel is drawn once a second and on every event; it reads the
+      per-frame state. First renderable at P0p as a feed-only panel (header, score, fouls, bench board, timeouts,
+      coarse possession); the court, identity and the camera-based flags arrive at P1, the scoreboard flags at P2,
+      tactics at P3 and P4, live model values and the strip at P6 (R-PR-09). Order at 375 px: banner, clock and score,
+      possession, fouls, timeouts, lineups, flag feed, situation, strip, tactics, court, bench board, observability,
+      header.
+
+  halftime_packet:
+    id: VW-RPT-01
+    name: Half-time packet
+    surface: report
+    audience: [owner, analyst, msu_staff]
+    privacy: msu_staff
+    question: What happened in the first half that this team should know before the second half starts?
+    grain: team-half
+    as_of: {view: as_of_known, pass: [live, blind]}
+    refresh: {class: half_time}
+    min_width_px: 375
+    definitions:
+      - 'snapshot: the packet is frozen at one instant inside the intermission. It reads only values whose known_at_utc is at most the snapshot. It prints the snapshot time and the play-by-play pull time.'
+      - 'no second look: a stat correction, a late feed row or a replay found after the snapshot never changes a packet. A rebuild is a new packet with a new snapshot time; both are kept.'
+      - 'one page per team: the same nine elements, written for the team of the page. The score block and the data basis are the same on both pages.'
+      - 'recorded game: the packet is built by replaying the first half in live mode. Second-half rows and the anchored pass are never read. That is what makes the latency number of R-VZ-08 honest.'
+      - 'half numbers are descriptions: a rate of one half is printed with its counts and the word "descriptive". It is not drawn against a scale and carries no interval (see notes).'
+    params:
+      halftime_intermission_s: {value: 900.0, unit: s, why: 'the packet is useful only inside the intermission', evidence: 'rule: 5-6.1 (config/live_state/core.yaml max_dwell.halftime)', mirrors: 'config/live_state/core.yaml:max_dwell.halftime.value'}
+      top_possessions_n: {value: 3, unit: count, why: 'possessions listed by value change per team page', evidence: 'requirement: R-VZ-08 (top 3 possessions by value change)'}
+      estimate_min_n: {value: 30, unit: count, why: 'no rate of the packet is shown as an estimate below this count; one half rarely reaches it, so half rates are class descriptive', evidence: 'decision: K12 (config/views/core.yaml display_contract.numbers.params.min_n_default)', mirrors: 'config/views/core.yaml:display_contract.numbers.params.min_n_default.value'}
+    elements:
+      - key: as_of_banner
+        kind: control
+        component: as_of_banner
+        shows: 'FROZEN, the snapshot time, "first half only", the pass, the state version, the play-by-play pull time, and the seconds from the first-half horn to the page.'
+        inputs:
+          live_state: [pass, state_version, stamp_known_at_utc, period, period_phase, degradation_level, feed_heartbeat]
+          tables: [state_transitions.known_at_utc, state_transitions.state_version, team_box.pulled_at_utc]
+          events: [T20, T21]
+        numbers: true
+        number_rule: {class: live_state, grade: the worst grade among the values of the page, age: 'the seconds from the first-half horn to the snapshot, and from the snapshot to now', link: state}
+        by_level:
+          D0_full: 'One line: FROZEN, snapshot <time>, first half only, pass, version.'
+          D1_bug_away: No change.
+          D2_off_main: No change.
+          D3_replay: No change.
+          D4_break: 'Normal: the snapshot is taken inside the intermission, which the broadcast shows as a break.'
+          D5_no_video: 'Adds "feed-only page".'
+          feed_stale: 'Adds "feed quiet since <game clock>" and the pull time of the last row.'
+        notes: >-
+          As known: the snapshot time is the newest known-at time the page may read. The seconds from horn to page are
+          the latency number R-VZ-08 asks to be measured and reported. A page opened after the game still says FROZEN
+          and still shows the half as it was known at the snapshot.
+      - key: data_basis
+        kind: tile
+        shows: 'What the page is built from: the share of first-half game seconds at each degradation level, whether the feed was healthy, how many possessions were seen in full on the main camera, and how many flags are open on this half.'
+        inputs:
+          live_state: [degradation_level, feed_heartbeat, coverage_score]
+          tables: [state_second.degradation_level, state_second.feed_stale, possessions.coverage_mean, possessions.usable_flag, possessions.n_camera_cuts, scoreboard_flags.status, review_queue.status]
+          events: [T25]
+        number_rule: {class: descriptive, n: the game seconds and the possessions of the half, descriptive_mark: 'the word "descriptive" under the tile', link: rows}
+        grade_rule: contract
+        by_grade:
+          confirmed: Not used.
+          observed: 'Solid shares. The level of each second is what the detectors said then.'
+          inferred: 'Seconds whose level was unsure are counted under the stricter level, in a line of their own.'
+          carried: Not used.
+          imputed: Not used.
+          unknown: 'A dash and "no video for the half" when no level was ever set.'
+          quarantined: 'Shown as unknown in every tile it touches. Here it is counted as one open flag; its reading is not printed.'
+        by_level:
+          D0_full: Counted as seen in full.
+          D1_bug_away: 'Counted apart, as "clock estimated". Normal.'
+          D2_off_main: 'Counted as "not on the main camera". Possessions with such a stretch are listed as not seen in full.'
+          D3_replay: 'Counted apart. Replays enter no number.'
+          D4_break: 'Counted apart. If the broadcast came back late from a break, the live play it missed is counted as not seen.'
+          D5_no_video: 'Counted as "no video". The page says which sections are feed-only.'
+          feed_stale: 'The stretch is named by game clock ("feed quiet from 7:42 to 6:10").'
+        notes: >-
+          As known: the shares are those of the levels as detected during the half. A replay found only after the
+          snapshot stays counted as live play on this page. A reader must see first how much of the half the system
+          saw. An open flag is counted here; its contradicted value enters no number of the page.
+      - key: score_block
+        kind: tile
+        shows: 'Score at the half, margin, points by five-minute window, lead changes, ties, largest lead for each team.'
+        inputs:
+          live_state: [score_home, score_away, margin, lead_changes, ties, largest_lead, five_min_window]
+          tables: [games.home_period_points, games.away_period_points, score_events.delta_points, score_events.game_clock_s, score_events.period, score_events.team]
+          metrics: [M-SIT-015, M-SIT-017]
+          events: [T05, T12, T20]
+        number_rule: {class: official, source: 'the official half-time box when the feed has it at the snapshot; else the scorebug at the horn, and the tile says so', as_of: the snapshot time, link: rows}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. Bug at the horn and the half-time box agree.'
+          observed: 'Solid, with the one source named.'
+          inferred: 'Solid with "prov": the last basket was seen by CV and not yet confirmed at the snapshot.'
+          carried: 'Greyed with the game clock of the last reading.'
+          imputed: Not used.
+          unknown: 'A dash and the reason.'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: 'No change while CV or the feed saw every basket. A window whose edge rests on an estimated clock prints the clock interval.'
+          D2_off_main: No change while the bug or the feed gives the score.
+          D3_replay: No change. A score seen inside a replay is never read.
+          D4_break: No change.
+          D5_no_video: From the feed.
+          feed_stale: 'From the bug and CV. The line "who scored" is not on this block, so nothing is greyed.'
+        notes: 'As known: if the box and the bug disagree at the snapshot, the bug value is shown, the block is marked and the disagreement is counted in the data basis. The packet does not wait for the answer.'
+      - key: four_factors
+        kind: table
+        shows: 'For the team and its opponent in the first half: possessions, points per possession, effective field-goal percentage, turnover rate, offensive-rebound rate and free-throw rate, each with the counts it is made of. One more column gives the season value of the team before this game.'
+        inputs:
+          tables: [team_box.fgm, team_box.fga, team_box.fg3m, team_box.ftm, team_box.fta, team_box.oreb, team_box.dreb, team_box.tov, team_box.points, team_box.pulled_at_utc]
+          metrics: [M-TEFF-003, M-TEFF-018, M-TEFF-028, M-TEFF-029, M-TEFF-030, M-TEFF-031]
+        number_rule:
+          - {class: official, source: 'the half-time box pulled at the snapshot; the counts are printed as made-attempted', as_of: the pull time of the box, link: rows}
+          - {class: descriptive, n: 'the count under each rate (attempts, possessions, rebound chances)', descriptive_mark: 'the word "descriptive" in the column head of the half', link: rows}
+          - {class: estimate, n: games played before this game, interval: 'printed beside the season value', level: 0.95, link: rows, min_n: default}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. The box counts equal the counts folded from the play-by-play rows known at the snapshot.'
+          observed: 'Solid, with the one source named.'
+          inferred: Not used.
+          carried: 'Greyed, with the game clock up to which the counts run ("through 3:12").'
+          imputed: Not used.
+          unknown: 'A dash and "no box at the snapshot".'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: No change. The factors come from the feed.
+          D2_off_main: No change.
+          D3_replay: No change.
+          D4_break: No change.
+          D5_no_video: No change. This table needs no video.
+          feed_stale: 'Counts run only to the last feed row. The table is greyed and says through which game clock. No rate is filled in from video.'
+        notes: >-
+          The half column is a description of what happened: counts are class official, the rates made from them are
+          class descriptive and carry no interval (one half rarely reaches estimate_min_n cases). The season column is the only estimate; it is frozen at the pre-game
+          snapshot, so it holds nothing from this game. The half is never coloured against the season value. As known:
+          the box is the one pulled at the snapshot (team_box.pulled_at_utc); a later pull is never read. The schema has
+          no half scope on team_box; schema/views_changes.yaml proposes the column period_scope.
+      - key: runs
+        kind: chart
+        shows: 'The margin across the first half as a line, with every run shaded and labelled, and every timeout as a mark on the line.'
+        inputs:
+          live_state: [current_run, margin]
+          tables: [score_events.delta_points, score_events.game_clock_s, score_events.team, score_events.period, timeouts.game_clock_s, timeouts.team, timeouts.timeout_type]
+          metrics: [M-SIT-023, M-SIT-024, M-SIT-025, M-COACH-012]
+          events: [T05, T12, T16]
+        definitions: ['run: the register rule (M-SIT-025) is the shading; the broadcast "a-b" form (M-SIT-024) is the label; both are named in the legend (K05)']
+        number_rule:
+          - {class: official, source: the score events known at the snapshot, as_of: the snapshot time, link: rows}
+          - {class: descriptive, n: the count of timeouts and of runs in the half, descriptive_mark: 'the word "descriptive" on the timeout line; no effect of a timeout is claimed', link: rows}
+        grade_rule: contract
+        by_grade:
+          confirmed: Solid line.
+          observed: Solid line.
+          inferred: 'Solid line; a basket still provisional at the snapshot is a ringed point with "prov".'
+          carried: 'Dashed line over a stretch in which nothing watched the score, with its clock interval.'
+          imputed: Not used.
+          unknown: 'A gap in the line with the reason. A run is never shaded across a gap.'
+          quarantined: 'Shown as unknown: a gap marked "under review".'
+        by_level:
+          D0_full: Line, shading, labels, timeout marks.
+          D1_bug_away: 'A run edge that rests on an estimated clock prints its clock interval.'
+          D2_off_main: No change while the bug or the feed gives the score.
+          D3_replay: No change. Replays enter no number.
+          D4_break: No change.
+          D5_no_video: From the feed.
+          feed_stale: 'From bug and CV. Timeout marks without a feed row say "team not known".'
+        notes: 'As known: the line is drawn from the score events known at the snapshot, at the game clock each was given then.'
+      - key: foul_trouble_bonus
+        kind: table
+        shows: 'Per player of the team: personal fouls, the foul-trouble flag for the start of the second half with the rule that set it, minutes played in the half, disqualified. Per team: fouls in the half and the game clock at which each bonus was reached.'
+        inputs:
+          live_state: [player_fouls, foul_trouble, team_fouls_home, team_fouls_away, bonus_home, bonus_away]
+          tables: [foul_state.personal_fouls_player_cum, foul_state.foul_trouble, foul_state.disqualified, foul_state.team_fouls_end, foul_state.bonus_reached_clock_s, foul_state.double_bonus_reached_clock_s, fouls.foul_type, fouls.game_clock_s, fouls.fouler_id, players.broadcast_name, lineup_stints.player_ids, lineup_stints.duration_s]
+          metrics: [M-FOUL-001, M-FOUL-010, M-FOUL-011, M-FOUL-013, M-FOUL-014, M-FOUL-114, M-FOUL-115]
+          events: [T09, 'dim:player_fouls']
+        requirements: [R-SR-20]
+        identity_rule: locked_or_hold
+        definitions:
+          - 'flag for the second half: the packet applies the cut-off of the first second of the second half from the config table of the live-state field foul_trouble (K10 as changed, R-SR-20), and says so in the column head. The 2 / 4 rule is printed beside it as the named second view.'
+          - 'team fouls: the count of the first half. The page says that the team count starts again in the second half and that personal fouls carry over.'
+        number_rule: {class: official, source: 'the play-by-play rows known at the snapshot, checked against the half-time box', as_of: the snapshot time, link: rows}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. Feed rows and the half-time box agree for the player.'
+          observed: 'Solid, with the one source named.'
+          inferred: 'Only without a feed (blind pass): a count the state inferred, with "prov".'
+          carried: 'Greyed, with the game clock up to which the feed ran.'
+          imputed: Not used.
+          unknown: 'A dash and "no feed".'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: 'No change. A bonus clock that rests on an estimated clock prints its interval.'
+          D2_off_main: No change.
+          D3_replay: No change.
+          D4_break: No change.
+          D5_no_video: From the feed.
+          feed_stale: 'Player fouls greyed, with the game clock up to which they are known. Team fouls from the bug.'
+        notes: 'As known: a foul re-assigned after the snapshot is not on the page. Names come from the feed; no face image is used or shown.'
+      - key: timeouts_challenges
+        kind: tile
+        shows: 'Timeouts each team has for the second half by length, what the half-time carry-over took away, the challenge of each team, and the timeouts used in the first half with their game clock.'
+        inputs:
+          live_state: [timeouts_left_home, timeouts_left_away, challenge_available_home, challenge_available_away, timeout_format]
+          tables: [timeouts.timeout_type, timeouts.charged, timeouts.became_media, timeouts.halftime_carry_loss, timeouts.game_clock_s, timeouts.team, coaches_challenges.outcome, coaches_challenges.timeout_charged]
+          metrics: [M-COACH-001, M-COACH-002, M-COACH-003]
+          events: [T16, T17, T26]
+        number_rule: {class: official, source: 'the play-by-play rows known at the snapshot and the timeout format of the game', as_of: the snapshot time, link: rows}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Solid. Feed rows and the bug agree.'
+          observed: 'Solid, with the one source named.'
+          inferred: 'Solid with "prov": a charge that still waited for its feed row at the snapshot.'
+          carried: 'Greyed, with the game clock of the last known charge.'
+          imputed: Not used.
+          unknown: 'A dash and the reason.'
+          quarantined: 'Shown as unknown: a dash and "under review".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: No change. Timeouts come from the feed.
+          D2_off_main: No change.
+          D3_replay: No change.
+          D4_break: 'No change. A break of the first half whose owner was never named is listed as "team not known".'
+          D5_no_video: From the feed.
+          feed_stale: 'Greyed, with the game clock of the last known charge, where the bug does not show timeouts.'
+        notes: 'As known: the carry-over is applied by the timeout format of the game, read from the live state. No allotment is written in this record.'
+      - key: set_coverage_mix
+        kind: table
+        shows: 'Offence of the team: the sets it ran, how often, and the points they brought, with the share of possessions that matched no template. Defence it faced and defence it played: the ball-screen coverage mix and the base-scheme mix.'
+        inputs:
+          tables: [set_instances.set_code, set_instances.family_code, set_instances.match_confidence, set_instances.points, set_instances.unmatched_cluster_id, screens.coverage_coarse, screens.coverage_fine_code, screens.confidence, scheme_states.l1_base_scheme_code, scheme_states.l1_conf, possessions.usable_flag]
+          metrics: [M-PLAY-060, M-DEF-102, M-DEF-110]
+          events: ['composition:set_match', 'screens:ball_screen', 'screens:ball_screen_coverage', 'defense:ball_screen_coverage_rule', 'defense:scheme_fingerprint']
+        phase: P4
+        requirements: [R-DF-16]
+        definitions: ['coverage: the 4 coarse classes always; a fine coverage is counted only at confidence coverage_fine_min_conf or more, else it is counted under its coarse class (K04)']
+        number_rule:
+          - {class: descriptive, n: 'the count behind every share and the count of possessions seen in full', descriptive_mark: 'the word "descriptive" in the table head; points per set are printed as points and count, not as a rate', link: rows}
+          - {class: label, confidence: 'the mean match confidence of each row; the count under the gate is printed as "unsure"', version: 'the template and rule-set versions, in the footer', link: frames}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Not used: a label is a model output.'
+          observed: 'Counted under its label.'
+          inferred: 'Counted under its label in a column of its own, "prov" (a set named from its first actions only, a pair with a player on HOLD).'
+          carried: Not counted. A label held through a replay is one label, counted once.
+          imputed: 'Not counted in the mix: a coverage needs its four players seen.'
+          unknown: 'Counted in the row "unsure or no template". The row is always printed, also when it is the largest.'
+          quarantined: 'Shown as unknown: counted in the row "unsure or no template".'
+        by_level:
+          D0_full: Shown in full.
+          D1_bug_away: No change.
+          D2_off_main: 'Possessions with a stretch off the main camera are left out and counted in the line "not seen in full".'
+          D3_replay: No change. A replay is never matched as a set.
+          D4_break: No change.
+          D5_no_video: 'A card "no video - no set or coverage mix".'
+          feed_stale: No change.
+        notes: >-
+          Before phase P4 the element is a card "set and coverage mix arrive with phase P3 (sets) and P4 (coverage)"
+          and holds no number. As known: the labels are those the live matcher gave by the snapshot; a later re-match
+          changes the post-game report, not this page.
+      - key: top_possessions
+        kind: table
+        shows: 'The three possessions of the half with the largest value change for the team, good or bad: game clock, what happened in one line, the value change with its band, the players credited, and a clip reference.'
+        inputs:
+          tables: [possession_value.value_xpts, possession_value.ts_ds, possession_value.model_version, value_credits.value_delta_xpts, value_credits.credit_role, value_credits.player_id, possessions.start_game_clock_s, possessions.points, possessions.usable_flag, clip_index.row_ref, clip_index.in_s, clip_index.out_s, clip_index.key_frame, clip_index.replay_ids]
+          metrics: [M-IMP-063, M-IMP-065]
+        phase: P5
+        identity_rule: locked_or_hold
+        definitions: ['value change of a possession: the total of its value credits (M-IMP-065), ranked by size whatever the sign; the sign is printed. Decided here because R-VZ-08 does not say which change is meant (see notes).']
+        number_rule: {class: model, band: 'printed beside the value change', model_version: printed in the table footer, link: frames}
+        grade_rule: contract
+        by_grade:
+          confirmed: 'Not used: a model value is at best observed.'
+          observed: 'A row with value change, band and model version.'
+          inferred: 'A row marked "prov": a credited player was on HOLD, or the possession rests on a provisional score.'
+          carried: Not ranked.
+          imputed: 'Not ranked: a possession with an off-screen estimate inside its key action is left out and counted in the footer.'
+          unknown: 'Fewer than top_possessions_n rows, and the footer says why.'
+          quarantined: 'Shown as unknown: the possession is left out and counted in the footer as "under review".'
+        by_level:
+          D0_full: Three rows.
+          D1_bug_away: 'No change. A game clock that was estimated prints its interval.'
+          D2_off_main: 'A possession with a stretch off the main camera cannot be ranked and is left out; the footer counts them.'
+          D3_replay: 'No change. A replay of the possession is offered as linked evidence in the clip reference.'
+          D4_break: No change.
+          D5_no_video: 'A card "no video - no possession value".'
+          feed_stale: No change.
+        notes: >-
+          Before phase P5 the element is a card "possession value arrives with phase P5" and ranks nothing; it does not
+          fall back to points scored. As known: the ranking uses the value series of the live run up to the snapshot,
+          with its model version; a later model version re-ranks the post-game report, not this page. A player credited
+          while on HOLD is printed as "?" with his candidates. The clip reference holds times and ids only; the video
+          stays in the private store.
+    interactions:
+      - {action: select, at: view, target: 'any number opens the inspector: value, class, source, as-of, metric id'}
+      - {action: drill_down, at: four_factors, target: 'the rows behind a count; each row links to its frames'}
+      - {action: drill_down, at: runs, target: 'a run opens its first possession in the possession explorer', to: possession_explorer}
+      - {action: drill_down, at: foul_trouble_bonus, target: 'the fouls of one player; each row links to its frames'}
+      - {action: drill_down, at: set_coverage_mix, target: 'the possessions of one set or one coverage, as a list', to: possession_explorer}
+      - {action: drill_down, at: top_possessions, target: the possession at its key frame, to: possession_explorer}
+      - {action: inspect_query, at: four_factors, target: the rows and the query with the metric ids}
+      - {action: export, at: top_possessions, target: 'the clip references of the three possessions', produces: clip_reference}
+      - {action: export, at: view, target: 'the page of one team, without video frames', produces: page}
+    degraded:
+      D1_bug_away: 'Nothing changes on the page. A game clock that was estimated at its moment is printed with its interval.'
+      D2_off_main: 'Counts are complete (feed and bug). The set and coverage mix and the possession ranking use only possessions seen in full; the data basis says how many that is.'
+      D3_replay: 'Replays enter no number. A replay of a listed possession is offered as linked evidence.'
+      D4_break: 'Breaks enter no number. Live play missed after a late return is counted as not seen.'
+      D5_no_video: 'Feed-only page: score, four factors, runs, fouls and timeouts. The mix and the possession ranking are cards that say "no video".'
+      feed_stale: 'Bug-and-CV page: score and runs are shown. Four factors, player fouls and timeouts are greyed and say through which game clock they are known.'
+    empty_state: 'No game chosen: "choose a game". First half still in play: "not ready - first half in play" with the game clock. Build not finished: the elements that are ready are shown and the others say what they wait for.'
+    requirements: [R-VZ-08, R-VZ-02, R-VZ-03, R-VZ-07, R-PR-14, R-PR-19, R-SR-20, R-DF-16]
+    decisions: [K04, K05, K10, K12, K23]
+    depends_on:
+      baselines: [live_state, state_machine, identity_pack, metrics, movement_grammar]
+      tables: [state_transitions, state_second, team_box, games, score_events, possessions, scoreboard_flags, review_queue, timeouts, coaches_challenges, foul_state, fouls, players, lineup_stints, set_instances, screens, scheme_states, possession_value, value_credits, clip_index]
+    phase: P0p
+    acceptance: [ACC-VW-1, ACC-VW-R1, ACC-VW-H1, ACC-VW-N1, ACC-VW-N2, ACC-VW-N3, ACC-VW-S1, ACC-VW-G2, ACC-VW-L1, ACC-VW-P1, ACC-VW-P2]
+    wireframe: null
+    notes: >-
+      First renderable at P0p from the feed alone: banner, data basis, score, four factors, runs, fouls and timeouts.
+      The set and coverage mix arrives at P3 and P4, the possession ranking at P5. Decisions made here where R-VZ-08 is
+      vague: (1) the packet is frozen and as known - it never reads the anchored pass; (2) rates of one half are class
+      descriptive, because one half rarely gives 30 cases (K12) and "too few" on every factor would leave the page
+      empty; (3) the foul-trouble flag is the one for the start of the second half; (4) "value change" is the total
+      value credit of the possession, ranked by size; (5) no win probability is on the page, since R-VZ-08 lists none
+      and no live model exists before P6. Tests that can run later: render from the state tables of a pilot game
+      replayed in live mode; every counting number equal to the official half-time box; number-link audit; the time
+      from horn to page reported per game. Order at 375 px: banner, data basis, score, four factors, runs, fouls,
+      timeouts, mix, possessions.

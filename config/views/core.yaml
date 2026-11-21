@@ -1,0 +1,1309 @@
+pack: views
+version: 0.1.0
+date: '2026-11-20'
+owner: Mac session for Aldemir
+status: proposal under the build freeze (baseline 5 of 8). No product screen is built. Every limit is an engineering proposal; each one says whether it is measured, published, decided or assumed.
+scope: >-
+  The views catalogue: every output the system shows a person. The live in-game panel, the Analyst Studio, post-game
+  and scouting reports, cards, review and labelling screens. For each view this pack fixes who it is for, the one
+  question it answers, its grain, every input by id, how it looks when data is missing or unsure, its refresh time and
+  as-of rule, its privacy class and how it is tested. The rules every view obeys are written once, in the display
+  contract of this file.
+requirement:
+  ask: 'Board 2026-10-20: baseline 5 = views catalogue (incl. Studio, live panel). R-PR-14: each output lists its audience, grain, metrics by registry id, refresh time and as-of rule.'
+  the_rule: >-
+    Nothing on screen looks better than it is. A value keeps the grade the live state gave it. A number carries its
+    count and its interval, or says why it has none. Every number is a door to the video frames that made it. A view
+    that cannot show something says so and says why.
+  requirements: [R-PR-14, R-PR-15, R-PR-16, R-PR-17, R-PR-18, R-PR-19, R-VZ-01, R-VZ-02, R-VZ-03, R-VZ-04, R-VZ-05, R-VZ-06a, R-VZ-06b, R-VZ-06c, R-VZ-06d, R-VZ-06e, R-VZ-06f, R-VZ-06g, R-VZ-06h, R-VZ-06i, R-VZ-06j, R-VZ-07, R-VZ-08, R-VZ-09, R-VZ-10, R-VZ-11, R-AS-01, R-AS-02, R-AS-03, R-AS-04, R-AS-05, R-AS-06, R-AS-07, R-AS-08, R-AS-09, R-AS-10, R-AS-11, R-AS-12, R-EN-18, R-EN-19, R-EN-23, R-HR-02, R-HR-03, R-HR-06, R-HR-08, R-HR-09]
+  ids_note: 'Ids are those of the live requirements, rev 759 of 20 Nov 2026. In that document the row printed as R-VZ-06 is R-VZ-06a.'
+files:
+  core: config/views/core.yaml (this file - conventions, audiences, surfaces, display contract, components, interaction grammar, refresh classes, index, inventory, acceptance)
+  views: [config/views/views_live.yaml, config/views/views_review.yaml, config/views/views_studio.yaml]
+  implementation: tools/specgen/views/ (vwlib.py loader and lint; gen_wireframes.py draws the wireframes; gen_doc.py and doc_template.md write the page)
+  tests: tests/views/
+  doc: docs/data/views_catalogue.md (the page to read), docs/data/views_catalogue_reference.md (every element rule in full) and docs/data/views/*.svg (all generated; each generator has --check)
+  schema_changes: schema/views_changes.yaml (proposed, not applied)
+
+# ---------------------------------------------------------------------------------------------------------------------
+conventions:
+  view_vs_element: >-
+    A view has its own question and its own audience. A tile, chart, court or control inside a view is an element of
+    that view. Something a requirement calls a "view" but that has no question of its own (filters, clip export, foul
+    tracker, timeouts left) is an element; it keeps its own render test.
+  ids: 'VW-<SURFACE>-NN. SURFACE is LIVE, REV, STU, RPT or CARD (surfaces.<name>.code). Numbers start at 01 and have no gap inside a surface. An id is never reused.'
+  record: 'One record per view in a views file, under the key the index gives it. Keys of a record: see view_record.'
+  input_refs:
+    live_state: 'A field key of config/live_state/core.yaml field_index (game_clock_s) or its id (LS-TIME-03). The doc prints both.'
+    tables: 'table.column of schema/tables. A column that exists only as a proposal must be listed in a schema/*_changes.yaml file (this pack: schema/views_changes.yaml).'
+    metrics: 'M-<CAT>-nnn of config/metrics.yaml. A view never writes a formula.'
+    spots: 'An entry id of config/named_spots.yaml (elbow), or a whole layer as layer:<layer name> (layer:spot, layer:zone_scheme:court_region).'
+    events: 'A transition of config/state_machine.yaml (T05), a state dimension as dim:<name> (dim:flow_state), or a movement-grammar item as <family>:<item id> (screens:ball_screen, defense:switch). The family is the file name under config/movement_grammar.'
+  team_names: 'Stored state is home and away (R-MD-22). MSU-relative names are a display choice of a view. Wireframes say Home and Away.'
+  words:
+    possession: 'Never "position" for a possession.'
+    matchup_board: observed - who guarded whom
+    mismatch_map: predicted before the game
+    matchup_layer: the prediction layer "player A against player B"
+  units: metres (m), seconds (s), degrees (deg), probability 0-1 shown as percent, points. Metric labels only on every screen (R-VZ-07).
+  counts: Counts of fields, tables, metrics and categories are read from the packs at lint time. None is hard-coded here.
+  staff_status: 'Decision of 11 Nov 2026 and R-PR-19: views for MSU staff are listed with audience msu_staff and are excluded until staff respond. Their tests run with the owner as viewer.'
+  no_faces: 'Decision of 11 Nov 2026: no headshots anywhere. No view shows or needs a face image. A player is shown by name, number, team mark and appearance card.'
+  evidence_tags:
+    rule: 'Every evidence string starts with one of these tags and a colon. The lint rejects any other start.'
+    tags:
+      measured: on our own data; names the result file
+      assumed: not measured; says why this value and what will replace it
+      rule: a rule of the 2026-27 rules book, with its number
+      decision: a recorded decision (K01-K29, D01-D45, OD-n, an owner answer)
+      requirement: a live-requirement id
+      config: mirrors a value of another config file of the repo
+      definition: true by construction
+      published: an outside source, named
+      vendor claim: a number a vendor states about its own product
+  param_links:
+    mirrors: 'A param that repeats a value of another config names it as mirrors: <file>:<dotted key>. The lint checks that both are equal.'
+    measured_key: 'A param taken from a results file names it (measured_file, measured_key, measured_round; measured_one_minus when the param is 1 minus the stored share). The lint checks the value.'
+  grains: [frame, second, event, possession, chance, player-game, lineup stint, game, team-season, player-season, season, item, run, model version, market-game, opponent, team-half, coach]
+  grains_note: 'The first eight plus team-season are the query-layer grains of R-EN-18. The rest are needed by cards (player-season, opponent), simulations (season), review screens (item), platform reports (run), model cards (model version), market views (market-game), the half-time packet (team-half) and the coach card (coach). Three Studio views keep the grain item and define their item (a parameter, a label type, a hypothesis) in the record.'
+  phases: [P0, P0m, P0p, P1, P2, P3, P4, P5, P6, P7, P8, exists]
+  phase_names: {P0: Foundation, P0m: Market collection (parallel), P0p: Play-by-play track (parallel), P1: Vision, P2: Events and possessions, P3: Actions and sets, P4: Defense, P5: Value, P6: Prediction, P7: Markets, P8: Product, exists: a private tool already in use}
+  phases_note: 'phase = the first project phase whose hand-over gives every input of a useful minimum version of the view. "exists" = a private tool or page already in use.'
+  element_kinds: [tile, chart, court, timeline, table, video, overlay, control]
+  baselines: [named_spots, movement_grammar, identity_pack, live_state, state_machine, metrics]
+
+view_record:
+  required: [id, name, surface, audience, privacy, question, grain, as_of, refresh, elements, interactions, degraded, empty_state, requirements, depends_on, phase, acceptance, wireframe]
+  optional: [notes, decisions, covers_all_live_state, not_shown, definitions, min_width_px, params, wireframe_states]
+  element_keys: [key, kind, shows, inputs, number_rule, grade_rule, component, embeds, as_of, identity_rule, by_grade, by_level, definitions, requirements, numbers, layers, phase, notes]
+  interaction_keys: [action, at, target, to, produces, notes]
+  as_of: '{view: as_of_known | as_of_event | mixed, pass: [blind | anchored | pbp_only | live]}. A live_panel view is as_of_known. A mixed view writes as_of on every element.'
+  refresh: '{class: a key of refresh_classes, budget_s: number (optional override), evidence: tag and text}. Without budget_s the budget of the class applies.'
+  element: '{key, kind, shows, inputs: {live_state, tables, metrics, spots, events}, number_rule, grade_rule} and optionally component, embeds, as_of, identity_rule, by_grade, by_level, definitions, requirements, numbers, notes.'
+  number_rule: 'One block or a list of blocks {class: a key of display_contract.numbers.classes, plus the parts that class asks for}. Needed on every element that shows a number: any element with metrics, and every tile, chart and table unless it states numbers: none.'
+  grade_rule: 'Needed on every element that shows data, except a control. The word contract (the mapping of display_contract.grades applies as written), or {grade: what this element does instead}. An override may only show less; it never shows a value as better than its grade.'
+  degraded: 'All six keys D1_bug_away, D2_off_main, D3_replay, D4_break, D5_no_video and feed_stale. A value is a sentence, or the word default (the default of the surface applies).'
+  interactions: 'A list of {action: a key of interaction_grammar.actions, at: an element key or the word view, target: plain words, to: a view key (optional), produces: an export kind (export only)}.'
+  depends_on: '{baselines: [names of conventions.baselines], tables: [table names]}. The lint checks that every baseline and table an element reads is declared.'
+  wireframe: 'docs/data/views/<file>.svg, or null. A wireframe is drawn by tools/specgen/views/gen_wireframes.py from the record and this file; it is never drawn by hand. It labels every element it draws with the element key.'
+  wireframe_states: 'Optional. {degradation level: docs/data/views/<file>.svg} for the same view drawn at another level (the live panel at D1 and D3). wireframe is the view at D0.'
+
+# ---------------------------------------------------------------------------------------------------------------------
+audiences:
+  owner: {who: 'Aldemir. He alone promotes drafts, confirms gold labels and signs the rights gate.', status: active}
+  analyst: {who: 'The data-scientist seat in the Studio. Today that is Aldemir, and Claude sessions working for him (their labels are stored apart, R-HR-16).', status: active}
+  msu_staff: {who: 'MSU coaches and staff.', status: 'listed, excluded until staff respond (decision of 11 Nov 2026, R-PR-19)'}
+  public_demo: {who: 'A reader of the public repo or of a pitch that passed the rights gate (R-RG-02) and the published-number gate (R-DQ-15).', status: active for drawings and made-up or public numbers only}
+
+surfaces:
+  live_panel:
+    code: LIVE
+    what: The in-game panel. One screen, read at a glance on a phone or a laptop.
+    as_of_allowed: [as_of_known]
+    width_rule: reading
+    refresh_default: on_event
+  review:
+    code: REV
+    what: Post-game and film-room views. Interactive; video beside the drawing.
+    as_of_allowed: [as_of_event, mixed]
+    width_rule: workspace
+    refresh_default: post_game
+  studio:
+    code: STU
+    what: The Analyst Studio and the review and labelling screens. Private, desktop, runs on the private store.
+    as_of_allowed: [as_of_event, as_of_known, mixed]
+    width_rule: workspace
+    refresh_default: on_edit
+  report:
+    code: RPT
+    what: A generated page or packet read top to bottom (half-time packet, notes sheet, scouting packet, run record).
+    as_of_allowed: [as_of_event, as_of_known, mixed]
+    width_rule: reading
+    refresh_default: post_game
+  card:
+    code: CARD
+    what: A frozen one-subject summary (player, coach, game, model), dated.
+    as_of_allowed: [as_of_event, as_of_known, mixed]
+    width_rule: reading
+    refresh_default: pre_game
+
+# ---------------------------------------------------------------------------------------------------------------------
+# THE DISPLAY CONTRACT. Eight rules every view obeys. A record states only what differs.
+display_contract:
+  summary:
+    - '1 Grade to appearance: one mapping for all views. A view never upgrades a grade and never shows a value without it.'
+    - '2 Identity: a locked label, or HOLD with the candidates. The probable tier is offline only, flagged, never inside a stat.'
+    - '3 Numbers: every number has a class. An estimate shows n and interval and links to its frames. Below the minimum n it is "too few".'
+    - '4 As-of: a live view reads as_of_known and prints its age. A review view reads as_of_event and names the pass.'
+    - '5 Degraded states: for every level D1-D5 and a stale feed the view says what it shows. No view goes blank without a reason.'
+    - '6 One visual standard: metric labels, one palette, contrast, 375 px, the court in the named-spots frame.'
+    - '7 Privacy: every view has a class. Video frames never leave the private store.'
+    - '8 Ids only: every metric, live value, spot and event is named by its id. No formula lives in a view.'
+
+  # Rule 1 -------------------------------------------------------------------------------------------------------------
+  grades:
+    source: 'config/live_state/core.yaml grades (ladder confirmed, observed, inferred, carried, imputed, unknown; aside quarantined). The lint checks that this table has exactly those grades.'
+    rules:
+      - A view shows the grade the state gives. It never shows a better one.
+      - Grade is carried by mark style and a text badge, never by colour alone (published WCAG 2.1 SC 1.4.1).
+      - The grade word, the source, the confidence and the age are always one selection away, in the inspector.
+      - A derived value takes the worst grade and the oldest age of its inputs (live-state rule WORST_INPUT). The view shows that grade.
+    appearance:
+      confirmed:
+        value_text: text.primary
+        tile_edge: solid
+        court_marker: filled
+        badge: none
+        shows_age: false
+        shows_region: false
+        visible_in: all
+        in_words: Solid. No mark.
+      observed:
+        value_text: text.primary
+        tile_edge: solid
+        court_marker: filled
+        badge: none
+        shows_age: false
+        shows_region: false
+        visible_in: all
+        in_words: Solid. No mark. The inspector tells confirmed from observed.
+      inferred:
+        value_text: text.primary
+        tile_edge: solid
+        court_marker: filled with a ring
+        badge: prov
+        shows_age: false
+        shows_region: false
+        visible_in: all
+        in_words: Solid, with the badge "prov" (provisional). A claim made by a rule before a sensor shows it.
+      carried:
+        value_text: text.stale
+        tile_edge: dashed
+        court_marker: none (a carried position is not drawn; positions go from observed to imputed)
+        badge: age
+        shows_age: true
+        shows_region: false
+        visible_in: all
+        in_words: 'Greyed, dashed edge, and its age in words ("12 s ago"). Where the state holds a guaranteed interval (the clocks) the interval is printed.'
+      imputed:
+        value_text: text.stale
+        tile_edge: dotted
+        court_marker: hollow outline with its 95 % region
+        badge: est
+        shows_age: true
+        shows_region: true
+        visible_in: all
+        in_words: Outlined, hollow, with its region and the badge "est". Removed when the imputation limit passes. No slow fade.
+      unknown:
+        value_text: text.stale
+        tile_edge: dotted
+        court_marker: none
+        badge: reason
+        shows_age: false
+        shows_region: false
+        visible_in: all
+        in_words: 'A dash and the reason in words ("- bug away 40 s", "- replay"). Never an empty cell, never a zero.'
+      quarantined:
+        value_text: text.stale
+        tile_edge: hatched
+        court_marker: none
+        badge: under review
+        shows_age: false
+        shows_region: false
+        visible_in: review_queue_only
+        in_words: 'The value is hidden from every view. Its place shows the dash of "unknown" with the reason "under review". Only the review queue and the review item screen show the contradicted value, hatched.'
+    badge_texts: {prov: prov, est: est, age: '<n> s ago', reason: '- <reason>', under review: '- under review'}
+    review_views: [review_queue, review_item]   # the only views that may show a quarantined value
+    params:
+      offscreen_marker_max_s: {value: 10.0, unit: s, why: 'an off-screen marker is drawn this long, hollow with its region, then removed', evidence: 'config: config/live_state/core.yaml profile observation, offscreen_imputed_max_s (decision K15, requirement R-DT-07)', mirrors: 'config/live_state/core.yaml:profiles.observation.params.offscreen_imputed_max_s.value'}
+      counter_stale_mark_s: {value: 20.0, unit: s, why: 'a carried counter with nothing watching it gets the word "stale" beside its age after this long', evidence: 'config: config/live_state/core.yaml profile counter, counter_stale_after_s (measured there)', mirrors: 'config/live_state/core.yaml:profiles.counter.params.counter_stale_after_s.value'}
+      region_level: {value: 0.95, unit: probability, why: 'level of the region drawn round an imputed position', evidence: 'decision: K15 (off-screen estimates at 10 Hz with a calibrated 95 % region)'}
+
+  # Rule 2 -------------------------------------------------------------------------------------------------------------
+  identity:
+    source: 'config/identity_pack.yaml outputs (live_panel, per_frame, probable_log). Owner decisions OD-8 and OD-10 of 25 Oct 2026.'
+    rules:
+      locked_or_hold: 'A player is shown by a locked label, or as HOLD with the candidate list. Never a provisional or unconfirmed label. This is the only rule a live_panel view and any as_of_known element may use (OD-10).'
+      probable_flagged_offline: 'Offline views may also show the probable tier on the video and court layers, with the word "probable" on the mark. It never appears in a tile, a table or a stat, and never on a live view (OD-8).'
+    hold_display: 'HOLD is drawn as a neutral marker with "?" and the candidates in order of posterior. Team is shown when the team is known.'
+    no_face: No element shows a face crop or a headshot. An identity item shows the jersey, the kit and the appearance card.
+    live_state_fields: [player_identity, ball_handler, lineup_home, lineup_away, matchups, player_positions, player_fouls, foul_trouble]
+    column_pattern: '(^|_)player_id$|^player_ids$|^(passer|receiver|screener|user|defender|attacker|shooter|holder|handler|rim_protector|ball_handler_player)_id$'
+    banned_column_pattern: 'headshot|face|portrait|photo'
+    lint: 'An element that reads one of live_state_fields, or a table column matching column_pattern, states identity_rule. A banned column is never an input.'
+
+  # Rule 3 -------------------------------------------------------------------------------------------------------------
+  numbers:
+    rules:
+      - Every number on screen belongs to one class below. The class says what must stand beside it.
+      - Every number links to the frames that produced it (R-VZ-02). The link carries the filters, the series and the time range.
+      - An interval is never drawn as bare bar ends. Draw a fading band where there is room; otherwise print value, n and interval.
+      - The level of every interval is printed beside it. Two levels exist in the requirements, 95 % and 80 %.
+      - Below its minimum n an estimate is not drawn on the scale. The cell shows "too few" and n, in the no-data style.
+      - A number that is descriptive only carries the word "descriptive". It makes no claim about cause.
+      - A view never smooths, caps or rounds away what a model said. It shows the stored value.
+      - '"Inspect" on any chart or table shows its rows and its query with the metric ids (R-EN-18).'
+    classes:
+      official:
+        what: A count or value of the official record or of the rules (score, fouls, timeouts, box-score counts).
+        must_show: [source, as_of]
+        needs: [link]
+        example: '68-61, official box, as of the final play-by-play version'
+      live_state:
+        what: A value of the live game state shown at an instant (clock, score, possession, flags).
+        must_show: [grade, age]
+        needs: [link]
+        example: '7:42 prov'
+      estimate:
+        what: A statistic computed from a sample (a rate, a mean, a shrunk tendency).
+        must_show: [n, interval, level]
+        needs: [link, min_n]
+        example: '1.08 points per possession, n = 64, 95 % 0.93 to 1.23'
+      model:
+        what: An output of a model (win probability, expected points, a forecast).
+        must_show: [band, model_version]
+        needs: [link]
+        example: '71 %, band 64 to 78, model wp-0.3'
+      label:
+        what: The confidence of a label made by a model or a rule (a set, a coverage, a matchup, an identity).
+        must_show: [confidence, version]
+        needs: [link]
+        example: 'drop coverage, confidence 0.86, rule set 0.2'
+      measurement:
+        what: One quantity measured from tracking (a distance, a speed, a time).
+        must_show: [unit, error]
+        needs: [link]
+        example: '4.2 m, error 0.3 m'
+      descriptive:
+        what: A number shown for description only, with no test behind it.
+        must_show: [n, descriptive_mark]
+        needs: [link]
+        example: '4 timeouts called during opponent runs (descriptive, n = 4)'
+    link_kinds:
+      frames: The video frames or the clip of the row (clip_index, proposed table).
+      rows: The rows behind an aggregate, opened as a list; each row links to its frames.
+      state: The state transition or segment that set the value; it links to its effective frame.
+      none_fixed: A value fixed before tip (venue, crew). It links to its registry row, not to video.
+    params:
+      min_n_default: {value: 30, unit: count, why: 'an estimate with fewer cases is shown as "too few" with its n', evidence: 'decision: K12 (n at least 30 until the reliability study gives n70 per metric)'}
+      interval_level_default: {value: 0.95, unit: probability, why: 'level of an interval when the metric does not state another', evidence: 'requirement: R-RR-02 and decision K15 use 95 %'}
+      interval_level_shooting: {value: 0.80, unit: probability, why: 'level of the interval on shrunk make rates', evidence: 'requirement: R-PC-23 (80 % interval at each named spot)'}
+      coverage_fine_min_conf: {value: 0.8, unit: probability, why: 'a fine ball-screen coverage is shown only at this confidence; below it the coarse class is shown', evidence: 'decision: K04'}
+      position_sigma_max_m: {value: 0.5, unit: m, why: 'a position with a larger error is not printed as a number and not binned in a heat map', evidence: 'requirement: R-CG-08'}
+      position_print_step_m: {value: 0.1, unit: m, why: 'positions are printed to this step', evidence: 'requirement: R-CG-08'}
+
+  # Rule 4 -------------------------------------------------------------------------------------------------------------
+  as_of:
+    source: 'config/live_state/core.yaml conventions.as_of_views.'
+    rules:
+      as_of_known: 'What the system knew at t. A live view reads only this. It prints the known-at time and the age of the oldest value on screen.'
+      as_of_event: 'What was true at t. A review view reads this and prints the pass (blind, anchored, pbp_only) and the state version.'
+      mixed: 'A view that shows both marks every element with its as-of. The Studio offers a switch "what was true / what we knew".'
+      banner: 'Every view carries the as-of banner (component as_of_banner). It is never hidden.'
+      frozen: 'A card or packet is frozen at a snapshot. It prints the snapshot time and shows nothing dated after it.'
+    passes: [live, blind, anchored, pbp_only]
+
+  # Rule 5 -------------------------------------------------------------------------------------------------------------
+  degraded:
+    source: 'config/live_state/core.yaml degradation_levels (D0_full to D5_no_video and the feed_stale flag). The lint checks the level names against that file.'
+    levels: [D1_bug_away, D2_off_main, D3_replay, D4_break, D5_no_video, feed_stale]
+    rules:
+      - The level is always printed in the as-of banner, in words.
+      - A worse level changes the view at once. A better level waits for the return rule of each field.
+      - During a replay, review, timeout or break a derived value holds its last value and is marked held, with the reason. It does not tick.
+      - A view that cannot show its content at a level shows a card that names the level and what is missing.
+    defaults:
+      live_panel:
+        D1_bug_away: 'Clocks are shown by grade: provisional, then greyed with age and interval, then a dash. Score and counts stay solid while CV watches the ball and rim; else greyed with age.'
+        D2_off_main: Positions and the mini court are hidden, with the reason. Counts are shown as read. Status values are greyed with age, then a dash.
+        D3_replay: The whole panel is frozen at the last live instant and carries the word REPLAY. Nothing ticks.
+        D4_break: The whole panel is frozen and carries the word BREAK and the age of the freeze. On return the values are re-read before they are solid again.
+        D5_no_video: 'Feed-only panel: score, fouls, timeouts and lineups from the feed while it is healthy. Clocks, positions, tactics and possession detail show a dash with "no video".'
+        feed_stale: 'A line "feed quiet <n> s". Scorebook-only values (who, what, foul type, substitutions) are greyed with their age.'
+      review:
+        D1_bug_away: Normal. The timeline shades the stretch; clock values in it carry their grade.
+        D2_off_main: Video plays. The court shows imputed markers with regions up to the limit, then removes them. Overlays that need positions are off for the stretch, with the reason.
+        D3_replay: Video shows the replay. Court, state and curves stay at the last live instant, marked REPLAY. The replay is offered as linked evidence.
+        D4_break: The playhead may cross the break. Court and state show "break"; nothing is drawn.
+        D5_no_video: 'A card "no video for this stretch". State from the feed is shown where it exists.'
+        feed_stale: A recorded game uses the final play-by-play. The view prints the play-by-play version it was built from.
+      studio:
+        D1_bug_away: As review. The inspector shows the dead-reckoned clock with its interval.
+        D2_off_main: As review. Layers that need the main camera are greyed in the layer list.
+        D3_replay: As review. The replay segment is a selectable object.
+        D4_break: As review. The break is a selectable segment on the timeline.
+        D5_no_video: As review.
+        feed_stale: As review.
+      report:
+        D1_bug_away: Numbers are computed as specified. Nothing changes on the page.
+        D2_off_main: A number that needs positions states the share of time it could use.
+        D3_replay: Replays never enter a number.
+        D4_break: Breaks never enter a number.
+        D5_no_video: The page marks every video-based section "no video" and keeps the play-by-play sections.
+        feed_stale: The page prints the play-by-play version and its pull time.
+      card:
+        D1_bug_away: Not applicable to a frozen card. The card prints its snapshot time.
+        D2_off_main: A tendency built from tracking states the share of time observed.
+        D3_replay: Not applicable. Replays never enter a number.
+        D4_break: Not applicable. Breaks never enter a number.
+        D5_no_video: 'The card carries the flag "no footage: play-by-play and public data only" where it applies.'
+        feed_stale: The card prints the as-of time of every source block.
+
+  # Rule 6 -------------------------------------------------------------------------------------------------------------
+  visual_standard:
+    requirement: R-VZ-07
+    labels: Metric labels only. Metres, seconds, degrees. Every label on screen comes from the vocabulary map (R-MD-31).
+    court: 'The court is always drawn in the named-spots frame (config/named_spots.yaml frame): the attacked rim at the origin, x along the end line, y toward half court, metres. Regions, spots and zones are drawn from that file, never redrawn by hand.'
+    court_drawing:
+      orientation: overhead
+      options:
+        overhead: 'What a camera above the floor sees: +x to the right of the screen, +y down the screen, the attacked rim at the top. The attacker''s right is on the right. Used by every court of this pack.'
+        math_plot: 'x to the right, y up, the rim at the bottom: the orientation of docs/data/named_spots_court.svg. It is the mirror image of the overhead view, because the named-spots frame (x to the attacker''s right, y toward half court, z up) is left-handed.'
+      why: 'A top-down replay that sits beside the video (R-VZ-01) must not swap left and right. The numbers do not change: only the picture is flipped.'
+      evidence: 'definition: facing -y with z up, a person''s right is -x of a right-handed frame; the named-spots frame puts it at +x'
+      status: 'open question OQ-VW-40. The wireframe generator reads orientation; changing the word redraws every court.'
+    colour_rules:
+      - Colour is never the only carrier. A series is also told apart by shape, dash or a direct label.
+      - Text is never coloured by team or category. Text uses the text tokens.
+      - Home is blue with a circle. Away is vermilion with a square. Never red against green.
+      - Grade is not a colour. Grade is mark style and badge (rule 1). So grade, team and category never share a channel.
+      - 'An element that colours by team uses shape, dash or a direct label for any second variable; it does not also use the categorical set.'
+      - Court and charts sit on the dark chart surface in both themes. Text pages follow the theme.
+      - The no-data style lies outside every scale - a hatched neutral cell.
+    themes:
+      light:
+        bg.page: '#FFFFFF'
+        bg.panel: '#F3F4F6'
+        bg.chart: '#14171C'
+        text.primary: '#14171C'
+        text.secondary: '#4A5361'
+        text.stale: '#5F6875'
+        text.link: '#005A8C'
+        text.attention: '#8A4B00'
+        text.on_chart: '#F2F4F7'
+        text.on_chart_secondary: '#B4BCC8'
+        text.on_chart_stale: '#9AA3AF'
+        text.on_team_home: '#FFFFFF'
+        text.on_team_away: '#14171C'
+      dark:
+        bg.page: '#0E1116'
+        bg.panel: '#1A1F27'
+        bg.chart: '#14171C'
+        text.primary: '#F2F4F7'
+        text.secondary: '#B4BCC8'
+        text.stale: '#9AA3AF'
+        text.link: '#7CC4F0'
+        text.attention: '#F0B340'
+        text.on_chart: '#F2F4F7'
+        text.on_chart_secondary: '#B4BCC8'
+        text.on_chart_stale: '#9AA3AF'
+        text.on_team_home: '#FFFFFF'
+        text.on_team_away: '#14171C'
+    shared_tokens:
+      team.home: '#0072B2'
+      team.away: '#D55E00'
+      mark.court_line: '#8A93A0'
+      mark.region: '#9AA3AF'
+      mark.no_data: '#6B7480'
+      mark.attention: '#E69F00'
+    team_marks: {home: {token: team.home, shape: circle, label_text: text.on_team_home}, away: {token: team.away, shape: square, label_text: text.on_team_away}}
+    yaml_note: 'The background of a pair is written bg and the place of an interaction is written at, because a bare on is read as true by YAML.'
+    text_pairs:   # every text / background pair a view may use; ratio = WCAG 2.1 contrast, computed (vwlib.contrast) and checked by the lint
+      - {text: text.primary, bg: bg.page, ratio: {light: 17.96, dark: 17.16}}
+      - {text: text.primary, bg: bg.panel, ratio: {light: 16.32, dark: 15.02}}
+      - {text: text.secondary, bg: bg.page, ratio: {light: 7.77, dark: 9.88}}
+      - {text: text.secondary, bg: bg.panel, ratio: {light: 7.06, dark: 8.64}}
+      - {text: text.stale, bg: bg.page, ratio: {light: 5.64, dark: 7.41}}
+      - {text: text.stale, bg: bg.panel, ratio: {light: 5.12, dark: 6.49}}
+      - {text: text.link, bg: bg.page, ratio: {light: 7.39, dark: 9.92}}
+      - {text: text.link, bg: bg.panel, ratio: {light: 6.72, dark: 8.68}}
+      - {text: text.attention, bg: bg.page, ratio: {light: 6.80, dark: 10.11}}
+      - {text: text.attention, bg: bg.panel, ratio: {light: 6.18, dark: 8.85}}
+      - {text: text.on_chart, bg: bg.chart, ratio: {light: 16.30, dark: 16.30}}
+      - {text: text.on_chart_secondary, bg: bg.chart, ratio: {light: 9.38, dark: 9.38}}
+      - {text: text.on_chart_stale, bg: bg.chart, ratio: {light: 7.04, dark: 7.04}}
+      - {text: text.on_team_home, bg: team.home, ratio: {light: 5.19, dark: 5.19}}
+      - {text: text.on_team_away, bg: team.away, ratio: {light: 4.64, dark: 4.64}}
+    graphic_pairs:   # marks that must be seen against the chart surface (3:1)
+      - {mark: team.home, bg: bg.chart, ratio: {light: 3.46, dark: 3.46}}
+      - {mark: team.away, bg: bg.chart, ratio: {light: 4.64, dark: 4.64}}
+      - {mark: mark.court_line, bg: bg.chart, ratio: {light: 5.78, dark: 5.78}}
+      - {mark: mark.region, bg: bg.chart, ratio: {light: 7.04, dark: 7.04}}
+      - {mark: mark.no_data, bg: bg.chart, ratio: {light: 3.79, dark: 3.79}}
+      - {mark: mark.attention, bg: bg.chart, ratio: {light: 7.98, dark: 7.98}}
+    categorical:
+      source: 'published: Okabe and Ito, Color Universal Design (2002, revised 2008). The eight hex values are the widely reproduced set; assumed: the source page shows them only in a figure. Slot 8 is a light neutral in place of black, because the chart surface is dark.'
+      use_on: bg.chart
+      second_channel: [circle, square, triangle, diamond, cross, solid, dashed, dotted]
+      set:
+        - {slot: 1, name: orange, hex: '#E69F00', ratio_on_chart: 7.98}
+        - {slot: 2, name: sky blue, hex: '#56B4E9', ratio_on_chart: 7.78}
+        - {slot: 3, name: bluish green, hex: '#009E73', ratio_on_chart: 5.25}
+        - {slot: 4, name: yellow, hex: '#F0E442', ratio_on_chart: 13.58}
+        - {slot: 5, name: blue, hex: '#0072B2', ratio_on_chart: 3.46}
+        - {slot: 6, name: vermilion, hex: '#D55E00', ratio_on_chart: 4.64}
+        - {slot: 7, name: reddish purple, hex: '#CC79A7', ratio_on_chart: 5.87}
+        - {slot: 8, name: neutral, hex: '#E6E8EB', ratio_on_chart: 14.63}
+      on_light_note: 'On a white page orange, sky blue, yellow and the neutral fail 3:1 (measured: 2.25, 2.31, 1.32, 1.23). That is why charts keep the dark surface in the light theme.'
+    sequential:
+      name: cividis
+      use: 'more of one thing (density, time, value). Low is dark and sits near the chart surface; high is bright.'
+      source: 'published: Nunez, Anderton and Renslow, PLOS ONE 2018 (built so that readers with and without red-green deficiency see it alike). assumed: the five stops are written from the R viridisLite listing and are re-checked by the wireframe step.'
+      stops: ['#00204D', '#414D6B', '#7C7B78', '#BCAF6F', '#FFEA46']
+    diverging:
+      name: purple-orange
+      use: 'above or below a reference (expected, average, zero). The mid stop is the reference and is the lightest.'
+      source: 'published: ColorBrewer PuOr, 7 classes, marked colour-blind safe. assumed: the seven stops are written from the ColorBrewer listing and are re-checked by the wireframe step. Purple and orange are used so that the scale is never read as home against away.'
+      stops: ['#B35806', '#F1A340', '#FEE0B6', '#F7F7F7', '#D8DAEB', '#998EC3', '#542788']
+    text_sizes:
+      caption_px: {value: 12, unit: px, why: 'smallest text on any view: badges, ages, n and intervals', evidence: 'assumed: common floor for secondary text on phones; checked on the first wireframes at 375 px'}
+      body_px: {value: 14, unit: px, why: 'labels and table text', evidence: 'assumed: one step above the caption; checked on the first wireframes'}
+      value_px: {value: 20, unit: px, why: 'a value inside a tile', evidence: 'assumed: readable at arm length on a phone; checked on the first wireframes'}
+      hero_px: {value: 32, unit: px, why: 'score and game clock on the live panel', evidence: 'assumed: the two values read from furthest away; checked on the first wireframes'}
+      large_text_px: {value: 24, unit: px, why: 'from this size text may use the 3:1 limit', evidence: 'published: WCAG 2.1 SC 1.4.3 (18 pt, about 24 px)'}
+    params:
+      text_contrast_min: {value: 4.5, unit: ratio, why: 'every text and background pair of text_pairs', evidence: 'requirement: R-VZ-07 (published: WCAG 2.1 SC 1.4.3, level AA)'}
+      graphic_contrast_min: {value: 3.0, unit: ratio, why: 'marks a reader needs to see against the chart surface', evidence: 'published: WCAG 2.1 SC 1.4.11, level AA'}
+      reading_min_width_px: {value: 375, unit: px, why: 'a reading view works at this width with no sideways page scroll', evidence: 'requirement: R-VZ-07 (the standard asks 320 px; published: WCAG 2.1 SC 1.4.10)'}
+      workspace_min_width_px: {value: 1280, unit: px, why: 'review and Studio views show video, court, panel and timeline side by side', evidence: 'assumed: a laptop screen; replaced by the width the first Studio wireframe needs (open question OQ-VW-4)'}
+      touch_target_px: {value: 44, unit: px, why: 'side of a touch target on a reading view', evidence: 'published: WCAG 2.1 SC 2.5.5'}
+      touch_target_floor_px: {value: 24, unit: px, why: 'no target is smaller than this on any view', evidence: 'published: WCAG 2.2 SC 2.5.8'}
+    width_rules:
+      reading: 'Works at reading_min_width_px. The court drawing, a table and a timeline may scroll inside their own box (the standard exempts maps, diagrams, video, data tables and toolbars).'
+      workspace: 'Desktop only, at least workspace_min_width_px. The 375 px rule does not bind it (open question OQ-VW-4).'
+    banned_units: [ft, feet, foot, inch, inches, yd, yard, yards, mph, lb, lbs]
+
+  # Rule 7 -------------------------------------------------------------------------------------------------------------
+  privacy:
+    requirement: [R-PR-19, R-AS-10, R-EN-23, R-RG-02]
+    rules:
+      - Video frames and video files never leave the private store. An export is a clip reference, a drawing, an aggregate or a query.
+      - No face crop and no headshot is shown or exported.
+      - An individual player output is private to MSU staff and the owner. It is never shareable_aggregate and never public_demo.
+      - No view infers race or health. A physical-load view says "no health inference" in its footer.
+      - A number leaves the private store only as an aggregate through the published-number gate (R-DQ-15).
+    classes:
+      owner_only:
+        audiences: [owner, analyst]
+        video: true
+        player_level: true
+        exports: [clip_reference, top_down_render, video_clip_private, sql, aggregate_table, page]
+      msu_staff:
+        audiences: [owner, analyst, msu_staff]
+        video: true
+        player_level: true
+        exports: [clip_reference, top_down_render, video_clip_private, aggregate_table, page]
+      shareable_aggregate:
+        audiences: [owner, analyst, msu_staff]
+        video: false
+        player_level: false
+        exports: [top_down_render, aggregate_table, page]
+      public_demo:
+        audiences: [owner, analyst, msu_staff, public_demo]
+        video: false
+        player_level: false
+        exports: [top_down_render, page]
+    exports:
+      clip_reference: 'Game id, in and out video seconds, overlay spec (R-RG-02). No pixels.'
+      top_down_render: A drawing of the court with markers and arrows. No broadcast pixel.
+      video_clip_private: A video file written inside the private store only. Never attached, never uploaded.
+      sql: The query text of a selection, with metric ids (R-AS-06).
+      aggregate_table: Aggregates only, through the published-number gate (R-EN-23, R-DQ-15). No row-level data.
+      page: The rendered page without video frames.
+    player_grains: [player-game, player-season]
+
+  # Rule 8 -------------------------------------------------------------------------------------------------------------
+  ids_only:
+    requirement: [R-PR-14, R-EN-18]
+    rules:
+      - A view lists metric ids. It never holds a formula, a threshold of a metric or a second definition.
+      - Every live value is named by its live-state key. Every spot by its named-spots id. Every event by its grammar or transition id.
+      - 'A filter or shading that depends on a definition names it: run rule (K05), clutch flag (K06), garbage-time flag (K28), court partition, screen rule strict or loose.'
+      - A number on a view equals the value of the same metric id from the query layer (R-EN-18).
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Components: the building blocks every view reuses. An element names its component; the component's rules then apply.
+components:
+  as_of_banner:
+    kind: control
+    purpose: Says what the reader is looking at - live or recorded, which as-of, how old, which level.
+    inputs:
+      live_state: [pass, state_version, stamp_known_at_utc, stamp_age_s, degradation_level, feed_heartbeat, stream_delay_s]
+    behaviour:
+      - 'Live: "LIVE, as known <hh:mm:ss>, oldest value <n> s". Recorded: "RECORDED, as of event, pass anchored, version <id>".'
+      - 'A packet or a card: "FROZEN, as known <snapshot time>", with the last game included and the as-of time of every source block. It shows nothing dated after the snapshot.'
+      - 'A mixed view prints both lines and each element carries its own mark ("as of event" or "as known").'
+      - The degradation level is printed in words. A stale feed adds its own line.
+      - Always visible. It does not scroll away.
+    requirements: [R-PR-15, R-PR-14]
+  state_tile:
+    kind: tile
+    purpose: One live-state value or a small group, with its stamps.
+    inputs:
+      live_state: [stamp_src, stamp_conf, stamp_grade, stamp_age_s, stamp_known_at_utc]
+    behaviour:
+      - Shows label, value, unit and the grade appearance of rule 1.
+      - 'A tile of several values takes the edge style of its worst grade; each value keeps its own badge.'
+      - Selecting the tile opens the inspector on the value.
+    requirements: [R-PR-15, R-AS-02]
+  video_player:
+    kind: video
+    purpose: The broadcast video, played from the private store.
+    inputs:
+      tables: [video_files.video_id, video_files.fps_nominal, frames.frame_index, frames.video_ts_ms, frames.camera_shot_type, frames.is_replay, clock_map.from_video_ms, clock_map.to_video_ms, clock_map.from_gc_ds, clock_map.to_gc_ds]
+    behaviour:
+      - Plays, pauses, steps one frame, steps one second. Speeds 0.25 to 2.
+      - 'Shares one playhead with every other element of the view. The clock map turns video time into game clock and back.'
+      - Shows the frame rate of the file and refuses a clip whose rate does not match its record.
+      - Never streams or writes a frame outside the private store.
+    requirements: [R-VZ-01, R-AS-01, R-AS-10]
+    params:
+      sync_offset_max_frames: {value: 1, unit: frames, why: 'video and top-down court refer to the same instant within this offset', evidence: 'requirement: R-VZ-01 (offset at most 1 frame on a whistle check)'}
+  top_down_court:
+    kind: court
+    purpose: Ten players and the ball from above, in metres, in the named-spots frame.
+    inputs:
+      live_state: [player_positions, ball_position, basket_attacked_home, court_visible_frac]
+      tables: [player_positions.x_m, player_positions.y_m, player_positions.observed, player_positions.region95_semi_axes_m, player_positions.region95_angle_deg, player_positions.imputation_strength, player_positions.on_main_camera, player_positions.identity_conf, ball_states.ball_x_m, ball_states.ball_y_m, ball_states.ball_visible, frames.homography]
+      spots: ['layer:zone_scheme:court_region', 'layer:spot', 'layer:landmark']
+    behaviour:
+      - The attacked rim is at the origin. Home is a circle, away a square, with the jersey number as a direct label.
+      - 'An observed player is a filled marker. An off-screen player is a hollow marker with its 95 % region, for at most offscreen_marker_max_s, then it is removed.'
+      - The area the camera sees is drawn as a polygon. Everything outside it is in the not-seen style.
+      - 'A player on HOLD is a neutral marker with "?"; the candidates are in the inspector.'
+      - Regions, spots and zones can be switched on as layers. They are read from config/named_spots.yaml.
+    requirements: [R-VZ-01, R-VZ-11, R-AS-01]
+  timeline:
+    kind: timeline
+    purpose: Rows of boxes on one time scale with one playhead.
+    inputs:
+      tables: [state_segments.dimension, state_segments.value, state_segments.from_frame, state_segments.to_frame, state_segments.dq, state_transitions.ttype, state_transitions.effective_frame, state_transitions.known_at_utc, events.event_type_code, events.frame_index, possessions.start_frame_index, possessions.end_frame_index, chances.start_frame_index, chances.end_frame_index]
+      events: [T00, T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26]
+    behaviour:
+      - 'One row per state dimension, plus rows for transitions, events, possessions and chances. A view adds rows (set phases, scheme states).'
+      - A box is drawn in the appearance of its grade. Replays and breaks are shaded across all rows.
+      - 'Scrubbing moves video, court and panel. Brushing a range makes a selection.'
+    requirements: [R-AS-01, R-AS-06]
+  value_curve:
+    kind: chart
+    purpose: Possession value across a possession, with the change each action made.
+    inputs:
+      tables: [possession_value.ts_ds, possession_value.value_xpts, possession_value.model_version, value_credits.value_delta_xpts, value_credits.credit_role]
+      metrics: [M-IMP-063, M-IMP-065]
+    behaviour:
+      - A line with its band and the model version. Each action is a mark on the line with its change printed.
+      - Shares the playhead. Selecting a mark jumps the video to the action.
+      - Holds its last value through a replay or a break, marked held.
+    requirements: [R-VZ-04]
+  inspector:
+    kind: control
+    purpose: Details of the one selected object.
+    inputs:
+      tables: [run_records.run_id, run_records.model_versions, run_records.config_hashes, run_records.input_hashes, run_records.git_commit]
+    behaviour:
+      - 'Fixed order for every object: what it is, value, grade and confidence, source and as-of, version (model, rule, config), lineage, history, actions.'
+      - A stat also shows its metric id, its formula from the registry and a link to its catalogue page.
+      - Lineage resolves to input files and config hashes (R-EN-19).
+      - History compares with the previous state version.
+    requirements: [R-AS-02, R-EN-19, R-VZ-02, R-VZ-03]
+  filter_bar:
+    kind: control
+    purpose: Narrows what a view shows.
+    inputs: {}
+    behaviour:
+      - 'Filters: player, lineup, set, coverage, opponent, game, period, state ("clutch, home ball, after timeout").'
+      - A filter that rests on a definition names it (run rule, clutch flag, garbage-time flag).
+      - Every filter state is a query over the query layer. The bar shows the count of rows left.
+      - A filter that leaves fewer cases than the minimum n says so; the numbers switch to "too few".
+    requirements: [R-VZ-06e, R-AS-06, R-EN-18]
+  selection_query:
+    kind: control
+    purpose: Turns a selection into a query.
+    inputs: {}
+    behaviour:
+      - A selection shows the SQL it stands for, with metric ids. Running it again returns the same rows.
+      - A saved selection is a named shortcut.
+      - Only aggregates may leave the private store (R-EN-23).
+    requirements: [R-AS-06, R-EN-18, R-EN-23]
+  layer_toggle:
+    kind: control
+    purpose: Switches overlays on and off, on video and court.
+    inputs: {}
+    behaviour:
+      - Each layer toggles alone and stays aligned.
+      - A layer that cannot be drawn at the current level is greyed, with the reason.
+    requirements: [R-AS-12, R-VZ-04]
+    params:
+      overlay_align_max_m: {value: 0.1, unit: m, why: 'an overlay sits on its track within this distance', evidence: 'requirement: R-VZ-04'}
+      overlay_align_max_frames: {value: 1, unit: frames, why: 'a toggled layer stays in step with the video within this offset', evidence: 'requirement: R-AS-12'}
+  clip_export:
+    kind: control
+    purpose: Hands a moment on, without moving video.
+    inputs:
+      tables: [clip_index.row_ref, clip_index.in_s, clip_index.out_s, clip_index.key_frame, clip_index.replay_ids, video_files.video_id]
+    behaviour:
+      - 'Produces a clip reference (game id, in and out seconds, overlay spec) and, on request, a top-down render.'
+      - A video file is written only inside the private store. It is never attached or uploaded.
+      - No export contains a face crop.
+    requirements: [R-VZ-06f, R-VZ-10, R-PR-19, R-AS-10]
+  tree_navigator:
+    kind: control
+    purpose: Walks down from the game to the player - game, half, five-minute window, possession, chance, action, player.
+    inputs:
+      tables: [possessions.possession_id, chances.chance_id, events.event_id]
+      live_state: [five_min_window]
+    behaviour:
+      - Each level shows its count and its headline number, by the number rule.
+      - Choosing a branch filters the view and moves the playhead to its start.
+    requirements: [R-AS-07]
+  command_palette:
+    kind: control
+    purpose: Every action as a command.
+    inputs: {}
+    behaviour:
+      - Every action of the interaction grammar has a command. The 20 most used have keys.
+    requirements: [R-AS-07]
+
+# ---------------------------------------------------------------------------------------------------------------------
+interaction_grammar:
+  principles:
+    - 'Overview first, zoom and filter, then details on demand; history and extract are first class.'
+    - 'Two selection gestures only: point (click) and range (drag a time range, lasso a court area). Shift adds. Double-click clears.'
+    - A click on a number carries its context forward - filters, series and time range travel with the link.
+    - Nothing is edited in place. A model guess and a human label are two stored objects.
+  actions:
+    select: {gesture: click or tap, result: 'the object opens in the inspector (R-AS-02)', requirement: R-AS-02}
+    add_select: {gesture: shift-click, result: adds the object to the selection, requirement: R-AS-06}
+    clear: {gesture: double-click on empty space, result: clears the selection, requirement: R-AS-06}
+    brush: {gesture: drag on a timeline or a chart axis, result: 'a time-range selection; it is a query by metric id (R-AS-06)', requirement: R-AS-06}
+    lasso: {gesture: drag on the court, result: 'a selection of players or of a court zone; it is a query by metric id (R-AS-06)', requirement: R-AS-06}
+    filter: {gesture: choose in the filter bar, result: narrows the view; the filter state is a query, requirement: R-VZ-06e}
+    scrub: {gesture: drag the playhead, result: 'video, court, panel and curves move together through the clock map (R-AS-01)', requirement: R-AS-01}
+    step: {gesture: arrow keys, result: 'one frame, one second or one possession forward or back', requirement: R-AS-07}
+    drill_down: {gesture: click a number or a row, result: 'opens the view one level down, with the context carried', requirement: R-VZ-02}
+    toggle_layer: {gesture: tick in the layer list, result: one overlay on or off, requirement: R-AS-12}
+    inspect_query: {gesture: Inspect on a chart or table, result: shows the rows and the query with metric ids, requirement: R-EN-18}
+    export: {gesture: Export on a selection, result: 'one of the export kinds the privacy class allows (rule 7)', requirement: R-PR-19}
+    edit: {gesture: change a label, a boundary, a parameter or a model version, result: 'a draft state version with a diff; the current version is untouched (R-AS-03)', requirement: R-AS-03}
+    promote: {gesture: Promote on a draft, result: 'the draft becomes the current version; owner only (R-AS-03)', requirement: R-AS-03}
+    undo: {gesture: Undo, result: 'the previous version is restored byte for byte (R-AS-09)', requirement: R-AS-09}
+    confirm: {gesture: one key or one tap, result: 'copies the guess into a label with who, when, model version and tool version (R-HR-05)', requirement: R-HR-02}
+    correct: {gesture: pick another answer, result: 'writes the reviewer''s label beside the guess (R-HR-05)', requirement: R-HR-02}
+    abstain: {gesture: one key, result: '"not visible" or "cannot tell" stored as an answer', requirement: R-HR-02}
+    command: {gesture: open the palette, result: runs any action by name, requirement: R-AS-07}
+  edits_are_drafts: 'R-AS-03 and R-AS-09: an edit makes a draft version with a diff. Only the owner promotes. Every edit records who, when, why, before and after. Edits on held-out games are flagged.'
+  recompute: 'R-AS-04: after an edit only what depends on it is recomputed. The screen marks what is stale while it recomputes.'
+  shortcuts:
+    status: 'proposal: the 20 keys of R-AS-07. assumed: a starting set; replaced by the 20 most used actions once use is logged.'
+    keys:
+      space: play or pause
+      left / right: one frame back or forward
+      shift+left / shift+right: one second back or forward
+      '[ / ]': previous or next possession
+      '{ / }': previous or next chance
+      g: jump to a game clock
+      n: next disputed label
+      l: layer list
+      i: inspector
+      /: command palette
+      f: filter bar
+      s: save the selection
+      r: run a saved selection
+      e: export a clip reference
+      t: switch what was true / what we knew
+      enter: confirm
+      x: not this
+      u: cannot tell
+      1-9: pick answer 1 to 9
+      z: undo
+
+# ---------------------------------------------------------------------------------------------------------------------
+refresh_classes:
+  policy: 'Decision K23: latency is measured and reported per view and per game. No budget below is a gate. A budget exists so that a measured number has something to be compared with.'
+  budget_meaning: 'budget_s = planning time from the trigger of the class to the view showing the result.'
+  per_frame:
+    trigger: a new video frame at the playhead
+    budget_s: {value: 0.0334, unit: s, why: 'one frame; video, court and overlays stay within one frame of each other', evidence: 'requirement: R-VZ-01 and R-AS-12 (one frame; 33.37 ms at 29.97 fps, config/live_state/core.yaml sensor cv_tracking)'}
+  per_second:
+    trigger: one second of game or video time
+    budget_s: {value: 1.0, unit: s, why: 'clocks tick and ages count up once a second', evidence: 'measured: the scorebug shows whole seconds above 1:00 (results/w3_intake/scorebug_summary.md)'}
+  on_event:
+    trigger: a typed transition or a change of grade in the live state; a heartbeat when nothing changes
+    budget_s: {value: 0.5, unit: s, why: 'from the state holding a change to the panel showing it', evidence: 'config: config/live_state/core.yaml latency_budget (frame_to_state_p95_s 0.3 s + state_to_view_s 0.2 s; both assumed there, measured per run)'}
+    params:
+      heartbeat_s: {value: 5.0, unit: s, why: 'the panel proves it is alive when nothing changes', evidence: 'published: Sportradar NBA push feeds send a heartbeat every 5 s; our own value is measured at the first live capture'}
+      live_model_refresh_s: {value: 10.0, unit: s, why: 'a live model output follows its inputs within this time (95th percentile)', evidence: 'requirement: R-PR-11'}
+  on_edit:
+    trigger: an edit in the Studio
+    budget_s: {value: 2.0, unit: s, why: 'an edit of possession scope is visible within this time', evidence: 'requirement: R-AS-04 (proposal)'}
+    params:
+      whole_game_recompute_s: {value: 60.0, unit: s, why: 'a parameter change over a whole game is visible within this time', evidence: 'requirement: R-AS-04 (proposal)'}
+  on_select:
+    trigger: 'a selection, an answer or a step in a Studio screen (an item opened, a label stored, an instant chosen)'
+    budget_s: {value: 1.0, unit: s, why: 'the screen answers a selection or a stored label within this time, so the time per review item is spent looking, not waiting', evidence: 'assumed: one second; the only measured target is the median of 20 s per review item (requirement R-HR-02). Replaced by the time measured in the private review tools'}
+  on_run:
+    trigger: a pipeline run seals its run record
+    budget_s: {value: 600.0, unit: s, why: 'a platform report follows its run', evidence: 'assumed: one report build after the run; replaced by the measured build time on the pilot games'}
+  post_game:
+    trigger: the video or the final play-by-play of the game is in the private store
+    budget_s: {value: 3600.0, unit: s, why: 'post-game views are ready the same evening', evidence: 'assumed: one hour; replaced by the measured time from full video to notes on the 3 pilot games (R-VZ-09)'}
+  half_time:
+    trigger: 'the horn that ends the first half (transition T21 into the intermission), on the live or the blind pass'
+    budget_s: {value: 300.0, unit: s, why: 'the packet can be read before the teams return', evidence: 'assumed: a third of the 900 s intermission (param halftime_intermission_s of the half-time packet); replaced by the time measured from the first-half horn to the page on the 3 pilot games (requirement R-VZ-08; reported, not a gate, decision K23)'}
+  pre_game:
+    trigger: the frozen snapshot of the game
+    budget_s: {value: 900.0, unit: s, why: 'the last snapshot is taken this long before tip and the card shows nothing dated after it', evidence: 'requirement: R-CX-18 (a snapshot at T minus 900 s)'}
+    params:
+      packet_ready_before_tip_s: {value: 86400.0, unit: s, why: 'the scouting packet is ready one day before tip', evidence: 'requirement: R-OS-07 (packet ready 24 h before tip)'}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The index: every view, its id, its surface and the file that holds its record. Complete; the records follow.
+view_index:
+  live_game_state_panel:   {id: VW-LIVE-01, surface: live_panel, file: views_live, name: Live game-state panel, phase: P0p}
+  possession_explorer:     {id: VW-REV-01, surface: review, file: views_review, name: Possession explorer, phase: P2}
+  matchup_board:           {id: VW-REV-02, surface: review, file: views_review, name: Matchup board, phase: P4}
+  lineup_board:            {id: VW-REV-03, surface: review, file: views_review, name: Lineup board, phase: P0p}
+  heat_maps:               {id: VW-REV-04, surface: review, file: views_review, name: Heat maps, phase: P0p}
+  passing_network:         {id: VW-REV-05, surface: review, file: views_review, name: Passing network, phase: P0p}
+  win_probability_chart:   {id: VW-REV-06, surface: review, file: views_review, name: Layered win-probability chart, phase: P6}
+  shot_chart:              {id: VW-REV-07, surface: review, file: views_review, name: Shot chart by sector and ring, phase: P0p}
+  physical_load:           {id: VW-REV-08, surface: review, file: views_review, name: Physical load, phase: P1}
+  telestrator_freeze_frame: {id: VW-REV-09, surface: review, file: views_review, name: Telestrator freeze-frame, phase: P1}
+  studio_game_canvas:      {id: VW-STU-01, surface: studio, file: views_studio, name: Studio game canvas, phase: P1}
+  draft_diff_promote:      {id: VW-STU-02, surface: studio, file: views_studio, name: 'Draft, diff and promote', phase: P2}
+  model_bench:             {id: VW-STU-03, surface: studio, file: views_studio, name: Model bench, phase: P1}
+  parameter_sweep:         {id: VW-STU-04, surface: studio, file: views_studio, name: Parameter sensitivity sweep, phase: P0p}
+  network_view:            {id: VW-STU-05, surface: studio, file: views_studio, name: Network (explain) view, phase: P1}
+  review_queue:            {id: VW-STU-06, surface: studio, file: views_studio, name: Review queue, phase: P0}
+  review_item:             {id: VW-STU-07, surface: studio, file: views_studio, name: Review item screen, phase: P0}
+  coach_quiz:              {id: VW-STU-08, surface: studio, file: views_studio, name: Coach quiz, phase: P4}
+  metric_browser:          {id: VW-STU-09, surface: studio, file: views_studio, name: Metric browser, phase: P0p}
+  lineage_explorer:        {id: VW-STU-10, surface: studio, file: views_studio, name: Lineage explorer, phase: P0}
+  halftime_packet:         {id: VW-RPT-01, surface: report, file: views_live, name: Half-time packet, phase: P0p}
+  postgame_notes:          {id: VW-RPT-02, surface: report, file: views_review, name: Post-game notes sheet, phase: P0p}
+  postgame_report:         {id: VW-RPT-03, surface: report, file: views_review, name: Post-game report, phase: P0p}
+  opponent_scouting_packet: {id: VW-RPT-04, surface: report, file: views_review, name: Opponent scouting packet, phase: P0p}
+  edge_report:             {id: VW-RPT-05, surface: report, file: views_review, name: Edge report per market, phase: P7}
+  calibration_report:      {id: VW-RPT-06, surface: report, file: views_review, name: Calibration and scoring report, phase: P6}
+  pitch_package:           {id: VW-RPT-07, surface: report, file: views_review, name: Pitch package, phase: P8}
+  hypothesis_results:      {id: VW-RPT-08, surface: report, file: views_studio, name: Hypothesis result table, phase: P0p}
+  game_processing_report:  {id: VW-RPT-09, surface: report, file: views_studio, name: Game processing and data-quality report, phase: P0}
+  run_record_report:       {id: VW-RPT-10, surface: report, file: views_studio, name: Run record and failure analysis, phase: P0}
+  monitoring_board:        {id: VW-RPT-11, surface: report, file: views_studio, name: Monitoring and alerts board, phase: P0}
+  labeller_agreement_report: {id: VW-RPT-12, surface: report, file: views_studio, name: Labeller agreement report, phase: P0}
+  identity_quality_report: {id: VW-RPT-13, surface: report, file: views_studio, name: Identity quality report, phase: P1}
+  jev_calibration_report:  {id: VW-RPT-14, surface: report, file: views_studio, name: JEV calibration report, phase: P1}
+  pbp_version_diff:        {id: VW-RPT-15, surface: report, file: views_studio, name: Play-by-play version diff, phase: P0p}
+  season_simulation:       {id: VW-RPT-16, surface: report, file: views_review, name: Rest-of-season simulation, phase: P6}
+  player_card:             {id: VW-CARD-01, surface: card, file: views_review, name: Player card, phase: P0}
+  coach_card:              {id: VW-CARD-02, surface: card, file: views_review, name: Coach card, phase: P0}
+  pregame_card:            {id: VW-CARD-03, surface: card, file: views_review, name: Pre-game card, phase: P0}
+  model_card:              {id: VW-CARD-04, surface: card, file: views_studio, name: Model card, phase: P1}
+
+future_views:
+  movement_fingerprint_profile:
+    name: Movement fingerprint profile
+    why_future: 'Goal 9, parked. It needs pose features that are not built, and nothing starts while the freeze holds (docs/data/movement_fingerprint.md).'
+    requirements: [R-FP-01, R-FP-02, R-FP-03, R-FP-04, R-FP-05, R-FP-06]
+    surface: card
+    privacy: msu_staff
+    note: A heat-map matrix of players by movement features with clips. Individual output, private. No id is given until it is specified.
+    will_read:
+      identity: locked labels of config/identity_pack.yaml only
+      events: 'action windows of config/movement_grammar (screens, cuts, ball actions, bigs, defense, transition, kinematics)'
+      tables_existing: [movement_primitives, shots, passes, touches, drives, screens, reaction_events, player_positions, rosters]
+      tables_missing: 'pose features per player and action window (not built, no schema file)'
+      metrics: 'none yet: the feature catalogue is not in config/metrics.yaml'
+    guardrails: 'No face data, no race or ethnicity proxy, no health or injury inference. Individual output, private (R-FP-05, R-FP-06).'
+
+out_of_scope:
+  game_day_run_book: 'R-EN-26. A written procedure for a live game, not an output of the system.'
+  weekly_digest: 'R-RR-09. A text on the coordination board, written by hand each week.'
+  spec_pages: 'The generated spec pages (named spots, live game state, identity pack, the stat catalogue pages). They are documents about the system. The metric browser is the view over the registry; the inspector links to the pages.'
+  views_catalogue_page: The generated page of this pack. It describes the views; it is not one of them.
+  requirements_tree: The category tree of the requirements keeper. A document about requirements, not about a game.
+  clip_index: 'R-VZ-10. A data product (proposed table clip_index). Every number link and the clip export read it; it has no screen of its own.'
+  jev_verification_packet: 'R-HR-18. Shown to a model, not to a person.'
+  labelling_guides: 'R-HR-15. Written guides. The review item screen shows the guide version.'
+  private_review_tools_code: 'The two private tools in use (turnover review, screens tagging) are catalogued as variants of review_item (R-PR-18). Their code and data stay private and are not described here.'
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Inventory: every output named by a requirement or by an owner input, and where it lives. A row points to a view
+# (and, when it is a part, to the element key the record must use), to a component, to a contract rule, to
+# out_of_scope or to future_views. The lint checks every target; once a record is loaded it checks the element key.
+inventory:
+  required_rows: [R-VZ-01, R-VZ-02, R-VZ-03, R-VZ-04, R-VZ-05, R-VZ-06a, R-VZ-06b, R-VZ-06c, R-VZ-06d, R-VZ-06e, R-VZ-06f, R-VZ-06g, R-VZ-06h, R-VZ-06i, R-VZ-06j, R-VZ-07, R-VZ-08, R-VZ-09, R-VZ-10, R-VZ-11, R-AS-01, R-AS-02, R-AS-03, R-AS-04, R-AS-05, R-AS-06, R-AS-07, R-AS-08, R-AS-09, R-AS-10, R-AS-11, R-AS-12, R-PR-14, R-PR-15, R-PR-16]
+  required_note: 'Every one of these rows is cited by at least one view record (the design: every R-VZ and R-AS row and R-PR-14, 15 and 16 is covered by a view).'
+  reported_rows: [R-PR-17, R-PR-18, R-PR-19, R-HR-01, R-HR-02, R-HR-03, R-HR-04, R-HR-05, R-HR-06, R-HR-07, R-HR-08, R-HR-09, R-HR-10, R-HR-11, R-HR-12, R-HR-13, R-HR-14, R-HR-15, R-HR-16, R-HR-17, R-HR-18, R-HR-19, R-HR-20]
+  reported_note: 'These rows are printed in the coverage table of the page beside the required rows. Each is cited by a record or has its reason in no_view_rows. The lint checks both.'
+  no_view_rows:
+    R-PR-17: 'The catalogue itself. Met by this pack, its lint and the generated page (ACC-VW-1, ACC-VW-4), not by a view.'
+    R-HR-11: 'Merged into R-HR-14 by the keeper pass of 11 Nov 2026 (the labelling tool and its licence).'
+  rows:
+    # R-VZ, the visualisation rows
+    - {item: Video and top-down replay side by side, req: [R-VZ-01], view: possession_explorer, element: video}
+    - {item: Video and top-down replay in the Studio, req: [R-VZ-01], view: studio_game_canvas, element: court}
+    - {item: Every number links to its frames, req: [R-VZ-02], view: possession_explorer, contract: numbers}
+    - {item: Every number with n and interval, req: [R-VZ-03], view: possession_explorer, contract: numbers}
+    - {item: 'Trails, pass arrows, switch marks, value curve', req: [R-VZ-04], view: possession_explorer, element: value_curve}
+    - {item: Set overlay, req: [R-VZ-05], view: possession_explorer, element: set_overlay}
+    - {item: Matchup board, req: [R-VZ-06a], view: matchup_board}
+    - {item: Heat maps, req: [R-VZ-06b], view: heat_maps}
+    - {item: Passing network, req: [R-VZ-06c], view: passing_network}
+    - {item: Layered win probability with run shading, req: [R-VZ-06d], view: win_probability_chart}
+    - {item: Filters, req: [R-VZ-06e], view: possession_explorer, element: filter_bar, component: filter_bar}
+    - {item: Clip export, req: [R-VZ-06f], view: possession_explorer, element: clip_export, component: clip_export}
+    - {item: Foul tracker, req: [R-VZ-06g], view: live_game_state_panel, element: foul_tracker}
+    - {item: Timeouts left, req: [R-VZ-06h], view: live_game_state_panel, element: timeouts_left}
+    - {item: Shot chart by sector and ring, req: [R-VZ-06i], view: shot_chart}
+    - {item: Lineup plus-minus with n, req: [R-VZ-06j], view: lineup_board, element: lineup_plus_minus}
+    - {item: One visual standard, req: [R-VZ-07], view: live_game_state_panel, contract: visual_standard}
+    - {item: Half-time packet, req: [R-VZ-08], view: halftime_packet}
+    - {item: Post-game notes sheet, req: [R-VZ-09], view: postgame_notes}
+    - {item: Clip index, req: [R-VZ-10], view: possession_explorer, element: clip_export, out_of_scope: clip_index}
+    - {item: Telestrator freeze-frame, req: [R-VZ-11], view: telestrator_freeze_frame}
+    - {item: Clip index browser of a game, req: [R-VZ-10], view: postgame_report, element: clip_browser}
+    # R-AS, the Analyst Studio rows
+    - {item: One game canvas, req: [R-AS-01], view: studio_game_canvas}
+    - {item: Inspector, req: [R-AS-02], view: studio_game_canvas, element: inspector, component: inspector}
+    - {item: Edits as draft versions, req: [R-AS-03], view: draft_diff_promote}
+    - {item: Live recompute, req: [R-AS-04], view: draft_diff_promote}
+    - {item: Model bench, req: [R-AS-05], view: model_bench}
+    - {item: Selections become queries, req: [R-AS-06], view: studio_game_canvas, element: selection_query, component: selection_query}
+    - {item: Shortcuts and command palette, req: [R-AS-07], view: studio_game_canvas, element: command_palette, component: command_palette}
+    - {item: Parameter sensitivity, req: [R-AS-08], view: parameter_sweep}
+    - {item: Audit and undo, req: [R-AS-09], view: draft_diff_promote}
+    - {item: Private by design, req: [R-AS-10], view: studio_game_canvas, contract: privacy}
+    - {item: Network view, req: [R-AS-11], view: network_view}
+    - {item: Layers, req: [R-AS-12], view: studio_game_canvas, element: layers, component: layer_toggle}
+    - {item: Audit log of edits, req: [R-AS-09], view: draft_diff_promote, element: audit_log}
+    - {item: Recompute status after an edit, req: [R-AS-04], view: draft_diff_promote, element: recompute_status}
+    - {item: Privacy lane (what left the private store), req: [R-AS-10], view: monitoring_board, element: privacy_lane}
+    # R-PR, the product rows
+    - {item: 'R-PR-14 output: post-game report', req: [R-PR-14], view: postgame_report}
+    - {item: 'R-PR-14 output: opponent scouting packet', req: [R-PR-14], view: opponent_scouting_packet}
+    - {item: 'R-PR-14 output: player card', req: [R-PR-14], view: player_card}
+    - {item: 'R-PR-14 output: lineup board', req: [R-PR-14], view: lineup_board}
+    - {item: 'R-PR-14 output: in-game state panel', req: [R-PR-14], view: live_game_state_panel}
+    - {item: 'R-PR-14 output: pre-game card', req: [R-PR-14], view: pregame_card}
+    - {item: Live game state as one panel, req: [R-PR-15], view: live_game_state_panel}
+    - {item: Game-state panel at the playhead of a recorded game, req: [R-PR-15], view: studio_game_canvas, element: state_panel}
+    - {item: Model card, req: [R-PR-16], view: model_card}
+    - {item: Private review tools as catalogued views, req: [R-PR-18], view: review_item}
+    # R-HR, review and labelling
+    - {item: Review queue, req: [R-HR-03, R-HR-04], view: review_queue}
+    - {item: Review item screen, req: [R-HR-02], view: review_item}
+    - {item: Turnover review (private tool in use), req: [R-PR-18], view: review_item, element: variant_turnover}
+    - {item: Screens tagging (private tool in use), req: [R-PR-18], view: review_item, element: variant_screen}
+    - {item: Identity confirm, req: [R-ID-19], view: review_item, element: variant_identity}
+    - {item: Scoreboard discrepancy, req: [R-SB-01], view: review_item, element: variant_scoreboard}
+    - {item: Appearance card, req: [R-ID-12], view: review_item, element: appearance_card}
+    - {item: Consistency re-show (blind), req: [R-HR-06], view: review_item, element: blind_reshow}
+    - {item: Label counts per class, req: [R-HR-08], view: review_queue, element: label_counts}
+    - {item: Learning curve, req: [R-HR-09], view: model_bench, element: learning_curve}
+    - {item: Labeller agreement, req: [R-HR-06, R-HR-10, R-HR-16], view: labeller_agreement_report}
+    - {item: Gold-set status, req: [R-HR-07, R-HR-12], view: review_queue, element: gold_set_status}
+    - {item: Live flag feed (what the system is unsure about right now), req: [R-HR-01], view: live_game_state_panel, element: flag_feed}
+    - {item: JEV calibration, req: [R-HR-19], view: jev_calibration_report}
+    - {item: Coach quiz, req: [R-GU-03], view: coach_quiz}
+    # cards, packets and scouting
+    - {item: Coach card, req: [R-CC-01], view: coach_card}
+    - {item: Baseline spot shooting map, req: [R-PC-23], view: player_card, element: spot_shooting_map}
+    - {item: Officials crew sheet, req: [R-RF-06], view: pregame_card, element: officials_crew_sheet}
+    - {item: Pre-game mismatch map, req: [R-MX-06], view: pregame_card, element: mismatch_map}
+    - {item: Prediction drivers, req: [R-PR-13], view: pregame_card, element: prediction_drivers}
+    - {item: Swing plays list, req: [R-PR-12], view: win_probability_chart, element: swing_plays}
+    - {item: Live win-probability and leverage strip, req: [R-PR-11, R-PR-12], view: live_game_state_panel, element: wp_leverage_strip}
+    - {item: Bench board (fouls and stint time of every player), req: [R-SR-20], view: live_game_state_panel, element: bench_board}
+    - {item: Live top-down court, req: [R-PR-15], view: live_game_state_panel, element: mini_court, component: top_down_court}
+    - {item: Offense breakdown of a game, req: [R-ST-25], view: postgame_report, element: offense_breakdown}
+    - {item: Transition breakdown of a game, req: [R-TR-09], view: postgame_report, element: transition_breakdown}
+    - {item: Defense breakdown of a game, req: [R-DF-14], view: postgame_report, element: defense_breakdown}
+    - {item: Spot game plan against one opponent, req: [R-PC-24], view: opponent_scouting_packet, element: spot_game_plan}
+    - {item: Mismatch check after the game, req: [R-MX-06], view: pregame_card, element: mismatch_check}
+    - {item: Physical load views, req: [R-PL-01], view: physical_load}
+    - {item: Rest-of-season simulation, req: [R-PR-10], view: season_simulation}
+    - {item: Crowd loudness curve, req: [R-AU-03], view: studio_game_canvas, element: timeline}
+    # market and model governance
+    - {item: Edge report and closing-line value, req: [R-MK-05], view: edge_report}
+    - {item: Calibration and scoring, req: [R-PR-03], view: calibration_report}
+    - {item: Pitch package, req: [R-PT-01], view: pitch_package}
+    - {item: Hypothesis results, req: [R-HY-01], view: hypothesis_results}
+    # data-platform screens
+    - {item: Run record, req: [R-RR-01], view: run_record_report}
+    - {item: Lineage, req: [R-EN-19], view: lineage_explorer}
+    - {item: Data quality per game, req: [R-DQ-07], view: game_processing_report}
+    - {item: Monitoring and alerts, req: [R-DQ-08], view: monitoring_board}
+    - {item: Play-by-play version diff, req: [R-SY-20], view: pbp_version_diff}
+    - {item: Identity quality, req: [R-ID-14], view: identity_quality_report}
+    - {item: Identity confusion list, req: [R-ID-14], view: identity_quality_report, element: confusion_list}
+    - {item: Identity switch log, req: [R-ID-17], view: identity_quality_report, element: switch_log}
+    - {item: Latency per game (reported, K23), req: [R-SY-21], view: game_processing_report, element: latency}
+    - {item: Invariant-break list, req: [R-IV-40], view: game_processing_report, element: invariant_breaks}
+    # the ten groups of the live game state (elements of the one panel)
+    - {item: 'Live state group: keys and stamps', live_state_group: keys, view: live_game_state_panel, element: as_of_banner}
+    - {item: 'Live state group: time', live_state_group: time, view: live_game_state_panel, element: clock_period}
+    - {item: 'Live state group: score', live_state_group: score, view: live_game_state_panel, element: score}
+    - {item: 'Live state group: counts', live_state_group: counts, view: live_game_state_panel, element: foul_tracker}
+    - {item: 'Live state group: possession and ball', live_state_group: possession_ball, view: live_game_state_panel, element: possession_ball}
+    - {item: 'Live state group: personnel', live_state_group: personnel, view: live_game_state_panel, element: lineup_identity}
+    - {item: 'Live state group: tactics', live_state_group: tactics, view: live_game_state_panel, element: tactics}
+    - {item: 'Live state group: situation', live_state_group: situation, view: live_game_state_panel, element: situation}
+    - {item: 'Live state group: observability', live_state_group: observability, view: live_game_state_panel, element: observability}
+    - {item: 'Live state group: fixed', live_state_group: fixed, view: live_game_state_panel, element: game_header}
+    # the stat catalogue: one row per registry category (the lint checks the list against config/metrics.yaml)
+    - {item: 'Stat category TEFF, team efficiency', metric_category: TEFF, view: metric_browser}
+    - {item: 'Stat category TRAT, team ratings', metric_category: TRAT, view: metric_browser}
+    - {item: 'Stat category SHOOT, shooting', metric_category: SHOOT, view: metric_browser}
+    - {item: 'Stat category SQ, shot quality', metric_category: SQ, view: metric_browser}
+    - {item: 'Stat category PASS, playmaking', metric_category: PASS, view: metric_browser}
+    - {item: 'Stat category TOV, turnovers and steals', metric_category: TOV, view: metric_browser}
+    - {item: 'Stat category REB, rebounding', metric_category: REB, view: metric_browser}
+    - {item: 'Stat category FOUL, fouls and free throws', metric_category: FOUL, view: metric_browser}
+    - {item: 'Stat category DEF, defense', metric_category: DEF, view: metric_browser}
+    - {item: 'Stat category TRN, transition', metric_category: TRN, view: metric_browser}
+    - {item: 'Stat category PLAY, play types', metric_category: PLAY, view: metric_browser}
+    - {item: 'Stat category SPACE, spacing and off-ball', metric_category: SPACE, view: metric_browser}
+    - {item: 'Stat category PHYS, physical', metric_category: PHYS, view: metric_browser}
+    - {item: 'Stat category IMP, impact', metric_category: IMP, view: metric_browser}
+    - {item: 'Stat category PROF, player profile', metric_category: PROF, view: metric_browser}
+    - {item: 'Stat category SIT, situational', metric_category: SIT, view: metric_browser}
+    - {item: 'Stat category COACH, coaching', metric_category: COACH, view: metric_browser}
+    - {item: 'Stat category MKT, market', metric_category: MKT, view: metric_browser}
+    - {item: 'Stat category TREE, decision trees', metric_category: TREE, view: metric_browser}
+    # owner inputs
+    - {item: 'Owner input: layers from game to player, a tree to walk down', view: studio_game_canvas, element: tree_navigator, component: tree_navigator}
+    - {item: 'Owner input: the layered tree on the win-probability chart', req: [R-AS-07], view: win_probability_chart, element: tree, component: tree_navigator}
+    - {item: 'Owner input: the layered tree on the post-game report', req: [R-AS-07], view: postgame_report, element: tree, component: tree_navigator}
+    - {item: 'Owner input: flag uncertain moments for him to label', view: review_queue}
+    - {item: 'Owner input: court geometry in metres and degrees', view: possession_explorer, element: court, component: top_down_court}
+    # not views
+    - {item: Game-day run book, req: [R-EN-26], out_of_scope: game_day_run_book}
+    - {item: Weekly digest, req: [R-RR-09], out_of_scope: weekly_digest}
+    - {item: Generated spec pages and stat catalogue pages, out_of_scope: spec_pages}
+    - {item: Views catalogue page, req: [R-PR-17], out_of_scope: views_catalogue_page}
+    - {item: Requirements tree, out_of_scope: requirements_tree}
+    - {item: JEV verification packet, req: [R-HR-18], out_of_scope: jev_verification_packet}
+    - {item: Labelling guides, req: [R-HR-15], out_of_scope: labelling_guides}
+    - {item: Code and data of the private review tools, out_of_scope: private_review_tools_code}
+    - {item: Movement fingerprint profile (goal 9), req: [R-FP-01], future: movement_fingerprint_profile}
+
+# ---------------------------------------------------------------------------------------------------------------------
+acceptance:
+  - {id: ACC-VW-1, level: lint, runnable_now: true, metric: lint, scope: this pack, threshold: 'tools/specgen/views/vwlib.py --check reports 0 problems', on_fail: spec defect - fix before 0.1.x is accepted, requirement: R-PR-17}
+  - {id: ACC-VW-2, level: lint, runnable_now: true, metric: coverage of the inventory, scope: 'the R-VZ and R-AS rows, R-PR-14 to 16, the review screens, the cards and packets, the 10 live-state groups, the registry categories, the platform screens', threshold: 'every one maps to a view, an element, a component, out_of_scope or future_views; every required row is cited by a record', on_fail: add the view or the reason, requirement: R-PR-17}
+  - {id: ACC-VW-3, level: lint, runnable_now: true, metric: palette contrast, scope: every pair of text_pairs and graphic_pairs in both themes and every categorical colour on the chart surface, threshold: 'text at least 4.5:1, marks at least 3:1, the stored ratio equals the computed one', on_fail: change the token, requirement: R-VZ-07}
+  - {id: ACC-VW-4, level: lint, runnable_now: true, metric: the catalogue pages are current, scope: docs/data/views_catalogue.md and docs/data/views_catalogue_reference.md, threshold: 'tools/specgen/views/gen_doc.py --check passes: both pages equal what the pack generates; every view id, element key, component, contract rule and acceptance id is on them; no placeholder is left; the first page stays under 450 000 bytes', on_fail: run the generator and read the diff, requirement: R-PR-17}
+  - {id: ACC-VW-R1, level: render, runnable_now: false, metric: render test, scope: every view; first the ten of R-VZ-06, threshold: 'the view renders from the stored tables of a pilot game with no missing input', on_fail: view or input defect, requirement: R-VZ-06a}
+  - {id: ACC-VW-R2, level: render, runnable_now: false, metric: sync, scope: views with video and court, threshold: 'at 100 random instants video frame, court and state panel refer to the same game-clock instant; offset at most 1 frame on a whistle check', on_fail: clock-map or player defect, requirement: R-AS-01}
+  - {id: ACC-VW-R3, level: render, runnable_now: false, metric: panel equals the as-of view, scope: the live panel at any instant of a recorded game, threshold: 0 differences from the as_of_known view of the stored truth on the pilot games, on_fail: panel defect, requirement: R-PR-15}
+  - {id: ACC-VW-R4, level: render, runnable_now: false, metric: overlay alignment, scope: every overlay, threshold: 'within 0.1 m of its track and within 1 frame of the video', on_fail: overlay defect, requirement: R-VZ-04}
+  - {id: ACC-VW-N1, level: audit, runnable_now: false, metric: number-link audit, scope: 20 random numbers per view, threshold: every one clicks through to the right moment, on_fail: link defect, requirement: R-VZ-02}
+  - {id: ACC-VW-N2, level: audit, runnable_now: false, metric: number completeness, scope: every number on every view, threshold: 'no number without the parts its class asks for; no estimate below its minimum n drawn on a scale', on_fail: view defect, requirement: R-VZ-03}
+  - {id: ACC-VW-N3, level: audit, runnable_now: false, metric: numbers resolve to ids, scope: every number on every view, threshold: '0 numbers defined only in a view; a number equals the value of its metric id from the query layer', on_fail: move the definition to the registry, requirement: R-PR-14}
+  - {id: ACC-VW-S1, level: style, runnable_now: false, metric: style check, scope: every rendered view, threshold: 'metric labels only, palette tokens only, text contrast at least 4.5:1, reading views usable at 375 px', on_fail: style defect, requirement: R-VZ-07}
+  - {id: ACC-VW-S2, level: style, runnable_now: true, metric: wireframe check, scope: every wireframe of docs/data/views, threshold: 'every wireframe a record names exists, parses, and equals what gen_wireframes.py generates; it labels only element keys of its view, uses only colour tokens of this file, holds no text wider than its box at the stated width and no text below the caption size, names no banned unit and shows no real game data', on_fail: wireframe defect, requirement: R-VZ-07}
+  - {id: ACC-VW-G1, level: render, runnable_now: false, metric: grade honesty, scope: a seeded value at each grade on each view, threshold: 'drawn with the appearance of its grade; never a better one; a quarantined value shown nowhere but the review screens', on_fail: view defect, requirement: R-PR-15}
+  - {id: ACC-VW-G2, level: render, runnable_now: false, metric: degraded states, scope: a seeded stretch at each level D1-D5 and a stale feed on each view, threshold: 'the view shows what its record says; it is never blank without a reason', on_fail: view defect, requirement: R-PR-15}
+  - {id: ACC-VW-I1, level: audit, runnable_now: false, metric: identity display, scope: the live panel and every stat, threshold: '0 provisional or probable labels on a live view; 0 stats that read a probable label', on_fail: view defect, requirement: R-ID-19}
+  - {id: ACC-VW-P1, level: audit, runnable_now: false, metric: privacy audit, scope: every export path and every view, threshold: '0 video frames and 0 face crops outside the private store; exports write only what the privacy class allows', on_fail: block the export, requirement: R-PR-19}
+  - {id: ACC-VW-P2, level: lint, runnable_now: true, metric: access class, scope: every record, threshold: 'every view has a privacy class and an audience the class allows; no video and no player grain in a shareable or public view', on_fail: spec defect, requirement: R-PR-19}
+  - {id: ACC-VW-L1, level: audit, runnable_now: false, metric: latency, scope: every view with a refresh budget, threshold: 'measured and reported per game beside its budget; not a gate (K23)', on_fail: report only, requirement: R-VZ-08}
+  - {id: ACC-VW-H1, level: audit, runnable_now: false, metric: half-time box equality, scope: the half-time packet on the 3 pilot games, threshold: '100 % of counting numbers equal the official half-time box; the time from the first-half horn to the page is reported beside its budget', on_fail: packet or fold defect, requirement: R-VZ-08}
+  - {id: ACC-VW-B1, level: audit, runnable_now: false, metric: label honesty, scope: every stored label and every review item, threshold: 'every label carries who, when, the guide version, the tool version and the model version; 0 gold items without the confirmation of the owner (decision of 11 Nov 2026); the guess is hidden on 100 % of audit items and blind re-shows until the answer is stored', on_fail: review tool defect, requirement: R-HR-05}
+  - {id: ACC-VW-E1, level: render, runnable_now: false, metric: edits are drafts, scope: every edit action, threshold: 'the current state version stays byte-identical until promotion; undo restores the previous version byte for byte', on_fail: Studio defect, requirement: R-AS-03}
+  - {id: ACC-VW-Q1, level: render, runnable_now: false, metric: selection to query, scope: every selection, threshold: 'exports its SQL; running it again returns the same rows', on_fail: Studio defect, requirement: R-AS-06}
+
+journal:
+  - date: '2026-11-20'
+    step: core
+    entries:
+      - 'Core contract written: eight rules, 13 components, 19 actions, 7 refresh classes, the index of 40 views (1 live, 10 review, 10 studio, 15 report, 4 card), 1 future view, 9 out-of-scope items and an inventory of 116 rows.'
+      - 'Number classes added to rule 3 (official, live_state, estimate, model, label, measurement, descriptive). The requirement text "every number with n and interval" cannot hold for a score or a foul count.'
+      - 'Refresh classes on_edit and on_run added to the five of the design (Studio edits, platform reports).'
+      - 'Three worked records: live_game_state_panel (12 elements, all 94 live-state fields), possession_explorer (14 elements), studio_game_canvas (13 elements).'
+      - 'schema/views_changes.yaml seeded with the proposed table clip_index (R-VZ-10): every number link and the clip export read it.'
+  - date: '2026-11-20'
+    step: views
+    entries:
+      - 'All 40 records written by three authors: views_live 2 views and 24 elements (the panel grew from 12 to 15 elements: bench board, win-probability and leverage strip, flag feed), views_review 19 views and 172 elements, views_studio 19 views and 173 elements.'
+      - 'Screens without an index entry became elements: audit log and live recompute (draft_diff_promote), privacy lane (monitoring_board), identity review and the two private tools (variants of review_item), label counts and gold-set status (review_queue), learning curve (model_bench), latency and invariant breaks (game_processing_report), clip browser, tree and three breakdown tables (postgame_report).'
+  - date: '2026-11-20'
+    step: doc
+    entries:
+      - 'Integration. Asked by the authors and applied: grains team-half and coach; refresh classes half_time and on_select; mixed as-of allowed on reports and cards (edge_report and pregame_card are now mixed, 11 elements state their as-of); the FROZEN line of the as-of banner; 18 inventory rows for elements; acceptance tests ACC-VW-H1 (half-time box) and ACC-VW-B1 (label honesty).'
+      - 'season_simulation moved from the review surface to the report surface (VW-REV-10 became VW-RPT-16; no id was published before). It has no video and reads at 375 px. The index is now 1 live, 9 review, 10 studio, 16 report, 4 card.'
+      - 'The future view lives in one place: future_views of this file now holds what the movement fingerprint profile will read; the copy in views_review.yaml is removed.'
+      - 'Lint additions: unknown key in a number_rule block; by_grade for every grade on a live-panel tile; a court names its named-spots layers; wireframe_states; reported requirement rows (R-HR, R-PR-17 to 19) are cited or have a reason.'
+      - 'Wireframes: tools/specgen/views/gen_wireframes.py draws 8 wireframes and the grade legend from the records and this file (live panel at D0, D1 and D3, possession explorer, Studio canvas with the inspector open, the layered tree, the review item, the player card). ACC-VW-S2 runs now.'
+      - 'Pages: tools/specgen/views/gen_doc.py writes docs/data/views_catalogue.md and docs/data/views_catalogue_reference.md with --check (ACC-VW-4). Two pages because one would pass 500 KiB, where a rendered Markdown page is cut off; the first page is kept under 450 000 bytes by a check.'
+      - 'schema/views_changes.yaml completed from the three reports: new tables, column additions and one removal, each with why and requirement id; none applied.'
+      - 'Not applied, with the reason: an audience per element (only two elements hold an owner-only line; they say so in their notes); a by_grade rule for views other than the live panel.'
+      - 'Court orientation fixed in the contract (visual_standard.court_drawing): overhead, rim at the top. The named-spots picture is a mirrored plot; see OQ-VW-40 and FU-VW-13.'
+      - 'Scale stops (cividis, purple-orange) compared again with the published listings from memory; no tool in the test environment can confirm them, so they stay tagged assumed.'
+
+open_questions:
+  - id: OQ-VW-1
+    topic: reports
+    raised_by: core
+    question: 'What is the "lineup board" of R-PR-14?'
+    recommended: 'Lineup plus-minus with n, stints and composition. The matchup board (who guarded whom) stays a separate view.'
+    status: open
+  - id: OQ-VW-2
+    topic: reports
+    raised_by: core
+    question: 'What is the "post-game report" of R-PR-14?'
+    recommended: 'A container page: box and four factors, win-probability chart, shot chart, lineup board, matchup board, the ten notes, swing plays and a stat-corrections line.'
+    status: open
+  - id: OQ-VW-3
+    topic: live
+    raised_by: core
+    question: 'Are the foul tracker and timeouts left their own views?'
+    recommended: 'No. They are tiles of the one live panel (R-PR-15). Each keeps its own render test.'
+    status: open
+  - id: OQ-VW-4
+    topic: contract
+    raised_by: core
+    first: true
+    question: 'Does the 375 px rule bind the Studio and the film-room views?'
+    recommended: 'No. It binds reading views (panel, packets, notes, cards). The Studio and review views are desktop, 1280 px or wider.'
+    status: open
+  - id: OQ-VW-5
+    topic: contract
+    raised_by: core
+    question: 'What does "clip export" produce?'
+    recommended: 'A clip reference and a top-down render. A video file is written only inside the private store.'
+    status: open
+  - id: OQ-VW-6
+    topic: contract
+    raised_by: core
+    question: 'One interval level on screen or two?'
+    recommended: 'Keep both (80 % for shrunk shooting rates, 95 % elsewhere) and print the level beside every interval.'
+    status: open
+  - id: OQ-VW-7
+    topic: studio
+    raised_by: core
+    question: 'May the Studio show probable identity labels?'
+    recommended: 'Yes, on the video and court layers only, flagged "probable", offline. The embedded game-state panel keeps the live rule: locked or HOLD.'
+    status: open
+  - id: OQ-VW-8
+    topic: contract
+    raised_by: core
+    first: true
+    question: 'Dark or light surface for court and charts?'
+    recommended: 'Dark in both themes. Four of the eight colour-blind-safe colours fail contrast on white; none fails on the dark surface (measured).'
+    status: open
+  - id: OQ-VW-9
+    topic: studio
+    raised_by: core
+    question: 'Is the model guess prefilled on every review item?'
+    recommended: 'Prefilled on normal items. Hidden on the 10 % audit share and on the 5 % blind re-shows.'
+    status: open
+  - id: OQ-VW-10
+    topic: contract
+    raised_by: core
+    question: 'Are staff views listed now although staff are excluded?'
+    recommended: 'Yes. Audience msu_staff, status excluded until staff respond. Tests run with the owner as viewer.'
+    status: open
+  - id: OQ-VW-11
+    topic: requirement text
+    raised_by: core
+    question: 'R-PR-17 says the catalogue is one file. This baseline is a pack. Which stands?'
+    recommended: 'Keep the pack. Generate one catalogue page from it and check it in CI. Ask the requirements keeper to adjust the wording.'
+    status: open
+  - id: OQ-VW-12
+    topic: requirement text
+    raised_by: core
+    first: true
+    question: 'R-VZ-03 says no number without n and interval. A score has neither. Accept number classes?'
+    recommended: 'Yes. Accept the seven number classes of rule 3. Read the R-VZ-03 test as: no estimate without n and interval, no official value without source and as-of.'
+    status: open
+  - id: OQ-VW-13
+    topic: live
+    raised_by: core
+    first: true
+    question: 'Should the live win-probability tile be drawn before the model exists?'
+    recommended: 'No. The tile shows a dash with "no model before P6" (R-PR-09). No wireframe shows a made-up live probability as if it existed.'
+    status: open
+  - id: OQ-VW-14
+    topic: live
+    raised_by: live
+    first: true
+    question: 'K12 asks n of at least 30 before a rate is drawn. One half rarely gives 30 cases, yet R-VZ-08 asks the four factors at the half. Which rule wins on the half-time packet?'
+    recommended: 'Show the half rates as descriptive: the counts, the rate, the word "descriptive", no interval. Do not blank them as "too few".'
+    status: open
+  - id: OQ-VW-15
+    topic: live
+    raised_by: live
+    question: 'Which foul-trouble flag goes on the half-time packet?'
+    recommended: 'The cut-off of the first second of the second half, with the plain 2 and 4 foul counts beside it. K10 has no cut-off for the last 300 s of the first half; that stays open in the live-state pack.'
+    status: open
+  - id: OQ-VW-16
+    topic: live
+    raised_by: live
+    question: 'What is the "value change" that ranks the top 3 possessions of R-VZ-08?'
+    recommended: 'The total value credit of the possession (M-IMP-065), ranked by size, with its sign printed.'
+    status: open
+  - id: OQ-VW-17
+    topic: live
+    raised_by: live
+    question: 'What planning time does the half-time packet get?'
+    recommended: '300 s after the horn, a third of the 900 s intermission. Reported, not a gate (K23).'
+    status: open
+  - id: OQ-VW-18
+    topic: live
+    raised_by: live
+    question: 'May MSU staff see the live flag feed?'
+    recommended: 'Yes. It tells them what not to trust. Labelling stays with the owner, after the game.'
+    status: open
+  - id: OQ-VW-19
+    topic: live
+    raised_by: live
+    question: 'The four factors of the packet carry a season-to-date column, frozen before tip. Keep it?'
+    recommended: 'Keep it. It is the only estimate on the page, and the half is never coloured against it.'
+    status: open
+  - id: OQ-VW-20
+    topic: reports
+    raised_by: review
+    question: 'R-OS-03 asks how the opponent defended our sets when other teams ran them. R-OS-05 says those games are not recorded. What does the scouting packet show?'
+    recommended: 'Build that section only from the opponent''s games against Michigan State, and say so on the page.'
+    status: open
+  - id: OQ-VW-21
+    topic: reports
+    raised_by: review
+    question: 'The notes sheet asks for ten findings. What if fewer pass their checks?'
+    recommended: 'Show fewer, with "n of 10". Never pad.'
+    status: open
+  - id: OQ-VW-22
+    topic: reports
+    raised_by: review
+    question: 'Is a public cut of the pitch package wanted as its own view?'
+    recommended: 'No. The calibration page and the gated drawings serve a public reader.'
+    status: open
+  - id: OQ-VW-23
+    topic: reports
+    raised_by: review
+    question: 'May a freeze-frame drawing with player numbers go public?'
+    recommended: 'Only through the rights gate, with locked identities only. Staff-only by default.'
+    status: open
+  - id: OQ-VW-24
+    topic: reports
+    raised_by: review
+    question: 'Do market prices appear on staff views such as the win-probability chart and the pre-game card?'
+    recommended: 'No. Prices are on the edge report only, which the owner alone sees (R-MK-24).'
+    status: open
+  - id: OQ-VW-25
+    topic: reports
+    raised_by: review
+    question: 'Heat maps bin positions in 0.25 m cells; the position error limit is 0.5 m. Keep the finer cell?'
+    recommended: 'Keep 0.25 m and print the share of seconds that could be binned.'
+    status: open
+  - id: OQ-VW-26
+    topic: reports
+    raised_by: review
+    question: 'The owner''s private availability notes sit on cards that staff may see. Who sees the note?'
+    recommended: 'The owner alone. The line is marked private and is left off every export.'
+    status: open
+  - id: OQ-VW-27
+    topic: reports
+    raised_by: review
+    question: 'The coach card leaves off timeout purpose (R-CC-07) and sideline reactions (R-CC-04) until staff respond. Agreed?'
+    recommended: 'Yes. Both need staff input; the card says "not collected".'
+    status: open
+  - id: OQ-VW-28
+    topic: studio
+    raised_by: studio
+    question: 'Should the review screens print a probable name in a table row?'
+    recommended: 'No. Read it on the clip and court layers, flagged. Revisit if reviewing probable runs proves slow.'
+    status: open
+  - id: OQ-VW-29
+    topic: requirement text
+    raised_by: studio
+    first: true
+    question: 'R-AS-03 lets the Studio relabel an identity. R-ID-17 says a locked label never swaps. Which stands?'
+    recommended: 'Both: a relabel is an offline correction row in the switch log plus a draft version. Nothing changes in place.'
+    status: open
+  - id: OQ-VW-30
+    topic: requirement text
+    raised_by: studio
+    first: true
+    question: 'R-HR-20 says a run with JEV off is byte-identical. JEV disputes join the review queue. Is that a conflict?'
+    recommended: 'Say in the requirement that the review queue is not a pipeline output under R-HR-20. If not, keep JEV disputes in their own table.'
+    status: open
+  - id: OQ-VW-31
+    topic: studio
+    raised_by: studio
+    question: 'Should the model card have a public edition?'
+    recommended: 'Later, through the rights gate, without source detail or clip links. Owner-only now.'
+    status: open
+  - id: OQ-VW-32
+    topic: studio
+    raised_by: studio
+    question: 'May Claude sessions open and amend drafts in the Studio?'
+    recommended: 'Yes. Only the owner promotes a draft.'
+    status: open
+  - id: OQ-VW-33
+    topic: studio
+    raised_by: studio
+    question: 'Coach quiz: hide the court and the system''s answer until the coach has answered?'
+    recommended: 'Yes.'
+    status: open
+  - id: OQ-VW-34
+    topic: studio
+    raised_by: studio
+    question: 'Can an alert on the monitoring board be closed by hand?'
+    recommended: 'No. An alert closes when its rule clears.'
+    status: open
+  - id: OQ-VW-35
+    topic: studio
+    raised_by: studio
+    question: 'Is 30 labels the line under which a label class counts as thin?'
+    recommended: 'Yes (K12 reused), until the learning curve gives a number per label type.'
+    status: open
+  - id: OQ-VW-36
+    topic: contract
+    raised_by: doc
+    question: 'The wireframes are drawn in the dark theme only. Enough for now?'
+    recommended: 'Yes. The tokens of both themes are in the contract and checked; a light set is drawn when a product screen is designed.'
+    status: open
+  - id: OQ-VW-37
+    topic: contract
+    raised_by: doc
+    question: 'The layered-tree wireframe shows a post-game win-probability curve with made-up numbers, although no model exists before P6. Acceptable?'
+    recommended: 'Yes. It is marked made-up and "from P6". The live tile still shows a dash until the model exists (OQ-VW-13).'
+    status: open
+  - id: OQ-VW-38
+    topic: requirement text
+    raised_by: doc
+    question: 'Pipeline quality scores (HOTA, IDF1, identity accuracy, kappa) have no id in the metric registry, so rule 8 cannot bind them. Add them?'
+    recommended: 'Yes: a registry category for pipeline quality, added by the registry owner. Until then the views name them by requirement id.'
+    status: open
+  - id: OQ-VW-39
+    topic: contract
+    raised_by: doc
+    question: 'Should an element be able to narrow the audience of its view (an owner-only line inside a staff card)?'
+    recommended: 'Not yet. Two elements need it and say so in their notes. Add the key when a third case appears.'
+    status: open
+  - id: OQ-VW-40
+    topic: contract
+    raised_by: doc
+    first: true
+    question: 'Which way up is a court drawn? The named-spots picture has the rim at the bottom with +x on the right. That is the mirror image of what a camera above the floor sees.'
+    recommended: 'Overhead: rim at the top, the attacker''s right on the right. Every court of the wireframes is drawn so. Coordinates and ids do not change; the named-spots picture is redrawn or labelled as a mirrored plot (FU-VW-13).'
+    status: open
+
+# Edits this baseline asks of other files. None is made here.
+follow_ups:
+  - {id: FU-VW-1, owner: 'requirements session', where: 'schema/views_changes.yaml', what: 'Approve or reject the proposed tables and columns the views need.', why: 'Until then those inputs resolve only as proposals.'}
+  - {id: FU-VW-2, owner: 'schema owner', where: 'schema/tables/rosters.yaml', what: 'Remove the column headshot_url, or mark it never read.', why: 'Decision of 11 Nov 2026: no headshots anywhere. The lint already bans the column as an input.'}
+  - {id: FU-VW-3, owner: 'requirements keeper', where: 'R-PR-17', what: 'Say "one pack with one generated page" instead of "one file".', why: 'The catalogue is four YAML files; one page is generated and checked (OQ-VW-11).'}
+  - {id: FU-VW-4, owner: 'requirements keeper', where: 'R-VZ-03', what: 'Read the test as: no estimate without n and interval, no official value without source and as-of.', why: 'A score or a foul count has neither n nor interval (OQ-VW-12).'}
+  - {id: FU-VW-5, owner: 'requirements keeper', where: 'R-PR-12', what: 'Name where the live win probability and the swing plays are stored.', why: 'The row names wp_live and swing_plays; neither exists. The views read the predictions columns of schema/live_state_changes.yaml and the proposed table swing_plays.'}
+  - {id: FU-VW-6, owner: 'requirements keeper', where: 'R-OS-03 and R-OS-05', what: 'Resolve: one asks for games the other says are not recorded.', why: 'See OQ-VW-20.'}
+  - {id: FU-VW-7, owner: 'requirements keeper', where: 'R-AS-03 and R-ID-17; R-HR-20', what: 'Resolve the two conflicts of the Studio rows.', why: 'See OQ-VW-29 and OQ-VW-30.'}
+  - {id: FU-VW-8, owner: 'registry owner', where: 'config/metrics.yaml', what: 'Add ids for the pipeline quality scores (HOTA, IDF1, identity accuracy, kappa).', why: 'Rule 8 cannot bind a number that has no id (OQ-VW-38).'}
+  - {id: FU-VW-9, owner: 'named-spots owner', where: 'docs/data/named_spots_court.svg', what: 'Relabel the three guide arcs in metres.', why: 'The drawing prints three imperial labels; R-VZ-07 asks metric labels only on every screen.'}
+  - {id: FU-VW-10, owner: 'live-state owner', where: 'decision K10', what: 'Give the foul-trouble cut-off for the last 300 s of the first half.', why: 'The half-time packet shows the flag (OQ-VW-15).'}
+  - {id: FU-VW-11, owner: 'views, next round', where: 'tools/specgen/views/vwlib.py', what: 'Check the text of shows against the inputs of the element.', why: 'Some elements describe a field that has no column yet; schema/views_changes.yaml lists them, the lint does not catch a new one.'}
+  - {id: FU-VW-12, owner: 'views, next round', where: 'config/views/core.yaml components.as_of_banner', what: 'Let a view that reads no live state use the banner without naming the live-state baseline.', why: 'The model card must declare the baseline only because of the banner.'}
+  - {id: FU-VW-13, owner: 'named-spots owner', where: 'docs/data/named_spots_court.svg and tools/specgen/named_spots/gen_svg.py', what: 'Redraw the picture as an overhead view (rim at the top), or say on it that it is a mirrored plot.', why: 'The frame is left-handed with z up, so x right and y up shows left and right swapped against video (OQ-VW-40).'}
