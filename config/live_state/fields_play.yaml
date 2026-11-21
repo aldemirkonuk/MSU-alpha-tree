@@ -1,0 +1,1279 @@
+# Live game state - fields of the groups possession and the ball, personnel and tactics (the CV-heavy fields).
+# Part of the live_state pack (config/live_state/core.yaml holds grades, sensors, rules, profiles, limits and the index).
+# Record shape: id, group, name, type, unit, domain, none_value, stored, dimension, lands_in, lands_in_proposed,
+# requirements, profile, sources, update, timing, dropout / dropout_extra, max_dwell, conflict / conflict_extra,
+# invariants, derived_from / recompute_on / valid_if (derived only), consumers, freshness_needed_s, params, notes.
+# Every evidence string starts with a tag of core.yaml conventions.evidence_tags (measured: / assumed: / rule: /
+# decision: / requirement: / config: / definition:). core.yaml inventory lists the columns a record must name in
+# lands_in and the R-SR rows it must cite; the index gives its state-machine dimension.
+# Profile defaults apply unless a record overrides them: `sources`, `dropout` and `conflict` REPLACE the profile's
+# list; `dropout_extra` and `conflict_extra` are appended. Every limit in a dropout rule is a param of the pack
+# (a max-dwell bound is named max_dwell.<state>).
+# Two keys used in this file on top of the shape:
+#   next_value (in a dropout rule)  the rule-implied value the field takes when the rule fires (rule MAX_DWELL). The
+#                                   grade_path is the path of the OLD value; the new value starts at grade inferred.
+#   max_dwell_by_value              the max-dwell bound of each value, where one field has several.
+# Every notes block ends by saying what the field does on a tight shot, in a replay, in a break, and what the
+# play-by-play alone can give.
+# Checked by: python tools/specgen/live_state/lslib.py --check config/live_state/fields_play.yaml
+fields:
+  # ================================================================================================= possession and ball
+  possession_team:
+    id: LS-POSS-01
+    group: possession_ball
+    name: Team in possession
+    type: enum
+    unit: n/a
+    domain: 'home, away, none'
+    none_value: none
+    stored: segment
+    dimension: possession_team
+    lands_in: ['state_segments:possession_team', state_frame.team_in_possession, state_second.team_in_possession, state_frame.possession_dq]
+    lands_in_proposed: [state_frame.possession_age_s]
+    requirements: [R-SR-05, R-SR-14, R-MD-04, R-IV-08, R-IV-15, R-SY-04, R-MD-01, R-MD-22]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the frame a player of the other team gains control (holding or dribbling a live ball)'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per frame: the ball handler''s team and the basket attacked'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: made shots, rebounds, turnovers and fouls imply the team'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s; the only source in pbp_only'}
+      - {sensor: scorebug_ocr, role: timing, modes: [live, post_blind, post_anchored], resolution: 'a shot-clock reset to 30 marks a change of control when no foul is whistled'}
+    update:
+      changed_by: [T01, T02, T03, T05, T08, T11, T12, T13, T14, T17, T20]
+      event_instant: 'A possession ends only when the other team gains control (R-MD-04): the first frame of player control by the other team, or the frame of the make, violation or foul that awards them the ball. Offensive rebounds and shot-clock resets do not change it. T17 changes it only when a review awards the ball to the other team; T20 closes it (none).'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.3, p95_s: 1.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: the first frames of control give the value at grade inferred; it is promoted to observed when the control has lasted control_secure_min_s (rebound_secure_min_s inside a rebound scramble). After a made basket the value is inferred at the make frame (R-IV-08), before the throw-in is seen. The feed delay is a planning value (OQ-LS-1). Replaced by the emit delay of control changes on the labelled turnover and rebound clips.'
+    dropout:
+      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'assumed: 5 s is the shortest rule bound on a held ball (throw-in, closely guarded); a possession can change within one pass. To be replaced by the measured share of tight shots during live play on MSU film.'}
+      - {when: not main camera but the shot clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'measured: the shot clock is readable in 79 % of clock-readable seconds and ticks consistently in 99.8 % of second pairs (measured_sensors.json); the bug was readable in 31 of 37 sampled tight shots (results/w3_intake/scorebug_summary.md). While it counts down without a reset to 30 and no whistle is heard, control has not changed (Rule 2-11.6.b) - the value stays inferred'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - a replay never changes game state'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: after a timeout the team entitled to the throw-in is known from the pending restart; if the restart was not seen, the value is unknown until the first observed control'}
+      - {when: ball not visible, rule: CARRY, grade_path: [observed, inferred, carried], limits: {status_carried_max_s: 5}, on_return: SNAP_AND_LOG, evidence: 'assumed: a ball hidden behind players for a moment does not change hands; beyond 5 s the value is carried, not claimed. Replaced by the measured share of ball-lost stretches that hide a change of control on MSU film'}
+      - {when: feed stale or a feed row missing, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION,
+         evidence: 'measured: the play-by-play of one of two pilot games lacks a turnover, so its possession count is one short (results/state_machine_test/README.md). The CV value stays observed; it is never confirmed by a row that does not exist'}
+    max_dwell: shot_clock_period
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'Play-by-play is a provider, not the truth (principle 3). The anchored pass must end with possession counts within 1 per half (R-IV-15); each disagreement is a review item, not an overwrite.'}
+    invariants: [R-IV-08, R-IV-15, SEG-01, SEG-02, TRN-02]
+    consumers: [live_panel, win_probability, expected_points, named_spots_frame, movement_grammar, possession_engine]
+    freshness_needed_s: {win_probability: 2.0, named_spots_frame: 0.2, live_panel: 0.5}
+    params:
+      control_secure_min_s: {value: 0.5, unit: s, why: 'a control shorter than this is not shown to be secured; until then a change of possession is graded inferred', evidence: 'config: config/movement_grammar/ball_actions.yaml item live_ball_turnover, gain_secure_min_s', mirrors: 'config/movement_grammar/ball_actions.yaml:items.live_ball_turnover.params.gain_secure_min_s.value'}
+      rebound_secure_min_s: {value: 1.5, unit: s, why: 'a touch right after a rim visit that lasts less than this is a rebound-scramble touch, not a possession (owner decision 25 Oct)', evidence: 'config: config/movement_grammar/ball_actions.yaml item rebound_control, secure_min_s', mirrors: 'config/movement_grammar/ball_actions.yaml:items.rebound_control.params.secure_min_s.value'}
+    notes: >-
+      The court frame of every named spot follows team control, not possession (named spots rule_rim_frame_selection),
+      so this field must not be used to pick the frame. Blind pass: every change comes from CV; the points scored on
+      the possession confirm it afterwards (score change on the bug within make_confirm_window_s).
+      Tight shot: carried 5 s, or held as inferred for up to one shot-clock period while the shot clock keeps counting.
+      Replay: frozen. Break: carried; after it the team entitled to the restart, else unknown until the first control.
+      Play-by-play only: written at play rows only (1 s, order inside a second repaired by ORD-03).
+
+  possession_seq:
+    id: LS-POSS-02
+    group: possession_ball
+    name: Possession number in the game
+    type: int
+    unit: count
+    domain: '0-250; 0 before the first control; +1 at each change of possession_team to a team'
+    none_value: unknown
+    stored: segment
+    dimension: possession_seq
+    lands_in: ['state_segments:possession_seq', state_frame.possession_id, state_second.possession_id, possessions.possession_id]
+    requirements: [R-SR-05, R-MD-04, R-SY-04, R-IV-15, R-MD-01]
+    profile: counter
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the same event that changes possession_team'}
+      - {sensor: scorebug_ocr, role: timing, modes: [live, post_blind, post_anchored], resolution: '1 s: a shot-clock reset to 30 without a whistle'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: the count of possession-ending rows'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored], resolution: '1 s: the possession count per half'}
+      - {sensor: pbp_final, role: value, modes: [pbp_only], resolution: '1 s'}
+    update:
+      changed_by: [T01, T02, T03, T05, T08, T11, T12, T13, T14]
+      event_instant: 'The frame possession_team changes to a team (R-MD-04). The number goes up by 1 and never down. A change that is taken back (control not secured within control_secure_min_s) is a superseding transition (LATE_CORRECTION), so the stored numbers of a state_version have no gap.'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.3, p95_s: 1.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: same instant and delay as possession_team; the feed delay is a planning value (OQ-LS-1). Replaced by the emit delay of control changes on labelled clips'
+    dropout:
+      - {when: not main camera but the shot clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'measured: shot clock readable in 79 % of clock-readable seconds, ticks consistent in 99.8 % of second pairs (measured_sensors.json). No reset to 30 and no whistle = no new possession (Rule 2-11.6.b)'}
+      - {when: not main camera and no shot clock, rule: CARRY, grade_path: [observed, carried], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'assumed: a counter is never guessed. It stays carried; on return an observed team different from the carried one adds 1 at grade inferred (an odd number of changes, at least 1), the same team adds 0 and the number stays carried (0 or 2 changes) until the feed rows settle it. Replaced by the count of possessions lost in unseen stretches on MSU film'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7; TRN-04 - no transition has its frame inside a replay'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 4-9.4.e - no team control during a dead ball, so no possession can start during a break'}
+      - {when: feed stale or a feed row missing, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION, evidence: 'measured: one missing turnover row left a pilot game one possession short (results/state_machine_test/README.md)'}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 2, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'R-MD-04: possessions per game within 2 of the count derived from the play-by-play. A larger difference sends the half to possession review.'}
+    invariants: [R-IV-15, SEG-01, SEG-02, TRN-02]
+    consumers: [possession_engine, expected_points, studio, live_panel]
+    notes: >-
+      possessions.possession_id is the same number. The state machine gives no changed_by list for this dimension; the
+      list above is read from the `changes` of each transition.
+      Tight shot: held while the shot clock vouches, else carried. Replay: frozen. Break: carried (it cannot change).
+      Play-by-play only: counted from play rows; within 1 of the true count per half only if no row is missing.
+
+  chance_seq:
+    id: LS-POSS-03
+    group: possession_ball
+    name: Chance number (in the game, and inside the possession)
+    type: int
+    unit: count
+    domain: '0-400 in the game; chance number 1-n inside the possession'
+    none_value: unknown
+    stored: segment
+    dimension: chance_seq
+    lands_in: ['state_segments:chance_seq', state_frame.chance_id, state_frame.chance_number, state_second.chance_id, state_second.chance_number, chances.chance_number, chances.start_cause]
+    requirements: [R-SR-05, R-MD-04, R-MD-06, R-SY-05, R-MB-07, R-IV-07]
+    profile: counter
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: offensive control after ring contact; a new possession'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: the shot clock set to 20 or 30 (the reset tells ring contact from an airball)'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: the whistle of a defensive foul or kicked ball'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: offensive rebound and foul rows'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s: every logged offensive rebound'}
+    update:
+      changed_by: [T01, T02, T03, T05, T06, T08, T11, T12, T13, T14]
+      event_instant: 'K08: a new chance opens at every new possession, at the frame the shooting team regains control after the try touched the ring (T06), and at the whistle of a stoppage that resets the shot clock without a change of possession (defensive foul with a throw-in, kicked ball). An airball recovered by the offense (T07) opens no chance.'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.3, p95_s: 1.0}
+      confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
+      evidence: 'assumed: provisional as possession_team. Confirmed = the next bug reading after the shot-clock reset (1 s steps plus frame_to_state_s), the value fields_scoreboard uses for a bug-confirmed status. measured: the arena shot clock resets at ring contact, not at the make (results/w3_intake/made_basket_lag.md). Replaced by the reset-to-bug lag at frame precision'
+    dropout:
+      - {when: ring contact not seen (rim hidden or ball lost), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {make_confirm_window_s: 4}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-MB-07 - ring contact not visible is unknown, then inferred from the shot-clock reset (20 = ring contact and a new chance, no reset = airball, same chance). The window is the bug confirm window; measured for the score only (K02)'}
+      - {when: not main camera but the shot clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'measured: shot clock readable in 79 % of clock-readable seconds (measured_sensors.json). Every new chance resets the shot clock (Rule 2-11.6), so a clock that only counts down means no new chance'}
+      - {when: not main camera and no shot clock, rule: CARRY, grade_path: [observed, carried], limits: {status_carried_max_s: 5}, on_return: REACQUIRE, evidence: 'assumed: never guessed; the feed''s offensive-rebound rows repair the count (LATE_CORRECTION). Replaced by the count of chances lost in unseen stretches on MSU film'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 4-9.4.e - no control during a dead ball, so no chance can open during a break'}
+      - {when: feed stale, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION, evidence: 'definition: the shot clock on the bug confirms a chance without the feed'}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'R-MD-04: chance numbers match every offensive rebound the play-by-play logs. The play-by-play cannot tell T06 from T07 (it logs an airball recovery as an offensive rebound); video decides that split.'}
+      - {between: [cv_events, scorebug_ocr], tolerance: 0, value_winner: scorebug_ocr, timing_winner: cv_events, log_to: scoreboard_flags,
+         note: 'CV says ring contact but the shot clock was not reset (or the other way round): the reset wins the chance count, the miss is flagged (R-IV-07).'}
+    invariants: [R-IV-07, new-IV-02, SEG-01, TRN-02]
+    consumers: [possession_engine, expected_points, offense_set, studio]
+    notes: >-
+      Tight shot: held while the shot clock vouches, else carried. Replay: frozen. Break: carried (it cannot change).
+      Play-by-play only: one chance per logged offensive rebound; airball recoveries are counted as chances by mistake.
+
+  team_control:
+    id: LS-POSS-04
+    group: possession_ball
+    name: Team in control of the ball (Rule 4-9)
+    type: enum
+    unit: n/a
+    domain: 'home, away, none (none during a try in flight, a jump ball, the batting of a rebound, and a dead ball before the thrower has the ball)'
+    none_value: none
+    stored: segment
+    dimension: team_control
+    lands_in: ['state_segments:team_control', ball_control_state.control_team_id]
+    lands_in_proposed: [state_frame.team_control]
+    requirements: [R-SR-14, R-MD-02, R-BL-02, R-IV-08, R-IV-13, R-MD-22]
+    profile: status
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the team of the player holding or dribbling the ball'}
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: release of a try, gain of control, throw-in disposal'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: a whistle ends control (dead ball)'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: the shot clock starts or resets when control is gained'}
+      - {sensor: pbp_final, role: value, modes: [pbp_only], resolution: '1 s, at play rows only'}
+    update:
+      changed_by: [T02, T03, T04, T05, T06, T07, T08, T09, T13, T14, T15, T20]
+      event_instant: 'Rule 4-9. Starts at the first frame a player holds or dribbles a live ball inbounds, or the frame the ball is at the disposal of a thrower-in (4-9.2.c). Continues through passes, an interrupted dribble and a loose ball (4-9.2.b, d). Ends at the frame a try is clearly in flight, an opponent secures control, or the ball becomes dead (4-9.3).'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.3, p95_s: 1.0}
+      confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
+      evidence: 'assumed: a hold or dribble needs a few frames to be told from a touch; inferred until control_secure_min_s. Confirmed = the next bug reading after the shot clock starts or resets. Replaced by the control-change delay on labelled clips and the reset-to-bug lag at frame precision'
+    dropout_extra:
+      - {when: not main camera but the shot clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'measured: shot clock readable in 79 % of clock-readable seconds; bug readable in 31 of 37 sampled tight shots (measured_sensors.json, results/w3_intake/scorebug_summary.md). A running shot clock without a reset means the same team still controls the ball or has a try in the air (Rule 2-11.6)'}
+      - {when: whistle heard while the play is out of view, rule: MAX_DWELL, grade_path: [inferred, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE, next_value: 'none (inferred at the whistle)',
+         evidence: 'rule: 4-9.4.e - there is no team control during a dead ball. assumed: whistle recall is not measured (OQ-LS-3)'}
+      - {when: carried control older than one shot-clock period, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE, evidence: 'rule: 2-11.1 and 9-11.1 - control without a try that hits the ring cannot outlast the shot clock'}
+    max_dwell: shot_clock_period
+    conflict:
+      - {between: [cv_tracking, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_tracking, log_to: cv_events_unmatched}
+      - {between: [cv_tracking, scorebug_ocr], tolerance: 1.0, value_winner: neither, timing_winner: cv_tracking, log_to: scoreboard_flags,
+         note: 'A gain of control with no shot-clock start or reset within 1 s (R-IV-07) is flagged; neither side is overwritten.'}
+    invariants: [R-IV-07, R-IV-08, R-IV-13, SEG-01, SEG-02, TRN-02]
+    consumers: [named_spots_frame, movement_grammar, expected_points, possession_engine, live_panel, shot_clock_check]
+    freshness_needed_s: {named_spots_frame: 0.2, movement_grammar: 0.2, live_panel: 0.5}
+    notes: >-
+      This field, not possession_team, picks the attacked-rim frame of the named spots (rule_rim_frame_selection).
+      state_frame.team_in_possession is defined in the schema as team control but named possession; a separate
+      column is proposed. The state machine note says control is none during a loose ball; Rule 4-9.2.d keeps it.
+      Tight shot: default carry 5 s, or inferred while the shot clock counts. Replay: frozen. Break: none after the
+      whistle; the thrower's team from the first frame the ball is at his disposal.
+      Play-by-play only: the team at play rows; none between a shot row and its rebound row.
+
+  ball_status:
+    id: LS-POSS-05
+    group: possession_ball
+    name: Ball live or dead
+    type: enum
+    unit: n/a
+    domain: 'live, dead'
+    none_value: unknown
+    stored: segment
+    dimension: ball_status
+    lands_in: ['state_segments:ball_status', state_frame.live_ball, restarts.video_ts_ms_dead, restarts.video_ts_ms_live]
+    requirements: [R-SR-01, R-MD-02, R-MM-03, R-IV-05, R-SY-11]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: made basket, ball at the disposal of a thrower-in or free-thrower, toss'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: whistle or horn = dead'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: a running game clock means a live ball (R-IV-05)'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: foul, violation and timeout rows'}
+      - {sensor: pbp_final, role: value, modes: [pbp_only], resolution: '1 s'}
+    update:
+      changed_by: [T01, T05, T06, T08, T09, T12, T13, T14, T15, T20, T23]
+      event_instant: 'Live (Rule 6-1.2): the frame the toss leaves the official''s hand, or the ball is at the disposal of the thrower-in or the free-thrower. Dead (Rule 6-5): the onset of the whistle, the frame a goal is made, the period horn. A try in flight at the whistle or horn keeps the ball live until the try ends (Rule 6-6.1).'
+    timing:
+      provisional: {by: audio, p50_s: 0.2, p95_s: 0.6}
+      confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
+      evidence: 'assumed: whistle onset plus frame_to_state_s (audio_delay_p50_s, audio_delay_p95_s; OQ-LS-3). Confirmed = the next bug reading with the clock stopped or started. A dead ball by a made basket is known at cv_make_confirm_s. Replaced by the measured whistle detection delay and the clock-stop lag on the bug'
+    dropout:
+      - {when: not main camera but the game clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {clock_carried_max_s: 30}, on_return: REACQUIRE,
+         evidence: 'measured: game clock readable in 79 % of in-period seconds (measured_sensors.json). requirement: R-IV-05 - a running clock implies a live ball, so live is inferred while the clock runs; a clock that stops implies a dead ball at the stop'}
+      - {when: not main camera and no clock reading, rule: CARRY, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'measured: during real hidden stretches the clock was stopped in 46 % of the 3-5 s ones and 72 % of the 6-10 s ones (measured_sensors.json clock, what the clock did during hidden stretches), so a carried "live" is not safe beyond a few seconds'}
+      - {when: whistle not heard (audio masked or away), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {clock_inferred_max_s: 3}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: the dead ball is then taken from the clock stop on the bug or from CV (players stop, official''s signal), back-dated to the last frame of play; whistle recall is not measured (OQ-LS-3)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7. A replay is shown during a dead ball in almost every case, but that is not assumed'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, inferred], limits: {}, on_return: REACQUIRE, next_value: 'dead (inferred)', evidence: 'rule: 5-11 - a broadcast leaves for a break only in a timeout or an intermission, when the ball is dead. assumed for the broadcast habit; replaced by the share of breaks that start on a dead ball in the 33 broadcasts'}
+    conflict:
+      - {between: [audio, scorebug_ocr], tolerance: 1.0, value_winner: scorebug_ocr, timing_winner: audio, log_to: scoreboard_flags,
+         note: 'A whistle with no clock stop within 1 s (a whistle from the stands, R-MM-03 failure mode) does not kill the ball: the value returns to live and the cue is logged.'}
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched}
+    invariants: [R-IV-03, R-IV-05, new-IV-28, SEG-01, SEG-02, TRN-02]
+    consumers: [game_clock_running, lineup_home, lineup_away, possession_engine, live_panel, movement_grammar]
+    freshness_needed_s: {live_panel: 0.5}
+    notes: >-
+      The ball is live from the disposal of the thrower, not from the touch that starts the clock (T15). The state
+      machine has no transition for the disposal; until it has one the disposal frame is stored in
+      restarts.video_ts_ms_live and T15 carries the change. No max dwell: both values can last for minutes.
+      Tight shot: read from the game clock on the bug (running = live), else carried 5 s. Replay: frozen.
+      Break: dead. Play-by-play only: dead at whistle rows, live inferred at the next live-play row.
+
+  try_in_flight:
+    id: LS-POSS-06
+    group: possession_ball
+    name: Try for goal in flight
+    type: enum
+    unit: n/a
+    domain: 'none, in_flight, ring_contact'
+    none_value: none
+    stored: segment
+    dimension: try_in_flight
+    lands_in: ['state_segments:try_in_flight', state_frame.try_in_flight, state_frame.ring_contact_this_try, ball_states.ring_contact_this_frame, made_basket_events.release_frame]
+    requirements: [R-SR-06, R-MB-07, R-IV-07, R-BL-03]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: release (+-1 frame), ring contact, made basket (+-2 frames, K07)'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per frame: the ball path toward the basket'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: shot clock reset (ring contact), score change (made)'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: one shot row per try'}
+    update:
+      changed_by: [T04, T05, T06, T07, T08]
+      event_instant: 'in_flight from the frame the ball is clearly in flight (Rule 4-9.3; the release). ring_contact from the first frame the ball touches the ring or flange. none at the frame the try ends: the goal is made, the miss is certain, the ball touches the floor or becomes dead (Rule 5-1.12).'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.2, p95_s: 1.0}
+      confirmed: {by: scorebug_ocr, p50_s: 1.1, p95_s: 2.1}
+      evidence: 'assumed: a release needs a few frames of free flight; p95 = cv_event_delay_p95_s. Confirmed = the shot-clock reset on the next bug reading (ring contact only; a try that misses everything is never confirmed by the bug). measured: the arena shot clock resets at ring contact (results/w3_intake/made_basket_lag.md). Replaced by the release and ring-contact emit delays on gold-v1'
+    dropout:
+      - {when: ball not visible during a try, rule: CARRY, grade_path: [observed, inferred, carried], limits: {ball_lost_after_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a ball in free flight follows its path for about 1 s (a try from the three-point line); after that the value is carried, not claimed. Replaced by the share of ball-lost stretches that hide the end of a try on MSU film'}
+      - {when: not main camera (cut to the shooter or the bench during the flight), rule: CARRY, grade_path: [observed, carried], limits: {max_dwell.try_in_flight: 4}, on_return: REACQUIRE,
+         evidence: 'assumed: the result is then read from the bug (score change inside make_confirm_window_s = made; shot clock reset = ring contact). Replaced by the share of tries whose end is not on the main camera on MSU film'}
+      - {when: carried in_flight or ring_contact older than the max dwell, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.try_in_flight: 4}, on_return: REACQUIRE, next_value: 'none (inferred)',
+         evidence: 'assumed: no try stays in the air longer (core.yaml max_dwell.try_in_flight, physics). The value none is then certain; what ended the try (make, rebound, out of bounds) is a different field and stays unknown until seen'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {replay_guard_s: 1}, on_return: REACQUIRE,
+         evidence: 'requirement: state record principle 7 and TRN-04 - a try seen in a replay never opens T04; a replayed make must never score twice'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, inferred], limits: {}, on_return: REACQUIRE, next_value: 'none (inferred)', evidence: 'rule: 5-1.12 - a try ends when the ball becomes dead; the ball is dead during a break'}
+    max_dwell: try_in_flight
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'A fouled missed try is no field-goal attempt in the scorebook, so a CV try without a shot row is expected there; every other unmatched try is a review item.'}
+      - {between: [cv_events, scorebug_ocr], tolerance: 0, value_winner: scorebug_ocr, timing_winner: cv_events, log_to: scoreboard_flags, note: 'Ring contact against the shot-clock reset (R-MB-07, R-IV-07).'}
+    invariants: [R-IV-07, new-IV-06, new-IV-23, TRN-04, SEG-01]
+    consumers: [chance_seq, ball_control_state, team_control, score_home, score_away, live_panel, movement_grammar]
+    freshness_needed_s: {live_panel: 0.2}
+    notes: >-
+      state_frame.try_in_flight is a boolean plus ring_contact_this_try; the dimension has three values. Recorded for
+      the schema change set. Gap in the state machine: a try that ends out of bounds (T13), in a held ball (T14) or
+      with the period (T20) is not listed as changing this dimension; MAX_DWELL covers it until those lists are fixed.
+      Tight shot: carried at most 4 s, then none. Replay: frozen. Break: none.
+      Play-by-play only: not written (the feed has no release or ring contact); the field is unknown in that pass.
+
+  flow_state:
+    id: LS-POSS-07
+    group: possession_ball
+    name: Flow state of the game
+    type: enum
+    unit: n/a
+    domain: 'S0, S1, S2, S3, S4, S4a, S4b, S4c, S5, S6, S7, S8, S9, S10, S11 (config/state_machine.yaml)'
+    none_value: unknown
+    stored: segment
+    dimension: flow_state
+    lands_in: ['state_segments:flow_state', state_second.phase, state_transitions.flow_from, state_transitions.flow_to]
+    requirements: [R-SR-05, R-TR-08, R-TR-09, R-SY-04, R-SY-11]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: every typed transition seen on video'}
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: backcourt or frontcourt (S3, S4) and the S4a / S4b / S4c split'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: whistle (to S7), horn (to S11, out of S9)'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: clock running or stopped, timeout bars'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: the coarse states only'}
+      - {sensor: pbp_final, role: value, modes: [pbp_only], resolution: '1 s: S0, S1, S2, S3, S4, S5 to S11; no backcourt / frontcourt and no S4a / b / c split'}
+    update:
+      changed_by: all
+      event_instant: 'The effective frame of the transition that opens the state (state_transitions.effective_frame). S4a to S4b when three defenders are back, S4b to S4c when the defense is set: all ten players in the half court and every attacker guarded within 2.0 m on the goal side for defense_set_dwell_s (R-TR-08, R-TR-09).'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.2, p95_s: 1.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: the profile values (a few frames to tell a change from noise; cv_event_delay_p95_s). A state opened by a whistle is known at the audio delay. The S4c boundary is known defense_set_dwell_s after it is true. Feed delay is a planning value (OQ-LS-1). Replaced by the transition emit delays on gold-v1'
+    dropout_extra:
+      - {when: off-screen defenders make the S4a / S4b / S4c split unsure, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, next_value: 'S4 (frontcourt control, split unknown)',
+         evidence: 'decision: K15 - off-screen players are estimates with a 95 % region. requirement: R-TR-03 - a weak estimate makes the label uncertain. The coarse state S4 stays observed; only the letter is withheld'}
+      - {when: carried state older than its max dwell, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'rule: the bound of each state is in max_dwell_by_value (throw-in 7-6.6, free throw 8-5.1.a, backcourt 9-10, shot clock 2-11.1, timeouts 5-14.4); 30 s is the longest bound of a live state'}
+      - {when: no video (feed only), rule: CARRY, grade_path: [observed, carried], limits: {feed_stale_after_s: 90}, on_return: REACQUIRE, evidence: 'definition: the feed gives the coarse states at its own delay; between rows the state is carried'}
+    max_dwell: shot_clock_period
+    max_dwell_by_value: {S2: throw_in, S3: backcourt_control, S4: shot_clock_period, S4a: shot_clock_period, S4b: shot_clock_period, S4c: shot_clock_period, S5: try_in_flight, S8: free_throw_attempt, S9: timeout_75, S11: halftime}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'TRN-03: a transition from a state outside allowed_from is a review item. The scorebook wins the kind of a stoppage (foul, violation, timeout), video wins the instant.'}
+    invariants: [TRN-01, TRN-02, TRN-03, TRN-04, SEG-01, SEG-02]
+    consumers: [possession_engine, expected_points, transition_numbers, offense_set, defense_scheme, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.5}
+    params:
+      defense_set_dwell_s: {value: 1.0, unit: s, why: 'the defense counts as set after every attacker has been guarded for this long; the S4c boundary is known this long after it is true', evidence: 'config: config/movement_grammar/transition.yaml item transition_phase, set_dwell_s (R-TR-08)', mirrors: 'config/movement_grammar/transition.yaml:items.transition_phase.params.set_dwell_s.value'}
+    notes: >-
+      S2 and S8 bounds run from the ball at disposal; S7, S10 and a media timeout have no bound and end on an observed
+      restart or T26. state_second.phase is the coarse view (half_court, transition, throw_in, free_throw, jump_ball,
+      timeout, review, other_dead, intermission).
+      Tight shot: carried up to the bound of the state, never longer than 5 s for a live state without a clock on
+      the bug. Replay: frozen. Break: S9 or S11 from the stoppage; on return re-acquired.
+      Play-by-play only: the coarse states at rows; T15, T26 and T21 are written as inferred.
+
+  restart_pending:
+    id: LS-POSS-08
+    group: possession_ball
+    name: Restart pending (kind, team, side, spot, cause)
+    type: enum
+    unit: n/a
+    domain: 'none, jump_ball, throw_in, free_throw; companions for a throw-in: team (home / away), side (sideline / baseline), court half, spot class, cause'
+    none_value: none
+    stored: segment
+    dimension: restart_pending
+    lands_in: ['state_segments:restart_pending', state_frame.inbound_side, restarts.restart_type, restarts.restart_team, restarts.inbound_side, restarts.court_half, restarts.throw_in_spot, restarts.dead_ball_reason, ball_control_state.inbound_side]
+    requirements: [R-SR-08, R-MD-03, R-DT-14, R-DT-19, R-IV-08, R-ST-23]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: made basket, official''s signal, ball handed to the thrower, lane formation'}
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the spot of the thrower (m), side and half'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: the whistle that causes the restart'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: the game clock starts when the restart ends'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: the cause (foul or violation type) fixes the kind and the team'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s: cause and team; no spot'}
+    update:
+      changed_by: [T01, T05, T10, T11, T12, T13, T14, T15, T20, T26]
+      event_instant: 'Pending from the frame of the make or the whistle that causes it; the kind follows the rule on the cause (after a goal the other team throws in from the end line, R-IV-08). none at the frame the restart ends: the legal touch inbounds (T15), the result of the last free throw, the tap of a jump ball.'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.5, p95_s: 2.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: after a made basket the restart is known with the make (cv_make_confirm_s). After a whistle the kind needs the official''s signal or the players'' set-up, about 2 s. Feed delay is a planning value (OQ-LS-1). Replaced by the time from whistle to a correct restart kind on gold-v1'
+    dropout:
+      - {when: not main camera but the game clock is readable, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred, carried], limits: {clock_carried_max_s: 30}, on_return: REACQUIRE, next_value: 'none when the clock starts (T15 written as inferred)',
+         evidence: 'rule: 5-10.2.a - the clock starts on the legal touch that ends a throw-in, so a stopped clock keeps a pending throw-in and a starting clock ends it. measured: game clock readable in 79 % of in-period seconds (measured_sensors.json)'}
+      - {when: not main camera and no clock reading, rule: CARRY, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'rule: 7-6.6 - a throw-in lasts at most 5 s from the ball at disposal. assumed that the disposal is near; replaced by the time from dead ball to restart measured on MSU film'}
+      - {when: throw-in hidden by a camera cut, rule: CARRY, grade_path: [observed, inferred], limits: {}, on_return: LATE_CORRECTION, evidence: 'requirement: R-DT-14 - side and team then come from the play-by-play; the formation is stored as unseen'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7. Replays run while a restart is pending; the restart is often live when the main camera returns'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: a timeout does not change the pending restart (T26 returns to it), but a review can; after a break it is carried until seen'}
+    max_dwell: throw_in
+    max_dwell_by_value: {throw_in: throw_in, free_throw: free_throw_attempt}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: cv_events, log_to: cv_events_unmatched,
+         note: 'The scorebook wins the cause (foul or violation type) and with it the kind and the team; video wins the instant and is the only source of the spot (R-SR-08: order matches the play-by-play 100 %).'}
+    invariants: [R-IV-08, new-IV-16, new-IV-18, new-IV-19, new-IV-32, SEG-01, TRN-02]
+    consumers: [ball_control_state, free_throw_state, offense_set, possession_engine, live_panel, studio]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      The bounds run from the ball at disposal, not from the whistle: a pending restart before the disposal has no
+      rule bound. Free-throw detail (k of n, award) is the field free_throw_state.
+      Tight shot: held while the bug clock is stopped, ended when it starts; else carried 5 s. Replay: frozen.
+      Break: carried, then re-acquired. Play-by-play only: kind, team and cause at rows; side and spot unknown.
+
+  stoppage:
+    id: LS-POSS-09
+    group: possession_ball
+    name: Kind of the current stoppage
+    type: enum
+    unit: n/a
+    domain: 'none, foul, violation, held_ball, timeout_team, timeout_media, review, challenge, injury, period_end, intermission'
+    none_value: none
+    stored: segment
+    dimension: stoppage
+    lands_in: ['state_segments:stoppage', state_frame.stoppage_kind, timeouts.timeout_type, reviews.review_kind]
+    requirements: [R-SR-04, R-SR-08, R-MM-03, R-SY-11]
+    profile: status
+    sources:
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: whistle (a stoppage starts), horn (period end, timeout end)'}
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: official''s signal, teams walking to the benches, officials at the monitor'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: clock stopped; timeout count drops'}
+      - {sensor: pbp_feed, role: value, modes: [live], resolution: '1 s, late: the kind (foul, violation, timeout length, challenge)'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s'}
+    update:
+      changed_by: [T01, T09, T13, T14, T15, T16, T17, T20, T21, T23, T26]
+      event_instant: 'Starts at the onset of the whistle or horn that stops play. A timeout or review that follows replaces the kind at the frame it is granted. Ends (none) at the restart (T15, T01, or the disposal of a free throw); T26 ends a timeout or review and returns to the stoppage it interrupted.'
+    timing:
+      provisional: {by: audio, p50_s: 0.2, p95_s: 0.6}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: at the whistle the fact of a stoppage is known (audio_delay_p50_s, audio_delay_p95_s plus frame_to_state_s; OQ-LS-3); its kind is inferred from the signal or the play and is settled by the feed row (planning values, OQ-LS-1). Replaced by the whistle detection delay and the feed delay of the live capture'
+    dropout:
+      - {when: whistle not heard (audio masked or away), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {clock_inferred_max_s: 3}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: the stoppage is then taken from the clock stop on the bug or from CV, back-dated; its kind is unknown until a signal or a row. Whistle recall is not measured (OQ-LS-3)'}
+      - {when: not main camera, rule: HOLD_UNTIL_EVENT, grade_path: [observed, carried], limits: {clock_carried_max_s: 30}, on_return: REACQUIRE, next_value: 'none when the game clock starts on the bug',
+         evidence: 'measured: the bug was readable in 31 of 37 sampled tight shots and 20 of 21 bench or crowd shots (results/w3_intake/scorebug_summary.md). A stopped clock keeps the stoppage; a running clock ends it (R-IV-05)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7. A review is not inferred from a replay alone: replays follow most whistles'}
+      - {when: break starts, rule: FREEZE_ON_BREAK, grade_path: [observed, inferred, carried], limits: {feed_delay_p95_s: 60}, on_return: REACQUIRE, next_value: 'timeout (team or media not yet known), or intermission after a period end',
+         evidence: 'assumed: a broadcast leaves for a break only in a timeout or an intermission; the feed row gives team or media and the length. Replaced by the share of breaks in the 33 broadcasts that sit on a play-by-play timeout row'}
+      - {when: charged timeout older than its length, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.timeout_75: 75}, on_return: REACQUIRE,
+         evidence: 'rule: 5-14.4 - 30, 60 or 75 s; 5-14.6 - play resumes at the second horn. A broadcast that returns late only delays the observation. A media timeout has no bound in the book (5-14.10) and ends only on an observed restart'}
+      - {when: feed stale, rule: CARRY, grade_path: [observed, inferred], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION, evidence: 'definition: the kind stays an inference from video and audio; it is never confirmed without the row'}
+    max_dwell_by_value: {timeout_team: timeout_75, intermission: halftime, injury: replace_player}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: audio, log_to: state_corrections,
+         note: 'The scorebook wins the kind; the whistle wins the instant. A stoppage seen and heard with no row stays in cv_events_unmatched (the pilot play-by-play lacks the dead ball that allowed two substitutions per game).'}
+    invariants: [new-IV-12, new-IV-13, new-IV-14, SEG-01, TRN-02]
+    consumers: [media_segment, lineup_home, lineup_away, ball_control_state, possession_engine, live_panel, studio]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      state_frame.stoppage_kind has a different value list (team_timeout, media_timeout, review, injury, intermission,
+      other_dead); recorded for the schema change set. Halftime may be 1,200 s in the NCAA tournament
+      (max_dwell.halftime_tournament); the registry says which applies. A stoppage of kind foul, violation, held_ball
+      or review has no rule bound.
+      Tight shot: held while the bug clock is stopped. Replay: frozen. Break: timeout or intermission, inferred.
+      Play-by-play only: kind and game-clock second from rows; the end of a timeout (T26) is inferred.
+
+  arrow:
+    id: LS-POSS-10
+    group: possession_ball
+    name: Alternating-possession arrow
+    type: enum
+    unit: n/a
+    domain: 'home, away, none (none until the opening jump ball is controlled)'
+    none_value: none
+    stored: segment
+    dimension: arrow
+    lands_in: ['state_segments:arrow', state_frame.possession_arrow, state_second.possession_arrow, restarts.arrow_before, restarts.arrow_after, jump_balls.arrow_after_team_id]
+    requirements: [R-SR-05, R-IV-08, R-MD-22]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: control of the opening tip; the end of each alternating-possession throw-in'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: jump-ball and held-ball rows'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s, only where the bug shows the arrow'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s'}
+    update:
+      changed_by: [T01, T02, T14, T15]
+      event_instant: 'Set when control of the opening jump ball is established: to the team that did not gain it (Rule 6-3.4). Reversed at the frame an alternating-possession throw-in ends: the legal touch inbounds, or a throw-in violation by the throwing team (Rule 6-3.2). A foul during that throw-in does not reverse it (6-3.8). At half time the team does not change (6-3.6).'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.5, p95_s: 1.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: the arrow is computed by rule from two CV events (tip control, end of the throw-in), each at the CV event delay. Feed delay is a planning value (OQ-LS-1). Whether the B1G+ bug shows the arrow at all is not measured; replaced by a count on the 33 broadcasts'
+    dropout:
+      - {when: held ball or its throw-in not seen (tight shot, replay, cut), rule: CARRY, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60}, on_return: LATE_CORRECTION,
+         evidence: 'definition: the arrow changes only at the end of an alternating-possession throw-in, a few times per game, and each one has a held-ball row in the play-by-play. A healthy feed that shows no such row for feed_delay_p95_s after an unseen dead ball returns the value to observed'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 6-3.2 - the arrow reverses only when a throw-in ends, which cannot happen in a break'}
+      - {when: feed stale, rule: CARRY, grade_path: [confirmed, observed, carried], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION, evidence: 'definition: without the feed an unseen held ball cannot be ruled out; the value is carried after any unseen dead ball'}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: cv_events, log_to: state_corrections}
+      - {between: [cv_events, scorebug_ocr], tolerance: 0, value_winner: neither, timing_winner: cv_events, log_to: scoreboard_flags, note: 'The bug arrow is an operator display; a disagreement is a flag, never an overwrite.'}
+    invariants: [R-IV-08, new-IV-19, new-IV-20, SEG-01, TRN-02]
+    consumers: [possession_engine, win_probability, live_panel, studio]
+    notes: >-
+      The state machine lists T02 and T14 for this dimension; the reversal itself happens at T15 (end of the
+      throw-in) and the first value is set at T01 / T02, as the `changes` lists say. No max dwell: the value holds
+      until the next held ball.
+      Tight shot, replay: carried until the feed shows no held ball. Break: carried, cannot change.
+      Play-by-play only: from the opening-tip row and the held-ball rows.
+
+  basket_attacked_home:
+    id: LS-POSS-11
+    group: possession_ball
+    name: Basket the home team attacks (screen side on the main camera)
+    type: enum
+    unit: n/a
+    domain: 'left, right'
+    none_value: unknown
+    stored: segment
+    dimension: basket_attacked_home
+    lands_in: ['state_segments:basket_attacked_home', state_frame.basket_attacked]
+    requirements: [R-FD-14, R-CG-03, R-MD-22]
+    profile: status
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored], resolution: 'per game: home bench end and the home team''s first-half basket, set before tracking (R-FD-14)'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per frame: the jumpers'' halves at the tip, the direction of play, the bench side'}
+      - {sensor: cv_events, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per event: the basket of the first try by a known team'}
+    update:
+      changed_by: [T21]
+      event_instant: 'Changes at the start of the second half only (Rule 1-1.3). In the first half a team shoots at the basket farthest from its bench (Rule 1-1.2). Extra periods keep the second-half baskets.'
+    timing:
+      provisional: {by: registry, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: cv_tracking, p50_s: 0.5, p95_s: 1.0}
+      evidence: 'definition: the registry value is known before tip and the half-time change follows by rule. assumed: tracking confirms it in the first frames of each half (each jumper stands in the half farther from his own basket, Rule 6-2; the second half starts with a throw-in toward the attacked basket). Replaced by the time to confirm on MSU film'
+    dropout:
+      - {when: not main camera, replay or break inside a half, rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, observed], limits: {}, on_return: SNAP_AND_LOG, evidence: 'rule: 1-1.3 - baskets change at half time only, so the value cannot change while play is out of view'}
+      - {when: half time (the intermission is cut or shortened), rule: HOLD_UNTIL_EVENT, grade_path: [confirmed, inferred], limits: {}, on_return: SNAP_AND_LOG, next_value: 'the other side (inferred at T21)',
+         evidence: 'rule: 1-1.3. measured: one tournament replay kept 3.2 of 21.4 min of half time (config/state_machine.yaml T21), so the change is applied by rule and confirmed by the first play of the half'}
+      - {when: registry row lacks the first-half basket, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: R-FD-14 - filled for every game before tracking; until then the value is unknown and is set by the first confirmed observation'}
+    conflict:
+      - {between: [registry, cv_tracking], tolerance: 0, value_winner: cv_tracking, timing_winner: n/a, log_to: registry_change_log, note: 'R-FD-14: tracking verifies the registry; a wrong registry value is corrected and logged.'}
+    invariants: [new-IV-20, new-IV-21, new-IV-34, SEG-01]
+    consumers: [named_spots_frame, player_positions, ball_position, backcourt_count_s, transition_numbers, live_panel]
+    notes: >-
+      The value is defined on the main camera. state_frame.reverse_angle marks frames where left and right are
+      mirrored; those frames are not used. state_frame.basket_attacked holds north / south for the team in
+      possession, a different convention; recorded for the schema change set. The state machine cites Rule 5-9 for
+      the change of baskets; the rule is 1-1.3.
+      Tight shot, replay, break: unchanged (it cannot change inside a half).
+      Play-by-play only: from the registry and the half; never from the feed.
+
+  ball_position:
+    id: LS-POSS-12
+    group: possession_ball
+    name: Ball position
+    type: record
+    unit: 'm, degrees'
+    domain: 'x_m, y_m in the attacked-rim frame (|x| <= 8.62, -2.6 <= y <= 28.05), r_m, theta_deg, z_m (height; unknown in production), ball_inferred flag'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.ball_x_m, state_frame.ball_y_m, state_frame.ball_z_m, state_frame.ball_r_m, state_frame.ball_theta_deg, state_frame.ball_inferred, ball_states.ball_x_m, ball_states.ball_y_m, ball_states.ball_height_m, ball_states.position_from_holder]
+    requirements: [R-SR-06, R-BL-01, R-CG-03, R-IV-13, R-MD-19]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame on the main camera; the 0.24 m size check gates every detection'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The video frame. A held or dribbled ball takes the floor point of its holder. A ball in the air (pass, try) has no floor point that one camera can see: live it is predicted from the release; after the catch the path is rebuilt in the as_of_event view only.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s; measured per run (K23)'
+    dropout:
+      - {when: ball hidden in the hands of a tracked holder, rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {ball_lost_after_s: 1, status_carried_max_s: 5}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-BL-01 - a hidden ball takes the position of the holder''s hands (ball_inferred). assumed: inferred for ball_lost_after_s, carried on the holder up to status_carried_max_s, then unknown. Replaced by the position error against age on gold-v1 ball labels'}
+      - {when: ball not visible and no holder (pass, try, loose ball), rule: CARRY, grade_path: [observed, inferred, unknown], limits: {ball_lost_after_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a free ball follows its path for about 1 s; after that nothing holds it in place and the position is unknown. Replaced by the same measurement'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {ball_lost_after_s: 1}, on_return: REACQUIRE,
+         evidence: 'assumed: there is no off-screen model for the ball (K15 covers players); a carried ball position is wrong within a pass. Replaced by the ball displacement over tight shots on MSU film'}
+      - {when: court mapping below its gate, rule: CARRY, grade_path: [observed, unknown], limits: {mapping_min_conf: 0.8}, on_return: REACQUIRE, evidence: 'requirement: R-CG-03 - without a trusted mapping only the image position is stored (ball_states.image_xy_px); the court position is unknown'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - a position in a replay is a past position'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: nothing of the court is seen in a break'}
+    conflict: []
+    invariants: [R-IV-13, new-IV-34]
+    consumers: [ball_handler, backcourt_count_s, transition_numbers, movement_grammar, expected_points, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.2, movement_grammar: 0.2}
+    notes: >-
+      Height: production is floor-only (owner answer of 23 Oct 2026), so z_m holds unknown; on high-quality video
+      height is tried as an experiment and never feeds a rule. Positions are stored in ball_states, never as
+      segments (R-SR-06).
+      Tight shot: carried 1 s, then unknown. Replay: unknown. Break: unknown.
+      Play-by-play only: unknown.
+
+  ball_handler:
+    id: LS-POSS-13
+    group: possession_ball
+    name: Ball handler (player in control)
+    type: string
+    unit: player id
+    domain: 'a locked player id; HOLD with candidates (control is seen, identity is not locked); none (no player control)'
+    none_value: none
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.ball_handler_player_id, ball_states.holder_id, ball_states.handler_distance_m]
+    requirements: [R-SR-06, R-BL-02, R-ID-01, R-IV-13]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: the track holding or dribbling the ball, and its identity label'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored], resolution: '1 s: the shooter, rebounder or ball loser named at event rows'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The first frame a player holds or dribbles a live ball (Rule 4-9.1). none while the ball is in flight, contested or dead.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s for the track that holds the ball; the name of the player follows player_identity (locked or HOLD). Measured per run (K23)'
+    dropout:
+      - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - the value is HOLD with the candidate list, never a guess. The team is still known from the class of the track, so team_control is not affected'}
+      - {when: ball not visible, rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {ball_lost_after_s: 1, status_carried_max_s: 5}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a ball hidden for a moment is still with its holder; carried up to status_carried_max_s, then unknown. Replaced by the share of ball-lost stretches that hide a pass on MSU film'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {ball_lost_after_s: 1}, on_return: REACQUIRE,
+         evidence: 'assumed: a close-up often shows the handler, but identity is locked on the main camera only (identity pack scope); after 1 s out of view the handler is unknown. Replaced by the share of tight shots that hide a pass on MSU film'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, next_value: none, evidence: 'rule: 4-9.1 - player control needs a live ball; there is none in a break'}
+    conflict:
+      - {between: [cv_tracking, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_tracking, log_to: identity_review, note: 'A locked handler who is not the player the scorebook names at that event is an identity review item.'}
+    invariants: [R-IV-13]
+    consumers: [team_control, ball_position, offense_set, ball_screen_coverage, expected_points, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.2}
+    params:
+      ball_handler_max_dist_m: {value: 1.5, unit: m, why: 'a handler further than this from the ball is not in control; the value becomes none and the frame is checked (R-IV-13)', evidence: 'config: config/invariants.yaml constants.physics.ball_handler_max_dist_m', mirrors: 'config/invariants.yaml:constants.physics.ball_handler_max_dist_m'}
+    notes: >-
+      Tight shot: carried 1 s, then unknown. Replay: unknown. Break: none.
+      Play-by-play only: the player named at an event row, at that second only.
+
+  secs_since_control_change:
+    id: LS-POSS-14
+    group: possession_ball
+    name: Seconds since the last change of possession
+    type: float
+    unit: s
+    domain: '0 to about 1,200; game-clock seconds (live time only) since possession_team last changed'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [state_second.secs_since_control_change]
+    requirements: [R-SR-05, R-MD-04]
+    profile: derived
+    derived_from: [possession_team, game_clock_s, game_clock_running]
+    recompute_on: 'every game-clock reading and every change of possession_team'
+    valid_if: >-
+      possession_team was at least inferred at its last change and the game clock is at least inferred now. While
+      the clock is carried the value is published with the interval [value, value + elapsed video time]. When
+      possession_team is unknown the value is unknown.
+    update:
+      changed_by: on_input_change
+      event_instant: 'Game clock at the effective frame of the last transition that changed possession_team, minus the game clock now. It does not restart on an offensive rebound or a shot-clock reset, and it does not grow while the clock is stopped.'
+    timing:
+      driven_by: [possession_team]
+      provisional: {by: inputs, p50_s: 0.4, p95_s: 1.1}
+      confirmed: {by: inputs, p50_s: 20.1, p95_s: 60.1}
+      evidence: 'assumed: possession_team plus derived_compute_s; the game clock is faster (0.1 s). Replaced with the inputs'
+    dropout_extra:
+      - {when: game clock dead-reckoned, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: the dead-reckoned clock is within 1 s in 93.8 % after 3 s and 44.8 % after 30 s (measured_sensors.json clock_carry_on_withheld_readings); the value inherits those limits'}
+    conflict: []
+    invariants: [new-IV-05]
+    consumers: [possession_engine, expected_points, transition_numbers, live_panel]
+    notes: >-
+      Cross-check, not a source: when the possession began with a full shot clock and had no reset, the value equals
+      30 minus the shot clock within clock_tolerance_s. Transition measures use their own start (transition_phases.t0_ms).
+      Tight shot, replay, break: follows its inputs (WORST_INPUT); it does not grow while the clock is stopped.
+      Play-by-play only: 1 s steps from row clock seconds.
+
+  free_throw_state:
+    id: LS-POSS-15
+    group: possession_ball
+    name: Free-throw state (attempt k of n, award)
+    type: enum
+    unit: n/a
+    domain: 'none, ft_pending, lane_set, attempt, ft_result, ft_live_rebound; companions: attempt k, attempts n, award type, shooter, predicted flag with probability'
+    none_value: none
+    stored: segment
+    dimension: null
+    lands_in: [state_second.ft_state, state_second.ft_sequence_id, state_second.ft_attempt_k, state_second.ft_attempts_n, state_second.ft_predicted, state_second.ft_pred_prob, free_throws.attempt_k, free_throws.attempts_n, free_throws.award_type, free_throws.video_ts_ms_disposal, free_throws.video_ts_ms_release, free_throws.result]
+    requirements: [R-SR-09, R-IV-11, R-SR-03, R-MD-01]
+    profile: status
+    sources:
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: lane formation, ball at the shooter''s disposal, release, result'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: the whistle of the foul'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: '1 s: +1 on the score for a made attempt; the clock stays stopped'}
+      - {sensor: pbp_feed, role: value, modes: [live], resolution: '1 s, late: one row per attempt with its result; the foul row fixes the award'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s: every attempt (R-SR-09: 100 % matched)'}
+    update:
+      changed_by: [T06, T08, T09, T10, T12, T13]
+      event_instant: 'ft_pending from the whistle of a foul that carries an award (predicted at the whistle, fixed by T10). lane_set when the lane spaces are filled and the shooter is at the line. attempt from the frame the ball is at the shooter''s disposal to the release. ft_result from the frame the attempt ends while another follows. ft_live_rebound when the last attempt is missed and the ball stays live. none when a player controls that rebound or a throw-in is awarded.'
+    timing:
+      provisional: {by: cv_events, p50_s: 0.5, p95_s: 2.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: a made attempt is emitted like a made basket (cv_make_confirm_s); the award (n and type) is inferred at the whistle from the foul, the shooting act and the team fouls (new-IV-07) and needs about 2 s of set-up to be seen. Feed delay is a planning value (OQ-LS-1). Replaced by the R-SR-09 test of the "free throw coming" prediction on gold-v1'
+    dropout:
+      - {when: not main camera (close-up of the shooter), rule: CARRY, grade_path: [observed, inferred, carried, unknown], limits: {make_confirm_window_s: 4, max_dwell.free_throw_attempt: 10}, on_return: REACQUIRE,
+         evidence: 'rule: 8-5.1.a - an attempt lasts at most 10 s from the disposal. A made attempt is then inferred from +1 on the bug inside the confirm window; a miss is not visible on the bug and is known from the next state or the feed row. The make-to-bug lag is measured for field goals only (1.93 s median, n = 10); replaced by the same lag for free throws'}
+      - {when: award not confirmed (feed late), rule: CONFIRM_WINDOW, grade_path: [observed, inferred], limits: {feed_delay_p95_s: 60}, on_return: LATE_CORRECTION,
+         evidence: 'assumed: n and the award type stay inferred from the rule table until the foul row arrives; a second attempt that does or does not follow settles a one-and-one earlier. Feed delay is a planning value (OQ-LS-1)'}
+      - {when: team fouls not up to date at the whistle, rule: VALID_IF, grade_path: [observed, inferred], limits: {foul_to_bug_window_s: 42}, on_return: LATE_CORRECTION,
+         evidence: 'measured: the bug foul count follows the play-by-play foul second by 7 s at the median and 31 s at p95 (measured_sensors.json bug_fields). The bonus used for the prediction is therefore counted from our own whistles and feed rows, and the prediction is graded inferred while a foul of the last 42 s is unconfirmed'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7. Replays of the foul run between attempts; an attempt can be missed behind one and is then read from the bug or the feed'}
+      - {when: break (timeout between attempts), rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 8-5 and 5-11 - k of n cannot change while the ball is dead in a timeout; the sub-state returns to ft_pending'}
+    max_dwell: free_throw_attempt
+    max_dwell_by_value: {attempt: free_throw_attempt}
+    conflict:
+      - {between: [cv_events, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: cv_events, log_to: state_corrections,
+         note: 'The scorebook wins the number of attempts, the shooter and each result; video wins the instants. The pilot play-by-play lists 2 of 2 before 1 of 2 inside one second (ORD-03), so the order of attempts comes from video or from the score.'}
+      - {between: [cv_events, scorebug_ocr], tolerance: 0, value_winner: scorebug_ocr, timing_winner: cv_events, log_to: scoreboard_flags}
+    invariants: [R-IV-11, new-IV-07, new-IV-08, new-IV-09, new-IV-10, new-IV-25, new-IV-29]
+    consumers: [possession_engine, win_probability, expected_points, live_panel, studio]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      k, n and the award ride on the restart_pending segment (its companion fields); the sub-states lane_set,
+      attempt and ft_result are not a dimension of the state machine yet. Only the attempt has a rule bound (10 s
+      from the disposal); the wait before the disposal has none.
+      Tight shot: makes from the bug, misses from the next state or the feed. Replay: frozen. Break: k of n carried.
+      Play-by-play only: k of n and results at rows; no sub-states, order repaired by score.
+
+  backcourt_count_s:
+    id: LS-POSS-16
+    group: possession_ball
+    name: Running 10-second backcourt count
+    type: float
+    unit: s
+    domain: '0.0-10.0 in 0.1 s steps while a team controls the ball in its backcourt; off otherwise'
+    none_value: 'off'
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [state_frame.backcourt_count_s, possessions.frontcourt_entry_s]
+    requirements: [R-SR-18, R-IV-14, R-MD-26]
+    profile: derived
+    derived_from: [team_control, ball_status, ball_position, ball_handler, player_positions, game_clock_running, basket_attacked_home]
+    recompute_on: 'every frame while a team controls a live ball in its backcourt'
+    valid_if: >-
+      team_control is observed or inferred, the ball position is observed or inferred from its holder, and the court
+      mapping is at or above mapping_min_conf. When the deciding foot or ball point is within backcourt_line_band_m
+      of the division line the count is published with the flag uncertain. Otherwise the value is unknown.
+    update:
+      changed_by: on_input_change
+      event_instant: 'Rule 9-10. Starts at the frame a player legally touches the ball in the backcourt (at player control after a rebound or a jump ball). Runs while the team keeps control in the backcourt. Ends at the frame the ball gains frontcourt status (it touches the frontcourt, or both feet of the dribbler and the ball do). Reset on every stoppage of the game clock, except when the defense puts the ball out of bounds, the offense keeps the ball after a held ball, or the offense is charged a technical foul; always reset by a timeout charged to the offense.'
+    timing:
+      driven_by: [team_control, ball_position]
+      provisional: {by: inputs, p50_s: 0.4, p95_s: 1.1}
+      confirmed: {by: inputs, p50_s: 1.2, p95_s: 2.2}
+      evidence: 'assumed: team_control plus derived_compute_s; confirmed when the shot clock on the bug agrees. Replaced by the R-SR-18 test (within 0.2 s of a hand-timed count on 95 % of possessions)'
+    dropout_extra:
+      - {when: positions out of view but the shot clock is readable, rule: VALID_IF, grade_path: [observed, inferred, carried], limits: {max_dwell.backcourt_control: 10}, on_return: SNAP_AND_LOG,
+         evidence: 'rule: 2-7.9 - the officials administer the count with the shot clock, so the count equals the shot clock at its start minus the shot clock now. measured: shot clock readable in 79 % of clock-readable seconds at 1 s steps (measured_sensors.json); this fallback has 1 s resolution'}
+      - {when: frontcourt entry not seen, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.backcourt_control: 10}, on_return: SNAP_AND_LOG, next_value: 'off (inferred)',
+         evidence: 'rule: 9-10 - continuous backcourt control cannot pass 10 s without a violation whistle; with no whistle heard the ball is in the frontcourt. assumed: whistle recall not measured (OQ-LS-3)'}
+    max_dwell: backcourt_control
+    conflict: []
+    invariants: [R-IV-14]
+    consumers: [possession_engine, defense_scheme, live_panel, studio]
+    params:
+      backcourt_line_band_m: {value: 0.10, unit: m, why: 'a deciding foot or ball point this close to the edge of the division line makes frontcourt status uncertain', evidence: 'requirement: R-MD-26 (0.10 m band)'}
+    notes: >-
+      The column does not exist yet (R-SR-18 names it); the field is a view until the change set is applied.
+      possessions.frontcourt_entry_s (seconds from control to frontcourt status) is written when the count ends.
+      Tight shot: from the shot clock on the bug (1 s steps), else carried to 10 s and then off. Replay: frozen.
+      Break: off (a stoppage resets it, with the three exceptions of Rule 9-10).
+      Play-by-play only: unknown; only a 10-second violation row shows that a count reached 10.0.
+
+  transition_numbers:
+    id: LS-POSS-17
+    group: possession_ball
+    name: Transition numbers (attackers ahead against defenders back)
+    type: record
+    unit: counts
+    domain: 'attackers ahead / level / behind the ball and defenders back / level / behind, each 0-5; label (2v1, 3v2, ...); advantage; uncertain flag'
+    none_value: 'off'
+    stored: derived
+    dimension: null
+    lands_in: [transition_numbers.a_ahead, transition_numbers.a_even, transition_numbers.a_behind, transition_numbers.d_back, transition_numbers.d_even, transition_numbers.d_behind, transition_numbers.numbers_label, transition_numbers.advantage, transition_numbers.uncertain, transition_numbers.margin_m]
+    requirements: [R-TR-22, R-TR-03, R-TR-08, R-DT-07]
+    profile: derived
+    derived_from: [player_positions, ball_position, team_control, flow_state, basket_attacked_home]
+    recompute_on: 'transition_numbers_hz times a second while flow_state is S3, S4a or S4b; off in every other state'
+    valid_if: >-
+      Main camera, ball position observed or inferred from its holder, and all ten players observed or imputed inside
+      offscreen_imputed_max_s. A player whose 95 % region crosses the ball line by more than numbers_margin_m, or
+      whose estimate is weak, sets the flag uncertain (R-TR-03). With fewer than ten positions the value is unknown.
+    update:
+      changed_by: on_input_change
+      event_instant: 'The sample instant (10 Hz). A player is ahead of, level with or behind the ball by his y in the attacked-rim frame against the ball''s y, with a margin of numbers_margin_m (0.5 and 1.5 m are stored as well).'
+    timing:
+      driven_by: [team_control, player_positions, ball_position]
+      provisional: {by: inputs, p50_s: 0.5, p95_s: 1.2}
+      confirmed: {by: inputs, p50_s: 0.5, p95_s: 1.2}
+      evidence: 'assumed: team_control (the frame is chosen by it) plus one 10 Hz sample and derived_compute_s. No second sensor exists; confirmed equals provisional. Replaced by the R-TR-03 test on gold-v1'
+    dropout_extra:
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K15 and R-DT-07 - off-screen players count through their estimate and never as observed; in transition the trailing players are the ones off screen'}
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, unknown], limits: {tracking_up_after_s: 0.5}, on_return: REACQUIRE, evidence: 'assumed: a transition lasts a few seconds and the numbers change every step; a carried label would be wrong. After the cut back the value returns once the mapping has been stable for tracking_up_after_s'}
+    conflict: []
+    invariants: [R-IV-01]
+    consumers: [expected_points, possession_engine, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.3, expected_points: 0.5}
+    params:
+      transition_numbers_hz: {value: 10, unit: Hz, why: 'sampling rate of the numbers state', evidence: 'requirement: R-TR-22 (10 times a second)'}
+      numbers_margin_m: {value: 1.0, unit: m, why: 'margin used in reports until the label-flip rates between 0.5, 1.0 and 1.5 m are known', evidence: 'config: config/movement_grammar/transition.yaml item numbers_advantage, margin_m (R-TR-22)', mirrors: 'config/movement_grammar/transition.yaml:items.numbers_advantage.params.margin_m.value'}
+    notes: >-
+      Tight shot: unknown (not carried). Replay: unknown. Break: off.
+      Play-by-play only: unknown.
+
+  ball_control_state:
+    id: LS-POSS-18
+    group: possession_ball
+    name: Ball-control state (six states)
+    type: enum
+    unit: n/a
+    domain: 'home_ball, away_ball, contested, in_flight, inbound_pending, dead'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [state_frame.ball_control_state, state_second.share_msu_ball, state_second.share_opponent_ball, state_second.share_contested, state_second.share_in_flight, state_second.share_inbound_pending, state_second.share_dead, ball_control_state.state, ball_control_state.inferred_non_main]
+    requirements: [R-SR-06, R-MD-02, R-MD-03, R-MD-05, R-MD-22]
+    profile: derived
+    derived_from: [ball_status, team_control, try_in_flight, restart_pending, stoppage]
+    recompute_on: 'every change of an input'
+    valid_if: 'Every input is at least carried inside its limit. If one input is unknown the value is unknown.'
+    update:
+      changed_by: on_input_change
+      event_instant: 'A pure function of the inputs at each frame. try_in_flight not none -> in_flight. Else restart_pending = throw_in and stoppage is not a timeout, review, challenge or intermission -> inbound_pending. Else ball_status = dead -> dead. Else team_control = home / away -> home_ball / away_ball. Else (live, no control, no try) -> contested.'
+    timing:
+      driven_by: [team_control, ball_status, try_in_flight]
+      provisional: {by: inputs, p50_s: 0.4, p95_s: 1.1}
+      confirmed: {by: inputs, p50_s: 1.2, p95_s: 2.2}
+      evidence: 'assumed: the slowest driving input (team_control) plus derived_compute_s. Replaced by the R-MD-02 test (state changes within 0.2 s of gold-v1)'
+    dropout_extra:
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {status_carried_max_s: 5, max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'requirement: R-MD-02 asks that non-main-camera frames carry the last state marked inferred. This pack is stricter: the state is inferred only while the bug clocks vouch for it (see team_control and ball_status), otherwise carried 5 s and then unknown; ball_control_state.inferred_non_main is set in both cases'}
+    conflict: []
+    invariants: [new-IV-28, SEG-01]
+    consumers: [possession_engine, live_panel, studio, pace]
+    notes: >-
+      Stored as home / away (R-MD-22); the schema enum says msu_ball / opponent_ball, recorded for the schema change
+      set. The six shares of state_second sum to 1 per second (R-MD-05).
+      Tight shot: inferred from the bug clocks, else carried 5 s. Replay: frozen. Break: dead.
+      Play-by-play only: dead, inbound_pending and the team at rows; contested and in_flight unknown.
+
+  # ========================================================================================================== personnel
+  lineup_home:
+    id: LS-PERS-01
+    group: personnel
+    name: Home five on the floor
+    type: list
+    unit: player ids
+    domain: &lineup_domain 'five player ids, sorted, joined by |; a slot that is not known holds the token unknown'
+    none_value: unknown
+    stored: segment
+    dimension: lineup_home
+    lands_in: ['state_segments:lineup_home', state_frame.players_on_floor, lineup_stints.player_ids, lineup_stints.lineup_key, substitutions.player_in_id, substitutions.player_out_id]
+    requirements: &lineup_requirements [R-SR-07, R-IV-01, R-IV-03, R-ID-03, R-DQ-09, R-MD-22]
+    profile: roster
+    sources: &lineup_sources
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: '1 s: substitution rows (player in, player out)'}
+      - {sensor: pbp_feed, role: value, modes: [live], resolution: '1 s, late: the same rows as they arrive'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_anchored], resolution: 'per frame: identity locks of the players in view'}
+      - {sensor: cv_tracking, role: value, modes: [post_blind], resolution: 'per frame: the five locked identities per team'}
+      - {sensor: registry, role: fallback, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per game: the dressed roster (the candidate set) and the starters when the pre-game card has them'}
+    update: &lineup_update
+      changed_by: [T00, T22]
+      event_instant: 'The frame the official beckons the substitute onto the court during a dead ball with the clock stopped (Rule 3-6). If the beckon is not seen: the first frame of that dead ball in which the entering player is locked on the floor. The play-by-play gives the game-clock second only, with known timing errors (R-DQ-09).'
+    timing: &lineup_timing
+      provisional: {by: cv_tracking, p50_s: 2.2, p95_s: 8.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: time for identity to lock the entering player; p95 = sub_window_s. Confirmed = feed delay (planning values, OQ-LS-1). Replaced by the time to lock measured by the identity harness on MSU film and by the live capture'
+    dropout_extra: &lineup_dropout_extra
+      - {when: break (timeout, media timeout, intermission), rule: FREEZE_ON_BREAK, grade_path: [confirmed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, on_return: REACQUIRE,
+         evidence: 'requirement: R-IV-03 - a break is a dead ball, so the five may change. The lineup is carried and marked unverified from the start of the break. It is verified again when (a) all five are identity-locked after the return, or (b) a healthy feed has shown the rows of that dead ball, or none, for feed_delay_p95_s plus sub_window_s after the restart. The two limits are planning values (OQ-LS-1)'}
+      - {when: a listed player is disqualified or must leave (fifth foul, injury, blood), rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.replace_player: 20}, on_return: REACQUIRE, next_value: 'his slot becomes unknown (four known ids and one unknown)',
+         evidence: 'rule: 4-12.5 and 3-6.3.a - he must be replaced within 20 s; a lineup that still lists him after the next restart cannot be true'}
+      - {when: lineup unverified and identity must lock, rule: LOCK_OR_HOLD, grade_path: [carried, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml - identity is chosen among the five the play-by-play puts on the floor (R-ID-03). While the lineup is unverified that set is widened to the dressed roster without the disqualified players, so the lineup is a prior, not a constraint, and an old lineup cannot force a wrong lock'}
+      - {when: feed rows wrong or missing, rule: QUARANTINE, grade_path: [confirmed, carried], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'measured: two substitutions per pilot game sit in live play in the play-by-play because the dead-ball row is missing; the lineup built from substitution rows equalled the on-floor list at every instant in both games (results/state_machine_test/README.md). A row that puts a sixth player on, or changes the five in live play, is held for identity review'}
+    conflict: &lineup_conflict
+      - {between: [pbp_final, cv_tracking], tolerance: 0, value_winner: neither, timing_winner: cv_tracking, log_to: identity_review,
+         note: 'Zero-swap design: a scorebook lineup that the identity locks contradict is a review item on both sides; neither overwrites the other. The scorebook wins who entered; video wins when.'}
+    invariants: &lineup_invariants [R-IV-01, R-IV-03, new-IV-11, new-IV-25, new-IV-26, SEG-01, TRN-02]
+    consumers: &lineup_consumers [player_identity, stint_length_s, matchups, possession_engine, win_probability, live_panel, studio]
+    freshness_needed_s: {live_panel: 5.0}
+    notes: >-
+      Three cases. (1) Live play: substitutions need a dead ball (R-IV-03), so a lineup carried through live play is
+      safe and keeps its grade, whatever the camera shows. (2) A dead ball seen on the main camera: a change is
+      observed (beckon, player running on) and timed to the frame. (3) A dead ball out of view for more than
+      lineup_unverified_after_s, and every break: the lineup is carried and unverified until substitution rows or
+      identity locks confirm it. An unverified lineup may be shown, marked as such; it credits no player stat.
+      Tight shot: unchanged in live play; unverified after an unseen dead ball. Replay: as a tight shot (replays run
+      in dead balls). Break: unverified on return.
+      Play-by-play only: from substitution rows; the entry instant is the game-clock second of the row.
+
+  lineup_away:
+    id: LS-PERS-02
+    group: personnel
+    name: Away five on the floor
+    type: list
+    unit: player ids
+    domain: *lineup_domain
+    none_value: unknown
+    stored: segment
+    dimension: lineup_away
+    lands_in: ['state_segments:lineup_away', state_frame.players_on_floor, lineup_stints.player_ids, lineup_stints.lineup_key, substitutions.player_in_id, substitutions.player_out_id]
+    requirements: *lineup_requirements
+    profile: roster
+    sources: *lineup_sources
+    update: *lineup_update
+    timing: *lineup_timing
+    dropout_extra: *lineup_dropout_extra
+    conflict: *lineup_conflict
+    invariants: *lineup_invariants
+    consumers: *lineup_consumers
+    freshness_needed_s: {live_panel: 5.0}
+    notes: >-
+      Same rules as lineup_home. The opponent's reference pack (jersey numbers, appearance) is thinner than MSU's,
+      so identity locks confirm an away lineup later; the limits are the same until that is measured.
+      Tight shot: unchanged in live play; unverified after an unseen dead ball. Replay: as a tight shot.
+      Break: unverified on return. Play-by-play only: from substitution rows.
+
+  player_identity:
+    id: LS-PERS-03
+    group: personnel
+    name: Identity of each tracked player (label, confidence, lock state)
+    type: record
+    unit: 'player id; probability 0-1'
+    domain: 'per track: label = a locked player id or HOLD; posterior; candidates (when HOLD, each with posterior >= identity_candidate_min_p); lock state (ENTER, CONFIRMING, LOCKED, HELD, RECONFIRM, ALARM, RELEASED)'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [player_positions.player_id, player_positions.identity_conf, player_positions.track_id, tracks.player_id, tracks.identity_conf, tracks.agrees_with_pbp_lineup]
+    requirements: [R-SR-07, R-ID-01, R-ID-03, R-ID-05, R-MD-19]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame on the main camera: the identity pack''s label per chain'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: '1 s, late: the five on the floor (the candidate set)'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored], resolution: '1 s: the five on the floor'}
+      - {sensor: registry, role: fallback, modes: [live, post_blind, post_anchored], resolution: 'per game: roster, jersey numbers, reference pack'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The video frame. A label is emitted only from the frame the chain is LOCKED (joint posterior at or above identity_p_lock with the pack''s evidence gates); before that the value is HOLD with candidates.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 2.2, p95_s: 8.0}
+      confirmed: {by: pbp_feed, p50_s: 20.0, p95_s: 60.0}
+      evidence: 'assumed: time from a chain entering the frame to its lock (the value the roster profile uses; p95 = sub_window_s). Confirmed = the lineup of the feed agrees (planning values, OQ-LS-1). Replaced by the time to lock from the identity harness on MSU film'
+    dropout:
+      - {when: identity on HOLD (CONFIRMING, RECONFIRM, ALARM), rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {identity_hold_review_s: 10}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - HOLD with candidates, never a provisional or probable label. A player in view without a label for identity_hold_review_s goes to the review queue. The position of the track stays observed'}
+      - {when: chain ends in a crossing or pile-up (HELD), rule: CARRY, grade_path: [observed, carried, unknown], limits: {identity_link_window_s: 1.5}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml chains.params.link_window_s - the identity is reserved for the group for this long, then released; the child chain is HOLD until it is confirmed again'}
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K15 - the off-screen estimate belongs to the lineup member who is not in view; that is known by elimination only while the lineup is verified and the visible teammates are locked. On re-entry the chain starts at ENTER and must lock again'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'config: config/identity_pack.yaml state RELEASED - a camera cut frees every identity; no label is carried across a cut (zero-swap design)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - labels read in a replay are stored raw and marked replay; they do not feed the live state'}
+      - {when: lineup unverified (after a break or an unseen dead ball), rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {sub_window_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml cue lineup - inside the substitution window both players are candidates; while the lineup is unverified the candidate set is the dressed roster, so locks take longer and more tracks show HOLD'}
+    conflict:
+      - {between: [cv_tracking, pbp_final], tolerance: 0, value_winner: neither, timing_winner: cv_tracking, log_to: identity_review,
+         note: 'Per possession the labels seen must be a subset of the scorebook lineup (identity pack, agreement 1.0); a disagreement is a review item with the row.'}
+    invariants: [R-IV-01, R-IV-13]
+    consumers: [lineup_home, lineup_away, ball_handler, player_positions, matchups, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.5}
+    params:
+      identity_p_lock: {value: 0.995, unit: probability, why: 'a label is emitted only at or above this joint posterior', evidence: 'config: config/identity_pack.yaml assignment.params.p_lock', mirrors: 'config/identity_pack.yaml:assignment.params.p_lock.value'}
+      identity_candidate_min_p: {value: 0.05, unit: probability, why: 'smallest posterior listed in a HOLD candidate set', evidence: 'config: config/identity_pack.yaml confidence_and_abstention.params.candidate_min_p', mirrors: 'config/identity_pack.yaml:confidence_and_abstention.params.candidate_min_p.value'}
+      identity_link_window_s: {value: 1.5, unit: s, why: 'longest occlusion bridged with the identity reserved; longer losses lock again from scratch', evidence: 'config: config/identity_pack.yaml chains.params.link_window_s', mirrors: 'config/identity_pack.yaml:chains.params.link_window_s.value'}
+      identity_hold_review_s: {value: 10.0, unit: s, why: 'a player in view with no label for this long is flagged for review', evidence: 'config: config/identity_pack.yaml swap_catch.params.review_hold_s', mirrors: 'config/identity_pack.yaml:swap_catch.params.review_hold_s.value'}
+    notes: >-
+      The probable tier of the identity pack (OD-8) is offline only and never enters the live state. HOLD is a value
+      of this field, not a missing value: the track, its team and its position stay usable.
+      Tight shot: released; every chain locks again on return. Replay: not used. Break: released.
+      Play-by-play only: no tracks; the field is unknown.
+
+  stint_length_s:
+    id: LS-PERS-04
+    group: personnel
+    name: Stint length per player on the floor
+    type: record
+    unit: s
+    domain: 'per player on the floor: game-clock seconds played since his last entry (0 to 2,400 plus overtime); companion: video seconds since that entry'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [view, lineup_stints.duration_s, lineup_stints.start_game_clock_s, substitutions.game_clock_s]
+    lands_in_proposed: [state_second.player_stint_s]
+    requirements: [R-SR-07, R-IV-03, R-DQ-09]
+    profile: derived
+    derived_from: [lineup_home, lineup_away, game_clock_s, period]
+    recompute_on: 'every game-clock reading and every substitution (T22)'
+    valid_if: >-
+      The player's entry is known (a T22 or the start of the game) and the lineup that lists him is not unverified.
+      While the lineup is unverified the value is carried with the same mark. A player in an unknown slot has no value.
+    update:
+      changed_by: on_input_change
+      event_instant: 'Game clock at the player''s last entry minus the game clock now, summed across periods. The clock is stopped during every dead ball, so the value does not depend on when inside the dead ball he entered; it is wrong only if the entry is put at the wrong dead ball.'
+    timing:
+      driven_by: [lineup_home, lineup_away]
+      provisional: {by: inputs, p50_s: 2.3, p95_s: 8.1}
+      confirmed: {by: inputs, p50_s: 20.1, p95_s: 60.1}
+      evidence: 'assumed: the lineup timing plus derived_compute_s. Between substitutions the value moves with the game clock (0.2 s). Replaced with the lineup timing'
+    dropout_extra:
+      - {when: lineup unverified, rule: VALID_IF, grade_path: [observed, carried], limits: {feed_delay_p95_s: 60, sub_window_s: 8}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a stint is only as good as the lineup. When the rows arrive the stints of that dead ball are rewritten as a new state_version; as_of_known keeps what was shown'}
+      - {when: game clock dead-reckoned, rule: VALID_IF, grade_path: [observed, inferred, carried], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: clock dead-reckoning limits (measured_sensors.json clock_carry_on_withheld_readings); beyond 30 s the value keeps the guaranteed interval of the clock and stays carried - a stint of minutes is not unknown because of a 30 s gap'}
+    conflict: []
+    invariants: [R-IV-03]
+    consumers: [live_panel, studio, possession_engine, physical_load]
+    notes: >-
+      lineup_stints.duration_s is per five-man unit; a per-player column does not exist and is proposed. The
+      play-by-play second of a substitution can be off by sub_window_s (R-DQ-09); in game-clock seconds that only
+      matters when the row sits at the wrong dead ball.
+      Tight shot, replay: grows with the game clock. Break: does not grow; carried and unverified on return.
+      Play-by-play only: from substitution rows and row clock seconds.
+
+  player_positions:
+    id: LS-PERS-05
+    group: personnel
+    name: Player positions (ten players)
+    type: record
+    unit: 'm, m/s, m/s^2, degrees'
+    domain: 'per player: x_m, y_m and r_m, theta_deg in the attacked-rim frame; x_fc_m, y_fc_m full court; speed, acceleration; observed flag; for an off-screen player the estimate with its 95 % region and imputation strength'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [player_positions.x_m, player_positions.y_m, player_positions.x_fc_m, player_positions.y_fc_m, player_positions.r_m, player_positions.theta_deg, player_positions.speed_mps, player_positions.accel_mps2, player_positions.observed, player_positions.region95_semi_axes_m, player_positions.region95_angle_deg, player_positions.imputation_strength, player_positions.on_main_camera]
+    requirements: [R-SR-07, R-DT-07, R-CG-03, R-IV-13, R-MD-19, R-IV-01]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame for players in view on the main camera; offscreen_estimate_hz for off-screen estimates'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The video frame (observed players). Off-screen estimates are written at offscreen_estimate_hz during live play, never per frame (K15).'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s; measured per run (K23)'
+    dropout:
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K15 and R-DT-07 - a 10 Hz estimate with a 95 % region and an is_imputed flag. The point estimate is kept for offscreen_imputed_max_s (assumed; replaced by the age at which the region stops covering 95 % on MSU film). After offscreen_weak_after_s only the region is kept, marked weak, and the point is unknown'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE, evidence: 'assumed: all ten are then off screen; same limit as one player. Replaced by the error of the estimate against age over tight shots on MSU film'}
+      - {when: court mapping below its gate, rule: CARRY, grade_path: [observed, unknown], limits: {mapping_min_conf: 0.8, tracking_up_after_s: 0.5}, on_return: REACQUIRE, evidence: 'requirement: R-CG-03 - with fewer than four keypoints the mapping is interpolated and flagged; below mapping_min_conf court positions are not written'}
+      - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG, evidence: 'config: config/identity_pack.yaml (OD-10) - the position of the track is observed and counts for its team; it is attached to no player id until the lock'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - positions in a replay are past positions'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'decision: K15 - estimates are written during live play only; nothing is estimated through a break'}
+    conflict: []
+    invariants: [R-IV-01, R-IV-13, new-IV-34]
+    consumers: [transition_numbers, backcourt_count_s, matchups, defense_scheme, offense_set, ball_screen_coverage, movement_grammar, named_spots_frame, live_panel, studio]
+    freshness_needed_s: {live_panel: 0.2, movement_grammar: 0.2}
+    params:
+      offscreen_estimate_hz: {value: 10, unit: Hz, why: 'rate of off-screen estimates', evidence: 'decision: K15; requirement: R-DT-07'}
+      offscreen_weak_after_s: {value: 10.0, unit: s, why: 'after this long off screen only the region is stored, marked weak', evidence: 'requirement: R-DT-07 (more than 10 s off screen: region only, weak)'}
+    notes: >-
+      Speed and acceleration are written for observed positions only (acceleration after the K03 gate); an imputed
+      position has neither. The attacked-rim frame follows team_control; with no team control the frame rule of the
+      named spots applies (rule_no_team_control_frames).
+      Tight shot: imputed for 8 s, then unknown (region only until 10 s). Replay: unknown. Break: unknown.
+      Play-by-play only: unknown.
+
+  officials_positions:
+    id: LS-PERS-06
+    group: personnel
+    name: Officials' positions
+    type: record
+    unit: m
+    domain: 'per official (two or three): x_fc_m, y_fc_m full court, role, observed flag, signal pose'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [official_positions.x_fc_m, official_positions.y_fc_m, official_positions.role, official_positions.observed, official_positions.signal_pose]
+    requirements: [R-SR-07, R-IV-02, R-MD-03]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'officials_base_hz; officials_whistle_hz inside officials_whistle_window_s around a whistle (K24)'}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored], resolution: 'about 0.1 s: the whistle that opens the fast window'}
+      - {sensor: registry, role: fallback, modes: [live, post_blind, post_anchored], resolution: 'per game: crew size (game_officials)'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The sampled video frame: one sample per second, ten per second in the 2 s around each whistle (K24). Between samples the value is the last sample with its age.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s for a sampled frame; between samples the age is at most one sampling step (1 s, or 0.1 s near a whistle). Measured per run (K23)'
+    dropout:
+      - {when: official off screen, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-IV-02 - an official not seen is carried as not_seen and still counted. assumed: no motion model exists for officials, so the last position is carried, not estimated; same limit as a player. Replaced by the displacement of officials against time off screen on MSU film'}
+      - {when: whistle not heard (audio masked or away), rule: CARRY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'decision: K24 - without the whistle cue the fast window does not open; positions stay at the base rate. assumed: whistle recall not measured (OQ-LS-3)'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, carried, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE, evidence: 'assumed: as for an official off screen. A close-up of an official giving a signal is read for the signal pose only, not for a court position'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'definition: nothing of the court is seen in a break'}
+    conflict: []
+    invariants: [R-IV-02]
+    consumers: [restart_pending, stoppage, studio, live_panel]
+    params:
+      officials_base_hz: {value: 1, unit: Hz, why: 'base sampling rate of officials'' positions', evidence: 'decision: K24'}
+      officials_whistle_hz: {value: 10, unit: Hz, why: 'sampling rate around a whistle, where the signal and the spot of the restart are read', evidence: 'decision: K24'}
+      officials_whistle_window_s: {value: 2.0, unit: s, why: 'length of the fast window around each whistle', evidence: 'decision: K24 (10 Hz in the 2 s around whistles)'}
+    notes: >-
+      The window around a whistle starts before it, so in live mode the last second of frames is kept in a buffer
+      and sampled back when the whistle is heard.
+      Tight shot: carried 8 s, then unknown. Replay: unknown. Break: unknown.
+      Play-by-play only: unknown.
+
+  # ============================================================================================================ tactics
+  offense_set:
+    id: LS-TAC-01
+    group: tactics
+    name: Offense set in progress
+    type: record
+    unit: 'label; probability 0-1'
+    domain: 'up to set_top_k candidates from the set taxonomy, each with family, set code, phase and confidence; the compositional name (action sequence so far); none when no set is running'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [set_instances.set_code, set_instances.family_code, set_instances.match_confidence, set_instances.classifier_probs, set_instances.compositional_name, set_instance_phases.phase_name, chances.set_id]
+    requirements: [R-ST-05, R-ST-06, R-ST-07, R-ST-11, R-ST-12]
+    profile: derived
+    derived_from: [player_positions, ball_position, ball_handler, team_control, flow_state, chance_seq, restart_pending, basket_attacked_home]
+    recompute_on: 'the end of every movement primitive or action inside the chance; cleared at every new chance (chance_seq)'
+    valid_if: >-
+      Main camera; flow_state is S4b or S4c, or S2 for a throw-in set; the five attackers observed, or imputed inside
+      offscreen_imputed_max_s for at most one of them. Templates are matched by role, not by player (R-ST-12), so a
+      player on HOLD does not block the label. A template that is not confirmed on current film gives the
+      compositional name only (R-ST-11). Otherwise the value is unknown.
+    update:
+      changed_by: on_input_change
+      event_instant: 'The set start t0 (set_instances.t0_ts_ms): the alignment snapshot when the handler first slows with the ball in the frontcourt, or the ball at the thrower''s disposal for a throw-in set. Each phase starts at its first action.'
+    timing:
+      driven_by: [player_positions, ball_position, team_control]
+      provisional: {by: inputs, p50_s: 3.0, p95_s: 8.0}
+      confirmed: {by: inputs, p50_s: 12.0, p95_s: 30.0}
+      evidence: 'assumed: a set shows itself after its first two actions, a few seconds after t0; the label is final when the chance ends, at most one shot-clock period later. Replaced by the time to a correct first candidate on the labelled set sample (R-ST-10)'
+    dropout_extra:
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'assumed: the candidates are carried for status_carried_max_s; actions missed behind a tight shot break the sequence, so on return the match restarts from the compositional name. Replaced by the share of sets with a cut inside them on MSU film'}
+      - {when: chance over or carried set older than one shot-clock period, rule: MAX_DWELL, grade_path: [carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: REACQUIRE, next_value: none, evidence: 'rule: 2-11.1 - a chance cannot outlast the shot clock, so no set can'}
+      - {when: attackers off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 - an estimate may fill one spacer; a screener or cutter that is off screen makes the match unknown'}
+    max_dwell: shot_clock_period
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, expected_points, defense_scheme]
+    freshness_needed_s: {live_panel: 2.0}
+    params:
+      set_top_k: {value: 3, unit: candidates, why: 'number of candidate sets shown while a set is in progress', evidence: 'decision: the page of 19 Oct 2026 (top 3 candidates from the taxonomy, with phase)'}
+    notes: >-
+      The live value is a ranked guess that changes as the set unfolds; it is never a stat. The final label per
+      chance is written after the chance (as_of_event). A live model may read it only through as_of_known.
+      Tight shot: carried 5 s, then unknown. Replay: frozen. Break: none.
+      Play-by-play only: unknown.
+
+  defense_scheme:
+    id: LS-TAC-02
+    group: tactics
+    name: Defense scheme state
+    type: record
+    unit: 'label; probability 0-1'
+    domain: 'base scheme (man, 2-3, 3-2, 1-3-1, match-up, press, junk) with confidence, per second, smoothed; press code when a press is on'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [state_frame.defense_scheme_state, state_frame.defense_scheme_confidence, scheme_states.l1_base_scheme_code, scheme_states.l1_conf, scheme_states.press_code, scheme_changes.scheme_after]
+    requirements: [R-DF-04, R-DF-05, R-DF-12, R-DF-17]
+    profile: derived
+    derived_from: [player_positions, ball_position, team_control, flow_state, basket_attacked_home]
+    recompute_on: 'every second of live play with team control'
+    valid_if: >-
+      At least scheme_min_mapped_players players mapped in that second (R-DF-04). With fewer, the scheme of the
+      possession phase is carried and marked carried. In a dead ball the last state is carried.
+    update:
+      changed_by: on_input_change
+      event_instant: 'The second the defenders'' shape first matches the new scheme (a scheme change: scheme_changes.t_switch_complete_ms). A change that happens behind a cut or a replay has an interval, not an instant (R-DF-05).'
+    timing:
+      driven_by: [player_positions, team_control]
+      provisional: {by: inputs, p50_s: 1.2, p95_s: 3.0}
+      confirmed: {by: inputs, p50_s: 3.0, p95_s: 6.0}
+      evidence: 'assumed: one full second of positions plus compute for a first label; a change counts as confirmed after it has held for about 3 s (R-DF-05 asks changes within 2 s). Replaced by the R-DF-04 and R-DF-05 tests on labelled possessions'
+    dropout_extra:
+      - {when: fewer than the needed players mapped, rule: CARRY, grade_path: [observed, carried, unknown], limits: {max_dwell.shot_clock_period: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-DF-04 - below eight mapped players the scheme is per possession phase, carried and flagged. assumed: carried for at most one shot-clock period, because a defense can change scheme on any new possession; replaced by the rate of scheme changes per possession on MSU film'}
+      - {when: dead ball or replay, rule: CARRY, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'requirement: R-DF-04 - a dead ball keeps the last state'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: R-DF-19 - a timeout is a stored trigger of scheme changes, so the scheme carried through a break is unverified until the first valid second after it'}
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, expected_points, offense_set]
+    freshness_needed_s: {live_panel: 2.0}
+    params:
+      scheme_min_mapped_players: {value: 8, unit: players, why: 'fewest mapped players for a per-second scheme label', evidence: 'requirement: R-DF-04 (scheme state per second where at least 8 players are mapped)'}
+    notes: >-
+      A scheme has no rule bound; the 30 s carry limit is an assumption tied to the possession, not a rule.
+      Tight shot: carried up to 30 s, marked carried. Replay: carried. Break: carried, unverified on return.
+      Play-by-play only: unknown.
+
+  ball_screen_coverage:
+    id: LS-TAC-03
+    group: tactics
+    name: Coverage on the current ball screen
+    type: record
+    unit: 'label; probability 0-1'
+    domain: 'coarse class (contain / drop, show / hedge, two-on-ball, switch) with confidence; fine class (13 classes) only when the K04 gate passes; none when no ball screen is in progress'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [screens.coverage_coarse, screens.coverage_fine_code, screens.screen_moment_ts_ms, scheme_states.l2_active_coverages]
+    requirements: [R-DF-06, R-DF-16, R-DF-27, R-ST-17, R-ST-20]
+    profile: derived
+    derived_from: [player_positions, ball_position, ball_handler, team_control, matchups]
+    recompute_on: 'every frame from the screen moment until the coverage is decided; cleared when the screen action ends'
+    valid_if: >-
+      Main camera; the screener, the handler and their two defenders observed (not imputed) around the screen
+      moment. The fine class is published only when the K04 gate passes; otherwise the coarse class alone. If one of
+      the four players is off screen the value is unknown.
+    update:
+      changed_by: on_input_change
+      event_instant: 'The screen moment: the time of the smallest distance between the screener and the on-ball defender (R-ST-20). The coverage is read from the two defenders'' paths after it.'
+    timing:
+      driven_by: [matchups, player_positions]
+      provisional: {by: inputs, p50_s: 1.5, p95_s: 3.0}
+      confirmed: {by: inputs, p50_s: 3.0, p95_s: 5.0}
+      evidence: 'assumed: the coarse class shows about 1.5 s after the screen moment (the screener''s defender commits); it is final when the action ends. Replaced by the decision time on the labelled ball screens of the review tool'
+    dropout_extra:
+      - {when: one of the four players off screen or on HOLD, rule: VALID_IF, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K15 - an estimate never counts as observed; a coverage read from an estimated defender would be a guess. A player on HOLD does not block the class (roles come from positions) but the screen row carries no player id for him'}
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, unknown], limits: {tracking_up_after_s: 0.5}, on_return: REACQUIRE, evidence: 'assumed: a ball-screen action is over within seconds; nothing is carried. After the cut back the value returns with the next screen'}
+    max_dwell: {value: 4.0, unit: s, rule: none, why: 'a ball-screen action runs from the screen moment to the handler''s read; a value older than this describes a screen that is over', evidence: 'assumed: about two dribbles and a pass. Replaced by the longest screen-to-read time on the labelled ball screens (screens.duration_s)'}
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, expected_points]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      Tight shot: unknown. Replay: unknown; the screen row keeps what was seen before the cut. Break: none.
+      Play-by-play only: unknown.
+
+  matchups:
+    id: LS-TAC-04
+    group: tactics
+    name: Defensive matchups and help position
+    type: record
+    unit: 'probability 0-1; m'
+    domain: 'per defender per second: probability over the five attackers, distance to his man and to the ball, in the gap or not, on the ball or not, switched this second; none in a dead ball'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [defensive_matchups.defender_id, defensive_matchups.attacker_id, defensive_matchups.matchup_prob, defensive_matchups.dist_to_man_m, defensive_matchups.dist_to_ball_m, defensive_matchups.in_gap, defensive_matchups.is_on_ball, defensive_matchups.switched_this_second]
+    requirements: [R-DF-01, R-DF-02, R-DF-03, R-DF-09]
+    profile: derived
+    derived_from: [player_positions, ball_position, team_control, basket_attacked_home, player_identity]
+    recompute_on: 'every second of live play with team control'
+    valid_if: >-
+      Main camera and team_control is home or away. A pair is published when both players are observed; a pair with
+      an imputed member is published with the imputed mark and its probability computed over the region. A player
+      on HOLD is paired by track, with HOLD in place of his id. With no team control the value is none.
+    update:
+      changed_by: on_input_change
+      event_instant: 'The second (R-DF-01: one posterior per defender per second). A switch is dated to the first second the posterior of the new attacker is the largest.'
+    timing:
+      driven_by: [player_positions, team_control]
+      provisional: {by: inputs, p50_s: 1.1, p95_s: 2.0}
+      confirmed: {by: inputs, p50_s: 1.1, p95_s: 2.0}
+      evidence: 'assumed: one full second of positions plus derived_compute_s. No second sensor exists; confirmed equals provisional. Replaced by the R-DF-01 test on labelled seconds'
+    dropout_extra:
+      - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG, evidence: 'config: config/identity_pack.yaml (OD-10) - the pairing of tracks is observed; who the players are waits for the lock'}
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG, evidence: 'decision: K15 and R-DT-07 - pairs with an estimated player carry the imputed mark and never feed a stat'}
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE, evidence: 'assumed: in a man defense the pairs outlast a short cut; carried for status_carried_max_s, then unknown. Replaced by the rate of switches per second on MSU film'}
+    conflict: []
+    invariants: [R-IV-01]
+    consumers: [ball_screen_coverage, live_panel, studio, expected_points]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      Tight shot: carried 5 s, then unknown. Replay: frozen. Break: none; pairs are found again from scratch.
+      Play-by-play only: unknown.

@@ -1,0 +1,1558 @@
+# Live game state - fields of the groups keys and provenance, situation, observability and fixed-for-the-game.
+# Part of the live_state pack (config/live_state/core.yaml holds grades, sensors, rules, profiles, limits and the index).
+# Record shape: id, group, name, type, unit, domain, none_value, stored, dimension, lands_in, lands_in_proposed,
+# requirements, profile, sources, update, timing, dropout / dropout_extra, max_dwell, conflict / conflict_extra,
+# invariants, derived_from / recompute_on / valid_if / panel (derived only), consumers, freshness_needed_s, params, notes.
+# Every evidence string starts with a tag of core.yaml conventions.evidence_tags (measured: / assumed: / rule: /
+# decision: / requirement: / config: / definition:). core.yaml inventory lists the columns a record must name in
+# lands_in and the R-SR rows it must cite; the index gives its state-machine dimension.
+# Profile defaults apply unless a record overrides them: `sources`, `dropout` and `conflict` REPLACE the profile's
+# list; `dropout_extra` and `conflict_extra` are appended. Every limit in a dropout rule is a param of the pack.
+# `panel` (situation fields) says what the live panel shows: valid, degraded (an input only carried) and unknown.
+# Rows shared by several records are YAML anchors (&d_inputs, &d_replay, &d_break, &d_stream, &d_late), written out at
+# their first use.
+# Checked by: python tools/specgen/live_state/lslib.py --check config/live_state/fields_meta.yaml
+fields:
+  # =================================================================================================================
+  # Keys and provenance
+  # =================================================================================================================
+  game_id:
+    id: LS-KEY-01
+    group: keys
+    name: Game id
+    type: string
+    unit: n/a
+    domain: 'the ESPN event id of the game; the one join key across sources. In this repo only game codes (B01..) appear'
+    none_value: none
+    stored: key
+    dimension: null
+    lands_in: [state_frame.game_id, state_second.game_id, state_segments.game_id, state_transitions.game_id, clock_map.game_id, games.game_id]
+    requirements: [R-MD-01, R-MD-35, R-MK-14, R-MK-17]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Set when the registry row of the game is written, before any video or feed is touched. It never changes.'
+    dropout_extra:
+      - {when: a source row maps to no game or to two games, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-MK-17 - a row is accepted only with one candidate game inside the time window; otherwise it waits in the review queue and joins nothing'}
+    invariants: [SEG-01, SEG-02]
+    consumers: [every_table, market_join, studio]
+    notes: >-
+      The value never drops out: a game without its registry row is not processed (profile fixed). The only failure is
+      a wrong join of an outside row (a feed row, a price, a video file) to the game; that row is quarantined, the
+      game state is not touched. Stored state stays home / away under this key (R-MD-22).
+
+  pass:
+    id: LS-KEY-02
+    group: keys
+    name: Processing pass
+    type: enum
+    unit: n/a
+    domain: 'blind (no play-by-play), anchored (with play-by-play), pbp_only (no video). One value per run'
+    none_value: none
+    stored: key
+    dimension: null
+    lands_in: [state_frame.pass, state_second.pass, state_segments.pass, state_transitions.pass, clock_map.pass]
+    lands_in_proposed: [run_records.mode, run_records.pbp_source]
+    requirements: [R-SR-13, R-SR-15, R-MD-35, R-SY-20]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run. The run record names the pass; registry stands in for it because core.yaml has no pipeline sensor'}
+    update:
+      changed_by: [T00]
+      event_instant: 'Fixed when the run starts and writes its T00. A run never changes its pass.'
+    dropout_extra:
+      - {when: final play-by-play file absent after the game, rule: CARRY, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'measured: every one of the 33 recorded broadcasts had a play-by-play file, but right after a game it can be missing for a while (core.yaml sensors.pbp_final). The blind pass stands alone until the file is pulled; the anchored pass is then written as its own run'}
+      - {when: feed stale, rule: HOLD_UNTIL_EVENT, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a live anchored run keeps its pass when the feed goes quiet; its scorebook-only fields stop updating (level flag feed_stale) and late rows arrive as late corrections'}
+    consumers: [every_table, diff_report, studio]
+    notes: >-
+      Pass and mode are two axes. Mode (core.yaml conventions.modes) says whether the run is causal and which
+      play-by-play it may read; pass says whether it reads play-by-play at all. Mapping: live with no feed and
+      post_blind write pass = blind; live with the feed (pbp_feed) and post_anchored (pbp_final) write pass = anchored;
+      pbp_only writes pbp_only. A live run and a post run of the same pass are different runs with different
+      state_version values; run_records.mode and run_records.pbp_source (proposed) tell them apart. The per-game diff
+      report of R-SR-13 compares blind with anchored of the same mode. Live features read the as_of_known view of
+      whichever pass they were validated on, never the post run.
+
+  state_version:
+    id: LS-KEY-03
+    group: keys
+    name: State version
+    type: string
+    unit: n/a
+    domain: 'first 16 hex characters of the SHA-256 over the ordered transitions of the game and pass, the config hashes and the model versions. While a live run is still appending, its rows carry the provisional id open-<run_id>-<n>; the hash replaces it when the version is sealed'
+    none_value: none
+    stored: key
+    dimension: null
+    lands_in: [state_segments.state_version, state_transitions.state_version, clock_map.state_version, state_transitions.supersedes_id, state_transitions.correction_id]
+    lands_in_proposed: [state_frame.state_version, state_second.state_version]
+    requirements: [R-MD-21, R-MD-24, R-SY-15, R-SY-20]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per run and per correction. Written by the run itself; registry stands in because core.yaml has no pipeline sensor'}
+    update:
+      changed_by: [T00]
+      event_instant: 'A version is born with its T00 (exactly one per game, pass and version). It is sealed at the final horn of a live run, at the end of a post run, and at the instant a correction supersedes a transition. A version is never edited.'
+    dropout_extra:
+      - {when: late or corrected source row, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-SY-15 and R-SY-20 - a correction writes new transitions with supersedes_id under a new version; only segments inside the changed window are rebuilt; the old version stays readable (TRN-05)'}
+      - {when: a late row only confirms a value already held, rule: CONFIRM_WINDOW, grade_path: [confirmed], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: a confirmation raises the grade and stamps confirmed time on the same transition; it changes no value, so it opens no new version'}
+    invariants: [TRN-05, SEG-01, SEG-02, SEG-04]
+    consumers: [every_table, value_credits, studio, diff_report]
+    notes: >-
+      Made exact against the 19 Oct page ("content hash"): which content, and what a live run holds before the
+      content is complete. A confirmation is not a correction. In a live game most feed rows arrive 20-60 s late
+      (planning values) and only confirm; they do not multiply versions. Only a row that contradicts a held value
+      opens a version. The as_of_known view never needs a version switch: it is rebuilt from the known and confirmed
+      times of the transitions (stamp_known_at_utc).
+
+  video_frame:
+    id: LS-KEY-04
+    group: keys
+    name: Video file and frame
+    type: struct
+    unit: n/a
+    domain: 'video_id (one game can have several files) and frame_index (0 and up, decoded frame number inside the file)'
+    none_value: none
+    stored: key
+    dimension: null
+    lands_in: [state_frame.video_id, state_frame.frame_index, state_second.video_id, frames.video_id, frames.frame_index, frames.is_duplicate_of_prev, state_segments.video_id, state_transitions.video_id, clock_map.video_id, games.primary_video_id]
+    requirements: [R-MD-01, R-VI-01, R-VI-02, R-VI-17, R-VI-18]
+    profile: observation
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame (33.37 ms at 29.97 fps). The index comes from the decoder; cv_tracking is named because it carries every frame'}
+    update:
+      changed_by: per_frame
+      event_instant: 'The frame as decoded. frame_index counts decoded frames of the file, repeated frames included.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      evidence: 'definition: the key is part of the frame; it is known when the frame is'
+    dropout:
+      - &d_stream {when: stream lost or decoder gap, rule: CARRY, grade_path: [observed, unknown], limits: {stream_lost_after_s: 2.0}, on_return: REACQUIRE, evidence: 'assumed: without frames nothing on screen can be told; level D5_no_video after stream_lost_after_s. Replaced by the frame-arrival gaps logged at the live capture (OQ-LS-2)'}
+      - {when: picture frozen or frames repeated, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE,
+         evidence: 'measured: one of the two tournament replays holds a 2.3 s frozen picture during live play (results/w3_intake/README.md). The index goes on, frames.is_duplicate_of_prev marks the repeats, game state is frozen as in a break'}
+      - {when: a new video file starts, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: frame_index restarts at 0 with a new video_id; no segment and no clock-map stretch spans the file boundary (R-MD-34), so state is re-acquired as after a break'}
+    conflict: []
+    invariants: [SEG-03, SEG-04]
+    consumers: [every_table, clock_map, studio]
+    notes: >-
+      pbp_only has no video and holds none; its rows are keyed by period, game clock and order index. A frame that
+      was decoded but not processed is not "nothing found": frames.stage_mask (R-VI-18) says which stages ran.
+
+  rules_edition:
+    id: LS-KEY-05
+    group: keys
+    name: Rules edition
+    type: string
+    unit: n/a
+    domain: 'the id of one record of config/vocab/rules_edition.yaml, for example NCAA-M 2026-27; unknown when the tip date lies in no season window'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [games.rules_edition_id]
+    requirements: [R-RL-01, R-RL-02]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Resolved from the local tip date when the registry row is written (season window 1 July - 30 June).'
+    dropout_extra:
+      - {when: tip date in no season window, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-RL-02 - the edition is unknown and every rule-derived check is skipped and flagged'}
+    consumers: [every_rule_constant, max_dwell_bounds, possession_engine, studio]
+    notes: >-
+      Every bound of core.yaml max_dwell and every mirrored constant belongs to one edition (2026-27 here). With the
+      edition unknown no MAX_DWELL bound is applied: a carried status falls back to status_carried_max_s, counters
+      take no rule-implied start values (timeouts, challenges), and the game is flagged for review before any stat
+      is published.
+
+  stamp_src:
+    id: LS-KEY-06
+    group: keys
+    name: Source stamp
+    type: enum
+    unit: n/a
+    domain: 'the sensor that gave the value held now: scorebug_ocr, pbp_feed, pbp_final, cv_tracking, cv_events, audio, registry, human; derived for a computed value; rule:<RULE> for a value set by a rule of core.yaml (dead reckoning, max dwell). One stamp per group of fields, and one per segment'
+    none_value: none
+    stored: segment
+    dimension: null
+    lands_in: [state_frame.period_src, state_frame.game_clock_src, state_frame.shot_clock_src, state_frame.live_ball_src, state_frame.score_src, state_frame.fouls_src, state_frame.timeouts_src, state_frame.possession_src, state_frame.ball_src, state_frame.players_src, state_frame.broadcast_src, state_frame.source, state_second.clock_src, state_second.possession_src, state_second.fouls_src, state_second.ft_src, state_second.source, state_segments.src, clock_map.src, state_transitions.sources]
+    requirements: [R-SR-15, R-MD-09, R-SY-11]
+    profile: meta
+    sources: &all_sensors
+      - {sensor: scorebug_ocr, role: value, modes: [live, post_blind, post_anchored]}
+      - {sensor: pbp_feed, role: value, modes: [live]}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only]}
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored]}
+      - {sensor: cv_events, role: value, modes: [live, post_blind, post_anchored]}
+      - {sensor: audio, role: timing, modes: [live, post_blind, post_anchored]}
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only]}
+      - {sensor: human, role: fallback, modes: [post_blind, post_anchored]}
+    update:
+      changed_by: on_input_change
+      event_instant: 'Written in the same step as the value it describes: at each transition, and when the grade of a held value changes.'
+    timing: &stamp_timing
+      provisional: {by: inputs, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: inputs, p50_s: 0.0, p95_s: 0.0}
+      evidence: 'definition: a stamp is written with its value and adds no latency of its own'
+    dropout:
+      - {when: the sensor of a held value drops, rule: CARRY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: src keeps naming the last sensor that observed the value; stamp_grade and stamp_age_s say that it is no longer watching'}
+      - {when: a rule sets the value, rule: DEAD_RECKON, grade_path: [inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: a dead-reckoned or rule-implied value is stamped rule:<RULE>, never with the name of a sensor that did not see it'}
+    conflict: []
+    consumers: [live_panel, studio, latency_report, diff_report, stamp_grade]
+    notes: >-
+      The stamps are defined once, here, for every group. Schema gap: the stored enum is OCR, PBP, CV, manual,
+      derived. It cannot tell pbp_feed from pbp_final (needed for no-leakage checks), cv_tracking from cv_events,
+      and has no value for audio, registry or a rule. Mapping until the enum is widened: scorebug_ocr -> OCR;
+      pbp_feed, pbp_final -> PBP; cv_tracking, cv_events, audio -> CV; human -> manual; registry, rule:<RULE>,
+      derived -> derived. The fused row summary (state_frame.source) lists every sensor that agreed, in authority
+      order.
+
+  stamp_conf:
+    id: LS-KEY-07
+    group: keys
+    name: Confidence stamp
+    type: float
+    unit: probability
+    domain: '0-1: the probability that the value held now equals the true value at this instant'
+    none_value: none
+    stored: segment
+    dimension: null
+    lands_in: [state_frame.period_conf, state_frame.game_clock_conf, state_frame.shot_clock_conf, state_frame.live_ball_conf, state_frame.score_conf, state_frame.fouls_conf, state_frame.timeouts_conf, state_frame.possession_conf, state_frame.ball_conf, state_frame.players_conf, state_frame.broadcast_conf, state_frame.confidence, state_second.clock_conf, state_second.possession_conf, state_second.fouls_conf, state_second.ft_conf, state_second.confidence, state_segments.conf, clock_map.conf, state_transitions.conf]
+    requirements: [R-SR-15, R-MD-09]
+    profile: meta
+    sources: *all_sensors
+    update:
+      changed_by: continuous
+      event_instant: 'Set at each observation from the sensor own confidence; while the value is carried or dead-reckoned it follows the measured curve of its profile against age.'
+    timing: *stamp_timing
+    dropout:
+      - {when: clock value dead-reckoned or carried, rule: DEAD_RECKON, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: share of withheld clock readings within 1 s - 0.966 after 2 s, 0.938 after 3 s, 0.882 after 5 s, 0.764 after 10 s, 0.592 after 20 s, 0.448 after 30 s (measured_sensors.json clock_carry_on_withheld_readings). conf follows this curve, interpolated in age'}
+      - {when: counter carried with no change detector watching, rule: CARRY, grade_path: [observed, carried], limits: {counter_stale_after_s: 20}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: the score changed inside a withheld window in 4 % (2 s), 10 % (5 s), 19 % (10 s) and 36 % (20 s) of cases (measured_sensors.json score.changed_within_withheld_window). conf = 1 - that share'}
+      - {when: value unknown or quarantined, rule: QUARANTINE, grade_path: [unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: conf is 0 for a value nobody may read'}
+    conflict: []
+    consumers: [live_panel, studio, win_probability, latency_report, review_queue]
+    notes: >-
+      conf never raises a grade: consumers gate on stamp_grade and weigh by conf. Confirmed value: the larger of the
+      two sensor confidences. Derived value: the smallest conf of its inputs (the row-level confidence of the tables
+      is defined the same way). Statuses and rosters have no measured curve yet; their carried conf is the last
+      observed conf until the first MSU-film measurement gives one (assumed, marked in the latency report).
+      Requirement text to settle: R-MD-09 gives official play-by-play confidence 1. Kept for pbp_final values of the
+      anchored pass as a mark of authority, not of accuracy (the bug total equals the play-by-play total in 89 % of
+      stable samples, median game); a pbp_feed row in live mode carries the feed measured agreement instead.
+
+  stamp_grade:
+    id: LS-KEY-08
+    group: keys
+    name: Grade stamp
+    type: enum
+    unit: n/a
+    domain: 'confirmed, observed, inferred, carried, imputed, unknown, quarantined (core.yaml grades)'
+    none_value: unknown
+    stored: segment
+    dimension: null
+    lands_in: [state_frame.period_dq, state_frame.game_clock_dq, state_frame.shot_clock_dq, state_frame.live_ball_dq, state_frame.score_dq, state_frame.fouls_dq, state_frame.timeouts_dq, state_frame.possession_dq, state_frame.ball_dq, state_frame.players_dq, state_frame.broadcast_dq, state_second.clock_dq, state_second.possession_dq, state_second.fouls_dq, state_second.ft_dq, state_segments.dq, clock_map.dq, state_transitions.dq]
+    requirements: [R-SR-15, R-MD-09, R-SY-19]
+    profile: meta
+    sources: *all_sensors
+    update:
+      changed_by: on_input_change
+      event_instant: 'Changes at an observation (up), when a limit of the field dropout rule is passed (down), when the confirming sensor agrees inside its window (to confirmed), and when a higher authority or an invariant contradicts the value (to quarantined).'
+    timing: *stamp_timing
+    dropout:
+      - {when: the sensors of a value are away, rule: CARRY, grade_path: [confirmed, observed, inferred, carried, imputed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: the grade moves down the ladder at the limits of the field own dropout rule and never up without a new observation (core.yaml grades.rules)'}
+      - {when: a higher authority or an invariant contradicts the value, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: rule QUARANTINE - the live panel shows unknown; the raw reading stays; only an agreeing observation or a review answer lifts it'}
+    conflict: []
+    invariants: [TRN-02, SEG-04]
+    consumers: [live_panel, studio, win_probability, expected_points, latency_report, diff_report, training_labels]
+    notes: >-
+      Written to the dq columns with the mapping of core.yaml (confirmed -> observed, unknown -> imputed) until the
+      enum gains the two values. That mapping loses information a live consumer needs: "unknown" would read as
+      "imputed", which the panel may show as an estimate. Until the enum is widened, a consumer must test the value
+      itself for the none-value before it reads dq.
+
+  stamp_age_s:
+    id: LS-KEY-09
+    group: keys
+    name: Age stamp
+    type: float
+    unit: s
+    domain: '0 and up, in seconds of video time: time since a healthy sensor of the field last read the value or last watched for its change'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [state_frame.period_age_s, state_frame.score_age_s, state_frame.fouls_age_s, state_frame.timeouts_age_s, state_frame.live_ball_age_s, state_frame.ball_age_s, state_frame.players_age_s, state_frame.broadcast_age_s, state_second.clock_age_s, state_second.fouls_age_s]
+    requirements: [R-SR-15, R-MD-24]
+    profile: meta
+    sources: *all_sensors
+    update:
+      changed_by: continuous
+      event_instant: 'Zero at each observation. For a value that changes only at events (HOLD_UNTIL_EVENT) it stays zero while a change detector of the field is watching. Otherwise it grows by 1.0 s per second of video.'
+    timing: *stamp_timing
+    dropout:
+      - {when: the sensors of a value are away, rule: CARRY, grade_path: [observed, carried, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: the age keeps counting through carried and unknown; it is the input of every limit in this pack'}
+      - {when: break or cut in a recording with shortened breaks, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE,
+         evidence: 'measured: the 33 recordings have their breaks shortened and one tournament replay kept 3.2 of 21.4 minutes of half time (results/w3_intake/README.md). Video time across a cut is not real time, so the age is a lower bound there and every field is re-acquired after the cut'}
+    conflict: []
+    consumers: [live_panel, studio, win_probability, degradation_level, latency_report]
+    notes: >-
+      Added by this pack (the 19 Oct page had no age). A derived value takes the oldest age of its inputs. A value
+      never observed in the game has age none. The age is an as_of_known quantity: the as_of_event view has no ages.
+      Live, video time and real time run together, so the age is exact; on recordings it is exact only inside a
+      stretch without a cut.
+
+  stamp_known_at_utc:
+    id: LS-KEY-10
+    group: keys
+    name: Known-at stamp
+    type: struct
+    unit: UTC, ms
+    domain: 'per transition: known time (first held at any grade) and confirmed time (first held as confirmed), each as UTC and as video time of the frame the fuser was at. unknown when the stream delay is not measured (the video-time pair is always kept)'
+    none_value: unknown
+    stored: segment
+    dimension: null
+    lands_in: [state_transitions.known_at_utc, state_transitions.observed_frame_ocr, state_transitions.observed_frame_pbp, state_transitions.observed_frame_cv, state_transitions.est_utc, state_transitions.est_utc_err_s, game_officials.known_at_utc, availability.known_at_utc]
+    lands_in_proposed: [state_transitions.confirmed_at_utc, state_transitions.known_video_ms, state_transitions.confirmed_video_ms, state_transitions.known_at_basis, predictions.known_at_utc, scoreboard_ocr.known_at_utc]
+    requirements: [R-MD-24, R-SY-11, R-MK-03, R-MK-07, R-PR-11]
+    profile: meta
+    sources:
+      - {sensor: cv_tracking, role: timing, modes: [live, post_blind, post_anchored], resolution: 'per frame: the video time of the frame at which the causal fuser first held the value'}
+      - {sensor: pbp_feed, role: timing, modes: [live], resolution: 'arrival time of each row at our collector (our clock, not the scorer wallclock)'}
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per video source: the stream delay'}
+    update:
+      changed_by: on_input_change
+      event_instant: 'Known time: the instant the fused state first held the value. Live it is read from our own clock. On a recording it is rebuilt: known_at_utc = est_utc of the event + stream_delay_s of the source + the latency the causal replay measured for that value (basis modelled).'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: cv_tracking, p50_s: 0.0, p95_s: 0.0}
+      evidence: 'definition: the stamp is taken from our own clock at the moment of the write'
+    dropout:
+      - {when: stream delay not measured, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: stream_delay_s of B1G+ is not measured (OQ-LS-2). Until it is, the UTC form is unknown and no "could we have acted" comparison with a market price is made; the video-time form stays valid for every latency report'}
+      - {when: est_utc error above the join limit, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-MK-03 - a price is joined to game state only when the UTC error is at most 30 s; play-by-play wallclock steps backward in 13 % of rows (measured_sensors.json pbp_wallclock), so the join uses the clock map, never a raw wallclock'}
+      - {when: feed row arrives late, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a late row gets its own arrival time; it never back-dates a value. as_of_known at an instant already past does not change'}
+    conflict: []
+    invariants: [TRN-05]
+    consumers: [market_join, win_probability, latency_report, studio, training_labels]
+    notes: >-
+      Three times per transition: event (effective frame), observed (one frame per sensor, so the bug lag is stored,
+      not hidden) and known. The as_of_known view at time u holds exactly the transitions with known time <= u, at
+      the grade they had then (confirmed only if confirmed time <= u). Two forms are stored because they answer two
+      questions: video time is exact on every run and feeds the latency report (K23); UTC is needed only to compare
+      with the outside world, and is as good as stream_delay_s. known_at_basis says measured (a live run) or
+      modelled (a replay of a recording). The schema today has one column (state_transitions.known_at_utc); the
+      confirmed time and the video-time pair are proposed.
+
+  # =================================================================================================================
+  # Situation (all derived)
+  # =================================================================================================================
+  win_probability:
+    id: LS-SIT-01
+    group: situation
+    name: Win probability (home team)
+    type: float
+    unit: probability
+    domain: '0-1, with a band [lo, hi]; stored for the home team, shown for MSU in views'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [predictions.wp_home_live, predictions.wp_band_lo, predictions.wp_band_hi, predictions.known_at_utc]
+    requirements: [R-PR-02, R-PR-05, R-PR-09, R-PR-11, R-PE-01, R-PE-02, R-PE-04, R-PE-12, R-MK-03, R-MK-07, R-MK-08, R-MD-24]
+    profile: derived
+    derived_from: [score_home, score_away, period, period_phase, game_clock_s, possession_team, team_fouls_home, team_fouls_away, bonus_home, bonus_away, timeouts_left_home, timeouts_left_away, shot_clock_s, free_throw_state, arrow, pregame_card]
+    recompute_on: 'any input changes value or grade; at least once per second while the game clock runs'
+    valid_if: >-
+      score_home, score_away and period are confirmed, observed or inferred, or carried for at most counter_stale_after_s;
+      game_clock_s is confirmed, observed or inferred, or carried with an interval no wider than wp_clock_interval_max_s.
+      possession_team may be unknown: the value is then the mean over both teams and the band covers both.
+      Fouls, timeouts, free-throw state and arrow may be carried or unknown: the engine then uses the last held
+      value, or its neutral default for an unknown one, and the band is widened by the two extreme cases.
+      Otherwise the value is unknown and nothing is published.
+    panel:
+      valid: 'the number with its band'
+      degraded: 'the number with the wider band and the age of the oldest driving input; marked provisional while a score is inferred'
+      unknown: 'no number; the reason is named (clock unknown, score stale, replay or break shows the last value marked frozen)'
+    update:
+      changed_by: on_input_change
+      event_instant: 'The value at t is the share of simulated remainders of the game won by the home team, the possession engine being started from the as_of_known state at t. The pre-game card enters as the team-strength inputs of the engine, not as a second probability mixed in: at tip the value equals the card. It never uses an input that became known after t (no leakage).'
+    timing:
+      driven_by: [score_home, score_away, game_clock_s, possession_team]
+      provisional: {by: inputs, p50_s: 0.6, p95_s: 1.1}
+      confirmed: {by: inputs, p50_s: 2.1, p95_s: 3.1}
+      evidence: 'assumed: slowest provisional input (score by CV make, 0.5 s / 1.0 s) and slowest confirmed input that changes the number (score on the bug, 2.0 s / 3.0 s), each plus derived_compute_s 0.1 s (latency_budget.composition). The block is written for the inputs under driven_by; a change of a slow input (a timeout, a foul count) reaches the value with the latency of that input. R-PR-11 asks for a refresh within 10 s (p95) of each scoreboard change; the budget is inside it. Latency is reported, not gated (K23).'
+    dropout:
+      - &d_inputs {when: any input below its needed grade, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {}, on_return: SNAP_AND_LOG, evidence: 'definition: rule WORST_INPUT - the value takes the worst grade and the oldest age of its inputs'}
+      - &d_replay {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7 - inputs are frozen during a replay; the last value is shown marked replay'}
+      - &d_break {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'definition: every input is frozen during a break (FREEZE_ON_BREAK); the pre-break value stays valid until play resumes, then inputs are re-acquired'}
+      - {when: feed stale, rule: VALID_IF, grade_path: [observed, inferred], limits: {}, on_return: LATE_CORRECTION, evidence: 'measured: score and clock come from the bug and CV; without the feed, fouls and timeouts rest on the bug, which is slow (foul count p95 31 s after the play-by-play second, measured_sensors.json), so the band widens'}
+      - {when: game clock dead-reckoned, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {clock_inferred_max_s: 3, wp_clock_interval_max_s: 10}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: a dead-reckoned clock is within 1 s in 93.8 % of cases after 3 s and in 76.4 % after 10 s (measured_sensors.json clock_carry_on_withheld_readings). The value is computed at both ends of the guaranteed clock interval and the band covers them; past wp_clock_interval_max_s it is withheld'}
+      - {when: a swing above the sanity limit with no event, rule: QUARANTINE, grade_path: [observed, unknown], limits: {wp_max_swing_no_event: 0.25}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-PR-11 - no swing above 0.25 without a score, turnover or foul event. Such a jump points at an input error (a misread score, an undetected replay); the last published value is held and the input is flagged'}
+    conflict: []
+    invariants: []   # the R-PR-11 sanity rule is a requirement, not an entry of config/invariants.yaml
+    consumers: [live_panel, leverage, garbage_time, market_join, studio]
+    freshness_needed_s: {live_panel: 1.0, market_join: 1.0}
+    params:
+      wp_clock_interval_max_s: {value: 10.0, unit: s, why: 'widest game-clock interval for which a win probability is still published; the value is computed at both ends of the interval and the band covers them. Beyond it the clock is too uncertain late in a close game for one number to mean anything', evidence: 'assumed: a carried clock after 10 s is within 1 s in 76 % of withheld cases (p90 error 6 s). Replaced by the widest interval at which the band still covers the outcome on backtests'}
+      wp_max_swing_no_event: {value: 0.25, unit: probability, why: 'a change larger than this between two published values without a score, turnover or foul event is held back and flagged (an input error is more likely than a real swing)', evidence: 'requirement: R-PR-11 (no swing above 0.25 without a score, turnover or foul event)'}
+    notes: >-
+      Made exact against the 19 Oct page ("possession engine on the current state"): which state (as_of_known), how
+      the pre-game card enters (as engine inputs), and when no number is shown. Published live only after P6 passes
+      offline (R-PR-09). Each published value stores known_at_utc (event UTC + stream_delay_s + processing latency):
+      a comparison with a market price at time u may only use values with known_at_utc <= u. The as_of_event series
+      (inputs at their true instants) is kept separately for calibration. The band comes from the input intervals
+      (clock interval, both possession cases, provisional vs confirmed score) on top of the model own uncertainty
+      (R-PR-02). Two variants are kept apart (R-MK-08): one with no market input, one that may read the closing
+      line of the card; an edge is claimed only from the first. A faster stand-in for the simulation (a table) is
+      allowed only if it reproduces the simulated value inside the band. The five on the floor are not a live input
+      in 0.1.0: team strength comes from the card, and lineup effects join the inputs only after the walk-forward
+      comparison of R-PE-10 shows that they help (the lineup records already name this field as a consumer).
+
+  leverage:
+    id: LS-SIT-02
+    group: situation
+    name: Leverage of the current possession
+    type: float
+    unit: probability
+    domain: '0-1: the absolute difference in home win probability between the offence scoring on this possession and the offence not scoring. Two views are kept beside it: the expected absolute change over all outcomes, and the range between the best and the worst outcome'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [possessions.leverage, state_second.leverage, possessions.leverage_expected, possessions.leverage_range]
+    requirements: [R-MD-33, R-PR-12, R-PR-11, R-PR-09]
+    profile: derived
+    derived_from: [win_probability, possession_team, possession_seq, margin, close_game_measure, period, game_clock_s]
+    recompute_on: 'every new possession (the stored value of the possession is the one at its start); every recompute of win_probability for the live view'
+    valid_if: >-
+      win_probability is valid and possession_team is home or away at grade confirmed, observed or inferred. With
+      possession_team unknown the value is computed for both teams and shown as the band between them. With
+      win_probability unknown the value is unknown.
+    panel:
+      valid: 'the number, and a high-leverage mark above the 90th percentile of the game so far'
+      degraded: 'the band over both possession cases, marked'
+      unknown: 'no number'
+    update:
+      changed_by: on_input_change
+      event_instant: 'leverage(t) = | WP_home given the possession ends with points for the offence - WP_home given it ends with none |. Both are engine values from the as_of_known state at t, each averaged over the outcomes of its kind with the weights of the chance-outcome model, the game clock moved on by the expected remaining length of the possession.'
+    timing:
+      driven_by: [win_probability]
+      provisional: {by: inputs, p50_s: 0.7, p95_s: 1.2}
+      confirmed: {by: inputs, p50_s: 2.2, p95_s: 3.2}
+      evidence: 'assumed: win_probability plus derived_compute_s. Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - *d_replay
+      - *d_break
+      - {when: possession team unknown, rule: VALID_IF, grade_path: [observed, inferred, carried], limits: {status_carried_max_s: 5}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a possession team carried through a tight shot is trusted for status_carried_max_s; after that both cases are shown. Replaced by the measured rate of unseen changes of possession on MSU film'}
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, value_credits, swing_plays, hypothesis_register]
+    notes: >-
+      Three texts define leverage differently: the 19 Oct page (best against worst outcome of the next possession),
+      R-PR-12 (expected change in win probability given the state) and R-MD-33 (change in win probability between a
+      score and a stop). This record makes the R-MD-33 form the stored value because it is the Shall row and it
+      weighs each basket of a close game; the other two are views of the same engine run. Open question for Aldemir
+      (see the report). Not published live before win_probability is (R-PR-09). The realised change per play and the
+      five largest swing plays (R-PR-12) are event measures, not state.
+
+  clutch:
+    id: LS-SIT-03
+    group: situation
+    name: Clutch flag and last-240-s flag
+    type: struct
+    unit: n/a
+    domain: 'two flags, each yes, no or unknown. clutch: period 2 or an extra period, game clock at or under clutch_clock_max_s, absolute margin at or under clutch_margin_max_pts. late_240: period 2 or an extra period, game clock at or under late_window_s'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [state_second.clutch_flag, state_second.last4_flag]
+    requirements: [R-MD-13, R-PR-11]
+    profile: derived
+    derived_from: [period, game_clock_s, margin, score_home, score_away]
+    recompute_on: 'every score event; every second of running game clock; any change of grade of the clock or the score'
+    valid_if: >-
+      Three-valued, on the guaranteed game-clock interval [lo, hi] and on every score still possible (the held score
+      and, while a make is inferred and not yet on the bug, the score without it). A flag is yes when it is yes for
+      every such state, no when it is no for every one, otherwise unknown. In period 1 both flags are no whatever
+      the clock.
+    panel:
+      valid: 'the flag'
+      degraded: 'the flag, marked provisional while it rests on an inferred score or clock'
+      unknown: 'shown as open (clock or score not known closely enough); never shown as no'
+    update:
+      changed_by: on_input_change
+      event_instant: 'clutch turns on at the frame the official clock first shows clutch_clock_max_s or less with the margin inside the limit, or at the frame of the score event that brings the margin inside it; it turns off at the frame of the score event that takes the margin outside, and comes back the same way. late_240 turns on once per period, at the frame the clock first shows late_window_s or less.'
+    timing:
+      driven_by: [margin, game_clock_s]
+      provisional: {by: inputs, p50_s: 0.7, p95_s: 1.2}
+      confirmed: {by: inputs, p50_s: 2.2, p95_s: 3.2}
+      evidence: 'assumed: margin (CV make 0.5 s, bug 2.0 s, plus compute) plus derived_compute_s. A flag that turns on by the clock alone is known with the clock (0.1 s). Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - {when: game clock carried at the window edge, rule: VALID_IF, grade_path: [observed, inferred, unknown], limits: {clock_inferred_max_s: 3}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: a dead-reckoned clock is within 1 s in 93.8 % of cases after 3 s (measured_sensors.json clock_carry_on_withheld_readings). Away from the 300 s and 240 s edges the guaranteed interval decides the flag at any age; at the edge it is unknown until the next reading'}
+      - {when: an inferred make is withdrawn, rule: CONFIRM_WINDOW, grade_path: [inferred, unknown], limits: {make_confirm_window_s: 4.0}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K02 - a CV make not shown on the bug inside the window is flagged and withdrawn; a clutch flag that rested on it alone is recomputed from the held score'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG, evidence: 'requirement: state record principle 7'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE, evidence: 'rule: 5-11 - clock and score cannot change during a break, so the flags hold their value through it'}
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, possession_engine, failure_analysis_slices, hypothesis_register]
+    params:
+      clutch_clock_max_s: {value: 300.0, unit: s, why: 'clutch time is the last 300 s of the second half and of every extra period', evidence: 'decision: K06 (Aldemir, 18 Oct 2026) and R-MD-13'}
+      clutch_margin_max_pts: {value: 5, unit: points, why: 'clutch needs the absolute margin at or under this', evidence: 'decision: K06 and R-MD-13'}
+      late_window_s: {value: 240.0, unit: s, why: 'the last-240-s flag (late_240), kept beside clutch; it also names the under-4 media segment and the slice R-PR-11 calibrates on its own', evidence: 'decision: K06 and R-MD-13'}
+    notes: >-
+      The table text of state_second.clutch_flag and last4_flag says "period >= 2", which is the same set as
+      "second half or any extra period". The three constants are in no shared config yet; they should move to
+      config/invariants.yaml constants and be mirrored from there (change set). The flag is symmetric in the two
+      teams, so the home / away storage rule does not touch it.
+
+  garbage_time:
+    id: LS-SIT-04
+    group: situation
+    name: Garbage time
+    type: struct
+    unit: n/a
+    domain: 'per possession, three flags side by side, each yes, no or unknown: wp_rule (the stored flag, K28), ctg_adapted (view), source (view, post-game only). No row is ever dropped by any of them'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [possessions.is_garbage_time_source, possessions.pre_win_prob]
+    lands_in_proposed: [possessions.garbage_time_wp, possessions.garbage_time_ctg_adapted, state_second.garbage_time]
+    requirements: [R-MD-30, R-PR-09]
+    profile: derived
+    derived_from: [win_probability, period, game_clock_s, possession_seq, margin, score_home, score_away, lineup_home, lineup_away, rosters_cards]
+    recompute_on: 'once per possession, at its start (possession_seq steps); the value holds for the whole possession'
+    valid_if: >-
+      wp_rule: win_probability at the start of the possession is valid and its whole band lies above garbage_wp_hi or
+      below garbage_wp_lo, with period 2 and the whole game-clock interval at or under garbage_clock_max_s: yes. Band
+      wholly inside the limits, or clock interval wholly above, or period 1 or an extra period: no. Otherwise unknown.
+      ctg_adapted needs margin, clock and both lineups (to count starters); with a lineup unverified it is unknown.
+    panel:
+      valid: 'the wp_rule flag'
+      degraded: 'when wp_rule is unknown the ctg_adapted flag is shown, labelled as the fallback rule'
+      unknown: 'nothing shown; possessions are kept in every count'
+    update:
+      changed_by: on_input_change
+      event_instant: 'The flag of a possession is fixed at the frame the possession starts, from the win probability held just before that frame (pre-possession value). It is not re-opened inside the possession.'
+    timing:
+      driven_by: [win_probability]
+      provisional: {by: inputs, p50_s: 0.7, p95_s: 1.2}
+      confirmed: {by: inputs, p50_s: 2.2, p95_s: 3.2}
+      evidence: 'assumed: win_probability plus derived_compute_s. Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - *d_replay
+      - *d_break
+      - {when: live win probability not published, rule: VALID_IF, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-PR-09 - no live win probability before P6 passes offline. Until then the live wp_rule flag is unknown and the panel falls back to ctg_adapted; the post run fills wp_rule from the offline engine'}
+      - {when: lineup unverified, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {lineup_unverified_after_s: 3}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: the starters count of the ctg_adapted view needs both fives; after an unseen dead ball longer than lineup_unverified_after_s they are unverified. Replaced by the shortest substitution seen on MSU film'}
+    conflict: []
+    invariants: []
+    consumers: [live_panel, studio, possession_engine, stat_filters, hypothesis_register]
+    params:
+      garbage_wp_hi: {value: 0.98, unit: probability, why: 'home win probability above this (or below garbage_wp_lo) before the possession marks it as decided', evidence: 'requirement: R-MD-30 (K28: the win-probability rule is the primary one)'}
+      garbage_wp_lo: {value: 0.02, unit: probability, why: 'the mirror limit for the away team', evidence: 'requirement: R-MD-30'}
+      garbage_clock_max_s: {value: 300.0, unit: s, why: 'the rule applies only with this much or less left in regulation', evidence: 'requirement: R-MD-30; config/vocab/actions_extra.yaml garbage_time_definitions.wp_rule'}
+      garbage_ctg_table: {value: [[720, 540, 25], [540, 360, 20], [360, 0, 10]], unit: 's, s, points', why: 'view only: lead needed in each stretch of the last 720 s of the second half (from, to, lead)', evidence: 'config: config/vocab/actions_extra.yaml garbage_time_definitions.ctg_adapted (our adaptation of a rule written for the fourth quarter of another league)'}
+      garbage_ctg_max_starters: {value: 2, unit: players, why: 'view only: at most this many starters on the floor, both teams together', evidence: 'config: config/vocab/actions_extra.yaml garbage_time_definitions.ctg_adapted'}
+    notes: >-
+      Made exact against the 19 Oct page ("win-probability rule"): evaluated once per possession on the value held
+      before it, with the band, in regulation only. One difference between two sources to settle: R-MD-30 says
+      "> 0.98 or < 0.02", the vocabulary file says ">= 0.98 or <= 0.02". This record follows the requirement
+      (strict). The source flag (possessions.is_garbage_time_source) comes with the play-by-play provider after the
+      game and is never a live value. Starters are the five of each team at the opening tip.
+
+  end_of_period_windows:
+    id: LS-SIT-05
+    group: situation
+    name: End-of-period windows
+    type: struct
+    unit: n/a
+    domain: 'four named flags, each yes, no or unknown: two_for_one, foul_to_extend, last_shot, and foul_up_3 with its cell id (game-clock bin x shot-clock bin) when yes'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [state_second.two_for_one_window, state_second.foul_to_extend_window, state_second.last_shot_window, possessions.end_of_period_flag]
+    lands_in_proposed: [state_second.foul_up_3_cell]
+    requirements: [R-SR-11, R-PE-07]
+    profile: derived
+    derived_from: [period, game_clock_s, shot_clock_s, shot_clock_status, team_control, possession_team, margin, score_home, score_away, bonus_home, bonus_away, fouls_to_give, timeouts_left_home, timeouts_left_away]
+    recompute_on: 'every second of running game clock inside the last 60 s of a period; every change of control, score or shot-clock status there'
+    valid_if: >-
+      Three-valued, like clutch, on the game-clock interval, the possible scores and the team in control.
+      two_for_one: a team gains or holds control with the whole clock interval inside two_for_one_window_s, any period.
+      foul_to_extend: period 2 or later, clock at or under foul_to_extend_clock_s, the team on defence trails by a
+      margin inside foul_to_extend_margin. last_shot: a team is in control and the shot clock is off, or the game
+      clock is at or under the shot clock. foul_up_3: period 2 or later, clock at or under foul_up_3_clock_max_s,
+      the team on defence leads by exactly foul_up_3_margin_pts. Each flag that needs the team in control is unknown
+      while team_control and possession_team are both unknown.
+    panel:
+      valid: 'the flags that are yes, by name'
+      degraded: 'a flag resting on an inferred clock, score or possession is marked provisional'
+      unknown: 'shown as open; never shown as no'
+    update:
+      changed_by: on_input_change
+      event_instant: 'A flag turns on at the first frame all its conditions hold on the official clock and score, and off at the first frame one fails. Clock conditions use the true game clock (tenths under 60 s).'
+    timing:
+      driven_by: [game_clock_s, possession_team, team_control, margin]
+      provisional: {by: inputs, p50_s: 0.7, p95_s: 1.2}
+      confirmed: {by: inputs, p50_s: 2.2, p95_s: 3.2}
+      evidence: 'assumed: slowest driving input (margin by CV make 0.6 s; bug 2.1 s) plus derived_compute_s. A flag that turns on by clock and control alone is known in about 0.4 s. Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - {when: game clock dead-reckoned, rule: VALID_IF, grade_path: [observed, inferred, unknown], limits: {clock_inferred_max_s: 3}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: a dead-reckoned clock is off by more than 1 s in 6 % of withheld windows after 3 s and in 12 % after 5 s (measured_sensors.json clock_carry_on_withheld_readings: 93.8 % and 88.2 % within 1 s). The windows are 12 to 60 s wide, so a flag is held as inferred for clock_inferred_max_s and then decided only by the guaranteed interval'}
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, carried, unknown], limits: {status_carried_max_s: 5}, on_return: REACQUIRE,
+         evidence: 'assumed: the team in control is carried through a tight shot for status_carried_max_s; clock-only parts of a flag stay observed while the bug is read (it is visible in 31 of 37 sampled tight shots, results/w3_intake/scorebug_summary.md). Replaced by the rate of unseen changes of control on MSU film'}
+      - {when: shot slot unreadable while the game clock is read, rule: VALID_IF, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: the shot clock is readable in 79 % of the seconds with a game clock (measured_sensors.json bug_fields.shot_clock_read_share). last_shot needs the shot clock only when a 20 s clock was put back on inside the last 30 s (Rule 2-11.8); in every other case the game clock decides it'}
+      - {when: feed stale, rule: VALID_IF, grade_path: [observed, inferred], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'measured: fouls to give and bonus then rest on the bug foul count, which trails the foul by a median of 7 s and a p95 of 31 s (measured_sensors.json bug_fields.team_foul_lag_vs_pbp_clock_s); they refine foul_to_extend but do not gate it'}
+      - *d_replay
+      - *d_break
+    conflict: []
+    invariants: [new-IV-05]
+    consumers: [live_panel, possession_engine, studio, hypothesis_register]
+    freshness_needed_s: {live_panel: 0.5}
+    params:
+      two_for_one_window_s: {value: [33, 45], unit: s, why: 'game-clock window in which gaining control allows two possessions for one', evidence: 'requirement: R-SR-11 (proposal)', mirrors: 'config/invariants.yaml:constants.two_for_one_window_s'}
+      foul_to_extend_clock_s: {value: 60, unit: s, why: 'the trailing team may foul to stop the clock inside this much game clock', evidence: 'requirement: R-SR-11 (proposal)', mirrors: 'config/invariants.yaml:constants.foul_to_extend_clock_s'}
+      foul_to_extend_margin: {value: [1, 9], unit: points, why: 'deficit range in which fouling to extend the game is counted', evidence: 'requirement: R-SR-11 (proposal)', mirrors: 'config/invariants.yaml:constants.foul_to_extend_margin'}
+      foul_up_3_margin_pts: {value: 3, unit: points, why: 'the lead at which the defence may foul before a three-point try', evidence: 'requirement: R-SR-11 (foul-up-3 cell) and R-PE-07'}
+      foul_up_3_clock_max_s: {value: 60.0, unit: s, why: 'the foul-up-3 cell is opened inside this much game clock', evidence: 'assumed: the same end-game horizon as foul_to_extend_clock_s; R-SR-11 names the cell without a limit. Replaced by the clock range in which D-I teams leading by 3 foul on purpose, from play-by-play (R-PE-07)'}
+      foul_up_3_clock_bins_s: {value: [0, 5, 10, 20, 30, 45, 60], unit: s, why: 'game-clock edges of the cell id', evidence: 'assumed: finer near the horn, where the choice changes fastest. Replaced by bins that hold at least 30 cases each (R-PE-07)'}
+      foul_up_3_shot_bins_s: {value: [0, 10, 20, 30], unit: s, why: 'shot-clock edges of the cell id; a shot clock that is off is its own bin', evidence: 'assumed: thirds of a shot-clock period. Replaced by bins that hold at least 30 cases each (R-PE-07)'}
+    notes: >-
+      Made exact against the 19 Oct page, which named three windows; R-SR-11 adds the foul-up-3 cell. Fouls to give
+      and bonus are stored with the flag as detail (how many fouls before free throws), they do not switch it. The
+      table text of state_second.foul_to_extend_window reads "trailing team on defence", which is team-neutral; no
+      MSU-relative column is involved.
+
+  shot_clock_off:
+    id: LS-SIT-06
+    group: situation
+    name: Shot clock off
+    type: enum
+    unit: n/a
+    domain: 'yes (a period is being played and no shot clock exists), no; none outside a period; unknown when it cannot be told'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [state_second.shot_clock_off]
+    requirements: [R-SR-11, R-SR-01, R-PE-07]
+    profile: derived
+    derived_from: [shot_clock_status, shot_clock_s, game_clock_s, period, period_phase, possession_seq]
+    recompute_on: 'every change of shot_clock_status; every change of control with less than a full shot-clock period on the game clock'
+    valid_if: >-
+      shot_clock_status is confirmed, observed or inferred: yes when it is off during a period, else no. With the
+      status carried or unknown the rule decides where it can: a change of control seen with the whole game-clock
+      interval under max_dwell.shot_clock_period gives yes (inferred); a whole interval at or above it gives no;
+      otherwise unknown.
+    panel:
+      valid: 'the shot-clock slot shows off'
+      degraded: 'off marked as inferred from the game clock'
+      unknown: 'the slot is shown empty with its age'
+    update:
+      changed_by: on_input_change
+      event_instant: 'Yes from the frame a shot-clock reset is due while the game clock shows less than a full shot-clock period (the clock is not started), no again from the frame a 20 s clock is put back on (Rule 2-11.8); none from the period-ending horn.'
+    timing:
+      driven_by: [shot_clock_status, game_clock_s]
+      provisional: {by: inputs, p50_s: 0.3, p95_s: 0.7}
+      confirmed: {by: inputs, p50_s: 1.2, p95_s: 2.2}
+      evidence: 'assumed: shot_clock_status (0.2 s by a start or stop cue, 1.1 s on the bug) plus derived_compute_s. Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - {when: shot slot unreadable while the game clock is read, rule: VALID_IF, grade_path: [observed, inferred], limits: {max_dwell.shot_clock_period: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'rule: 2-11.2 and 2-11.8 as mirrored in config/invariants.yaml shot_clock_reset_table (game clock below a shot-clock period: off; put back on at 20 s after a 2-11.6.d reset). The game clock and a seen change of control decide the flag without the slot'}
+      - {when: scorebug hidden, rule: VALID_IF, grade_path: [observed, inferred, unknown], limits: {clock_inferred_max_s: 3, clock_carried_max_s: 30}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: dead reckoning of the game clock holds for about 3 s (93.8 % within 1 s); past clock_carried_max_s only the guaranteed interval is left, and the flag is unknown unless that interval lies wholly on one side of 30 s'}
+      - *d_replay
+      - *d_break
+    conflict: []
+    invariants: [new-IV-02, new-IV-05]
+    consumers: [live_panel, end_of_period_windows, possession_engine, studio]
+    notes: >-
+      Made exact against the 19 Oct page ("off when the game clock is below a full shot clock"): that is not enough.
+      A team that gained control at 0:35 keeps a running shot clock until 0:05; the clock is off only when a reset
+      falls due with less than a period left. The flag is therefore read from shot_clock_status, with the game-clock
+      rule as the fallback. It is the R-SR-11 name of that status for end-game policies.
+
+  expected_points:
+    id: LS-SIT-07
+    group: situation
+    name: Expected points of the current possession
+    type: float
+    unit: points
+    domain: '0-6, with a band: expected final points of the possession in progress for the team in possession (points already scored in it plus the expected rest); none when no possession is in progress'
+    none_value: none
+    stored: derived
+    dimension: null
+    lands_in: [state_second.xpts_possession, possession_value.value_xpts, possession_value.outcome_probs, possessions.value_start]
+    requirements: [R-SR-12, R-PE-02, R-PE-04, R-PE-11, R-PR-09]
+    profile: derived
+    derived_from: [possession_team, possession_seq, chance_seq, team_control, flow_state, shot_clock_s, game_clock_s, period, score_home, score_away, bonus_home, bonus_away, free_throw_state, secs_since_control_change, ball_position, ball_handler, transition_numbers, offense_set, defense_scheme, ball_screen_coverage, matchups, lineup_home, lineup_away]
+    recompute_on: 'every second (R-SR-12); at once on a change of control, flow state, chance or free-throw state'
+    valid_if: >-
+      possession_team is home or away at grade confirmed, observed or inferred, and flow_state is known. Two levels:
+      the state level uses start type, chance number, shot clock, game state and lineups; the video level adds ball,
+      handler, positions and tactics, and is used only while those are observed and only after the walk-forward
+      comparison of R-PE-11 is passed. When video inputs are imputed, on HOLD or unknown the value falls back to
+      the state level with its wider band. With possession_team unknown the value is unknown. Between possessions
+      it is none.
+    panel:
+      valid: 'the number with its band and its level (state or video)'
+      degraded: 'the state-level number with the wider band, marked'
+      unknown: 'no number'
+    update:
+      changed_by: on_input_change
+      event_instant: 'value(t) = E[final points of this possession | as_of_known state at t]. The possession ends by the K08 chance and possession rules; the label the model is trained on is the possession final points (as_of_event), never seen by the live value.'
+    timing:
+      driven_by: [possession_team, team_control, flow_state, shot_clock_s]
+      provisional: {by: inputs, p50_s: 0.4, p95_s: 1.1}
+      confirmed: {by: inputs, p50_s: 20.1, p95_s: 60.1}
+      evidence: 'assumed: possession and control by CV (0.3 s / 1.0 s) plus derived_compute_s; confirmed when the feed confirms the possession (feed_delay_p50_s 20 s, feed_delay_p95_s 60 s, OQ-LS-1) plus compute. Slower video inputs (set, coverage, matchups: 1 to 3 s) refine the value after they arrive. Measured per run (K23)'
+    dropout:
+      - *d_inputs
+      - {when: not main camera, rule: VALID_IF, grade_path: [observed, inferred, carried, unknown], limits: {status_carried_max_s: 5, max_dwell.shot_clock_period: 30}, on_return: REACQUIRE,
+         evidence: 'assumed: off the main camera the video level stops at once; the state level goes on from clock and score for as long as the possession is carried (status_carried_max_s), and never beyond a shot-clock period (Rule 2-11.1). Replaced by the calibration of the state-level value on unseen stretches'}
+      - {when: players off screen, rule: VALID_IF, grade_path: [observed, inferred], limits: {offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K15 - an off-screen estimate enters a model only through its is_imputed flag; the video level uses it for offscreen_imputed_max_s, then drops to the state level'}
+      - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - player effects are used only for locked identities; a held player counts as the lineup average'}
+      - {when: ball not visible, rule: VALID_IF, grade_path: [observed, inferred], limits: {ball_lost_after_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: with the ball unseen for longer than ball_lost_after_s a try may have been taken; the video level stops until the ball is found. Replaced by the share of ball-lost stretches that hide a try on MSU film'}
+      - *d_replay
+      - *d_break
+    conflict: []
+    invariants: []
+    consumers: [live_panel, value_credits, possession_engine, studio]
+    freshness_needed_s: {live_panel: 1.0}
+    notes: >-
+      Made exact against the 19 Oct page ("possession value at this instant"): final points of the possession, not
+      of the chance; conditional on what was known at t; two levels with a fixed fallback. The value belongs to the
+      possession_value table (R-SR-12, a Should row) and is stamped on state_second. Calibration target of the
+      requirement: mean expected against actual within 0.05 points per bucket. Not shown live before the engine is
+      (R-PR-09).
+
+  # =================================================================================================================
+  # Observability (the meta sensors that drive every other dropout rule)
+  # =================================================================================================================
+  camera_shot_type:
+    id: LS-OBS-01
+    group: observability
+    name: Camera shot type
+    type: enum
+    unit: n/a
+    domain: 'main_wide, close_up, replay, slow_motion, crowd, bench, studio, commercial, graphic; plus the flag reverse_angle (a live shot from another camera). unknown while the classifier is unsure and the stricter reading has run out'
+    none_value: unknown
+    stored: segment
+    dimension: camera_shot_type
+    lands_in: ['state_segments:camera_shot_type', state_frame.camera_shot_type, state_frame.reverse_angle, frames.camera_shot_type, frames.camera_shot_conf]
+    requirements: [R-SR-10, R-VI-03, R-VI-04, R-VI-19]
+    profile: meta
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame'}
+      - {sensor: human, role: fallback, modes: [post_blind, post_anchored], resolution: 'gold-v1 shot-type labels and review answers'}
+    update:
+      changed_by: [T25]
+      event_instant: 'The first frame of the new shot (the frame after the cut). In a dissolve or a wipe, the first frame of the wipe: the old shot ends there.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.5}
+      confirmed: {by: cv_tracking, p50_s: 0.5, p95_s: 1.0}
+      evidence: 'assumed: a hard cut is seen in its frame (frame_to_state_s); the class is confirmed after the detector has had replay_guard_s. Replaced by the decision time on gold-v1 shot-type labels (R-SR-10, R-VI-03)'
+    dropout_extra:
+      - {when: class probability below the gate, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {shot_type_min_conf: 0.9, meta_unsure_max_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: below shot_type_min_conf the stricter of the two leading classes is taken (commercial or studio before replay before close_up, crowd or bench before main_wide). R-VI-03 puts precision of main_wide first (99 %) because a wrong main frame poisons tracking. Replaced by the gate that meets it on gold-v1'}
+      - {when: main_wide claimed but court mapping below its gate, rule: CARRY, grade_path: [observed, inferred], limits: {mapping_min_conf: 0.8, tracking_up_after_s: 0.5}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a main wide frame always maps to the court; one that does not for longer than tracking_up_after_s is treated as off the main camera (level D2). Replaced by the share of main wide frames without a mapping on MSU film'}
+      - *d_stream
+    conflict:
+      - {between: [cv_tracking, human], tolerance: 0, value_winner: human, timing_winner: cv_tracking, log_to: state_corrections}
+    invariants: [TRN-04, SEG-01, SEG-02]
+    consumers: [degradation_level, replay_flag, coverage_score, live_panel, studio, every_dropout_rule]
+    freshness_needed_s: {degradation_level: 0.5}
+    params:
+      shot_type_min_conf: {value: 0.9, unit: probability, why: 'below this class probability the shot type is unsure and the stricter class is taken', evidence: 'assumed: a round start value. Replaced by the lowest gate at which main_wide precision is at least 99 % and replay recall at least 99 % on gold-v1 (R-VI-03, R-SR-10)'}
+    notes: >-
+      How often each class occurs, sampled once per 60 s over two tournament replays (177 frames, whole broadcast):
+      main wide 95, tight 37, crowd or bench 21, replay 17, graphic 6, ad 1 (measured:
+      results/w3_intake/scorebug_summary.md). The two errors are not equal. Live play read as a replay loses a few
+      seconds of state, and the bug gives back the score and clock on return. A replay read as live play counts
+      events twice - the worst error of this pack; replay_flag holds the rules against it. Mapping of the R-SR-10
+      words: tight -> close_up, ad break -> commercial, bench or crowd -> bench / crowd, reverse angle -> the flag.
+      Schema points: the enum has no unknown and no reverse_angle value (change set).
+
+  scorebug_visible:
+    id: LS-OBS-02
+    group: observability
+    name: Scorebug visible
+    type: bool
+    unit: n/a
+    domain: 'yes when the game clock of the bug of this game is being read; no when the bug is absent, covered, or shows nothing readable'
+    none_value: unknown
+    stored: segment
+    dimension: scorebug_visible
+    lands_in: ['state_segments:scorebug_visible', state_frame.scorebug_visible, frames.scorebug_bbox_px, scoreboard_ocr.field_conf_json]
+    lands_in_proposed: [state_frame.scorebug_state]
+    requirements: [R-SR-10, R-SY-01, R-SY-14, R-VI-07]
+    profile: meta
+    sources:
+      - {sensor: scorebug_ocr, role: value, modes: [live, post_blind, post_anchored], resolution: 'one reading per sampled frame; at least 2 per second (R-SY-01); 1 per second in the measurement'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per frame: the bug box found at the place the template gives'}
+    update:
+      changed_by: [T25]
+      event_instant: 'No from the first frame without the bug box (or with a strap over it). Yes from the first frame of the run of readings that brings it back.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.5}
+      confirmed: {by: scorebug_ocr, p50_s: 1.0, p95_s: 2.0}
+      evidence: 'measured: the bug counts as away after scorebug_down_after_s (1.0 s) without an accepted reading, and as back after scorebug_up_after_reads (2) agreeing readings - 1 s at two readings per second, 2 s at one (core.yaml sensors.scorebug_ocr). The box detector sees the change in the frame (assumed frame_to_state_s; not measured)'
+    dropout_extra:
+      - {when: bug present but a reading is rejected, rule: CARRY, grade_path: [observed, inferred], limits: {scorebug_down_after_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: 1.7 % of clock reads are rejected as inconsistent with their neighbours, and 1,074 of 3,189 hidden stretches last only 1-2 s (measured_sensors.json clock). One rejected read does not flip the field; a full second without an accepted one does'}
+      - {when: one accepted reading after a gap, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {scorebug_up_after_reads: 2}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: the first read after a gap is where digit animations and misreads sit; two agreeing reads put a false return near 0.03 % if misreads are independent (core.yaml scorebug_up_after_reads). Replaced by the misses counted at bug returns in the replay harness (ACC-LS-H3)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: none of 17 sampled replay frames showed a bug (results/w3_intake/scorebug_summary.md); when one does, it is the bug of a past instant. Its readings are stored raw, marked replay, and the field stays no'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: a scoreboard of another game, a studio ticker or a break bumper is not the bug of this game; a box that does not fit scorebug_template is ignored'}
+      - *d_stream
+    conflict:
+      - {between: [scorebug_ocr, cv_tracking], tolerance: 0, value_winner: scorebug_ocr, timing_winner: cv_tracking, log_to: scoreboard_flags}
+    invariants: [SEG-01, SEG-02]
+    consumers: [degradation_level, replay_flag, game_clock_s, shot_clock_s, score_home, score_away, live_panel, studio]
+    freshness_needed_s: {degradation_level: 1.0}
+    notes: >-
+      Health signal of the scorebug sensor. Visible means readable for the game clock: readable in 79 % of in-period
+      seconds pooled (median game 82 %, worst 42 %); hidden stretches have a median of 6 s, p90 19 s, p99 110 s
+      (measured: measured_sensors.json clock). The 19 Oct page gave 16.9 % absent from a 177-frame sample of two
+      tournament games; that number counts whole broadcasts, breaks included. Other bug fields come and go on their
+      own while the clock is read: shot clock 79 %, timeouts 59 %, team fouls 54 % of those seconds; their own
+      records carry that. The bool cannot tell "absent" from "present but unreadable" from "covered by a strap";
+      the proposed scorebug_state does (it tells an OCR fault from a director choice in the health log).
+
+  replay_flag:
+    id: LS-OBS-03
+    group: observability
+    name: Replay flag
+    type: bool
+    unit: n/a
+    domain: 'yes for every frame of a replay or slow-motion segment, and for a frame under replay suspicion (grade inferred); no only with evidence of live play'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.replay_flag, frames.is_replay, frames.replay_segment_id]
+    requirements: [R-SR-10, R-VI-04, R-VI-20, R-SY-11]
+    profile: meta
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: shot class replay or slow_motion, replay wipes, motion slower than live'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'per reading: bug absent, or a clock above the last accepted reading'}
+      - {sensor: human, role: fallback, modes: [post_blind, post_anchored], resolution: 'review answer'}
+    update:
+      changed_by: [T25]
+      event_instant: 'Yes from the first frame of the wipe or cut into the replay. No from the first frame of live play after it; the flag is cleared only when that frame is followed by exit evidence.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.5}
+      confirmed: {by: cv_tracking, p50_s: 0.5, p95_s: 1.0}
+      evidence: 'assumed: entry is seen at the wipe or cut; the detector is given replay_guard_s (1.0 s) before any transition is confirmed. Replaced by the decision time on gold-v1 shot-type labels (R-SR-10 asks at least 99 % replay recall, R-VI-04 at least 98 % of segments)'
+    dropout:
+      - {when: detector unsure, rule: FREEZE_ON_REPLAY, grade_path: [observed, inferred], limits: {replay_guard_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: unsure counts as replay (the stricter level). No transition is confirmed until the detector has had replay_guard_s to object. Replaced by the decision time on gold-v1'}
+      - {when: play event seen while the ball is dead and the clock stopped, rule: FREEZE_ON_REPLAY, grade_path: [inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: suspect rule 1. Replays are shown during stoppages. A try, a make or a change of control seen while ball_status is dead, the game clock is stopped and no restart was seen cannot be live play; the frames are marked replay and the event opens no transition'}
+      - {when: bug clock above the last accepted reading, rule: FREEZE_ON_REPLAY, grade_path: [inferred], limits: {clock_tolerance_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: suspect rule 2. Inside a period the game clock never rises without a correction (R-IV-05, CLK-01); only 0.35 % of consecutive second pairs are neither running nor stopped (measured_sensors.json clock.consecutive_second_pairs.other), so a reading above the last one by more than clock_tolerance_s is a past clock, not noise'}
+      - {when: CV make with no score step on the bug, rule: CONFIRM_WINDOW, grade_path: [inferred, unknown], limits: {make_confirm_window_s: 4.0}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: suspect rule 3. A live make shows on the bug 1.50-2.60 s later (n = 10, results/w3_intake/made_basket_lag.md). A make whose points do not appear inside make_confirm_window_s (K02) is a score that already happened or a false make: it is withdrawn and flagged, never added'}
+      - {when: bug absent through the whole event, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'measured: suspect rule 4. The bug is on screen in 93 of 95 sampled main wide frames and in 0 of 17 replay frames (results/w3_intake/scorebug_summary.md). An event seen with no bug stays provisional until the bug returns and agrees'}
+      - {when: replay ends without a wipe, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {scorebug_up_after_reads: 2}, on_return: REACQUIRE,
+         evidence: 'assumed: exit rule. The flag is easy to set and hard to clear: it clears on a wipe out, or on scorebug_up_after_reads readings whose clock is at or under the last accepted one. Replaced by the count of late exits on gold-v1'}
+      - {when: replay found after its transitions were written, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: TRN-04 and R-VI-04 - no transition may have its effective frame inside a replay segment and no event is created from replay frames; the transitions are superseded under a new state_version and the stretch is quarantined for review'}
+      - *d_stream
+    conflict:
+      - {between: [cv_tracking, scorebug_ocr], tolerance: 0, value_winner: neither, timing_winner: cv_tracking, log_to: scoreboard_flags}
+      - {between: [cv_tracking, human], tolerance: 0, value_winner: human, timing_winner: cv_tracking, log_to: state_corrections}
+    invariants: [TRN-04, R-IV-05, CLK-01, R-IV-04]
+    consumers: [degradation_level, every_dropout_rule, cv_events, audio_present, live_panel, studio]
+    freshness_needed_s: {degradation_level: 0.5}
+    notes: >-
+      An undetected replay is the worst error here: a replayed make would score twice (state record principle 7).
+      The classifier is therefore not the only guard. Four suspect rules read the game state itself and work even
+      when the classifier says main_wide; each sets the flag at grade inferred and holds back the event. Whichever
+      of them fires, the score can still not be counted twice, because points become confirmed only through the bug
+      or the scorebook (rule AUTHORITY), and a make they do not show is withdrawn. Audio heard inside a replay is a
+      past whistle and is never a cue. A replay is linked to the live event it shows for reviewers only (R-VI-20).
+      Replay frames were 17 of 177 sampled (9.6 %) in the two tournament replays.
+
+  coverage_score:
+    id: LS-OBS-04
+    group: observability
+    name: Coverage score
+    type: float
+    unit: share
+    domain: '0-1. 0 when the frame is not main_wide or the court mapping is below its gate. Otherwise the weighted sum of players in view out of 10, the share of the attacked half court in view, and ball visible (weights coverage_weights)'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.coverage_score, frames.coverage_score, frames.players_visible, frames.halfcourt_share_in_view, frames.zoom_factor, possessions.coverage_mean, possessions.usable_flag]
+    requirements: [R-VI-05, R-VI-06, R-DT-05]
+    profile: meta
+    update:
+      changed_by: per_frame
+      event_instant: 'The frame. The possession value is the mean over its main-camera frames; frames of other shots count as 0.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s; measured per run (K23)'
+    dropout:
+      - {when: not main camera, rule: HOLD_UNTIL_EVENT, grade_path: [observed], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: the score is 0 by definition off the main camera; that is an observed 0, not a missing value'}
+      - {when: court mapping below its gate, rule: HOLD_UNTIL_EVENT, grade_path: [observed], limits: {mapping_min_conf: 0.8}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: without a mapping no player can be placed, so nothing is covered; same gate as the tracking sensor (mapping_min_conf). To be measured on MSU film'}
+      - {when: player count unsure, rule: CARRY, grade_path: [observed, inferred], limits: {meta_unsure_max_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: bench players and officials near the line can be counted as players for a moment; the count is capped at 10 and the lower count is taken while unsure. Replaced by the person-filter error on gold-v1 (R-DT-02)'}
+      - *d_stream
+    conflict: []
+    invariants: [R-IV-01]
+    consumers: [degradation_level, player_positions, expected_points, review_queue, studio]
+    params:
+      coverage_weights: {value: [0.6, 0.2, 0.2], unit: share, why: 'weights of players in view (of 10), half-court share in view, and ball visible; they sum to 1', evidence: 'assumed: players carry most of what tracking needs; R-VI-05 names the parts and asks for a fixed formula, no config holds one yet. Replaced by the weights that best predict position error on gold-v1'}
+      coverage_usable_min: {value: 0.6, unit: share, why: 'a possession with mean coverage at or above this is usable', evidence: 'requirement: R-VI-06 (initial value, to calibrate on 3 games)'}
+    notes: >-
+      Made exact against the 19 Oct page ("share of the 10 players and the ball in view"): R-VI-05 also names the
+      half-court share and zoom. Zoom is stored (frames.zoom_factor) and acts through the other parts: a tighter
+      frame shows fewer players and less court. It is a number, not a class, so there is no unsure class to
+      resolve; its only weak part is the player count. Health signal of cv_tracking together with camera_shot_type
+      and court_mapping_conf.
+
+  tracking_quality:
+    id: LS-OBS-05
+    group: observability
+    name: Tracking quality per player
+    type: struct
+    unit: share, m
+    domain: 'per player on the floor and per second: share of the frames of that second in which he was observed (0-1), his position sigma (m), and his identity state (locked, HOLD, unknown)'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [tracks.quality_mean, tracks.gaps_over_1s, tracks.identity_conf, player_positions.observed, player_positions.imputation_strength, player_positions.identity_conf, player_positions.on_main_camera]
+    lands_in_proposed: [tracking_quality_second.observed_share, tracking_quality_second.sigma_m, tracking_quality_second.identity_state]
+    requirements: [R-DT-11, R-DT-04, R-DT-06, R-DT-07, R-SR-07]
+    profile: meta
+    update:
+      changed_by: per_frame
+      event_instant: 'Each video second, closed at its last frame.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 1.0, p95_s: 1.3}
+      evidence: 'assumed: the per-frame parts are known with the frame (frame_to_state_s); the per-second value is closed at the end of its second, plus frame_to_state_p95_s. Measured per run (K23)'
+    dropout:
+      - {when: player off screen, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {track_gap_review_s: 1.0, offscreen_imputed_max_s: 8}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-DT-11 - a gap over 1 s gets an imputation row and a review-queue entry; K15 keeps the off-screen estimate at 10 Hz with its region for offscreen_imputed_max_s'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, imputed, unknown], limits: {offscreen_imputed_max_s: 8}, on_return: REACQUIRE,
+         evidence: 'assumed: all ten are off screen at once; same limit as one player. Replaced by the measured error of the K15 estimate against age on MSU film'}
+      - {when: identity on HOLD, rule: LOCK_OR_HOLD, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - the track is followed but carries no name; quality of position is unchanged, identity state is HOLD'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - tracks seen in a replay are past positions and are kept out of live tracking (R-VI-04)'}
+      - *d_stream
+    conflict: []
+    invariants: [R-IV-01, R-IV-13]
+    consumers: [player_positions, player_identity, matchups, defense_scheme, expected_points, review_queue, studio]
+    params:
+      track_gap_review_s: {value: 1.0, unit: s, why: 'a track gap longer than this is sent to imputation and to the review queue', evidence: 'requirement: R-DT-11'}
+    notes: >-
+      Made exact against the 19 Oct page ("per player per second"): three parts stored apart, not one blended
+      number, so a consumer can gate on the part it needs (matchups need position; player credit needs identity).
+      There is no per-second table for it yet: tracks.quality_mean is per track. The proposed table
+      tracking_quality_second is keyed by game, video second and player or track.
+
+  court_mapping_conf:
+    id: LS-OBS-06
+    group: observability
+    name: Court-mapping confidence
+    type: float
+    unit: probability
+    domain: '0-1: confidence that the image-to-court mapping of the frame is right to within the position tolerance'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.court_mapping_conf, frames.mapping_conf, frames.mapping_interpolated, frames.keypoints_visible]
+    requirements: [R-SR-10, R-DT-09, R-VI-22]
+    profile: meta
+    update:
+      changed_by: per_frame
+      event_instant: 'The frame.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.5, p95_s: 0.8}
+      evidence: 'assumed: known with the frame (frame_to_state_s); trusted again after tracking_up_after_s (0.5 s) of stable mapping following a cut. Replaced by the measured time to a stable mapping after cuts on MSU film'
+    dropout:
+      - {when: mapping below its gate, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {mapping_min_conf: 0.8, tracking_up_after_s: 0.5}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: for up to tracking_up_after_s the mapping is interpolated from camera motion (frames.mapping_interpolated) and positions stay usable; beyond it they are imputed (observation profile). Replaced by the position error of interpolated mappings on gold-v1'}
+      - {when: mapping confident but against the fixed basket side, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: the basket a team attacks changes at half time only (T21). A mapping that puts the play in the other half, mirrors the court, or leaves players outside the floor bounds of new-IV-34 is wrong however confident; it is quarantined and the level drops to D2'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: other cameras have no mapping until the venue row lists them (R-VI-22); the value is unknown, positions follow the observation profile'}
+      - *d_stream
+    conflict: []
+    invariants: [new-IV-34, new-IV-21]
+    consumers: [degradation_level, coverage_score, court_visible_frac, player_positions, ball_position, camera_shot_type, studio]
+    notes: >-
+      Health signal of cv_tracking. The gate is mapping_min_conf (0.8), the same the identity pack uses for height
+      from the calibrated frame. A confidence alone does not catch a mirrored or shifted mapping; the second dropout
+      row is the guard for that, read from game state the mapping cannot change.
+
+  feed_heartbeat:
+    id: LS-OBS-07
+    group: observability
+    name: Play-by-play feed heartbeat
+    type: struct
+    unit: n/a, s
+    domain: 'state: healthy, suspect, stale, final (the post-game file is the source); with the age of the last row in seconds. off in a blind pass, which reads no play-by-play'
+    none_value: 'off'
+    stored: obs
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [state_second.feed_state, state_second.feed_last_row_age_s]
+    requirements: [R-SY-20, R-MD-24, R-SR-13]
+    profile: meta
+    sources:
+      - {sensor: pbp_feed, role: value, modes: [live], resolution: 'per row: arrival time at our collector'}
+      - {sensor: pbp_final, role: value, modes: [post_anchored, pbp_only], resolution: 'per file version'}
+      - {sensor: audio, role: timing, modes: [live], resolution: 'a whistle heard is an event the feed owes a row for'}
+    update:
+      changed_by: continuous
+      event_instant: 'The feed went quiet at the arrival of its last row. Suspect and stale are reached feed_delay_p95_s and feed_stale_after_s later, counted only while the game clock runs or after a whistle with no row yet.'
+    timing:
+      provisional: {by: pbp_feed, p50_s: 60.0, p95_s: 60.0}
+      confirmed: {by: pbp_feed, p50_s: 90.0, p95_s: 90.0}
+      evidence: 'assumed: silence is only told from a slow feed by waiting. Suspect after feed_delay_p95_s (60 s), stale after feed_stale_after_s (90 s); both are planning values until the feed delay is measured at a live game (OQ-LS-1). A return is known at the row (0 s)'
+    dropout:
+      - {when: no row for longer than the feed delay allows, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {feed_delay_p95_s: 60, feed_stale_after_s: 90}, on_return: LATE_CORRECTION,
+         evidence: 'assumed: with the clock running a play-by-play event falls due at least once per shot-clock period (30 s, Rule 2-11.1); 30 s plus the assumed p95 delay of 60 s gives the 90 s limit. Replaced by the measured gap between rows (OQ-LS-1)'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: no row is owed while the clock is stopped and no whistle is unanswered (a timeout, an intermission); silence then is not a fault and the state stays healthy'}
+      - {when: rows arrive out of order or with an earlier wallclock, rule: AUTHORITY, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'measured: 13 % of rows carry a wallclock earlier than the row before (largest step 3,008 s) and rows inside one game-clock second are not reliably ordered (measured_sensors.json pbp_wallclock; results/state_machine_test/README.md). The heartbeat uses our arrival time only, never the scorer wallclock'}
+      - {when: rows arrive but contradict the bug, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'measured: the bug total equals the play-by-play total in 89 % of stable samples (median game; measured_sensors.json score.total_matches_pbp_share). A row that disagrees beyond the confirm window is flagged (scoreboard_flags), neither side wins by default; the heartbeat stays healthy - a live feed that is wrong is not a dead feed'}
+    conflict: []
+    invariants: []
+    consumers: [degradation_level, live_panel, studio, latency_report, player_fouls, lineup_home, lineup_away]
+    freshness_needed_s: {degradation_level: 5.0}
+    notes: >-
+      Health signal of pbp_feed; sets the feed_stale flag on top of any level. Detection is slow by nature: the
+      limits are the feed delay itself, which is not measured (OQ-LS-1 - allowed by Aldemir on 11 Nov 2026, planned
+      for the next live game). While suspect, values that only the scorebook gives (who fouled, substitutions,
+      timeouts by team) keep their grade but the panel shows their age. In post_anchored the state is final and
+      names the file version (R-SY-20).
+
+  stream_delay_s:
+    id: LS-OBS-08
+    group: observability
+    name: Stream delay against real time
+    type: float
+    unit: s
+    domain: '0 and up, with an error: the time between an instant in the arena and our decoder receiving the frame that shows it. none for a recording replayed later (the modelled value of its source is used for backtests). unknown until the source is measured'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [video_files.stream_delay_s, video_files.stream_delay_err_s, video_files.stream_delay_basis, frames.received_utc]
+    requirements: [R-MK-03, R-MK-07, R-MD-24, R-PR-11]
+    profile: meta
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored], resolution: 'per video source and session: the delay measured at an anchor'}
+      - {sensor: cv_tracking, role: timing, modes: [live], resolution: 'per frame: our receive time and the frame time stamp; cv_tracking stands in for the decoder'}
+    update:
+      changed_by: continuous
+      event_instant: 'At an anchor a (an instant whose arena UTC is known, such as the horn of the opening tip): delay(a) = receive UTC of its frame - arena UTC. At any later frame t: delay(t) = delay(a) + [receive UTC(t) - receive UTC(a)] - [video time(t) - video time(a)]. Buffering after the anchor is thus counted from our own two clocks.'
+    timing:
+      provisional: {by: registry, p50_s: 0.0, p95_s: 0.0}
+      confirmed: {by: registry, p50_s: 0.0, p95_s: 0.0}
+      evidence: 'definition: after the anchor the value follows from two clocks we hold, with no latency. Before the first anchor of a session it is the modelled value of the source'
+    dropout:
+      - {when: stream delay not measured, rule: CARRY, grade_path: [inferred, unknown], limits: {stream_delay_planning_s: 30, stream_delay_planning_lo_s: 10, stream_delay_planning_hi_s: 60}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: no measurement of B1G+ exists (OQ-LS-2, allowed by Aldemir on 11 Nov 2026, same live game as OQ-LS-1). Planning value 30 s inside 10-60 s for a segmented internet stream; it is used for sizing only. With it the UTC of every live value is unknown for market purposes and no "could we have acted" claim is made'}
+      - {when: no anchor yet in this session, rule: CARRY, grade_path: [inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: once a source has been measured, a new session starts from its measured median, graded inferred with the measured spread as error, until its own anchor'}
+      - {when: frame arrival stalls, rule: SNAP_AND_LOG, grade_path: [observed], limits: {stream_rebuffer_gap_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a gap in frame arrival above stream_rebuffer_gap_s is a stall; the formula adds it to the delay unless the player skips ahead, and the change is logged. Replaced by the arrival gaps logged at the live capture'}
+      - *d_stream
+    conflict: []
+    invariants: []
+    consumers: [est_utc, stamp_known_at_utc, market_join, latency_report, win_probability]
+    params:
+      stream_delay_planning_s: {value: 30.0, unit: s, why: 'planning value of the delay of the stream against real time, for sizing only', evidence: 'assumed: not measured; a segmented internet stream buffers several segments. Replaced by the live capture of OQ-LS-2 (horn or tip time on the stream against UTC)'}
+      stream_delay_planning_lo_s: {value: 10.0, unit: s, why: 'lower end of the planning range', evidence: 'assumed: a low-latency stream. Replaced by OQ-LS-2'}
+      stream_delay_planning_hi_s: {value: 60.0, unit: s, why: 'upper end of the planning range; it is also the error carried by a live est_utc until the measurement', evidence: 'assumed: twice the planning value. Replaced by OQ-LS-2'}
+      stream_rebuffer_gap_s: {value: 1.0, unit: s, why: 'a pause in frame arrival longer than this is logged as a stall', evidence: 'assumed: frames arrive in bursts of a segment; one second is longer than a burst gap at steady play-out. Replaced by the arrival gaps logged at the live capture (OQ-LS-2)'}
+    notes: >-
+      Added by this pack. It decides whether a live number could ever be acted on before a market moves: every
+      known_at_utc is event UTC + this delay + processing latency. One measurement per session is enough, because
+      drift after the anchor is computed, not measured. The anchor needs one arena time from outside the stream; the
+      play-by-play wallclock is not good enough (13 % of rows step backward), so the measurement plan of OQ-LS-2
+      must name its reference (see the report). The 33 recordings are replays: they have no delay of their own.
+
+  degradation_level:
+    id: LS-OBS-09
+    group: observability
+    name: Degradation level
+    type: enum
+    unit: n/a
+    domain: 'D0_full, D1_bug_away, D2_off_main, D3_replay, D4_break, D5_no_video (core.yaml degradation_levels), with the flag feed_stale beside it'
+    none_value: unknown
+    stored: derived
+    dimension: null
+    lands_in: [view]
+    lands_in_proposed: [state_frame.degradation_level, state_second.degradation_level, state_second.feed_stale]
+    requirements: [R-SR-10, R-VI-03, R-VI-04, R-VI-06]
+    profile: meta
+    sources:
+      - {sensor: cv_tracking, role: value, modes: [live, post_blind, post_anchored], resolution: 'per frame: camera_shot_type, replay_flag, court_mapping_conf'}
+      - {sensor: scorebug_ocr, role: value, modes: [live, post_blind, post_anchored], resolution: 'per reading: scorebug_visible'}
+      - {sensor: pbp_feed, role: value, modes: [live], resolution: 'feed_heartbeat, for the feed_stale flag only'}
+    update:
+      changed_by: [T25]
+      event_instant: 'The frame at which the meta field that decides the level changed. First match wins: (1) no frame for stream_lost_after_s -> D5; (2) camera_shot_type commercial or studio, or a graphic that hides the whole court -> D4; (3) replay_flag yes, at any grade -> D3; (4) close_up, crowd, bench, reverse angle, shot type unknown, or main_wide with the court mapping below its gate for longer than tracking_up_after_s -> D2; (5) main_wide with scorebug_visible no -> D1; (6) otherwise D0. feed_stale is yes while feed_heartbeat is stale.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.5}
+      confirmed: {by: scorebug_ocr, p50_s: 1.0, p95_s: 2.0}
+      evidence: 'assumed: a level set by a cut is known with the cut (meta profile); the slowest part is the bug (away after 1.0 s, back after two readings - measured rule, core.yaml sensors.scorebug_ocr). A step to a worse level is taken at once; a step to a better one waits for the return rule of the field that decides it'
+    dropout:
+      - {when: detector unsure, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {meta_unsure_max_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: when the meta fields allow two levels, the worse one applies (order D0 < D1 < D2 < D3 < D4 < D5); after meta_unsure_max_s without a decision the level is unknown and every group follows its D2 column, clocks their D1 column. Replaced by the decision time on gold-v1 shot-type labels'}
+      - {when: stream lost or decoder gap, rule: CARRY, grade_path: [observed], limits: {stream_lost_after_s: 2.0}, on_return: REACQUIRE,
+         evidence: 'assumed: D5 is itself an observed level - we know that we see nothing. Reached after stream_lost_after_s without a frame. Replaced by the frame-arrival gaps logged at the live capture (OQ-LS-2)'}
+      - {when: feed stale, rule: HOLD_UNTIL_EVENT, grade_path: [observed], limits: {feed_stale_after_s: 90}, on_return: LATE_CORRECTION,
+         evidence: 'assumed: the flag does not change the level; it stops scorebook-only values and is cleared by the next row (feed_stale_after_s is a planning value, OQ-LS-1)'}
+    conflict: []
+    invariants: [TRN-04]
+    consumers: [every_dropout_rule, live_panel, studio, latency_report, review_queue]
+    params:
+      stream_lost_after_s: {value: 2.0, unit: s, why: 'no decoded frame for this long means the stream is lost (level D5_no_video)', evidence: 'assumed: longer than a stall inside normal play-out, short against every carry limit of this pack. Replaced by the frame-arrival gaps logged at the live capture (OQ-LS-2)'}
+    notes: >-
+      Added by this pack: the one value every dropout rule reads. It is computed from the other meta fields but
+      carries the meta profile (the index), so it has no derived_from list; its inputs are camera_shot_type,
+      replay_flag, scorebug_visible, court_mapping_conf, feed_heartbeat and the frame heartbeat. The level follows
+      what is on screen, not the period phase: an intermission is D4 because the broadcast shows a studio, not
+      because the half ended. Two gaps against the core (see the report): T25, the only transition allowed to
+      change the level, lists camera cuts, replays, graphics and the bug, but neither a lost stream nor a stale
+      feed; and no sensor of core.yaml stands for the decoder. Where the time went in the two sampled tournament
+      broadcasts: main wide with the bug 93 of 177 frames (53 %), main wide without 2, off main 58, replay 17,
+      graphic or ad 7 (measured: results/w3_intake/scorebug_summary.md).
+
+  ball_visible:
+    id: LS-OBS-10
+    group: observability
+    name: Ball visible
+    type: bool
+    unit: n/a
+    domain: 'yes when the ball is detected in the frame and passes its size check; no otherwise'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.ball_visible, frames.ball_visible, ball_states.ball_visible, ball_states.size_check_pass, ball_states.position_from_holder]
+    requirements: [R-SR-06, R-BL-01, R-VI-05]
+    profile: meta
+    update:
+      changed_by: per_frame
+      event_instant: 'The frame.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 1.0, p95_s: 1.3}
+      evidence: 'assumed: the per-frame value is known with the frame (frame_to_state_s); the health signal "ball lost" is declared after ball_lost_after_s (1.0 s) without the ball. Replaced by the measured share of ball-lost stretches that hide a try on MSU film'
+    dropout:
+      - {when: ball hidden in the hands of a tracked holder, rule: HOLD_UNTIL_EVENT, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-BL-01 and R-SR-06 - position is then the holder hands (ball_states.position_from_holder, ball_inferred). A held ball cannot be a try, so cv_events keeps watching: the health signal stays up although the frame value is no'}
+      - {when: ball not visible, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {ball_lost_after_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a ball unseen and unheld for ball_lost_after_s can no longer vouch that no try was taken (a try from the arc is in the air about 1 s); cv_events is then down and counters stop being held by it. Replaced by the measured share on MSU film'}
+      - {when: two ball candidates, rule: CARRY, grade_path: [observed, inferred], limits: {meta_unsure_max_s: 1}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a second ball at the sideline, a ball on a graphic or a head read as a ball; the candidate that passes the 0.24 m size check and continues the last track is kept, and with none the value is no. Replaced by ball precision on gold-v1 (R-BL-01 asks 95 %)'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: a ball seen in a tight shot has no court position; it does not count as visible for the state, and cv_events is down (core.yaml sensors.cv_events.health)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE, evidence: 'requirement: state record principle 7 - a ball seen in a replay is a past ball'}
+      - *d_stream
+    conflict: []
+    invariants: [new-IV-34]
+    consumers: [ball_position, ball_handler, try_in_flight, coverage_score, score_home, score_away, expected_points, studio]
+    notes: >-
+      Health signal of cv_events together with camera_shot_type. The frame value and the health signal differ on
+      purpose: the first says whether a ball was detected in this frame; the second whether the system can still
+      vouch that no try happened. Not measured on MSU film during the freeze.
+
+  court_visible_frac:
+    id: LS-OBS-11
+    group: observability
+    name: Court-visible fraction
+    type: float
+    unit: share
+    domain: '0-1: the share of the floor area of the whole court that lies inside the frame, from the court mapping. 0 in a commercial, studio or full-screen graphic. unknown when a court is in view but cannot be mapped'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [state_frame.court_visible_frac, frames.halfcourt_share_in_view, frames.zoom_factor]
+    requirements: [R-SR-10, R-VI-05]
+    profile: meta
+    update:
+      changed_by: per_frame
+      event_instant: 'The frame.'
+    timing:
+      provisional: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: cv_tracking, p50_s: 0.1, p95_s: 0.3}
+      evidence: 'assumed: frame_to_state_s and frame_to_state_p95_s; measured per run (K23)'
+    dropout:
+      - {when: court mapping below its gate, rule: CARRY, grade_path: [observed, inferred, unknown], limits: {mapping_min_conf: 0.8, tracking_up_after_s: 0.5}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: the fraction is computed from the mapping; it is held with the interpolated mapping for tracking_up_after_s and is unknown after that. Replaced by the measurement named under court_mapping_conf'}
+      - {when: not main camera, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: a tight shot shows some floor but has no mapping; the value is unknown, not 0. Only a shot with no court at all (commercial, studio, full-screen graphic) is an observed 0'}
+      - *d_stream
+    conflict: []
+    invariants: []
+    consumers: [coverage_score, degradation_level, player_positions, studio]
+    notes: >-
+      Two columns hold two different shares: state_frame.court_visible_frac is the share of the whole court, and
+      frames.halfcourt_share_in_view the share of the attacked half court (the part of coverage_score). Both come
+      from the same mapping. A main wide frame of half-court play shows about half of the whole court and nearly all
+      of the half court, so the two must not be mixed in a threshold.
+
+  audio_present:
+    id: LS-OBS-12
+    group: observability
+    name: Game audio present
+    type: enum
+    unit: n/a
+    domain: 'game (arena sound of the live game), masked (game sound too loud or under music for a whistle to be told), break (studio or advert sound), silent (no usable signal); unknown when it cannot be told'
+    none_value: unknown
+    stored: obs
+    dimension: null
+    lands_in: [frames.audio_rms_db, audio_seconds.loudness_rel_db, audio_seconds.music_flag, audio_seconds.commentary_active, video_files.audio_offset_ms]
+    lands_in_proposed: [audio_seconds.audio_state]
+    requirements: [R-VI-01c, R-VI-08, R-MM-03, R-AU-05]
+    profile: meta
+    sources:
+      - {sensor: audio, role: value, modes: [live, post_blind, post_anchored], resolution: 'per second (audio_seconds); onsets to about 0.1 s'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'camera_shot_type and replay_flag say whether the sound belongs to live play'}
+    update:
+      changed_by: continuous
+      event_instant: 'The audio second in which the state changed.'
+    timing:
+      provisional: {by: audio, p50_s: 0.1, p95_s: 0.3}
+      confirmed: {by: audio, p50_s: 1.0, p95_s: 1.3}
+      evidence: 'assumed: a loss of signal is heard at once (audio_delay_p50_s, audio_delay_p95_s); the state is confirmed over one audio second (audio_down_after_s). Replaced by the measured detection delay (OQ-LS-3)'
+    dropout:
+      - {when: audio silent or track missing, rule: CARRY, grade_path: [observed, unknown], limits: {audio_down_after_s: 1.0}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: R-VI-08 - silent sources have audio features off. After audio_down_after_s without signal the audio sensor is down; clock cues then come from CV alone and no whistle is assumed'}
+      - {when: whistle not heard (audio masked or away), rule: CARRY, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: under crowd noise or music a whistle can be missed; the state is masked and the absence of a whistle proves nothing (whistle_recall planning value 0.8, not measured). Replaced by whistle recall against loudness on two MSU broadcasts (OQ-LS-3)'}
+      - {when: replay, rule: FREEZE_ON_REPLAY, grade_path: [observed, carried], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'requirement: state record principle 7 - a whistle or horn heard under a replay belongs to the past; it is stored raw and is never a clock cue'}
+      - {when: break, rule: FREEZE_ON_BREAK, grade_path: [observed, carried], limits: {}, on_return: REACQUIRE,
+         evidence: 'definition: adverts and studio pieces carry their own whistles and buzzers; in level D4 the audio sensor is down by rule (core.yaml sensors.audio.health)'}
+      - *d_stream
+    conflict: []
+    invariants: []
+    consumers: [game_clock_running, ball_status, stoppage, feed_heartbeat, degradation_level, studio]
+    params:
+      audio_down_after_s: {value: 1.0, unit: s, why: 'audio without usable signal for this long is treated as away', evidence: 'assumed: one row of audio_seconds. Replaced by the measured length of audio dropouts on the recorded broadcasts (OQ-LS-3)'}
+    notes: >-
+      Health signal of the audio sensor. Present is not the same as able to hear a whistle: the masked state says
+      that sound is there but a missing whistle means nothing. Nothing about audio is measured yet (R-MM-03 and
+      R-AU-05 set the targets); every limit here is assumed and the replay harness sweeps stop cues at recall 0 and
+      0.8. Audio must be aligned with video to 40 ms (R-VI-08) before any onset is used as a timing source.
+
+  # =================================================================================================================
+  # Fixed for the game (known before tip; source registry; late changes through registry_change_log)
+  # =================================================================================================================
+  game_context:
+    id: LS-FIX-01
+    group: fixed
+    name: Game context
+    type: struct
+    unit: n/a
+    domain: 'season; game type (exhibition, non_conference, big_ten, big_ten_tournament, ncaa_tournament); tournament name and round; both seeds; conference game flag; stakes codes; rivalry flag. A part that does not apply holds none (seeds outside a tournament)'
+    none_value: none
+    stored: fixed
+    dimension: null
+    lands_in: [state_frame.season, state_frame.game_type, games.season, games.game_type, games.tournament_name, games.tournament_round, games.home_seed, games.away_seed, games.conference_game, games.tip_scheduled_utc, team_game_context.stakes_codes, team_game_context.is_rivalry]
+    requirements: [R-MD-14, R-CX-15, R-MD-01]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Written with the registry row of the game; frozen into the pre-game card.'
+    dropout_extra:
+      - &d_late {when: registry value corrected after tip, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION, evidence: 'requirement: R-PC-14 and R-MD-24 - the change is one registry_change_log row with its time; consumers get a new state_version, and what was known before the change stays as it was (as_of_known)'}
+      - {when: seeds or round not yet published, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a bracket slot is known only when the bracket is; until then the part is unknown, and a card frozen before it keeps unknown'}
+    consumers: [win_probability, possession_engine, studio, every_table, hypothesis_register]
+    notes: >-
+      Stamped on every record (R-MD-14). It also selects rule-side values that depend on the game type: the longer
+      half time of an NCAA tournament game (max_dwell.halftime_tournament). The overtime count is not context; it is
+      the period field.
+
+  venue_site:
+    id: LS-FIX-02
+    group: fixed
+    name: Venue and site
+    type: struct
+    unit: n/a, km
+    domain: 'venue id; home, away or neutral for each team; campus-to-venue distance of both teams (km), their difference and the proximity-home flag at neutral sites; the side and height of the main camera'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [games.venue_id, games.neutral_site, games.home_team_id, games.away_team_id, venues.lat_deg, venues.lon_deg, venues.tz, venues.elevation_m, venues.main_camera_side, venues.main_camera_height_m, team_game_context.side, team_game_context.campus_to_venue_km, team_game_context.proximity_home_flag]
+    requirements: [R-MD-14, R-CX-14, R-MD-22, R-VI-22]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Written with the registry row of the game. The venue row is valid from / to, so a rebuilt arena or a moved camera is a new venue row, not an edit.'
+    dropout_extra:
+      - *d_late
+      - {when: main camera on the other side than the venue row says, rule: SNAP_AND_LOG, grade_path: [observed, inferred], limits: {}, on_return: SNAP_AND_LOG,
+         evidence: 'definition: the camera side fixes left and right of basket_attacked_home. The first mapped main wide frames show the bench side and the floor markings; when they contradict the venue row the picture wins for this game and the venue row is queued for correction'}
+    conflict_extra:
+      - {between: [registry, cv_tracking], tolerance: 0, value_winner: cv_tracking, timing_winner: n/a, log_to: registry_change_log}
+    consumers: [win_probability, possession_engine, basket_attacked_home, court_mapping_conf, studio]
+    notes: >-
+      Home and away are fixed here once and are what every stored value is keyed by (R-MD-22); a neutral-site game
+      still has a listed home team. Distances are great-circle, in km. The proximity flag uses a 300 km difference
+      (R-CX-14, proposal).
+
+  rest_travel:
+    id: LS-FIX-03
+    group: fixed
+    name: Rest and travel
+    type: struct
+    unit: days, km, count
+    domain: 'per team: days of rest, games in the last 7 and 14 days, travel distance from the previous game (km), time zones crossed, travel mode (bus, flight, none), altitude difference (m)'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [team_game_context.days_rest, team_game_context.games_last_7d, team_game_context.games_last_14d, team_game_context.travel_from_prev_km, team_game_context.time_zones_crossed, team_game_context.travel_mode, team_game_context.altitude_diff_m]
+    requirements: [R-CX-05, R-PC-14]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Computed from the schedule as of the day before the game and frozen into the pre-game card.'
+    dropout_extra:
+      - *d_late
+      - {when: travel mode not published, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-CX-05 - an unknown mode is set by distance (bus under 400 km, flight above; proposal) and flagged; it stays inferred until a source states it'}
+      - {when: schedule changed after the card was frozen, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a postponed or moved game changes rest and travel; the frozen card keeps what was known, a new card is made for the new date'}
+    consumers: [win_probability, possession_engine, studio, hypothesis_register]
+    notes: >-
+      Pre-game inputs of the prediction only; nothing in the live fold reads them after tip. Rest days and games in
+      7 and 14 days recompute from the schedule; distance within 1 km of a great-circle recomputation (R-CX-05).
+
+  officials_crew:
+    id: LS-FIX-04
+    group: fixed
+    name: Officials crew
+    type: struct
+    unit: n/a
+    domain: 'crew id (the official ids, sorted), crew size (2 or 3), the crew chief; unknown until the crew is announced'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [game_officials.official_id, game_officials.listed_order, game_officials.is_crew_chief, game_officials.known_at_utc, game_officials.evidence, pregame_cards.officials_announced]
+    requirements: [R-RF-06, R-MD-24, R-CX-18]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per game; each row carries the time it became known'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored, pbp_only], resolution: 'the box score lists the officials after the game'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'the number of officials tracked on the floor (2 or 3)'}
+    update:
+      changed_by: [T00]
+      event_instant: 'The instant the crew is published (game_officials.known_at_utc). Crews are often not public before tip.'
+    dropout_extra:
+      - {when: crew not announced before the card cutoff, rule: CARRY, grade_path: [observed, unknown], limits: {pregame_card_cutoff_s: 900}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-CX-18 and R-MD-24 - a fact announced after the snapshot goes to the next snapshot only. A pre-game prediction uses the crew only if its known time is at or before the cutoff; otherwise the D-I mean tendencies stand in'}
+      - {when: official replaced during the game, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'rule: 2-1.1.a as mirrored in config/invariants.yaml officials_on_court_allowed (2 or 3) - an injured official can leave a crew of two; the tracked count shows it, the registry row is corrected with its time'}
+      - *d_late
+    conflict_extra:
+      - {between: [registry, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: n/a, log_to: registry_change_log}
+    invariants: [R-IV-02]
+    consumers: [win_probability, possession_engine, officials_positions, studio]
+    notes: >-
+      The only fixed field that is often unknown at tip. Its known time is what keeps tendency features honest: the
+      crew read from the box score after the game may describe the game, it may not feed a pre-game or live number.
+      Crew size is the check value of R-IV-02 for the officials tracked on the floor.
+
+  rosters_cards:
+    id: LS-FIX-05
+    group: fixed
+    name: Rosters and player cards
+    type: struct
+    unit: n/a
+    domain: 'per team: the players dressed (player id, jersey number, listed position and height), availability as of the card cutoff, and the id of each player card snapshot; frozen at tip'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [rosters.player_id, rosters.team_id, rosters.listed_position, rosters.listed_height_cm, jersey_history.jersey_number, pregame_cards.player_card_snapshot_ids, pregame_cards.availability_refs, availability.status, availability.known_at_utc, players.player_card_ref]
+    requirements: [R-PC-14, R-CX-18, R-MD-24, R-SR-07]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per game: roster, numbers and the frozen card snapshot'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored, pbp_only], resolution: 'the box score lists who played'}
+      - {sensor: cv_tracking, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'jersey numbers read on the floor'}
+    update:
+      changed_by: [T00]
+      event_instant: 'Frozen at the card cutoff (pregame_card_cutoff_s before the scheduled tip) and again at tip for the starters. No card field is dated after tip.'
+    dropout_extra:
+      - {when: availability changes after the card cutoff, rule: LATE_CORRECTION, grade_path: [observed], limits: {pregame_card_cutoff_s: 900}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-CX-18 - facts announced after the snapshot go to the next snapshot only; the live fold learns who plays from the floor and the feed, not from a later card'}
+      - {when: a number on the floor that no roster row has, rule: LOCK_OR_HOLD, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'config: config/identity_pack.yaml outputs.live_panel (OD-10) - the track stays on HOLD, never takes the nearest name; the roster is corrected through the change log after review'}
+      - *d_late
+    conflict_extra:
+      - {between: [registry, cv_tracking], tolerance: 0, value_winner: neither, timing_winner: n/a, log_to: identity_review}
+      - {between: [registry, pbp_final], tolerance: 0, value_winner: neither, timing_winner: n/a, log_to: identity_review}
+    invariants: [R-IV-01, R-IV-03]
+    consumers: [player_identity, lineup_home, lineup_away, player_fouls, garbage_time, win_probability, possession_engine, studio]
+    notes: >-
+      The closed set the identity pack assigns from: a player not on the roster cannot be named. A late roster
+      change (a number swap, a walk-on dressed) is the one registry change that matters during the game; it goes
+      through registry_change_log with its time, and identity re-runs only for the affected tracks. Card values
+      (shooting, tendencies) are as of the game date; the leakage test of R-PC-14 is that no field is dated after
+      tip. No player name or number of a private recording is stored in this repo.
+
+  pregame_card:
+    id: LS-FIX-06
+    group: fixed
+    name: Pre-game card
+    type: struct
+    unit: n/a
+    domain: 'the frozen card of the game: its hash, the cutoff it was frozen at, the ids of the ratings snapshots, of the market snapshots (the line as of the cutoff, and the closing line added at tip) and of our pre-game predictions'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [pregame_cards.horizon, pregame_cards.frozen_at_utc, pregame_cards.rating_snapshot_ids, pregame_cards.market_snapshot_refs, pregame_cards.context_feature_values, pregame_cards.prediction_ids, pregame_cards.card_sha256, predictions.made_at_utc, predictions.frozen_sha256, simulation_runs.pregame_card_sha256]
+    requirements: [R-CX-18, R-PC-14, R-PR-03, R-PR-09, R-MK-06, R-MK-07, R-MK-08]
+    profile: fixed
+    update:
+      changed_by: [T00]
+      event_instant: 'Frozen at the card cutoff, pregame_card_cutoff_s before the scheduled tip. The closing line is a second snapshot taken at tip; it is known from tip on, not before.'
+    dropout_extra:
+      - {when: card not frozen before tip, rule: CARRY, grade_path: [observed, unknown], limits: {pregame_card_cutoff_s: 900}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-MK-07 - a prediction is stamped and frozen before the market snapshot it is compared with. A card made after tip may describe the game but feeds no pre-game or live comparison; live win probability then starts from the ratings snapshot of the day before, marked'}
+      - {when: closing line missing in a source, rule: AUTHORITY, grade_path: [observed, inferred], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'requirement: R-MK-01 - with one of the three sources missing the other two decide; sources more than 0.5 points apart are flagged'}
+      - {when: a card value corrected after the freeze, rule: LATE_CORRECTION, grade_path: [observed], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a frozen card is never edited (card_sha256). A correction makes a new card with a later freeze time; predictions already made keep the hash of the card they used'}
+    consumers: [win_probability, possession_engine, market_join, studio]
+    params:
+      pregame_card_cutoff_s: {value: 900.0, unit: s, why: 'the card is frozen this long before the scheduled tip, with announced starters and availability', evidence: 'requirement: R-CX-18 (T-900 s snapshot)'}
+    notes: >-
+      Made exact against the 19 Oct page ("our prediction, ratings, closing line"): the three have different known
+      times. Ratings are as of the day before. Our prediction is frozen at the cutoff. The closing line does not
+      exist until tip; the market-free model variant never reads it (R-MK-08), the other may read it from tip on.
+      Only ids and hashes live in the state; odds and ratings values stay in their own private tables.
+
+  timeout_format:
+    id: LS-FIX-07
+    group: fixed
+    name: Timeout format
+    type: enum
+    unit: n/a
+    domain: 'at_least_3_media (three 30 s and one 60 s per team), fewer_than_3_media, no_media (four 75 s and two 30 s per team); the keys of config/invariants.yaml constants.timeouts'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [timeouts.media_format, timeouts.media_marks]
+    lands_in_proposed: [games.timeout_format]
+    requirements: [R-SR-04, R-IV-10]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored, pbp_only], resolution: 'per game: the format the media agreement of the game gives'}
+      - {sensor: pbp_feed, role: confirm, modes: [live], resolution: 'media timeout rows at the marks'}
+      - {sensor: pbp_final, role: confirm, modes: [post_anchored, pbp_only], resolution: 'media timeout rows at the marks'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'the timeouts-left count at tip (4 or 6 per team) where the bug shows it'}
+    update:
+      changed_by: [T00]
+      event_instant: 'Set before tip; T00 issues the timeout counts of the format. Confirmed at the first media timeout (first dead ball at or under the 16:00 mark of the first half).'
+    dropout_extra:
+      - {when: format not in the registry, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'assumed: a televised or streamed D-I game is taken as at_least_3_media (Rule 5-14.10) at grade inferred until the first media timeout or the opening bug count confirms it. Replaced by the count of formats over the recorded MSU games'}
+      - {when: first media mark passes with no media stop, rule: QUARANTINE, grade_path: [inferred, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'rule: 5-14.10 as mirrored in config/invariants.yaml media_marks_s (960, 720, 480, 240 s) and media_pre_mark_window_s (30 s) - a media-format game stops at the first dead ball after each mark, unless a team timeout in the 30 s before the mark took its place. Neither of the two after a dead ball under the first mark contradicts the format: the counts issued by T00 are quarantined until the feed or the bug settles it (R-SR-04: the format is read from the play-by-play)'}
+      - *d_late
+    conflict_extra:
+      - {between: [registry, pbp_final], tolerance: 0, value_winner: pbp_final, timing_winner: n/a, log_to: registry_change_log}
+      - {between: [registry, scorebug_ocr], tolerance: 0, value_winner: neither, timing_winner: n/a, log_to: scoreboard_flags}
+    invariants: [new-IV-12, new-IV-13, R-IV-10]
+    consumers: [timeouts_left_home, timeouts_left_away, media_segment, possession_engine, win_probability, studio]
+    notes: >-
+      A wrong format makes every timeout count wrong from the first second (4 against 6 per team), so this fixed
+      field has a confirm path. A correction re-issues the T00 counts under a new state_version. On a recording
+      with shortened breaks a media timeout can be cut out of the video entirely; the confirm then rests on the
+      play-by-play alone.
+
+  scorebug_template:
+    id: LS-FIX-08
+    group: fixed
+    name: Scorebug template and side mapping
+    type: struct
+    unit: n/a
+    domain: 'template id of the graphics package; the box of each bug field; which side of the bug is the home team; which fields this bug shows at all (shot clock, team fouls as a number, bonus label, timeouts, arrow); where tenths appear'
+    none_value: unknown
+    stored: fixed
+    dimension: null
+    lands_in: [games.graphics_package_id, games.broadcast_network, scoreboard_ocr.scorebug_template_id, scoreboard_ocr.bbox_x_px, scoreboard_ocr.bbox_y_px, scoreboard_ocr.bbox_w_px, scoreboard_ocr.bbox_h_px]
+    lands_in_proposed: [games.scorebug_home_side, games.scorebug_fields_shown]
+    requirements: [R-SY-01, R-VI-07, R-MD-22]
+    profile: fixed
+    sources:
+      - {sensor: registry, role: value, modes: [live, post_blind, post_anchored], resolution: 'per game: the template of the network and season, and the side of the home team'}
+      - {sensor: scorebug_ocr, role: confirm, modes: [live, post_blind, post_anchored], resolution: 'the first readings of the game: template fit, team labels, opening score 0-0'}
+      - {sensor: human, role: fallback, modes: [live, post_blind, post_anchored], resolution: 'a template drawn by hand for a new graphics package'}
+    update:
+      changed_by: [T00]
+      event_instant: 'Set before tip from the registry. Confirmed by the first scorebug_up_after_reads readings that fit the template and, for the side, by the first score event (the side that steps is the side of the team that scored).'
+    dropout_extra:
+      - {when: template unknown or a new graphics package, rule: CARRY, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: without a template nothing on the bug can be read; scorebug_visible stays no and the game runs at level D1 or worse until a template is drawn. Clock, score and counts then rest on CV, audio and the feed'}
+      - {when: side mapping unconfirmed, rule: CONFIRM_WINDOW, grade_path: [inferred], limits: {make_confirm_window_s: 4.0}, on_return: SNAP_AND_LOG,
+         evidence: 'decision: K02 - the first made basket seen by CV must step one side of the bug inside make_confirm_window_s; that side is then the side of the scoring team. Until then score_home and score_away are read by the registry mapping, graded inferred'}
+      - {when: bug step on the side the registry gives to the other team, rule: QUARANTINE, grade_path: [observed, unknown], limits: {}, on_return: LATE_CORRECTION,
+         evidence: 'definition: a swapped side mapping makes every score right in total and wrong by team. When a confirmed make by one team steps the other side, both scores are quarantined, the mapping is swapped, the stretch is rebuilt under a new state_version and the registry is corrected'}
+      - {when: layout changes during the game, rule: CARRY, grade_path: [observed, carried], limits: {scorebug_up_after_reads: 2}, on_return: SNAP_AND_LOG,
+         evidence: 'assumed: a network can switch to a wider end-game bug or drop a field; readings that stop fitting count as bug hidden until scorebug_up_after_reads readings fit a known template again. Replaced by the count of mid-game layout changes over the recorded MSU games'}
+      - *d_late
+    conflict_extra:
+      - {between: [registry, scorebug_ocr], tolerance: 0, value_winner: scorebug_ocr, timing_winner: n/a, log_to: registry_change_log}
+    invariants: [R-IV-04, R-IV-16]
+    consumers: [scorebug_visible, score_home, score_away, team_fouls_home, team_fouls_away, timeouts_left_home, timeouts_left_away, shot_clock_s, arrow, studio]
+    notes: >-
+      Added by this pack. What a bug shows differs by broadcast: team fouls appear as a number in 28 of the 33
+      recorded broadcasts, timeouts are readable in 59 % and the shot clock in 79 % of the seconds with a clock
+      (measured: measured_sensors.json bug_fields). The template says which fields can ever be observed from the
+      bug in this game, so a field the bug never shows is graded from its other sources from the start, instead of
+      waiting for a reading that cannot come. The side mapping is the one place where home / away storage meets a
+      left / right picture; it is checked, not trusted.
