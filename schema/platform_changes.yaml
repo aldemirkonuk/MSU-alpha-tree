@@ -1,0 +1,657 @@
+# Proposed schema changes of the data-platform pack (baseline 6, 2026-11-11). PROPOSAL; do not treat as schema.
+# Source of every entry: config/data_platform.yaml (0.1.0). No file of schema/tables/ is edited. The requirements
+# session approves; the schema owner merges. Every block carries "not applied: proposal for the requirements session".
+# Lint: python tools/specgen/platform/dplib.py --check (the audit below must cover every flagged column, no more).
+version: 0.1.0
+status: proposed (not applied; proposal for the requirements session)
+date: '2026-11-11'
+owner: Mac session for Aldemir (baseline 6 of 8, label core)
+pack: config/data_platform.yaml
+reading_order: [team_neutral, column_additions, new_tables, views, harness_proposals, requirement_text_fixes]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Item 1. The team-neutral change set. `audit` is executable: dplib.audit_msu_relative() scans the name and the enum
+# values of every column of schema/tables (107 files, 3,005 columns) for a team-relative token; every flagged column
+# has exactly one disposition here. 74 flagged = 59 changed + 7 kept (relative to the row's own team) + 8 false hits.
+team_neutral:
+  status: 'not applied: proposal for the requirements session'
+  rule: >-
+    A stored column names a side as home or away (wide state columns, side enums) or by team_id (long tables).
+    games.home_team_id and games.away_team_id are the only place a side meets a team. A column relative to the row's
+    own team (opponent_*, own_*) may stay when the row carries team_id and the definition says so. Nothing stored is
+    relative to one programme.
+  counts: {tables_scanned: 107, columns_scanned: 3005, flagged: 74, changed: 59, kept_row_relative: 7, false_hits: 8, tables_touched: 16}
+  audit:
+    cv_events_unmatched:
+      team: &side_enum {action: enum, values_map: {msu: home, opponent: away}, why: 'side enum as config/state_machine.yaml possession_team: home, away, none'}
+    foul_state:
+      team: *side_enum
+      licence_class: &false_us {action: false_hit, why: 'the value computed_by_us holds the token "us"; it is a licence class, not a side'}
+    free_throws:
+      ball_after: &row_rel {action: keep, row_relative: true, why: 'relative to the row''s own team_id, not to one programme; the definition must say so'}
+      team: *side_enum
+      shooter_selection: *row_rel
+      violation_team: *side_enum
+      licence_class: *false_us
+    lineup_stints:
+      opponent_lineup_key: *row_rel
+    made_basket_events:
+      team: *side_enum
+      licence_class: *false_us
+    restarts:
+      restart_team: *side_enum
+      arrow_before: *side_enum
+      arrow_after: *side_enum
+      licence_class: *false_us
+    reviews:
+      requested_by: {action: enum, values_map: {head_coach_msu: head_coach_home, head_coach_opp: head_coach_away}, why: 'the coach is named by side'}
+      score_delta_msu: {action: rename, to: score_delta_home, why: 'wide pair home / away'}
+      score_delta_opp: {action: rename, to: score_delta_away, why: 'wide pair home / away'}
+      possession_after: *side_enum
+      licence_class: *false_us
+    scheme_changes:
+      opp_ppp_before: *row_rel
+    scheme_states:
+      is_msu_defending: {action: drop, why: 'team_id already names the defending team; a focus view derives the flag'}
+      msu_principle_flags: {action: rename, to: [principle_flags, principle_set_id], why: 'the flags of any team under a named rule set; one programme''s rules are one set'}
+    score_events:
+      team: *side_enum
+      event_kind: *row_rel
+      score_msu_after: {action: rename, to: score_home_after, why: 'wide pair home / away'}
+      score_opp_after: {action: rename, to: score_away_after, why: 'wide pair home / away'}
+      licence_class: *false_us
+    scoreboard_flags:
+      team: *side_enum
+      licence_class: *false_us
+    state_frame:
+      score_msu: {action: rename, to: score_home, why: 'state_machine dimension score_home'}
+      score_opp: {action: rename, to: score_away, why: 'state_machine dimension score_away'}
+      team_fouls_msu: {action: rename, to: team_fouls_home, why: 'state_machine dimension team_fouls_home'}
+      team_fouls_opp: {action: rename, to: team_fouls_away, why: 'state_machine dimension team_fouls_away'}
+      msu_bonus_state: {action: rename, to: bonus_home, why: 'state_machine dimension bonus_home'}
+      opp_bonus_state: {action: rename, to: bonus_away, why: 'state_machine dimension bonus_away'}
+      timeouts_msu: {action: rename, to: timeouts_left_home, why: 'state_machine dimension timeouts_left_home'}
+      timeouts_opp: {action: rename, to: timeouts_left_away, why: 'state_machine dimension timeouts_left_away'}
+      to30_left_msu: {action: rename, to: to30_left_home, why: 'wide pair home / away'}
+      to60_left_msu: {action: rename, to: to60_left_home, why: 'wide pair home / away'}
+      to75_left_msu: {action: rename, to: to75_left_home, why: 'wide pair home / away'}
+      to30_left_opp: {action: rename, to: to30_left_away, why: 'wide pair home / away'}
+      to60_left_opp: {action: rename, to: to60_left_away, why: 'wide pair home / away'}
+      to75_left_opp: {action: rename, to: to75_left_away, why: 'wide pair home / away'}
+      challenge_available_msu: {action: rename, to: challenge_available_home, why: 'state_machine dimension challenge_available_home'}
+      challenge_available_opp: {action: rename, to: challenge_available_away, why: 'state_machine dimension challenge_available_away'}
+      team_in_possession: *side_enum
+      possession_arrow: *side_enum
+      ball_control_state: {action: enum, values_map: {msu_ball: home_ball, opponent_ball: away_ball}, why: 'the other four values stay'}
+    state_second:
+      score_msu: {action: rename, to: score_home, why: 'state_machine dimension score_home'}
+      score_opp: {action: rename, to: score_away, why: 'state_machine dimension score_away'}
+      team_in_possession: *side_enum
+      possession_arrow: *side_enum
+      share_msu_ball: {action: rename, to: share_home_ball, why: 'share of the second with the home team in control'}
+      share_opponent_ball: {action: rename, to: share_away_ball, why: 'share of the second with the away team in control'}
+      team_fouls_msu: {action: rename, to: team_fouls_home, why: 'state_machine dimension team_fouls_home'}
+      team_fouls_opp: {action: rename, to: team_fouls_away, why: 'state_machine dimension team_fouls_away'}
+      msu_bonus_state: {action: rename, to: bonus_home, why: 'state_machine dimension bonus_home'}
+      opp_bonus_state: {action: rename, to: bonus_away, why: 'state_machine dimension bonus_away'}
+      fouls_to_give_msu: {action: rename, to: fouls_to_give_home, why: 'wide pair home / away'}
+      fouls_to_give_opp: {action: rename, to: fouls_to_give_away, why: 'wide pair home / away'}
+      timeouts_msu: {action: rename, to: timeouts_left_home, why: 'state_machine dimension timeouts_left_home'}
+      timeouts_opp: {action: rename, to: timeouts_left_away, why: 'state_machine dimension timeouts_left_away'}
+      foul_trouble_msu: {action: rename, to: foul_trouble_home, why: 'wide pair home / away'}
+      foul_trouble_opp: {action: rename, to: foul_trouble_away, why: 'wide pair home / away'}
+      run_msu_2min: {action: rename, to: run_home_2min, why: 'wide pair home / away'}
+      run_opp_2min: {action: rename, to: run_away_2min, why: 'wide pair home / away'}
+    substitutions:
+      opp_points_at: *row_rel
+    team_game_context:
+      is_msu: {action: drop, why: 'a focus view derives is_focus = (team_id = focus_team_id); nothing stored knows a focus'}
+      opponent_team_id: *row_rel
+    timeouts:
+      team: *side_enum
+      left_after_msu: {action: rename, to: left_after_home, why: 'wide pair home / away'}
+      left_after_opp: {action: rename, to: left_after_away, why: 'wide pair home / away'}
+      licence_class: *false_us
+  # Columns the token scan cannot see: the name is neutral, the meaning is not.
+  other_renames:
+    state_frame:
+      - {column: margin, to: margin_home, why: 'defined as the focus programme''s score minus the other; stored as score_home - score_away'}
+      - {column: players_on_floor, to: [lineup_home, lineup_away], why: 'positions 0-4 were one programme; two lists as the state_machine dimensions, each sorted by player id'}
+    state_second:
+      - {column: margin, to: margin_home, why: 'as state_frame'}
+    possessions:
+      - {column: margin_start, to: margin_start_off, why: 'relative to the offence (the row''s team_id); the name now says so'}
+      - {column: pre_win_prob, to: pre_win_prob_off, why: 'relative to the offence; the name now says so'}
+    scheme_changes:
+      - {column: margin, to: margin_def, why: 'relative to the defending team (the row''s team_id); the name now says so'}
+    scoreboard_ocr:
+      - {column: score_home_raw, to: score_left_raw, why: &bug 'a scorebug has a left and a right team, not a home and an away team; home / away exists only after the join to the bug template of the game (R-FD-13)'}
+      - {column: score_away_raw, to: score_right_raw, why: *bug}
+      - {column: team_fouls_home_raw, to: team_fouls_left_raw, why: *bug}
+      - {column: team_fouls_away_raw, to: team_fouls_right_raw, why: *bug}
+      - {column: bonus_home_raw, to: bonus_left_raw, why: *bug}
+      - {column: bonus_away_raw, to: bonus_right_raw, why: *bug}
+      - {column: timeouts_home_raw, to: timeouts_left_raw, why: *bug}
+      - {column: timeouts_away_raw, to: timeouts_right_raw, why: *bug}
+  kept_as_model: 'events.home_score_after, events.away_score_after, events.on_floor_home, events.on_floor_away and events.home_win_prob_source are already home / away: the pattern every other table follows.'
+  definition_fixes:
+    - {where: 'team-id columns of 41 tables', fix: 'delete the range hint that names one programme''s team id; it is the only place a real team id sits in a neutral column'}
+    - {where: 'possession_id of 23 tables', fix: 'replace "under OUR rule" by "under the possession rule of config/state_machine.yaml (ends only when the other team gains control)"'}
+    - {where: 'the seven kept columns', fix: 'add "relative to the row''s own team" to the definition'}
+    - {where: 'games.game_type', fix: 'one neutral enum (exhibition, non_conference, conference, conference_tournament, ncaa_tournament, other_postseason); the conference is its own column, no value names one league'}
+    - {where: 'events.event_id', fix: 'the third part is the source''s own play id (source_play_id), not a sequence number (R-EN-11)'}
+    - {where: 'state_transitions.transition_id', fix: 'made from (game, pass, trigger event, ttype, k), not from the order index: an inserted row no longer renumbers its neighbours (cross_item.ids.transition_id)'}
+  global_metadata:
+    file: schema/global_metadata.yaml
+    renames: {score_msu: score_home, score_opp: score_away, margin: margin_home, team_fouls_msu: team_fouls_home, team_fouls_opp: team_fouls_away, timeouts_msu: timeouts_left_home, timeouts_opp: timeouts_left_away}
+    enums: 'team_in_possession and ball_control_state take home / away values; one bonus field becomes bonus_home and bonus_away; game_type takes the neutral enum'
+  proposed_changes_file:
+    file: schema/tables_proposed_changes.yaml
+    renames: {largest_lead_msu: largest_lead_home, largest_lead_opp: largest_lead_away, secs_since_fg_msu: secs_since_fg_home, secs_since_fg_opp: secs_since_fg_away, secs_since_point_msu: secs_since_point_home, secs_since_point_opp: secs_since_point_away}
+  metric_inputs:
+    note: '25 distinct inputs of config/metrics.yaml read a column renamed here; 101 of 1,591 metrics use one. The registry owner renames them when the schema change is approved. A metric "for a team" reads the pair through the team-keyed view.'
+    by_count: {margin_of_state_second: 48, bonus_pair: 16, timeouts_pair: 17, team_in_possession: 15, players_on_floor: 5, fouls_to_give_pair: 7, foul_trouble_pair: 7, score_pair: 6, timeouts_left_after_pair: 6, team_fouls_pair: 4, score_delta_pair: 3, ball_control_values: 6, is_focus_flag: 1}
+  live_state_note: 'config/live_state/core.yaml maps its fields to the old column names (inventory.columns). It goes stale when this change set is applied. Owned by the baseline-4 agent; reported, not edited.'
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Columns added to existing tables.
+column_additions_status:
+  games: 'not applied: proposal for the requirements session'
+  events: 'not applied: proposal for the requirements session'
+  raw_pulls: 'not applied: proposal for the requirements session'
+  state_transitions: 'not applied: proposal for the requirements session'
+  state_segments: 'not applied: proposal for the requirements session'
+  possessions: 'not applied: proposal for the requirements session'
+  chances: 'not applied: proposal for the requirements session'
+  lineup_stints: 'not applied: proposal for the requirements session'
+column_additions:
+  games:
+    - {column: home_away_source, type: 'enum (espn_listing, cbbd_listing, official_box, manual)', nullable: false, definition: 'Where the home / away listing of this game comes from. At a neutral site the listing is a convention, not a venue fact.', requirements: [N-FD-20]}
+    - {column: pbp_status, type: 'enum (ok, ok_with_gaps, too_many_gaps, broken_attribution, broken_score, missing)', nullable: false, definition: 'Result of the game gate (ALG-TN-4) on the current play-by-play version. Only ok and ok_with_gaps enter products.', requirements: [N-DQ-19, R-FD-13]}
+    - {column: lineup_status, type: 'enum (ok, unreliable, missing)', nullable: false, definition: 'Result of the lineup part of the game gate. Lineup-grain metrics are served only when ok.', requirements: [N-DQ-19]}
+  events:
+    - {column: source_play_id, type: string, nullable: true, definition: 'The source''s own play id, as given (third part of event_id for play-by-play rows). Null for events that no source row states.', requirements: [R-EN-11]}
+    - {column: source_order_index, type: int16, nullable: true, definition: 'Position of the row among the rows of the same period and clock second in the pull, 0-based. The source order, kept as evidence; never the order used.', requirements: [R-SY-13]}
+    - {column: order_index, type: int16, nullable: false, definition: 'Position of the event inside its period and clock second after the canonical order rule (ORD-03), 0-based. An ordinal: a position, not an identity.', requirements: [R-SY-13, R-SY-18]}
+    - {column: order_source, type: 'enum (canonical_rule, video, source)', nullable: false, definition: 'What fixed order_index. canonical_rule = ORD-03 of config/state_machine.yaml.', requirements: [R-SY-13]}
+    - {column: side, type: 'enum (home, away, none)', nullable: false, definition: 'Side credited with the event; none for official stoppages and period ends. team_id is the same fact through games.', requirements: [R-MD-35]}
+    - {column: pbp_version_id, type: string, nullable: true, definition: 'The play-by-play version this row was parsed from (pv-...). Null for events of other sources.', requirements: [R-SY-20]}
+  raw_pulls:
+    - {column: pull_id, type: string, nullable: false, definition: 'pl-... id of the pull (cross_item.ids.pull_id).', requirements: [R-SY-12]}
+    - {column: request_key, type: string, nullable: false, definition: 'The logical thing asked, without credentials: endpoint plus its sorted parameters. Two pulls of the same thing share it.', requirements: [R-SY-12]}
+    - {column: etag, type: string, nullable: true, definition: 'ETag header of the response, as received.', requirements: [R-DQ-05]}
+    - {column: sha256_received, type: string, nullable: false, definition: 'sha256 of the body exactly as received (equals sha256 unless identity fields were redacted).', requirements: [R-DQ-05]}
+  state_transitions:
+    - {column: trigger_event_id, type: string, nullable: true, definition: 'event_id of the play row being typed when the transition was emitted, stated or inferred. Null only for the game-opened transition.', requirements: [R-EN-19]}
+  state_segments:
+    - {column: segment_id, type: string, nullable: false, definition: 'sg-... id from (game, pass, dimension, dim_key, opened_by_transition_id). Stable when only the end of the segment moves.', requirements: [R-EN-17]}
+  possessions:
+    - {column: possession_key, type: string, nullable: false, definition: 'po-... identity of the possession from the transition that opened it. possession_id stays the ordinal within the game.', requirements: [R-EN-17]}
+    - {column: start_transition_id, type: string, nullable: false, definition: 'Transition that opened the possession (range lineage, from).', requirements: [R-EN-19]}
+    - {column: end_transition_id, type: string, nullable: false, definition: 'Transition that closed it (range lineage, to; exclusive).', requirements: [R-EN-19]}
+  chances:
+    - {column: chance_key, type: string, nullable: false, definition: 'ch-... identity of the chance from the transition that opened it.', requirements: [R-EN-17]}
+    - {column: possession_key, type: string, nullable: false, definition: 'Identity of the possession the chance belongs to.', requirements: [R-EN-17]}
+    - {column: start_transition_id, type: string, nullable: false, definition: 'Transition that opened the chance.', requirements: [R-EN-19]}
+    - {column: end_transition_id, type: string, nullable: false, definition: 'Transition that closed it (exclusive).', requirements: [R-EN-19]}
+  lineup_stints:
+    - {column: stint_key, type: string, nullable: false, definition: 'st-... identity of the stint from (side, the transition that opened it). stint_num stays the ordinal.', requirements: [R-EN-17]}
+    - {column: start_transition_id, type: string, nullable: false, definition: 'Transition that opened the stint.', requirements: [R-EN-19]}
+    - {column: end_transition_id, type: string, nullable: false, definition: 'Transition that closed it (exclusive).', requirements: [R-EN-19]}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# New tables. Storage of all: private lake (never the repo). Content-addressed partitions hold no wall time and no
+# run id (cross_item rule X-1); the catalogue tables (marked catalogue) are append-only logs and do hold times.
+new_tables:
+  pbp_plays:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per play row of one play-by-play version (the parsed pull, in canonical form; licensed)
+    primary_key: [source, game_id, pbp_version_id, file_index]
+    kind: content
+    requirements: [R-SY-20, R-DQ-05, R-EN-19]
+    columns:
+      - {column: source, type: string, definition: 'Source of the play-by-play (cbbd).'}
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pbp_version_id, type: string, definition: 'pv-... id of the version.'}
+      - {column: file_index, type: int32, definition: 'Position of the row in the pull, 0-based. The lineage address of a raw row.'}
+      - {column: source_play_id, type: string, definition: 'The source''s own play id; the match key of the diff.'}
+      - {column: occurrence, type: int16, definition: '0 for the first row with this source_play_id in the pull, 1 for the next (a duplicate is a break, ID-01).'}
+      - {column: period, type: int16, definition: 'Period of the row.'}
+      - {column: seconds_remaining, type: int32, definition: 'Clock of the row in seconds remaining in the period.'}
+      - {column: source_order_index, type: int16, definition: 'Position among the rows of the same period and second, 0-based.'}
+      - {column: row_sha256, type: string, definition: 'sha256 of the canonical JSON of the whole row.'}
+      - {column: fold_input_sha256, type: string, definition: 'sha256 of the canonical JSON of the fields the fold and the box stages read (pbp_versions.params field_classes).'}
+      - {column: body, type: string, definition: 'The row as canonical JSON (licensed text; private).'}
+  pbp_versions:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per distinct content of a game's play-by-play from one source
+    primary_key: [source, game_id, pbp_version_id]
+    kind: catalogue
+    requirements: [R-SY-20, R-SY-12, R-MD-24]
+    columns:
+      - {column: source, type: string, definition: 'Source of the play-by-play.'}
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pbp_version_id, type: string, definition: 'pv-... id from (source, game_id, plays_sha256).'}
+      - {column: plays_sha256, type: string, definition: 'sha256 of the canonical JSON of the list of play rows in file order.'}
+      - {column: fold_input_sha256, type: string, definition: 'sha256 over the fold-input projection of the rows in file order. Equal across two versions = no re-fold.'}
+      - {column: n_plays, type: int32, definition: 'Rows in the version.'}
+      - {column: n_duplicate_source_ids, type: int32, definition: 'Rows whose source_play_id was already seen in the pull (break ID-01).'}
+      - {column: first_pull_id, type: string, definition: 'The pull that first showed this content.'}
+      - {column: known_at_utc, type: timestamp, definition: 'fetched_at_utc of first_pull_id: when this content was first available to us.'}
+      - {column: canonical_rule, type: string, definition: 'Version of the canonical-form rule (the pack version that defines it).'}
+  pbp_version_pulls:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per pull of a game's play-by-play (the version timeline of the game)
+    primary_key: [pull_id]
+    kind: catalogue
+    requirements: [R-SY-20, R-SY-12]
+    columns:
+      - {column: pull_id, type: string, definition: 'pl-... id of the pull.'}
+      - {column: source, type: string, definition: 'Source.'}
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: fetched_at_utc, type: timestamp, definition: 'When the response was received.'}
+      - {column: schedule_slot, type: 'enum (first, t_plus_1d, t_plus_8d, t_plus_30d, season_sweep, manual)', definition: 'Which planned pull this was.'}
+      - {column: http_status, type: int16, definition: 'Status of the response; 304 = not modified (no body, version unchanged).'}
+      - {column: body_sha256, type: string, definition: 'sha256 of the body as received; null on 304.', nullable: true}
+      - {column: etag, type: string, definition: 'ETag as received.', nullable: true}
+      - {column: pbp_version_id, type: string, definition: 'The version this pull showed.'}
+      - {column: prev_pbp_version_id, type: string, definition: 'The version current just before this pull; null for the first pull.', nullable: true}
+      - {column: is_change, type: bool, definition: 'pbp_version_id differs from prev_pbp_version_id.'}
+      - {column: diff_id, type: string, definition: 'df-... id of the diff when is_change.', nullable: true}
+      - {column: n_added, type: int32, definition: 'Plays added against the previous version.'}
+      - {column: n_removed, type: int32, definition: 'Plays removed.'}
+      - {column: n_changed, type: int32, definition: 'Plays with at least one changed field.'}
+      - {column: n_moved, type: int32, definition: 'Plays whose position inside their second changed and nothing else.'}
+      - {column: change_class, type: 'enum (none, cosmetic, timing, attribution, structural)', definition: 'Highest class among the changed fields (pbp_versions.params field_classes).'}
+  pbp_diffs:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per changed field of one play between two versions (added and removed plays have one row with field = "*")
+    primary_key: [diff_id, source_play_id, occurrence, field]
+    kind: content
+    requirements: [R-SY-20, R-SY-12]
+    columns:
+      - {column: diff_id, type: string, definition: 'df-... id from (from version, to version).'}
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: from_pbp_version_id, type: string, definition: 'Older version.'}
+      - {column: to_pbp_version_id, type: string, definition: 'Newer version.'}
+      - {column: source_play_id, type: string, definition: 'Match key.'}
+      - {column: occurrence, type: int16, definition: 'As pbp_plays.occurrence.'}
+      - {column: change_kind, type: 'enum (added, removed, changed, moved, rekeyed)', definition: 'What happened to the play.'}
+      - {column: field, type: string, definition: 'Dotted field path of the play row; "*" for added and removed.'}
+      - {column: field_class, type: 'enum (cosmetic, timing, attribution, structural)', definition: 'Class of the field.'}
+      - {column: old_value, type: string, definition: 'Canonical JSON of the old value (licensed; private).', nullable: true}
+      - {column: new_value, type: string, definition: 'Canonical JSON of the new value (licensed; private).', nullable: true}
+      - {column: period_old, type: int16, definition: 'Period of the play in the older version.', nullable: true}
+      - {column: seconds_remaining_old, type: int32, definition: 'Clock of the play in the older version.', nullable: true}
+      - {column: period_new, type: int16, definition: 'Period in the newer version.', nullable: true}
+      - {column: seconds_remaining_new, type: int32, definition: 'Clock in the newer version.', nullable: true}
+  change_sets:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per row of a derived table that differs between two outputs of the same stage and game
+    primary_key: [change_set_id, row_id]
+    kind: content
+    requirements: [R-SY-20, R-SY-15, R-EN-19]
+    columns:
+      - {column: change_set_id, type: string, definition: 'cs-... id from (table, game_id, pass, from output key, to output key).'}
+      - {column: table_name, type: string, definition: 'The derived table.'}
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: from_output_key, type: string, definition: 'Older output.'}
+      - {column: to_output_key, type: string, definition: 'Newer output.'}
+      - {column: row_id, type: string, definition: 'Identity of the row (the id rule of its table).'}
+      - {column: op, type: 'enum (insert, retract, change, renumber)', definition: 'insert = only in the newer; retract = only in the older; change = in both with different content; renumber = in both, only ordinal columns differ.'}
+      - {column: old_row_hash, type: string, definition: 'Content hash of the older row.', nullable: true}
+      - {column: new_row_hash, type: string, definition: 'Content hash of the newer row.', nullable: true}
+      - {column: dimension, type: string, definition: 'State dimension for state_segments rows; null elsewhere.', nullable: true}
+      - {column: period, type: int16, definition: 'Period of the row''s start (the later of old and new).', nullable: true}
+      - {column: game_clock_ds, type: int32, definition: 'Clock of the row''s start in deciseconds remaining.', nullable: true}
+      - {column: before_earliest_change, type: bool, definition: 'The row ends before the earliest changed instant of the diff. Must be false on every row (causality check of ALG-PV-4).'}
+  stat_corrections:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per served metric value that differs between two snapshots
+    primary_key: [stat_correction_id]
+    kind: content
+    requirements: [R-SY-12, R-SY-20, R-DQ-15]
+    columns:
+      - {column: stat_correction_id, type: string, definition: 'sc-... id from (metric_id, grain, entity keys, from snapshot, to snapshot).'}
+      - {column: metric_id, type: string, definition: 'Registry id.'}
+      - {column: grain, type: string, definition: 'Grain of the value.'}
+      - {column: game_id, type: string, definition: 'Game key; null for a season value.', nullable: true}
+      - {column: team_id, type: string, definition: 'Team of the value; null when not a team value.', nullable: true}
+      - {column: player_id, type: string, definition: 'Player of the value; null when not a player value.', nullable: true}
+      - {column: old_value, type: float64, definition: 'Value under the older snapshot.', nullable: true}
+      - {column: new_value, type: float64, definition: 'Value under the newer snapshot.', nullable: true}
+      - {column: old_n, type: int64, definition: 'n under the older snapshot.', nullable: true}
+      - {column: new_n, type: int64, definition: 'n under the newer snapshot.', nullable: true}
+      - {column: from_snapshot_id, type: string, definition: 'Older snapshot.'}
+      - {column: to_snapshot_id, type: string, definition: 'Newer snapshot.'}
+      - {column: cause_diff_id, type: string, definition: 'The play-by-play diff behind it; null for a config or code change.', nullable: true}
+      - {column: was_published, type: bool, definition: 'The older value is in metric_value_log (a product showed it).'}
+  stage_runs:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per execution of one stage for one partition (the run record per stage; one JSON file per run)
+    primary_key: [run_id]
+    kind: catalogue
+    requirements: [R-EN-19, R-RR-01, R-CS-13]
+    columns:
+      - {column: run_id, type: string, definition: 'run-<UTC>-<8 random hex>. An event, not content: never written into a row of a content partition.'}
+      - {column: stage, type: string, definition: 'Stage id of the stage graph.'}
+      - {column: dag_node, type: string, definition: 'Node of the graph (stage, or stage and game).'}
+      - {column: status, type: 'enum (ok, failed, skipped_cached)', definition: 'skipped_cached = the output key existed, nothing was computed.'}
+      - {column: started_utc, type: timestamp, definition: 'Start of the run.'}
+      - {column: finished_utc, type: timestamp, definition: 'End of the run.'}
+      - {column: duration_s, type: float64, definition: 'Wall time of the run in seconds.'}
+      - {column: cpu_s, type: float64, definition: 'Processor seconds of the run.'}
+      - {column: gpu_s, type: float64, definition: 'GPU seconds; 0 for the play-by-play tier.'}
+      - {column: api_calls, type: int32, definition: 'External calls made; 0 for every stage after the pull.'}
+      - {column: cost_usd, type: float64, definition: 'gpu_s and api_calls priced with the rates of the cost model (R-CS-13); 0 when both are 0.'}
+      - {column: code_version, type: string, definition: 'cv-... id of the declared code files and the lockfile.'}
+      - {column: git_commit, type: string, definition: 'Commit of the repo at run time, with a dirty flag; information only, never part of a key.', nullable: true}
+      - {column: config_hash, type: string, definition: 'cf-... id of the declared config keys.'}
+      - {column: inputs, type: 'list<struct<name, key, rows, kind>>', definition: 'Every input: name, slice hash or body sha256, row count, kind (slice, raw_file, config).'}
+      - {column: outputs, type: 'list<struct<table, output_key, rows, bytes, content_hash, file_sha256>>', definition: 'Every output partition.'}
+      - {column: counts, type: 'map<string, int64>', definition: 'Breaks and notes by kind.'}
+      - {column: error, type: string, definition: 'Error class and message of a failed run.', nullable: true}
+  stage_outputs:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per output partition of a stage (the partition manifest; R-EN-09)
+    primary_key: [table_name, output_key]
+    kind: catalogue
+    requirements: [R-EN-09, R-EN-07, R-EN-19, R-DQ-04]
+    columns:
+      - {column: table_name, type: string, definition: 'Table of the partition.'}
+      - {column: output_key, type: string, definition: 'ok-... id of the stage output.'}
+      - {column: stage, type: string, definition: 'Stage that wrote it.'}
+      - {column: game_id, type: string, definition: 'Game of the partition; null for a season partition.', nullable: true}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: code_version, type: string, definition: 'cv-... id.'}
+      - {column: config_hash, type: string, definition: 'cf-... id.'}
+      - {column: inputs, type: 'list<struct<name, key, table_name, output_key>>', definition: 'Input slices: name, slice hash, and the partition (table, output key) or raw pull the slice was taken from.'}
+      - {column: rows, type: int64, definition: 'Rows in the partition.'}
+      - {column: bytes, type: int64, definition: 'Size of the Parquet file.'}
+      - {column: content_hash, type: string, definition: 'sha256 of the canonical JSON of the rows, sorted by the table''s sort key.'}
+      - {column: file_sha256, type: string, definition: 'sha256 of the Parquet file.'}
+      - {column: schema_version, type: string, definition: 'Schema version of the table (semver).'}
+      - {column: first_run_id, type: string, definition: 'The run that wrote the partition.'}
+      - {column: created_utc, type: timestamp, definition: 'When the partition was written.'}
+  current_pointers:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per move of the current pointer of one (table, game, pass); append-only
+    primary_key: [table_name, game_id, pass, set_at_utc]
+    kind: catalogue
+    requirements: [R-EN-07, R-SY-20, R-MD-24]
+    columns:
+      - {column: table_name, type: string, definition: 'Table.'}
+      - {column: game_id, type: string, definition: 'Game key ("season" partitions use the season key).'}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: output_key, type: string, definition: 'The partition that is current from set_at_utc.'}
+      - {column: supersedes_output_key, type: string, definition: 'The partition that was current before; it stays on disk and stays readable.', nullable: true}
+      - {column: set_at_utc, type: timestamp, definition: 'When the pointer moved.'}
+      - {column: known_from_utc, type: timestamp, definition: 'Record time of the data behind the output: the largest known_at_utc of the pulls it descends from.'}
+      - {column: reason, type: 'enum (first_build, pbp_correction, config_change, code_change, review_edit, rollback)', definition: 'Why the pointer moved.'}
+      - {column: set_by_run_id, type: string, definition: 'The run that moved it.'}
+  game_gate_results:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per game, pass and state version (the numbers behind games.pbp_status)
+    primary_key: [game_id, pass, state_version]
+    kind: content
+    requirements: [N-DQ-19, R-SY-06]
+    columns:
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: state_version, type: string, definition: 'sv-... id of the fold output the gate read.'}
+      - {column: untyped_transitions, type: int32, definition: 'Count of TRN-01 breaks.'}
+      - {column: segment_breaks, type: int32, definition: 'Count of SEG-01..04 breaks.'}
+      - {column: view_cells_differ, type: int32, definition: 'Cells where the state rebuilt from segments differs from the walk.'}
+      - {column: minority_side_share, type: float64, definition: 'Share of side-credited rows that belong to the less frequent side.'}
+      - {column: final_score_equal, type: bool, definition: 'score_home and score_away at the last transition equal the game record.'}
+      - {column: possession_diff_max, type: int16, definition: 'Largest absolute difference of possessions between the sides in one period group (halves; overtime with the second half).'}
+      - {column: breaks_spec_fault, type: int32, definition: 'Breaks of class spec_fault.'}
+      - {column: breaks_source_gap, type: int32, definition: 'Breaks of class source_gap, without lineup breaks.'}
+      - {column: breaks_label_fault, type: int32, definition: 'Breaks of class label_fault.'}
+      - {column: breaks_lineup, type: int32, definition: 'Lineup breaks.'}
+      - {column: unknown_floor_labels, type: int32, definition: 'On-floor entries whose team label matches neither side (LIN-01).'}
+      - {column: pbp_status, type: 'enum (ok, ok_with_gaps, too_many_gaps, broken_attribution, broken_score, missing)', definition: 'Gate result.'}
+      - {column: lineup_status, type: 'enum (ok, unreliable, missing)', definition: 'Lineup gate result.'}
+  team_game_pbp:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per team and game, counted by the fold from play-by-play (not the official box)
+    primary_key: [game_id, pass, team_id]
+    kind: content
+    requirements: [R-EN-18, R-DQ-14, R-SY-06]
+    columns:
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: team_id, type: string, definition: 'Team of the row.'}
+      - {column: side, type: 'enum (home, away)', definition: 'Side of the team in this game.'}
+      - {column: points, type: int16, definition: 'Points.'}
+      - {column: points_by_period, type: 'list<int16>', definition: 'Points per period.'}
+      - {column: fgm, type: int16, definition: 'Field goals made.'}
+      - {column: fga, type: int16, definition: 'Field goal attempts.'}
+      - {column: fg3m, type: int16, definition: 'Three-point field goals made.'}
+      - {column: fg3a, type: int16, definition: 'Three-point attempts.'}
+      - {column: ftm, type: int16, definition: 'Free throws made.'}
+      - {column: fta, type: int16, definition: 'Free throw attempts.'}
+      - {column: oreb, type: int16, definition: 'Offensive rebounds, team rebounds included.'}
+      - {column: dreb, type: int16, definition: 'Defensive rebounds, team rebounds included.'}
+      - {column: ast, type: int16, definition: 'Assists (assisted made field goals).'}
+      - {column: stl, type: int16, definition: 'Steals.'}
+      - {column: blk, type: int16, definition: 'Blocks.'}
+      - {column: tov, type: int16, definition: 'Turnovers, team turnovers included.'}
+      - {column: team_tov, type: int16, definition: 'Turnovers charged to no player.'}
+      - {column: pf, type: int16, definition: 'Fouls (personal and technical rows).'}
+      - {column: possessions, type: int16, definition: 'Possessions counted by the fold (possession rule of config/state_machine.yaml).'}
+      - {column: largest_lead, type: int16, definition: 'Largest lead of the team from the score track.'}
+      - {column: game_seconds, type: int32, definition: 'Length of the game in seconds of game clock.'}
+  player_game_pbp:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per player and game, counted by the fold from play-by-play (not the official box)
+    primary_key: [game_id, pass, team_id, player_id]
+    kind: content
+    requirements: [R-EN-18, R-DQ-14]
+    columns:
+      - {column: game_id, type: string, definition: 'Game key.'}
+      - {column: pass, type: string, definition: 'Pass.'}
+      - {column: team_id, type: string, definition: 'Team of the player in this game.'}
+      - {column: player_id, type: string, definition: 'Player.'}
+      - {column: side, type: 'enum (home, away)', definition: 'Side of the team in this game.'}
+      - {column: seconds_played, type: int32, definition: 'Seconds on the floor from the lineup segments; null when lineup_status is not ok.', nullable: true}
+      - {column: points, type: int16, definition: 'Points.'}
+      - {column: fgm, type: int16, definition: 'Field goals made.'}
+      - {column: fga, type: int16, definition: 'Field goal attempts.'}
+      - {column: fg3m, type: int16, definition: 'Three-point field goals made.'}
+      - {column: fg3a, type: int16, definition: 'Three-point attempts.'}
+      - {column: ftm, type: int16, definition: 'Free throws made.'}
+      - {column: fta, type: int16, definition: 'Free throw attempts.'}
+      - {column: oreb, type: int16, definition: 'Offensive rebounds.'}
+      - {column: dreb, type: int16, definition: 'Defensive rebounds.'}
+      - {column: ast, type: int16, definition: 'Assists.'}
+      - {column: stl, type: int16, definition: 'Steals.'}
+      - {column: blk, type: int16, definition: 'Blocks.'}
+      - {column: tov, type: int16, definition: 'Turnovers.'}
+      - {column: pf, type: int16, definition: 'Fouls.'}
+  metric_value_log:
+    status: 'not applied: proposal for the requirements session'
+    grain: one row per metric value that left the query layer into a product (a published number)
+    primary_key: [lineage_handle]
+    kind: catalogue
+    requirements: [R-EN-18, R-DQ-15, R-AS-02, R-PR-14]
+    columns:
+      - {column: lineage_handle, type: string, definition: 'mv-... id of the resolved request (cross_item.ids.lineage_handle).'}
+      - {column: metric_id, type: string, definition: 'Registry id.'}
+      - {column: registry_version, type: string, definition: 'Version of config/metrics.yaml.'}
+      - {column: binding_hash, type: string, definition: 'qs-... id of the compiled SQL text.'}
+      - {column: grain, type: string, definition: 'Grain of the value.'}
+      - {column: entity_keys, type: 'map<string, string>', definition: 'Grain keys of the value (game_id, team_id, player_id, season).'}
+      - {column: filters, type: string, definition: 'Canonical JSON of the filters.'}
+      - {column: parameters, type: string, definition: 'Canonical JSON of the metric parameters used.'}
+      - {column: as_of_known_utc, type: timestamp, definition: 'Record-time cut of the session; null = latest.', nullable: true}
+      - {column: as_of_event, type: string, definition: 'Game-time cut of the request; null = whole games.', nullable: true}
+      - {column: snapshot_id, type: string, definition: 'sn-... id of the outputs the session was bound to.'}
+      - {column: value, type: float64, definition: 'The value served.', nullable: true}
+      - {column: n, type: int64, definition: 'Sample size behind it.', nullable: true}
+      - {column: status, type: 'enum (ok, below_min_n, undefined, no_data, not_bound, stale_binding)', definition: 'Status served with the value.'}
+      - {column: consumer, type: string, definition: 'View id of the views catalogue, or report name.'}
+      - {column: served_utc, type: timestamp, definition: 'When it was served.'}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Views of the query layer. layer: base (current files of one table), grain (neutral), team_keyed (one row per team
+# with opp_ columns, relative to the row's team), focus (takes focus_team_id; no default), catalogue.
+views:
+  v_event:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: event
+    reads: [events, games]
+    columns: [game_id, event_id, period, game_clock_s, order_index, side, team_id, event_type_code, player_id_1, player_id_2, score_value, scoring_play, home_score_after, away_score_after, possession_key, chance_key, pass, state_version, known_at_utc]
+  v_possession:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: possession
+    reads: [possessions, games]
+    columns: [game_id, possession_key, possession_num, team_id, defense_team_id, side, start_period, start_game_clock_s, end_period, end_game_clock_s, duration_s, points, n_chances, n_oreb, end_type, pass, state_version, known_at_utc]
+  v_chance:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: chance
+    reads: [chances, games]
+    columns: [game_id, chance_key, possession_key, chance_number, team_id, side, start_period, start_game_clock_s, end_period, end_game_clock_s, time_used_s, end_type, points, pass, state_version, known_at_utc]
+  v_lineup_stint:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: lineup_stint
+    reads: [lineup_stints, games]
+    columns: [game_id, stint_key, stint_num, team_id, side, lineup_key, player_ids, start_period, start_game_clock_s, end_period, end_game_clock_s, duration_s, off_possessions, def_possessions, points_for, points_against, lineup_status, pass, state_version, known_at_utc]
+  v_player_game:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: player_game
+    reads: [player_box, player_game_pbp, games]
+    columns: [game_id, team_id, player_id, side, site, box_source, minutes, points, fgm, fga, fg3m, fg3a, ftm, fta, oreb, dreb, ast, stl, blk, tov, pf, pass, known_at_utc]
+  v_team_game:
+    status: 'not applied: proposal for the requirements session'
+    layer: team_keyed
+    grain: team_game
+    reads: [team_box, team_game_pbp, games]
+    columns: [game_id, team_id, side, site, opp_team_id, box_source, win, game_minutes, possessions, opp_possessions, points, opp_points, points_h1, points_h2, fgm, fga, fg3m, fg3a, ftm, fta, oreb, dreb, ast, stl, blk, tov, team_tov, pf, largest_lead, opp_fgm, opp_fga, opp_fg3m, opp_fg3a, opp_ftm, opp_fta, opp_oreb, opp_dreb, opp_ast, opp_stl, opp_blk, opp_tov, opp_pf, pass, known_at_utc]
+  v_game:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: game
+    reads: [games, game_gate_results]
+    columns: [game_id, season, home_team_id, away_team_id, neutral_site, home_away_source, home_score, away_score, overtime_periods, pbp_status, lineup_status, state_version, known_at_utc]
+  v_team_season:
+    status: 'not applied: proposal for the requirements session'
+    layer: team_keyed
+    grain: team_season
+    reads: [v_team_game]
+    columns: [season, team_id, games, wins, game_minutes, possessions, opp_possessions, points, opp_points, fgm, fga, fg3m, fg3a, ftm, fta, oreb, dreb, ast, stl, blk, tov, pf, opp_fgm, opp_fga, opp_fg3m, opp_fg3a, opp_ftm, opp_fta, opp_oreb, opp_dreb, opp_tov]
+  v_player_season:
+    status: 'not applied: proposal for the requirements session'
+    layer: grain
+    grain: player_season
+    reads: [v_player_game]
+    columns: [season, team_id, player_id, games, minutes, points, fgm, fga, fg3m, fg3a, ftm, fta, oreb, dreb, ast, stl, blk, tov, pf]
+  v_second:
+    status: 'not applied: proposal for the requirements session (defined now, served when state_second is built)'
+    layer: grain
+    grain: second
+    reads: [state_second, games]
+    columns: [game_id, period, game_clock_s, score_home, score_away, margin_home, team_in_possession, team_fouls_home, team_fouls_away, bonus_home, bonus_away, timeouts_left_home, timeouts_left_away, pass, state_version, known_at_utc]
+  v_frame:
+    status: 'not applied: proposal for the requirements session (defined now, served when state_frame is built)'
+    layer: grain
+    grain: frame
+    reads: [state_frame, games]
+    columns: [game_id, video_id, frame_index, period, game_clock_s, score_home, score_away, margin_home, team_in_possession, lineup_home, lineup_away, pass, state_version]
+  focus_game:
+    status: 'not applied: proposal for the requirements session'
+    layer: focus
+    grain: game
+    parameters: [focus_team_id]
+    default_focus: none
+    reads: [v_game]
+    columns: [game_id, focus_team_id, other_team_id, side_focus, site_focus, score_focus, score_other, margin_focus, win_focus]
+  focus_second:
+    status: 'not applied: proposal for the requirements session (defined now, served when state_second is built)'
+    layer: focus
+    grain: second
+    parameters: [focus_team_id]
+    default_focus: none
+    reads: [v_second, v_game]
+    columns: [game_id, period, game_clock_s, score_focus, score_other, margin_focus, ball_focus, team_fouls_focus, team_fouls_other, bonus_focus, bonus_other, timeouts_left_focus, timeouts_left_other]
+  focus_possession:
+    status: 'not applied: proposal for the requirements session'
+    layer: focus
+    grain: possession
+    parameters: [focus_team_id]
+    default_focus: none
+    reads: [v_possession, v_game]
+    columns: [game_id, possession_key, possession_num, ball_focus, points, margin_start_focus, duration_s]
+  v_lineage:
+    status: 'not applied: proposal for the requirements session'
+    layer: catalogue
+    grain: one row per (table, output partition)
+    reads: [stage_outputs, stage_runs, current_pointers]
+    columns: [table_name, output_key, stage, game_id, pass, code_version, config_hash, first_run_id, rows, content_hash, file_sha256, is_current, known_from_utc]
+  v_version_timeline:
+    status: 'not applied: proposal for the requirements session'
+    layer: catalogue
+    grain: one row per (game, play-by-play version, interval of record time in which it was current)
+    reads: [pbp_version_pulls, pbp_versions]
+    columns: [source, game_id, pbp_version_id, current_from_utc, current_to_utc, first_pull_id, n_plays]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Proposals for files this baseline may not edit. Each is a proposal for its owner; nothing here was applied.
+harness_proposals:
+  - id: HP-1
+    file: tools/state/k09_fold.py (function lineups)
+    status: 'not applied: proposal for the requirements session'
+    fault: 'On-floor players are split by the team NAME of each entry; any label that is not the home name goes to the away side. Measured: one held game (P03) carries a label equal to neither team name on 4,040 entries; the mirror test fails on 8 lineup cells there and nowhere else.'
+    change: 'Split by team id: build the map {team label -> side} from the same pull''s rows that carry both a team label and a home flag (ALG-TN-2). A label outside the map is break LIN-01 and the player is left out. Never a default side.'
+    class: spec_fault
+  - id: HP-2
+    file: tools/state/k09_fold.py (function run_game)
+    status: 'not applied: proposal for the requirements session'
+    fault: 'The side of the focus programme is set from a literal team name. It is used only by the scorebug comparison.'
+    change: 'Take focus_side (home, away or none) as an argument; a fold run needs none.'
+    class: spec_fault
+  - id: HP-3
+    file: tools/state/k09_fold.py (functions emit and finalise_ids), schema/tables/state_transitions.yaml
+    status: 'not applied: proposal for the requirements session'
+    fault: 'transition_id is made from the order index inside the second and from the source''s surrogate row id. A row inserted in a second renumbers the later transitions of that second; a re-ingest at the source may change the surrogate id.'
+    change: 'transition_id from (game, pass, trigger event id, ttype, k) with the trigger event id built from the source''s own play id (cross_item.ids.transition_id). order_index stays a stored ordinal.'
+    class: spec_fault
+  - id: HP-4
+    file: private scorebug sample files read by ocr_vs_fold
+    status: 'not applied: proposal for the requirements session'
+    fault: 'The samples name their columns for one programme.'
+    change: 'left / right in the samples; mapped through the bug template of the game.'
+    class: label_fault
+state_machine_proposals:
+  - id: SP-1
+    file: config/state_machine.yaml (pbp_mapping.lineups)
+    status: 'not applied: proposal for the requirements session'
+    change: 'State the side rule of ALG-TN-2 and add integrity rule LIN-01 (an on-floor label that matches neither side is a break; the player is left out).'
+  - id: SP-2
+    file: config/state_machine.yaml (dimensions)
+    status: 'not applied: proposal for the requirements session'
+    change: 'Mark possession_seq and chance_seq as ordinal dimensions (a position, not an identity) and say that basket_attacked_away is derived as the other basket.'
+  - id: SP-3
+    file: config/state_machine.yaml (pbp_mapping.ordering_fixes, ORD-03)
+    status: 'not applied: proposal for the requirements session'
+    change: 'Name the last tie-break "source_order_index" (position inside the second in the pull) so that it is a stored column of the event, not the position in a list.'
+requirement_text_fixes:
+  - {row: R-MD-22, fix: 'MSU-relative fields exist only in focus views of the query layer, not in "derived tables": state_frame and state_second are grains of the query layer and are neutral.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-MD-25, fix: 'lands in *_home / *_away columns.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-MD-28, fix: 'lands in *_home / *_away columns.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-MD-02, fix: 'ball-control states are named home_ball and away_ball.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-MD-24, fix: 'record time is exposed by the view from the catalogue (pbp_versions.known_at_utc, current_pointers.known_from_utc); content partitions hold no time.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-SY-20, fix: 'replace "re-scored only where the changed clock range overlaps" by "only rows that differ from a full rebuild are reported as changed, no row that ends before the earliest changed instant differs, and only stages and metric values whose declared inputs changed are re-run".', status: 'not applied: proposal for the requirements session'}
+  - {row: R-SY-13, fix: 'order_source gains canonical_rule; the source position is kept as source_order_index.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-SY-06, fix: 'the source is the licensed play-by-play we hold (CBBD), not "ESPN PBP".', status: 'not applied: proposal for the requirements session'}
+  - {row: R-EN-19, fix: 'lineage is RESOLVED for every row and STORED per partition; only event, transition, segment, interval and aggregate rows carry key columns (agrees with R-DQ-04).', status: 'not applied: proposal for the requirements session'}
+  - {row: R-EN-17, fix: 'a play-by-play event id is made from the source''s own play id (R-EN-11); derived rows from content; no id holds an ordinal.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-EN-18, fix: 'the grain list is fixed at eleven (adds team_game, game, player_season); "computable now" is a named list of metric ids, not a flag count; R-EN-13 becomes its performance clause.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-EN-09, fix: 'the input keys of a stage are the hashes of the slices it declares (columns and rows it reads), not the output keys of whole upstream partitions.', status: 'not applied: proposal for the requirements session'}
+  - {row: R-EN-07, fix: 'the one layout; the storage lines of the table specs and the K09 harness layout follow it.', status: 'not applied: proposal for the requirements session'}
